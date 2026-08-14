@@ -1,0 +1,10 @@
+{
+  "imageModel": "openai/gpt-image-2",
+  "videoModel": "bytedance/seedance-2.5",
+  "brainModels": [
+    "anthropic/claude-opus-4.6",
+    "openai/gpt-5.2",
+    "google/gemini-3.1-pro"
+  ],
+  "defaultBrain": "anthropic/claude-opus-4.6"
+}

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Video Creative Director</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <span class="brand-text" data-i18n="sidebar.projects">Projekte</span>
+          </div>
+        </div>
+        <div id="sidebarCreate" class="sidebar-create">
+          <button id="newSession" class="btn-ghost sidebar-create-button" title="Neuer Chat" data-i18n="sidebar.newChat" data-i18n-title="sidebar.newChatTitle">+ Chat</button>
+          <button id="newFolder" class="btn-ghost sidebar-create-button" title="Neues Projekt erstellen" data-i18n="sidebar.newProject" data-i18n-title="sidebar.newProjectTitle">+ Projekt</button>
+          <input id="newFolderInput" class="hidden" type="text" maxlength="60" placeholder="Projektname" aria-label="Neues Projekt erstellen" data-i18n-placeholder="sidebar.projectName" data-i18n-aria-label="sidebar.newProjectTitle" autocomplete="off" />
+        </div>
+        <div class="sidebar-search">
+          <input id="sessionSearch" type="search" placeholder="Chats durchsuchen…" data-i18n-placeholder="sidebar.search" autocomplete="off" />
+        </div>
+        <div id="sessionList" class="session-list"></div>
+        <div class="sidebar-foot">
+          <button id="brandingsBtn" class="sidebar-brandings" type="button" title="Brandings verwalten" data-i18n="sidebar.brandings" data-i18n-title="sidebar.brandingsTitle">🎨 Brandings</button>
+          <button id="settingsBtn" class="sidebar-brandings hidden" type="button" title="API-Keys verwalten" data-i18n="sidebar.settings" data-i18n-title="sidebar.settingsTitle">⚙️ Einstellungen</button>
+          <div id="langSwitch" class="lang-switch" aria-label="Sprache" data-i18n-aria-label="lang.selector">
+            <button type="button" data-lang="de" data-i18n-title="lang.de" data-i18n-aria-label="lang.de" aria-label="Deutsch">DE</button>
+            <span aria-hidden="true">|</span>
+            <button type="button" data-lang="en" data-i18n-title="lang.en" data-i18n-aria-label="lang.en" aria-label="English">EN</button>
+            <span aria-hidden="true">|</span>
+            <button type="button" data-lang="es" data-i18n-title="lang.es" data-i18n-aria-label="lang.es" aria-label="Español">ES</button>
+          </div>
+          <div id="modelInfo" class="muted-xs"></div>
+          <div id="renderNodeStatus" class="render-node-status hidden" aria-live="polite">
+            <span class="render-node-dot" aria-hidden="true"></span>
+            <span id="renderNodeText"></span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div id="dropOverlay" class="drop-overlay hidden" aria-hidden="true">
+          <div class="drop-overlay-label" data-i18n="drop.files">Dateien hier ablegen</div>
+        </div>
+        <header class="topbar">
+          <div class="topbar-left">
+            <h1>Video Creative Director</h1>
+            <span id="sessionTitle" class="session-title"></span>
+          </div>
+          <div class="topbar-right">
+            <button id="costsBtn" class="btn-costs" title="Kostenübersicht öffnen" data-i18n-title="topbar.costsTitle">$ 0.00</button>
+            <button id="contextBtn" class="btn-context hidden" title="Kontext und Brandings verwalten" data-i18n-title="topbar.contextTitle">
+              <span data-i18n="topbar.context">📎 Kontext</span>
+              <span id="contextBadge" class="context-badge hidden">0</span>
+              <span id="brandingContextBadge" class="branding-context-badge hidden">🎨 0</span>
+            </button>
+          </div>
+        </header>
+
+        <div id="keyBanner" class="banner hidden" data-i18n="banner.noApiKey">
+          Kein OpenRouter-API-Key gefunden. Eine Admin-Person kann ihn unter ⚙️ Einstellungen hinterlegen.
+        </div>
+
+        <div id="messages" class="messages">
+          <div class="empty-state">
+            <h2 data-i18n="empty.title">Was moechtest du fuer ein Video machen?</h2>
+            <p data-i18n="empty.body">
+              Beschreibe deine Idee in einem Satz oder lade ein Bild hoch. Der Creative Director entwickelt die Richtung
+              mit dir, erzeugt Bilder und produziert daraus das Video.
+            </p>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div id="attachStrip" class="attach-strip hidden"></div>
+          <div class="composer-row">
+            <button id="attachBtn" class="btn-icon" title="Datei anhaengen" aria-label="Datei anhaengen" data-i18n-title="composer.attach" data-i18n-aria-label="composer.attach">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M8.5 13.5l6-6a2.5 2.5 0 013.5 3.5l-8 8a4 4 0 01-5.7-5.7l8-8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+            <input id="fileInput" type="file" accept="image/*,audio/*,video/mp4,video/webm,.mp3,.wav,.m4a,.aac,.mp4,.webm,.ttf,.otf,.woff,.woff2,.md,.txt,.markdown" multiple hidden />
+            <div class="composer-menu-picker tools-picker">
+              <button
+                id="toolsMenuBtn"
+                class="btn-icon btn-tools-menu"
+                type="button"
+                title="Tools und Einstellungen"
+                aria-label="Tools und Einstellungen"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                data-i18n-title="composer.tools"
+                data-i18n-aria-label="composer.tools"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h5M13 12h7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                  <circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+                  <circle cx="8" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+                  <circle cx="11" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+                </svg>
+                <span id="toolsActiveBadge" class="tools-active-badge hidden" aria-hidden="true"></span>
+              </button>
+              <div id="toolsMenu" class="composer-popover-menu tools-menu hidden" role="menu" aria-label="Tools und Einstellungen" data-i18n-aria-label="composer.tools"></div>
+            </div>
+            <div class="composer-menu-picker prompt-picker">
+              <button
+                id="promptMenuBtn"
+                class="btn-icon"
+                type="button"
+                title="Prompt-Vorlagen"
+                aria-label="Prompt-Vorlagen"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                data-i18n-title="composer.prompts"
+                data-i18n-aria-label="composer.prompts"
+              >
+                <span aria-hidden="true">✨</span>
+              </button>
+              <div id="promptMenu" class="composer-popover-menu prompt-menu hidden" role="menu" aria-label="Prompt-Vorlagen" data-i18n-aria-label="composer.prompts"></div>
+            </div>
+            <textarea
+              id="input"
+              rows="1"
+              placeholder="Idee beschreiben - Enter sendet, Shift+Enter macht einen Zeilenumbruch"
+              data-i18n-placeholder="composer.placeholder"
+            ></textarea>
+            <button id="sendBtn" class="btn-send" title="Senden" data-i18n="composer.send" data-i18n-title="composer.send">Senden</button>
+          </div>
+          <div id="statusLine" class="status-line" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="statusText" class="status-text"></span>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="costsModal" class="modal hidden">
+      <div class="modal-panel costs-panel" role="dialog" aria-label="Kostenübersicht" data-i18n-aria-label="costs.title">
+        <div class="modal-head">
+          <h2 data-i18n="costs.title">Kostenübersicht</h2>
+          <button id="costsClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div id="costsBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-panel settings-panel" role="dialog" aria-labelledby="settingsTitle">
+        <div class="modal-head">
+          <h2 id="settingsTitle" data-i18n="settings.title">Einstellungen</h2>
+          <button id="settingsClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="settings-hint" data-i18n="settings.hint">Keys werden serverseitig in data/settings.json gespeichert (nur fuer Admins zugaenglich) und uebersteuern die .env. Aenderungen wirken sofort, ohne Neustart.</p>
+          <h3 class="settings-section-title" data-i18n="settings.apiKeys">API-Keys</h3>
+          <div id="settingsList" class="settings-list"></div>
+          <section class="settings-admins" aria-labelledby="adminsTitle">
+            <h3 id="adminsTitle" class="settings-section-title" data-i18n="admins.title">Admins</h3>
+            <p class="settings-hint" data-i18n="admins.hint">Admins aus .env bleiben immer erhalten. Zusaetzliche Admins wirken sofort, ohne Neustart.</p>
+            <div id="adminsList" class="admins-list"></div>
+            <form id="adminForm" class="admin-form">
+              <label class="render-node-field" for="adminEmail">
+                <span data-i18n="admins.email">E-Mail-Adresse</span>
+                <input id="adminEmail" class="settings-input" type="email" maxlength="254" required autocomplete="email" placeholder="name@firma.ch" data-i18n-placeholder="admins.emailPlaceholder" />
+              </label>
+              <button id="adminAdd" class="branding-manager-action" type="submit" data-i18n="admins.add">Hinzufuegen</button>
+            </form>
+          </section>
+          <section class="settings-render-nodes" aria-labelledby="renderNodesTitle">
+            <h3 id="renderNodesTitle" class="settings-section-title" data-i18n="renderNodes.title">Render-Nodes</h3>
+            <p class="settings-hint" data-i18n="renderNodes.hint">Der Standard-Node aus .env gilt nur, solange die Liste leer ist.</p>
+            <div id="renderNodesList" class="render-nodes-list"></div>
+            <form id="renderNodeForm" class="render-node-form">
+              <div class="render-node-form-heading" data-i18n="renderNodes.add">Node hinzufuegen</div>
+              <label class="render-node-field" for="renderNodeName">
+                <span data-i18n="renderNodes.name">Name</span>
+                <input id="renderNodeName" class="settings-input" type="text" maxlength="40" required autocomplete="off" placeholder="Render-Node Zuerich" data-i18n-placeholder="renderNodes.namePlaceholder" />
+              </label>
+              <label class="render-node-field" for="renderNodeUrl">
+                <span data-i18n="renderNodes.url">URL</span>
+                <input id="renderNodeUrl" class="settings-input" type="url" maxlength="2000" required autocomplete="url" placeholder="https://render.example.com" data-i18n-placeholder="renderNodes.urlPlaceholder" />
+              </label>
+              <label class="render-node-field" for="renderNodeToken">
+                <span data-i18n="renderNodes.token">Token</span>
+                <input id="renderNodeToken" class="settings-input" type="password" maxlength="500" required autocomplete="new-password" placeholder="Token" data-i18n-placeholder="renderNodes.tokenPlaceholder" />
+              </label>
+              <button id="renderNodeAdd" class="branding-manager-action" type="submit" data-i18n="renderNodes.addButton">Hinzufuegen</button>
+            </form>
+          </section>
+          <section class="settings-higgsfield" aria-labelledby="higgsfieldTitle">
+            <h3 id="higgsfieldTitle" class="settings-section-title" data-i18n="higgsfield.title">Higgsfield</h3>
+            <p class="settings-hint" data-i18n="higgsfield.hint">Verbindet den Director mit deinem Higgsfield-Plan. Tokens bleiben ausschliesslich auf dem Server.</p>
+            <div class="higgsfield-connection-row">
+              <span id="higgsfieldStatusDot" class="higgsfield-status-dot" aria-hidden="true"></span>
+              <div class="higgsfield-connection-copy">
+                <div id="higgsfieldStatusText" class="higgsfield-status-text" data-i18n="higgsfield.disconnected">Nicht verbunden</div>
+                <div id="higgsfieldVerification" class="higgsfield-verification hidden">
+                  <a id="higgsfieldVerificationLink" href="#" target="_blank" rel="noopener noreferrer" data-i18n="higgsfield.openVerification">Higgsfield im Browser oeffnen</a>
+                  <span data-i18n="higgsfield.confirmHint">Im Browser bestaetigen…</span>
+                </div>
+              </div>
+              <div class="settings-actions">
+                <button id="higgsfieldConnect" class="branding-manager-action" type="button" data-i18n="higgsfield.connect">Mit Higgsfield verbinden</button>
+                <button id="higgsfieldDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="higgsfield.disconnect">Trennen</button>
+              </div>
+            </div>
+          </section>
+          <div id="settingsFeedback" class="settings-feedback hidden" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="promptPresetModal" class="modal hidden">
+      <div class="modal-panel prompt-preset-panel" role="dialog" aria-labelledby="promptPresetTitle">
+        <div class="modal-head">
+          <h2 id="promptPresetTitle" data-i18n="prompt.customNew">Eigene Vorlage</h2>
+          <button id="promptPresetClose" class="modal-close" type="button" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <form id="promptPresetForm" class="modal-body prompt-preset-form">
+          <label class="prompt-preset-field" for="promptPresetName">
+            <span data-i18n="prompt.customName">Name</span>
+            <input id="promptPresetName" class="settings-input" type="text" maxlength="60" required autocomplete="off" data-i18n-placeholder="prompt.customNamePlaceholder" placeholder="Vorlagen-Name" />
+          </label>
+          <label class="prompt-preset-field" for="promptPresetGroup">
+            <span data-i18n="prompt.customGroup">Gruppe</span>
+            <input id="promptPresetGroup" class="settings-input" type="text" maxlength="40" required autocomplete="off" list="promptPresetGroups" data-i18n-placeholder="prompt.customGroupPlaceholder" placeholder="Gruppe waehlen oder eingeben" />
+            <datalist id="promptPresetGroups"></datalist>
+          </label>
+          <label class="prompt-preset-field" for="promptPresetDescription">
+            <span data-i18n="prompt.customDescription">Beschreibung (optional)</span>
+            <input id="promptPresetDescription" class="settings-input" type="text" maxlength="120" autocomplete="off" data-i18n-placeholder="prompt.customDescriptionPlaceholder" placeholder="Kurzer Hinweis im Menue" />
+          </label>
+          <label class="prompt-preset-field" for="promptPresetText">
+            <span data-i18n="prompt.customPrompt">Prompt-Text</span>
+            <textarea id="promptPresetText" class="settings-input prompt-preset-textarea" maxlength="4000" required data-i18n-placeholder="prompt.customPromptPlaceholder" placeholder="Formuliere den produktionsreifen Prompt …"></textarea>
+          </label>
+          <p class="settings-hint prompt-preset-syntax" data-i18n="prompt.customSyntax">Nutze [Platzhalter] fuer Werte, die beim Einsetzen ausgewaehlt werden sollen.</p>
+          <div id="promptPresetFeedback" class="settings-feedback hidden" aria-live="polite"></div>
+          <div class="prompt-preset-actions">
+            <button id="promptPresetCancel" class="branding-manager-action" type="button" data-i18n="common.cancel">Abbrechen</button>
+            <button id="promptPresetSave" class="branding-manager-action" type="submit" data-i18n="common.save">Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="contextModal" class="modal hidden">
+      <div class="modal-panel" role="dialog" aria-label="Kontext und Brandings" data-i18n-aria-label="context.title">
+        <div class="modal-head">
+          <h2 data-i18n="context.title">Kontext und Brandings</h2>
+          <button id="contextClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-section">
+            <div class="modal-label" data-i18n="context.brandings">Brandings</div>
+            <div id="contextBrandings" class="branding-attachment-list"></div>
+            <select id="contextBrandingSelect" class="branding-select" aria-label="Branding anhaengen" data-i18n-aria-label="context.attachBranding">
+              <option value="" data-i18n="context.attachBranding">Branding anhaengen…</option>
+            </select>
+            <div id="contextBrandingHint" class="context-empty"></div>
+          </div>
+          <div class="context-files-group">
+            <div class="modal-label" data-i18n="context.files">Dateien</div>
+            <div id="contextFiles" class="context-list"></div>
+            <button id="contextFileUploadBtn" class="context-file-upload" type="button" data-i18n="context.uploadFile">Datei hochladen…</button>
+            <input id="contextFileInput" type="file" accept=".md,.txt,.markdown" multiple hidden />
+            <div id="contextFileHint" class="context-empty" data-i18n="context.chatFileHint">Maximal 5 Dateien pro Chat, je maximal 60'000 Zeichen.</div>
+          </div>
+          <div id="contextGtsSection" class="context-gts-group">
+            <div class="modal-label" data-i18n="context.brains">GTS-Brains</div>
+            <div class="modal-section">
+              <div class="modal-label" data-i18n="context.attached">Angehaengt</div>
+              <div id="contextAttached" class="context-list"></div>
+            </div>
+            <div class="modal-section">
+              <div class="modal-label" data-i18n="context.search">Suche</div>
+              <input id="contextSearch" type="search" placeholder="GTS durchsuchen…" data-i18n-placeholder="context.searchPlaceholder" autocomplete="off" />
+              <div id="contextResults" class="context-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="roleModal" class="modal hidden">
+      <div class="modal-panel role-panel" role="dialog" aria-labelledby="roleModalTitle">
+        <div class="modal-head">
+          <h2 id="roleModalTitle" data-i18n="roles.title">Rollen verwalten</h2>
+          <button id="roleModalClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-section">
+            <div class="modal-label" data-i18n="roles.own">Eigene Rollen</div>
+            <div id="roleList" class="role-list"></div>
+          </div>
+          <div class="role-form-divider"></div>
+          <div class="modal-section role-form">
+            <div id="roleFormTitle" class="modal-label" data-i18n="roles.new">Neue Rolle</div>
+            <button id="roleEditCancel" class="role-edit-cancel hidden" type="button" data-i18n="roles.cancelEdit">Abbrechen (neue Rolle erstellen)</button>
+            <label for="roleName" data-i18n="roles.name">Name</label>
+            <input id="roleName" type="text" maxlength="60" placeholder="Zum Beispiel Social-Ad-Stratege" data-i18n-placeholder="roles.namePlaceholder" autocomplete="off" />
+            <label for="roleBrief" data-i18n="roles.briefLabel">Was soll die Rolle tun?</label>
+            <textarea id="roleBrief" rows="4" maxlength="2000" placeholder="Aufgabe, Tonalitaet, Arbeitsweise und gewuenschte Ergebnisse beschreiben" data-i18n-placeholder="roles.briefPlaceholder"></textarea>
+            <div class="role-generate-row">
+              <button id="roleGenerate" class="role-secondary-button" type="button" data-i18n="roles.generate">✨ Mit KI generieren</button>
+              <span data-i18n="roles.generateCost">Die Generierung kostet einen kleinen Betrag (Modell-Call).</span>
+            </div>
+            <div class="role-template-row">
+              <button id="roleDefaultTemplate" class="role-secondary-button" type="button" data-i18n="roles.defaultTemplate">Standard-Rolle als Vorlage laden</button>
+              <div class="role-template-hint" data-i18n="roles.defaultHint">Lädt den Standard-System-Prompt des Creative Directors als Ausgangspunkt.</div>
+              <div id="roleDefaultStatus" class="role-template-status hidden" aria-live="polite"></div>
+            </div>
+            <div class="role-generated-fields">
+              <label for="roleEmoji" data-i18n="roles.emoji">Emoji</label>
+              <input id="roleEmoji" type="text" maxlength="4" placeholder="🎬" />
+              <label for="roleDescription" data-i18n="roles.description">Kurzbeschreibung</label>
+              <input id="roleDescription" type="text" maxlength="200" placeholder="Kurzer Hinweis fuer die Auswahl" data-i18n-placeholder="roles.descriptionPlaceholder" />
+              <label for="rolePrompt" data-i18n="roles.prompt">Rollen-Prompt</label>
+              <textarea id="rolePrompt" rows="10" maxlength="20000" placeholder="Du bist …" data-i18n-placeholder="roles.promptPlaceholder"></textarea>
+            </div>
+            <div id="roleModalError" class="folder-profile-error hidden"></div>
+            <div class="role-save-row">
+              <button id="roleSaveCopy" class="role-secondary-button hidden" type="button" data-i18n="roles.saveCopy">Als neue Rolle speichern</button>
+              <button id="roleSave" class="btn-profile-save" type="button" data-i18n="common.save">Speichern</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="folderProfileModal" class="modal hidden">
+      <div class="modal-panel" role="dialog" aria-labelledby="folderProfileTitle">
+        <div class="modal-head">
+          <h2 id="folderProfileTitle" class="folder-profile-title">
+            <span data-i18n="profile.title">Produktions-Profil:</span>
+            <button id="folderProfileNameButton" class="folder-profile-name-button" type="button" title="Projekt umbenennen" data-i18n-title="profile.rename">
+              <span id="folderProfileNameText"></span>
+              <span class="folder-profile-name-pencil" aria-hidden="true">✎</span>
+            </button>
+            <input id="folderProfileNameInput" class="folder-profile-name-input hidden" type="text" maxlength="60" aria-label="Projektname" data-i18n-aria-label="sidebar.projectName" autocomplete="off" />
+          </h2>
+          <button id="folderProfileClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-section">
+            <label class="modal-label" for="folderProfileGuidelines" data-i18n="profile.guidelines">Richtlinien (Brand, Stil, Charaktere)</label>
+            <textarea id="folderProfileGuidelines" maxlength="30000" rows="10" placeholder="Brand-Regeln, Bildsprache, wiederkehrende Charaktere …" data-i18n-placeholder="profile.guidelinesPlaceholder"></textarea>
+            <div id="folderProfileCounter" class="folder-profile-counter" data-i18n="profile.counter">0 / 30000</div>
+          </div>
+          <div class="modal-section">
+            <div class="modal-label" data-i18n="profile.memory">Projekt-Memory</div>
+            <div id="folderProfileMemory" class="project-memory-list"></div>
+          </div>
+          <div id="folderProfileGtsSection" class="modal-section">
+            <div class="modal-label" data-i18n="context.brains">GTS-Brains</div>
+            <div class="modal-section">
+              <div class="modal-label" data-i18n="context.attached">Angehaengt</div>
+              <div id="folderProfileAttachedBrains" class="context-list"></div>
+            </div>
+            <div class="modal-section">
+              <label class="modal-label" for="folderProfileBrainSearch" data-i18n="context.search">Suche</label>
+              <input id="folderProfileBrainSearch" type="search" placeholder="GTS durchsuchen…" data-i18n-placeholder="context.searchPlaceholder" autocomplete="off" />
+              <div id="folderProfileBrainResults" class="context-list"></div>
+              <div id="folderProfileBrainLimit" class="context-empty hidden" data-i18n="context.brainLimit">Maximal 5 GTS-Brains angehaengt. Entferne zuerst einen Eintrag, um einen anderen anzuhaengen.</div>
+            </div>
+          </div>
+          <div class="modal-section">
+            <div class="modal-label" data-i18n="context.files">Dateien</div>
+            <div id="folderProfileFiles" class="context-list"></div>
+            <button id="folderProfileFileUploadBtn" class="context-file-upload" type="button" data-i18n="context.uploadFile">Datei hochladen…</button>
+            <input id="folderProfileFileInput" type="file" accept=".md,.txt,.markdown" multiple hidden />
+            <div id="folderProfileFileHint" class="context-empty" data-i18n="context.projectFileHint">Maximal 5 Dateien pro Projekt, je maximal 60'000 Zeichen. Gilt fuer alle Chats im Projekt.</div>
+          </div>
+          <div class="modal-section">
+            <div class="modal-label" data-i18n="context.brandings">Brandings</div>
+            <div id="folderProfileBrandings" class="branding-attachment-list"></div>
+            <select id="folderProfileBrandingSelect" class="branding-select" aria-label="Branding zum Projekt hinzufuegen" data-i18n-aria-label="profile.addBranding">
+              <option value="" data-i18n="context.attachBranding">Branding anhaengen…</option>
+            </select>
+            <div id="folderProfileBrandingHint" class="context-empty"></div>
+          </div>
+          <div class="modal-section">
+            <div class="modal-label" data-i18n="profile.casting">Casting</div>
+            <div id="folderProfileCast" class="cast-list"></div>
+            <div class="context-empty" data-i18n="profile.castingHint">Casting erstellst und pflegst du im Chat mit dem Director.</div>
+          </div>
+          <div id="folderProfileError" class="folder-profile-error hidden"></div>
+          <div id="folderProfileDeleteHint" class="folder-profile-delete-hint hidden" data-i18n="profile.moveChatsFirst">Zuerst Chats verschieben oder loeschen</div>
+          <div class="folder-profile-actions">
+            <button id="folderProfileDelete" class="btn-profile-delete" type="button" data-i18n="profile.deleteProject">Projekt loeschen</button>
+            <button id="folderProfileSave" class="btn-profile-save" type="button" data-i18n="common.save">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="brandingsModal" class="modal hidden">
+      <div class="modal-panel brandings-panel" role="dialog" aria-labelledby="brandingsTitle">
+        <div class="modal-head">
+          <h2 id="brandingsTitle" data-i18n="context.brandings">Brandings</h2>
+          <button id="brandingsClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="modal-body">
+          <section class="branding-import" aria-labelledby="brandingImportTitle">
+            <div class="branding-import-copy">
+              <h3 id="brandingImportTitle" data-i18n="branding.importTitle">Claude Design-System importieren</h3>
+              <p data-i18n="branding.importHint">ZIP mit Tokens, Schriften, Logos, Bildwelt und Guidelines auswählen.</p>
+            </div>
+            <div class="branding-import-controls">
+              <label class="branding-import-name" for="brandingImportName">
+                <span data-i18n="branding.importName">Name (optional)</span>
+                <input id="brandingImportName" class="settings-input" type="text" maxlength="120" placeholder="Aus ZIP übernehmen" data-i18n-placeholder="branding.importNamePlaceholder" />
+              </label>
+              <button id="brandingImportButton" class="branding-manager-action" type="button" data-i18n="branding.importButton">Design-System importieren (ZIP)</button>
+              <input id="brandingImportFile" type="file" accept=".zip,application/zip" hidden />
+            </div>
+            <div id="brandingImportFeedback" class="branding-import-feedback hidden" aria-live="polite"></div>
+          </section>
+          <div id="brandingsList" class="branding-manager-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lightbox" class="lightbox hidden">
+      <img id="lightboxImg" alt="" aria-label="Vollansicht" data-i18n-aria-label="common.fullView" />
+    </div>
+
+    <script src="i18n.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

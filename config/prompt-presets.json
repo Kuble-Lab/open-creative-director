@@ -1,0 +1,135 @@
+[
+  {
+    "id": "casting-neue-figur",
+    "group": "Casting",
+    "title": "Neue Figur erstellen",
+    "description": "Portraet + Sprechprobe, dann als Cast-Mitglied speichern",
+    "prompt": "Erstelle eine neue Figur fuer unser Casting.\nName: [Name]\nAussehen: [Alter, Look, Kleidung, besondere Merkmale]\nSoul (Persoenlichkeit, Sprechweise): [Beschreibung]\n\nVorgehen: Erzeuge zuerst ein Portraet. Wenn es mir gefaellt, erzeuge einen kurzen 5-Sekunden-Clip (480p), in dem die Figur direkt in die Kamera schaut und einen kurzen Satz sagt — Gesicht gut sichtbar, klare Stimme. Wenn ich Look und Stimme freigebe, speichere die Figur als Cast-Mitglied mit dem Clip als Voice-Master."
+  },
+  {
+    "id": "casting-bestehende-figur",
+    "group": "Casting",
+    "title": "Szene mit bestehender Figur",
+    "description": "Neue Szene, Konsistenz via Cast-Referenzen",
+    "prompt": "Neue Szene mit [Figur aus dem Cast].\nOrt/Setting: [Beschreibung]\nHandlung/Dialog: [Was passiert, was sagt die Figur]\n\nWichtig: Importiere zuerst die Cast-Referenzen der Figur (Bilder + Voice-Master) und verwende sie bei der Videogenerierung, damit Aussehen und Stimme exakt gleich bleiben."
+  },
+  {
+    "id": "casting-dialog",
+    "group": "Casting",
+    "title": "Dialog-Szene mit zwei Figuren",
+    "description": "Zwei Cast-Mitglieder im Gespraech",
+    "prompt": "Dialog-Szene mit [Figur 1] und [Figur 2] aus dem Cast.\nOrt: [Setting]\nGespraech: [Wer sagt was, Stimmung]\n\nImportiere fuer beide Figuren die Cast-Referenzen (Bilder + Voice-Master) und gib sie der Videogenerierung mit, damit beide Stimmen und Gesichter konsistent bleiben."
+  },
+  {
+    "id": "serie-naechste-episode",
+    "group": "Serie",
+    "title": "Naechste Episode",
+    "description": "Fortsetzung mit Serien-Konsistenz",
+    "prompt": "Naechste Episode unserer Serie.\nInhalt: [Kurzbeschrieb der Episode]\n\nHalte Stil, Farbwelt und Figuren konsistent zu den bisherigen Episoden: nutze die Produktions-Richtlinien des Projekts, die Cast-Referenzen aller vorkommenden Figuren und dieselben Bild-Referenzen wie bisher."
+  },
+  {
+    "id": "serie-storyboard",
+    "group": "Serie",
+    "title": "Storyboard entwickeln",
+    "description": "Szenenplan mit Stills vor der Produktion",
+    "prompt": "Entwickle ein Storyboard fuer: [Idee/Episode]\n\nSchlage zuerst eine Szenenliste vor (Shot, Dauer, Bildinhalt, Dialog). Erzeuge danach pro Szene ein Still als Vorschau. Erst wenn ich die Stills freigebe, produzieren wir die Videos."
+  },
+  {
+    "id": "branding-social-post",
+    "group": "Branding",
+    "title": "Social-Media-Post im Branding",
+    "description": "Post-Visual nach Brand-Vorgaben",
+    "prompt": "Erstelle ein Social-Media-Visual im Branding [Branding-Name].\nPlattform/Format: [z.B. Instagram Post 1:1, Story 9:16]\nBotschaft: [Kernaussage/Text auf dem Visual]\n\nWende Farben, Typografie und Bildwelt des Brandings strikt an und nutze vorhandene Branding-Assets (Logo etc.) statt sie neu zu erfinden."
+  },
+  {
+    "id": "branding-video-ad",
+    "group": "Branding",
+    "title": "Video-Ad im Branding",
+    "description": "Kurze Werbeanzeige nach Brand-Vorgaben",
+    "prompt": "Produziere eine kurze Video-Ad ([Dauer] Sekunden, [Format z.B. 9:16]) im Branding [Branding-Name].\nZiel: [Was soll die Ad erreichen]\nHook-Idee: [Erster Satz/Bild in den ersten 2 Sekunden]\nCall-to-Action: [CTA]\n\nBranding strikt anwenden (Farben, Typo, Voice). Am Ende das animierte Logo-Outro des Brandings verwenden, falls vorhanden."
+  },
+  {
+    "id": "motion-text-overlay",
+    "group": "Motion",
+    "title": "Text-Overlay auf Video",
+    "description": "HyperFrames: Titel/Text ueber bestehendes Video",
+    "prompt": "Lege ein Text-Overlay ueber das Video [Asset-ID].\nText: [Text]\nStil: [Font/Farbe/Position, oder: gemaess Branding [Name]]\nTiming: Text soll von Sekunde [Start] bis [Ende] gut lesbar sein.\n\nNutze HyperFrames (render_motion_graphics) mit dem Video als Ebene."
+  },
+  {
+    "id": "motion-logo-outro",
+    "group": "Motion",
+    "title": "Animiertes Logo-Outro",
+    "description": "Logo-Animation als Abschluss-Clip",
+    "prompt": "Erstelle ein animiertes Logo-Outro ([Dauer, z.B. 3] Sekunden) fuer [Branding/Marke].\nStimmung: [z.B. elegant, verspielt, energetisch]\n\nNutze das vorhandene Logo aus dem Branding (nicht neu generieren). Wenn das Outro passt, speichere es im Branding als Outro-Asset."
+  },
+  {
+    "id": "social-reel-hook",
+    "group": "Social Media",
+    "title": "Reel/Short mit Hook",
+    "description": "Vertikaler Kurzclip mit starkem Einstieg und CTA",
+    "prompt": "Entwickle einen vertikalen 9:16-Reel/Short zu [Thema] fuer [Zielgruppe]. Die Hook muss in den ersten 2 Sekunden visuell und textlich greifen; schlage dafuer drei konkrete Einstiege vor und waehle den staerksten. Plane danach einen schnellen, klar lesbaren Ablauf mit Shotliste, Text-Overlays und passender Bild- oder Videogenerierung. Schliesse mit dem Call-to-Action [CTA] und liefere eine Caption mit maximal 150 Zeichen."
+  },
+  {
+    "id": "social-produkt-post",
+    "group": "Social Media",
+    "title": "Produkt-Post",
+    "description": "Produktfoto-Szene plus Caption fuer den Feed",
+    "prompt": "Gestalte einen hochwertigen Produkt-Post fuer [Produkt] im Format [4:5 oder 1:1]. Inszeniere das Produkt in einer konkreten Szene mit der Stilrichtung [Stil] und der Stimmung [Stimmung], wobei Form, Material und Branding korrekt bleiben. Definiere Licht, Kameraperspektive, Hintergrund und Requisiten, bevor du das finale Visual erzeugst. Liefere dazu einen Caption-Vorschlag mit einer klaren Kernbotschaft und einem passenden CTA."
+  },
+  {
+    "id": "social-story-sequenz",
+    "group": "Social Media",
+    "title": "Story-Sequenz",
+    "description": "Drei verbundene Story-Visuals mit Spannungsbogen",
+    "prompt": "Entwickle drei zusammenhaengende 9:16-Story-Visuals fuer [Thema]. Bild 1 soll Neugier oder ein Problem etablieren, Bild 2 die Loesung oder den zentralen Beweis zeigen und Bild 3 mit [CTA] abschliessen. Halte Layout, Farben, Typografie und Bildsprache ueber alle drei Visuals konsistent. Erzeuge zuerst eine kompakte Storyline mit Text pro Slide und danach die drei produktionsfertigen Visuals."
+  },
+  {
+    "id": "social-ugc-clip",
+    "group": "Social Media",
+    "title": "UGC-Style-Clip",
+    "description": "Authentischer Handy-Ad-Clip im Testimonial-Ton",
+    "prompt": "Produziere einen authentischen UGC-Style-Ad-Clip fuer [Produkt/Dienstleistung], als waere er spontan mit dem Handy gefilmt. Die Person spricht im glaubwuerdigen Testimonial-Ton ueber [persoenliche Erfahrung oder Problem] und nennt den wichtigsten Nutzen ohne Werbesprache. Plane den 9:16-Clip mit natuerlichem Licht, kleinen Kamerabewegungen, realistischen Pausen und zwei bis drei passenden B-Roll-Einschueben. Beende den Clip mit [CTA], ohne den authentischen Charakter zu verlieren."
+  },
+  {
+    "id": "social-meme-trend",
+    "group": "Social Media",
+    "title": "Meme/Trend-Adaption",
+    "description": "Aktuelles Format markengerecht und serioes adaptieren",
+    "prompt": "Adaptiere [Trend/Format] fuer die Marke [Marke], ohne dass die Umsetzung anbiedernd oder unprofessionell wirkt. Erklaere zuerst kurz die erkennbare Mechanik des Formats und uebersetze sie in eine markenkonforme Pointe zu [Botschaft]. Entwickle ein produktionsreifes Visual- oder Clip-Konzept mit Format, Text, Timing und benoetigten Assets. Zeige vor der Produktion zwei Varianten und empfehle diejenige mit der besten Balance aus Wiedererkennung und Markenpassung."
+  },
+  {
+    "id": "marketing-kampagnen-konzept",
+    "group": "Marketing",
+    "title": "Kampagnen-Konzept",
+    "description": "Kernbotschaft und drei Motiv-Richtungen entwickeln",
+    "prompt": "Entwickle ein Kampagnen-Konzept fuer [Produkt/Anlass] mit dem Ziel [Kampagnenziel] und der Zielgruppe [Zielgruppe]. Formuliere eine praegnante Kernbotschaft und leite daraus drei klar unterschiedliche Motiv-Ideen als Stills ab, jeweils mit Bildidee, Headline, Stil und Kanal-Eignung. Bewerte die drei Richtungen nach Aufmerksamkeit, Markenpassung und Produktionsaufwand. Empfiehl eine Auswahl und warte vor der finalen Still-Produktion auf meine Freigabe."
+  },
+  {
+    "id": "marketing-produkt-ad-15s",
+    "group": "Marketing",
+    "title": "Produkt-Ad 15s",
+    "description": "Benefit-fokussierter Spot mit Logo und CTA",
+    "prompt": "Produziere eine 15-sekuendige Video-Ad fuer [Produkt] und [Zielgruppe], fokussiert auf den Benefit [Hauptnutzen]. Starte mit einem konkreten Problem oder visuellen Aha-Moment, zeige das Produkt frueh und belege den Nutzen mit einer klaren Anwendungsszene. Plane Timing, Shots, Voice-over und Text-Overlays so, dass der Spot auch ohne Ton funktioniert. Beende mit dem vorhandenen Logo und dem Call-to-Action [CTA]."
+  },
+  {
+    "id": "marketing-testimonial-video",
+    "group": "Marketing",
+    "title": "Testimonial-Video",
+    "description": "Glaubwuerdige Aussage in 9:16 und 16:9",
+    "prompt": "Erstelle ein glaubwuerdiges Testimonial-Video zu [Produkt] mit [Cast-Mitglied oder neue Figur]. Die Person beschreibt zuerst die Ausgangslage, dann die konkrete Erfahrung und schliesslich das messbare oder emotionale Ergebnis in natuerlicher Sprache. Nutze bei einem Cast-Mitglied alle vorhandenen Gesichts- und Voice-Referenzen; bei einer neuen Figur schlage zuerst Look und Stimme zur Freigabe vor. Plane die Komposition so, dass sie als 9:16- und 16:9-Version funktioniert, inklusive Untertiteln und sauberer Safe Areas."
+  },
+  {
+    "id": "marketing-explainer",
+    "group": "Marketing",
+    "title": "Erklaervideo/Explainer",
+    "description": "Einfach erklaert mit Motion Graphics und Overlays",
+    "prompt": "Erklaere [Thema] in einem kurzen, leicht verstaendlichen Video fuer [Zielgruppe]. Strukturiere den Inhalt in Problem, einfache Erklaerung, konkretes Beispiel und Schlussfolgerung und vermeide unnoetige Fachbegriffe. Entwickle passende Motion Graphics, Diagramme und Text-Overlays und setze sie mit HyperFrames um, damit Timing und Lesbarkeit exakt kontrollierbar sind. Liefere vor dem Rendering ein Skript mit Szenen, Sprechertext, On-Screen-Text und Zeitangaben."
+  },
+  {
+    "id": "marketing-event-promo",
+    "group": "Marketing",
+    "title": "Event-Promo",
+    "description": "Countdown-Visual und kurzer Teaser-Clip",
+    "prompt": "Entwickle eine Event-Promo fuer [Event] am [Datum] in [Ort]. Gestalte zuerst ein countdown-taugliches Key Visual, das Titel, Datum und Ort auch auf kleinen Screens sofort lesbar macht. Leite daraus einen kurzen Teaser-Clip mit dynamischem Einstieg, zwei bis drei Highlights und dem CTA [Anmeldung/Tickets] ab. Plane Varianten fuer 9:16 und 1:1 und verwende vorhandene Event- oder Branding-Assets konsistent."
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "name": "open-creative-director",
+  "version": "1.0.0",
+  "description": "AI creative director chat app that orchestrates image, video, speech and motion-graphics generation.",
+  "type": "commonjs",
+  "license": "MIT",
+  "repository": "https://github.com/Kuble-Lab/open-creative-director",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "archiver": "^7.0.1",
+    "compression": "^1.8.1",
+    "express": "^4.21.2",
+    "yauzl": "^2.10.0"
+  }
+}
