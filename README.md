@@ -14,7 +14,8 @@ Inspired by the Higgsfield "Supercomputer" concept — rebuilt as an open, local
 
 - **Chat-driven production** — the Director asks the right questions, then generates. Tool calling, live streaming, cost transparency per generation.
 - **Images** — GPT Image 2 generation and editing, reference images, SVG rasterization.
-- **Video** — Seedance 2.5 text-to-video and image-to-video (4–30 s). Voice/character consistency via image, video and audio references.
+- **Video** — Seedance 2.5 text-to-video and image-to-video (4–30 s). Voice/character consistency via image, video and audio references. Final cuts via `concat_videos`: ffmpeg joins finished clips losslessly, no size limit (needs `ffmpeg` on the PATH).
+- **Live production status** — running jobs show up in a live status bar with elapsed time, the Director posts results and failures into the chat by itself, and the thinking indicator shows what is currently executing.
 - **Speech** — ElevenLabs text-to-speech for voice-overs and voice masters (optional).
 - **Higgsfield integration** — connect your higgsfield.ai account with one click (no API key needed) and the Director gains 30+ image/video models, billed as Higgsfield credits on your plan (optional).
 - **Motion graphics** — HTML/GSAP compositions rendered to MP4 on one or more render nodes (16:9, 9:16, 1:1) (optional).
@@ -49,6 +50,7 @@ That's it. Everything else is optional and degrades gracefully.
 | `OPENROUTER_API_KEY` | **Yes** | The Director LLM, GPT Image 2 images, Seedance 2.5 video — all billed through one OpenRouter account | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `ELEVENLABS_API_KEY` | Optional | Text-to-speech (`generate_speech`, voice list) | [elevenlabs.io](https://elevenlabs.io) |
 | Higgsfield account | Optional | 30+ extra image/video models for the Director | No key — click **Connect** in ⚙️ Settings and confirm in the browser (device flow, tokens stay on your machine) |
+| ChatGPT subscription | Optional | Run the Director on GPT-5.6 models billed to your ChatGPT Plus/Pro plan instead of per-token | No key — log in to the [Codex CLI](https://github.com/openai/codex) with "Sign in with ChatGPT", then click **Import from Codex CLI login** in ⚙️ Settings. Unofficial route via the Codex backend (gray area in OpenAI's terms) — use at your own discretion |
 | `RENDER_NODE_URL` + `RENDER_NODE_TOKEN` | Optional | HTML/GSAP motion-graphics rendering | Run your own render node (see below); multiple nodes manageable in ⚙️ Settings |
 | `PUBLIC_BASE_URL` | Optional | Seedance audio/video references (they require publicly reachable HTTPS URLs) | Only needed when hosting publicly |
 | `AUTH_WHOAMI_URL` + `ADMIN_EMAILS` | Optional | Multi-user mode behind your own auth proxy | Only for team hosting — locally the app runs open |
@@ -76,7 +78,7 @@ No database, no cloud storage: sessions, generated assets, brandings and setting
 
 ## Motion-graphics render node (optional)
 
-The `render_motion_graphics` tool sends HTML/GSAP compositions to a small render service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg) that can run on the same machine or any other computer — reachable directly or through an SSH tunnel. Multiple nodes are load-balanced automatically (idle first, then shortest queue). Configure nodes in **⚙️ Settings → Render nodes**.
+The `render_motion_graphics` tool sends HTML/GSAP compositions to a small render service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg) that can run on the same machine or any other computer — reachable directly or through an SSH tunnel. The service ships in this repo under [`render-node/`](render-node/README.md). Multiple nodes are load-balanced automatically (idle first, then shortest queue), and imported media stream to the node in chunks (up to 500 MB per render). Configure nodes in **⚙️ Settings → Render nodes**.
 
 ## Team mode (optional)
 

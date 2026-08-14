@@ -16,7 +16,7 @@ async function main() {
     fetchImpl: async (url, options) => {
       calls += 1;
       healthRequest = { url, options };
-      return new Response(JSON.stringify({ ok: true, queue: 2, running: false }), {
+      return new Response(JSON.stringify({ ok: true, queue: 2, running: false, streamingUploads: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -33,7 +33,7 @@ async function main() {
   const node = client.listNodes()[0];
   const first = await client.nodeStatus(node);
   const second = await client.nodeStatus(node);
-  assert.deepEqual(first, { online: true, running: false, queue: 2 });
+  assert.deepEqual(first, { online: true, running: false, queue: 2, streamingUploads: true });
   assert.deepEqual(second, first);
   assert.equal(calls, 1, 'Der 15-Sekunden-Cache muss den zweiten Healthcheck verhindern');
   console.log('Render-Node: Healthcheck ohne Auth und 15-Sekunden-Cache sind korrekt.');

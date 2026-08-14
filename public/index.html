@@ -76,6 +76,9 @@
         </div>
 
         <div class="composer">
+          <div id="jobStatusBar" class="job-status-bar hidden" aria-live="polite" aria-label="Laufende Jobs" data-i18n-aria-label="jobs.liveLabel">
+            <div id="jobStatusList" class="job-status-list"></div>
+          </div>
           <div id="attachStrip" class="attach-strip hidden"></div>
           <div class="composer-row">
             <button id="attachBtn" class="btn-icon" title="Datei anhaengen" aria-label="Datei anhaengen" data-i18n-title="composer.attach" data-i18n-aria-label="composer.attach">
@@ -212,6 +215,20 @@
               <div class="settings-actions">
                 <button id="higgsfieldConnect" class="branding-manager-action" type="button" data-i18n="higgsfield.connect">Mit Higgsfield verbinden</button>
                 <button id="higgsfieldDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="higgsfield.disconnect">Trennen</button>
+              </div>
+            </div>
+          </section>
+          <section class="settings-chatgpt" aria-labelledby="chatgptTitle">
+            <h3 id="chatgptTitle" class="settings-section-title" data-i18n="chatgpt.title">ChatGPT</h3>
+            <p class="settings-hint" data-i18n="chatgpt.hint">Inoffizieller Weg ueber die Codex-CLI-Infrastruktur. Dieser Weg kann in einer Grauzone der OpenAI-Nutzungsbedingungen liegen. Er gilt nur fuer GPT-Brain-Modelle; Bilder, Videos und Tools werden weiterhin separat abgerechnet. Brain-Aufrufe laufen ueber das ChatGPT-Abo.</p>
+            <div class="chatgpt-connection-row">
+              <span id="chatgptStatusDot" class="chatgpt-status-dot" aria-hidden="true"></span>
+              <div class="chatgpt-connection-copy">
+                <div id="chatgptStatusText" class="chatgpt-status-text" data-i18n="chatgpt.disconnected">Nicht verbunden</div>
+              </div>
+              <div class="settings-actions">
+                <button id="chatgptImport" class="branding-manager-action" type="button" data-i18n="chatgpt.import">Aus Codex-CLI-Login uebernehmen</button>
+                <button id="chatgptDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="chatgpt.disconnect">Trennen</button>
               </div>
             </div>
           </section>

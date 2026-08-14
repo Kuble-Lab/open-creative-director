@@ -31,6 +31,10 @@ const el = {
   higgsfieldVerificationLink: document.getElementById('higgsfieldVerificationLink'),
   higgsfieldConnect: document.getElementById('higgsfieldConnect'),
   higgsfieldDisconnect: document.getElementById('higgsfieldDisconnect'),
+  chatgptStatusDot: document.getElementById('chatgptStatusDot'),
+  chatgptStatusText: document.getElementById('chatgptStatusText'),
+  chatgptImport: document.getElementById('chatgptImport'),
+  chatgptDisconnect: document.getElementById('chatgptDisconnect'),
   renderNodeStatus: document.getElementById('renderNodeStatus'),
   renderNodeText: document.getElementById('renderNodeText'),
   sessionTitle: document.getElementById('sessionTitle'),
@@ -60,6 +64,8 @@ const el = {
   fileInput: document.getElementById('fileInput'),
   input: document.getElementById('input'),
   sendBtn: document.getElementById('sendBtn'),
+  jobStatusBar: document.getElementById('jobStatusBar'),
+  jobStatusList: document.getElementById('jobStatusList'),
   statusLine: document.getElementById('statusLine'),
   statusText: document.getElementById('statusText'),
   costsBtn: document.getElementById('costsBtn'),
@@ -149,7 +155,10 @@ const BRAIN_LABELS = {
     shortName: 'Claude Fable 5',
     hintKey: 'model.fable'
   },
-  'moonshotai/kimi-k3': { shortName: 'Kimi K3', hintKey: 'model.kimi' }
+  'moonshotai/kimi-k3': { shortName: 'Kimi K3', hintKey: 'model.kimi' },
+  'chatgpt/gpt-5.6-sol': { shortName: 'GPT 5.6 Sol (Abo)', hintKey: 'model.chatgptSubscription' },
+  'chatgpt/gpt-5.6-terra': { shortName: 'GPT 5.6 Terra (Abo)', hintKey: 'model.chatgptSubscription' },
+  'chatgpt/gpt-5.6-luna': { shortName: 'GPT 5.6 Luna (Abo)', hintKey: 'model.chatgptSubscription' }
 };
 
 function loadCollapsedFolders() {
@@ -232,6 +241,9 @@ const state = {
   higgsfieldPollExpiresAt: 0,
   higgsfieldDisconnectPending: false,
   higgsfieldDisconnectTimer: null,
+  chatgpt: { connected: false, plan: null, expiresAt: null, models: [] },
+  chatgptDisconnectPending: false,
+  chatgptDisconnectTimer: null,
   promptPresets: [],
   openPromptGroups: loadOpenPresetGroups(),
   editingPromptPresetId: null,
@@ -244,6 +256,7 @@ const SESSION_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 const RENDER_NODE_IDLE_POLL_MS = 30000;
 const RENDER_NODE_ACTIVE_POLL_MS = 10000;
+const JOB_POLL_MS = 5000;
 
 /* ---------- helpers ---------- */
 
@@ -789,8 +802,13 @@ function scrollDown() {
 let statusChangeId = 0;
 let statusChangeTimer = null;
 let statusTranslation = null;
+let streamHeartbeatTimer = null;
+let streamHeartbeatStartedAt = 0;
+let streamHeartbeatPhase = 'thinking';
+let streamHeartbeatTool = '';
+let jobElapsedTimer = null;
 
-function setStatus(text, { busy = false, preserveTranslation = false } = {}) {
+function setStatus(text, { busy = false, preserveTranslation = false, immediate = false } = {}) {
   if (!preserveTranslation) statusTranslation = null;
   const nextText = String(text || '');
   const changeId = ++statusChangeId;
@@ -807,6 +825,11 @@ function setStatus(text, { busy = false, preserveTranslation = false } = {}) {
   }
 
   el.statusLine.classList.add('visible');
+  if (immediate) {
+    el.statusText.textContent = nextText;
+    el.statusLine.classList.remove('changing');
+    return;
+  }
   if (!el.statusText.textContent || el.statusText.textContent === nextText) {
     el.statusText.textContent = nextText;
     el.statusLine.classList.remove('changing');
@@ -828,6 +851,56 @@ function setStatusI18n(key, vars = {}, options = {}) {
     Object.entries(vars).map(([name, value]) => [name, typeof value === 'function' ? value() : value])
   );
   setStatus(t(key, resolvedVars), { ...options, preserveTranslation: true });
+}
+
+function formatElapsedClock(since) {
+  const parsed = typeof since === 'number' ? since : Date.parse(String(since || ''));
+  const start = Number.isFinite(parsed) ? parsed : Date.now();
+  const elapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  return `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+}
+
+function streamToolLabel(toolName) {
+  const name = String(toolName || '').toLowerCase();
+  if (name === 'render_motion_graphics') return t('send.phaseMotion');
+  if (name.includes('higgsfield')) return t('send.phaseHiggsfield');
+  if (name.includes('video')) return t('send.phaseVideo');
+  if (name.includes('image') || name.includes('branding')) return t('send.phaseImage');
+  if (name.includes('speech') || name.includes('voice')) return t('send.phaseAudio');
+  return t('send.phaseTool');
+}
+
+function renderStreamHeartbeat() {
+  if (!state.streaming || !streamHeartbeatStartedAt) return;
+  const elapsed = formatElapsedClock(streamHeartbeatStartedAt);
+  const text = streamHeartbeatPhase === 'tool'
+    ? t('send.toolRunning', { tool: streamToolLabel(streamHeartbeatTool), elapsed })
+    : t('send.thinkingElapsed', { elapsed });
+  setStatus(text, { busy: true, preserveTranslation: true, immediate: true });
+}
+
+function setStreamPhase(phase, toolName = '') {
+  streamHeartbeatPhase = phase === 'tool' ? 'tool' : 'thinking';
+  streamHeartbeatTool = toolName;
+  renderStreamHeartbeat();
+}
+
+function startStreamHeartbeat() {
+  if (streamHeartbeatTimer) clearInterval(streamHeartbeatTimer);
+  statusTranslation = null;
+  streamHeartbeatStartedAt = Date.now();
+  streamHeartbeatPhase = 'thinking';
+  streamHeartbeatTool = '';
+  renderStreamHeartbeat();
+  streamHeartbeatTimer = setInterval(renderStreamHeartbeat, 1000);
+}
+
+function stopStreamHeartbeat() {
+  if (streamHeartbeatTimer) clearInterval(streamHeartbeatTimer);
+  streamHeartbeatTimer = null;
+  streamHeartbeatStartedAt = 0;
+  streamHeartbeatPhase = 'thinking';
+  streamHeartbeatTool = '';
 }
 
 /* ---------- element builders ---------- */
@@ -1027,6 +1100,7 @@ function attachmentPreviewNode({ name, dataUrl, url, lightbox = false } = {}) {
 function renderDetail() {
   const detail = state.detail;
   el.messages.innerHTML = '';
+  renderJobStatusBar();
   if (!detail) return;
 
   const assetMap = new Map((detail.assets || []).map((a) => [a.id, a]));
@@ -1271,6 +1345,13 @@ function resetHiggsfieldDisconnect() {
   el.higgsfieldDisconnect.textContent = t('higgsfield.disconnect');
 }
 
+function resetChatGPTDisconnect() {
+  if (state.chatgptDisconnectTimer) clearTimeout(state.chatgptDisconnectTimer);
+  state.chatgptDisconnectTimer = null;
+  state.chatgptDisconnectPending = false;
+  el.chatgptDisconnect.textContent = t('chatgpt.disconnect');
+}
+
 function stopHiggsfieldPolling() {
   if (state.higgsfieldPollTimer) clearTimeout(state.higgsfieldPollTimer);
   state.higgsfieldPollTimer = null;
@@ -1372,6 +1453,75 @@ async function disconnectHiggsfield() {
   }
 }
 
+function formatChatGPTExpiry(value) {
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(getLang(), {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date);
+}
+
+function renderChatGPTStatus() {
+  const status = state.chatgpt || {};
+  const connected = Boolean(status.connected);
+  el.chatgptStatusDot.classList.toggle('connected', connected);
+  if (connected) {
+    const connection = status.plan
+      ? t('chatgpt.connectedAs', { plan: status.plan })
+      : t('chatgpt.connected');
+    const expiry = formatChatGPTExpiry(status.expiresAt);
+    el.chatgptStatusText.textContent = [
+      connection,
+      expiry ? t('chatgpt.validUntil', { date: expiry }) : ''
+    ].filter(Boolean).join(' · ');
+  } else {
+    el.chatgptStatusText.textContent = t('chatgpt.disconnected');
+  }
+  el.chatgptImport.classList.toggle('hidden', connected);
+  el.chatgptDisconnect.classList.toggle('hidden', !connected);
+  el.chatgptImport.disabled = false;
+}
+
+async function importChatGPT() {
+  resetChatGPTDisconnect();
+  el.chatgptImport.disabled = true;
+  showSettingsFeedback('');
+  try {
+    state.chatgpt = await api('/api/chatgpt/import', { method: 'POST', body: '{}' });
+    renderChatGPTStatus();
+    await refreshRuntimeConfigStatus();
+    showSettingsFeedback(t('chatgpt.importedFeedback'));
+  } catch (err) {
+    showSettingsFeedback(t('chatgpt.importFailed', { error: err.message }), { error: true });
+  } finally {
+    el.chatgptImport.disabled = false;
+  }
+}
+
+async function disconnectChatGPT() {
+  if (!state.chatgptDisconnectPending) {
+    resetChatGPTDisconnect();
+    state.chatgptDisconnectPending = true;
+    el.chatgptDisconnect.textContent = t('chatgpt.reallyDisconnect');
+    state.chatgptDisconnectTimer = setTimeout(resetChatGPTDisconnect, 3000);
+    return;
+  }
+  el.chatgptDisconnect.disabled = true;
+  showSettingsFeedback('');
+  try {
+    state.chatgpt = await api('/api/chatgpt/disconnect', { method: 'POST', body: '{}' });
+    resetChatGPTDisconnect();
+    renderChatGPTStatus();
+    await refreshRuntimeConfigStatus();
+    showSettingsFeedback(t('chatgpt.disconnectedFeedback'));
+  } catch (err) {
+    showSettingsFeedback(t('chatgpt.disconnectFailed', { error: err.message }), { error: true });
+  } finally {
+    el.chatgptDisconnect.disabled = false;
+  }
+}
+
 function settingsStatusText(key) {
   if (key.source === 'settings') return t('settings.set', { masked: key.masked });
   if (key.source === 'env') return t('settings.fromEnv', { masked: key.masked });
@@ -1385,6 +1535,11 @@ function setSettingsBusy(row, busy) {
 async function refreshRuntimeConfigStatus() {
   const config = await api('/api/config');
   state.config = { ...state.config, ...config };
+  if (!(state.config.brainModels || []).includes(state.brainModel)) {
+    selectBrain(state.config.defaultBrain, { remember: false });
+  } else {
+    renderToolsMenu();
+  }
   el.keyBanner.classList.toggle('hidden', Boolean(state.config.hasKey));
   el.contextGtsSection.classList.toggle('hidden', !gtsEnabled());
   el.folderProfileGtsSection.classList.toggle('hidden', !gtsEnabled());
@@ -1711,27 +1866,31 @@ async function addRenderNode() {
 
 async function loadSettingsAccess() {
   try {
-    const [settingsData, adminsData, renderNodesData, higgsfieldData] = await Promise.all([
+    const [settingsData, adminsData, renderNodesData, higgsfieldData, chatgptData] = await Promise.all([
       api('/api/settings'),
       api('/api/admins'),
       api('/api/rendernodes'),
-      api('/api/higgsfield/status')
+      api('/api/higgsfield/status'),
+      api('/api/chatgpt/status')
     ]);
     state.settings = Array.isArray(settingsData.keys) ? settingsData.keys : [];
     state.admins = Array.isArray(adminsData.admins) ? adminsData.admins : [];
     state.renderNodes = Array.isArray(renderNodesData.nodes) ? renderNodesData.nodes : [];
     state.higgsfield = higgsfieldData;
+    state.chatgpt = chatgptData;
     el.settingsBtn.classList.remove('hidden');
     renderSettings();
     renderAdmins();
     renderRenderNodes();
     renderHiggsfieldStatus();
+    renderChatGPTStatus();
     return true;
   } catch (_) {
     state.settings = [];
     state.admins = [];
     state.renderNodes = [];
     state.higgsfield = { connected: false, refreshExpiresAt: null, pending: false };
+    state.chatgpt = { connected: false, plan: null, expiresAt: null, models: [] };
     el.settingsBtn.classList.add('hidden');
     el.settingsModal.classList.add('hidden');
     return false;
@@ -1743,11 +1902,13 @@ async function openSettingsModal() {
   resetAdminDelete();
   resetRenderNodeDelete();
   resetHiggsfieldDisconnect();
+  resetChatGPTDisconnect();
   showSettingsFeedback('');
   renderSettings();
   renderAdmins();
   renderRenderNodes();
   renderHiggsfieldStatus();
+  renderChatGPTStatus();
   el.settingsModal.classList.remove('hidden');
   const available = await loadSettingsAccess();
   if (available) el.settingsList.querySelector('input')?.focus();
@@ -1758,6 +1919,7 @@ function closeSettingsModal() {
   resetAdminDelete();
   resetRenderNodeDelete();
   resetHiggsfieldDisconnect();
+  resetChatGPTDisconnect();
   showSettingsFeedback('');
   el.settingsModal.classList.add('hidden');
 }
@@ -3822,6 +3984,74 @@ function hasOpenJobs() {
   return (state.detail?.jobs || []).some((job) => job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled');
 }
 
+function activeJobs() {
+  return (state.detail?.jobs || []).filter(
+    (job) => job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled'
+  );
+}
+
+function jobTypeLabel(job) {
+  if (job.source === 'higgsfield' || job.provider === 'higgsfield') return t('jobs.typeHiggsfield');
+  if (job.source === 'rendernode') return t('jobs.typeRender');
+  return t('jobs.typeVideo');
+}
+
+function jobStatusLabel(job) {
+  return ['running', 'in_progress', 'processing'].includes(String(job.status || '').toLowerCase())
+    ? t('jobs.statusRunning')
+    : t('jobs.statusWaiting');
+}
+
+function renderJobStatusBar() {
+  const jobs = activeJobs();
+  el.jobStatusBar.classList.toggle('hidden', jobs.length === 0);
+  el.jobStatusList.replaceChildren();
+  if (!jobs.length) {
+    if (jobElapsedTimer) clearInterval(jobElapsedTimer);
+    jobElapsedTimer = null;
+    return;
+  }
+
+  for (const job of jobs) {
+    const item = document.createElement('div');
+    item.className = 'job-status-item';
+
+    const id = document.createElement('strong');
+    id.className = 'job-status-id';
+    id.textContent = job.assetId;
+
+    const type = document.createElement('span');
+    type.className = 'job-status-type';
+    type.textContent = jobTypeLabel(job);
+
+    const status = document.createElement('span');
+    status.className = 'job-status-state';
+    status.textContent = jobStatusLabel(job);
+
+    const elapsed = document.createElement('time');
+    elapsed.className = 'job-status-elapsed';
+    elapsed.dataset.startedAt = job.startedAt || job.createdAt || job.submittedAt || '';
+    elapsed.textContent = formatElapsedClock(elapsed.dataset.startedAt);
+
+    item.append(id, type, status, elapsed);
+    if (job.source === 'rendernode' && (job.nodeName || job.nodeId || job.renderNodeId)) {
+      const node = document.createElement('span');
+      node.className = 'job-status-node';
+      node.textContent = t('jobs.node', { name: job.nodeName || job.nodeId || job.renderNodeId });
+      item.appendChild(node);
+    }
+    el.jobStatusList.appendChild(item);
+  }
+
+  if (!jobElapsedTimer) jobElapsedTimer = setInterval(updateJobElapsedTimes, 1000);
+}
+
+function updateJobElapsedTimes() {
+  for (const elapsed of el.jobStatusList.querySelectorAll('.job-status-elapsed')) {
+    elapsed.textContent = formatElapsedClock(elapsed.dataset.startedAt);
+  }
+}
+
 function scheduleJobPolling() {
   if (state.jobTimer) {
     clearInterval(state.jobTimer);
@@ -3835,14 +4065,18 @@ function scheduleJobPolling() {
       const before = JSON.stringify((state.detail.jobs || []).map((j) => [j.jobId, j.status]));
       const after = JSON.stringify((data.jobs || []).map((j) => [j.jobId, j.status]));
       if (before !== after) await refreshDetail();
-      else if (!(data.jobs || []).some((j) => j.status !== 'completed' && j.status !== 'failed' && j.status !== 'cancelled')) {
+      else {
+        state.detail.jobs = data.jobs || [];
+        renderJobStatusBar();
+      }
+      if (!(data.jobs || []).some((j) => j.status !== 'completed' && j.status !== 'failed' && j.status !== 'cancelled')) {
         clearInterval(state.jobTimer);
         state.jobTimer = null;
       }
     } catch (_) {
       /* transient */
     }
-  }, 10000);
+  }, JOB_POLL_MS);
 }
 
 /* ---------- attachments ---------- */
@@ -3973,6 +4207,10 @@ function appendLiveNode(node) {
 
 function handleEvent(event) {
   const live = liveContext();
+  if (event.type === 'status') {
+    setStreamPhase(event.phase, event.toolName);
+    return;
+  }
   if (event.type === 'text_delta') {
     if (!live.textEl) {
       const { wrap, bubble } = messageShell('assistant');
@@ -3994,8 +4232,7 @@ function handleEvent(event) {
     node.appendChild(c);
     appendLiveNode(node);
     live.chips.push(c);
-    if (event.label) setStatus(event.label, { busy: true });
-    else setStatusI18n('common.working', {}, { busy: true });
+    setStreamPhase('tool', event.tool);
     return;
   }
   if (event.type === 'asset') {
@@ -4020,6 +4257,27 @@ function handleEvent(event) {
     grid.appendChild(jobCard({ assetId: event.assetId, status: 'pending' }));
     node.appendChild(grid);
     appendLiveNode(node);
+    if (state.detail) {
+      const liveJob = {
+        jobId: event.jobId,
+        assetId: event.assetId,
+        prompt: event.prompt,
+        status: event.status || 'pending',
+        source: event.source || null,
+        provider: event.provider || null,
+        kind: event.kind || 'video',
+        createdAt: event.createdAt || new Date().toISOString(),
+        startedAt: event.startedAt || null,
+        renderNodeId: event.renderNodeId || null,
+        nodeId: event.nodeId || event.renderNodeId || null,
+        nodeName: event.nodeName || null
+      };
+      const index = (state.detail.jobs || []).findIndex((job) => job.jobId === liveJob.jobId);
+      if (index >= 0) state.detail.jobs[index] = liveJob;
+      else state.detail.jobs.push(liveJob);
+      renderJobStatusBar();
+      scheduleJobPolling();
+    }
     if (event.source === 'rendernode') {
       state.liveRenderNodeJob = true;
       scheduleRenderNodePolling(0);
@@ -4091,7 +4349,7 @@ async function send() {
   el.toolsMenuBtn.disabled = true;
   renderToolsMenu();
   el.input.disabled = true;
-  setStatusI18n('send.thinking', {}, { busy: true });
+  startStreamHeartbeat();
 
   try {
     const res = await fetch(rel(`/api/sessions/${state.currentId}/message`), {
@@ -4132,6 +4390,7 @@ async function send() {
           }
           if (parsed.type === 'done') {
             finished = true;
+            stopStreamHeartbeat();
             setStatus('');
           } else {
             handleEvent(parsed);
@@ -4144,6 +4403,7 @@ async function send() {
   } finally {
     finishChips();
     state.streaming = false;
+    stopStreamHeartbeat();
     state.live = null;
     el.sendBtn.disabled = false;
     el.attachBtn.disabled = false;
@@ -4217,6 +4477,8 @@ el.renderNodeForm.addEventListener('submit', (event) => {
 });
 el.higgsfieldConnect.addEventListener('click', () => connectHiggsfield());
 el.higgsfieldDisconnect.addEventListener('click', () => disconnectHiggsfield());
+el.chatgptImport.addEventListener('click', () => importChatGPT());
+el.chatgptDisconnect.addEventListener('click', () => disconnectChatGPT());
 el.folderProfileClose.addEventListener('click', () => closeFolderProfileModal());
 el.folderProfileNameButton.addEventListener('click', startProfileRename);
 el.folderProfileNameInput.addEventListener('blur', () => renameProfileFolder());
@@ -4444,6 +4706,8 @@ window.onLangChange = () => {
   renderCosts(state.costs);
   renderModelInfo();
   renderAttachments();
+  renderJobStatusBar();
+  if (state.streaming) renderStreamHeartbeat();
   if (state.renderNodeState) renderRenderNodeStatus(state.renderNodeState);
   if (statusTranslation) {
     setStatusI18n(statusTranslation.key, statusTranslation.vars, statusTranslation.options);
@@ -4452,6 +4716,7 @@ window.onLangChange = () => {
   resetAdminDelete();
   resetRenderNodeDelete();
   resetHiggsfieldDisconnect();
+  resetChatGPTDisconnect();
   const settingsValues = new Map(
     [...el.settingsList.querySelectorAll('input')].map((input) => [input.id, input.value])
   );
@@ -4459,6 +4724,7 @@ window.onLangChange = () => {
   renderAdmins();
   renderRenderNodes();
   renderHiggsfieldStatus();
+  renderChatGPTStatus();
   renderPromptPresetFormMode();
   for (const [id, value] of settingsValues) {
     const input = document.getElementById(id);

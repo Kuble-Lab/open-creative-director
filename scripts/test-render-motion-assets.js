@@ -54,7 +54,13 @@ async function main() {
     assert.equal(outcome.job.jobId, 'render-job-test');
     assert.equal(submitted.html, '<div id="main-composition" data-width="1920" data-height="1080"><img src="upload-001.png"></div>');
     assert.equal(submitted.quality, 'draft');
-    assert.deepEqual(submitted.assets, { 'upload-001.png': source.toString('base64') });
+    assert.equal(submitted.assets.totalBytes, source.length);
+    assert.equal(submitted.assets.files.length, 1);
+    assert.deepEqual(
+      { filename: submitted.assets.files[0].filename, size: submitted.assets.files[0].size },
+      { filename: 'upload-001.png', size: source.length }
+    );
+    assert.equal(submitted.assets.files[0].path.endsWith('/upload-001.png'), true);
 
     await assert.rejects(
       executeTool(
@@ -80,7 +86,7 @@ async function main() {
     let renderRequest;
     global.fetch = async (url, options) => {
       if (String(url).endsWith('/health')) {
-        return new Response(JSON.stringify({ ok: true, queue: 0, running: false }), {
+        return new Response(JSON.stringify({ ok: true, queue: 0, running: false, streamingUploads: false }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -95,9 +101,9 @@ async function main() {
       await rendernode.submit('<div></div>', 'standard', submitted.assets),
       { jobId: 'render-client-test', nodeId: 'node-default' }
     );
-    assert.deepEqual(renderRequest.assets, submitted.assets);
+    assert.deepEqual(renderRequest.assets, { 'upload-001.png': source.toString('base64') });
 
-    console.log('Render-Assets: Dateiname, Base64 und POST-Body korrekt; unbekannte und pendente IDs liefern klare Fehler.');
+    console.log('Render-Assets: Pfad-Metadaten und Legacy-POST korrekt; unbekannte und pendente IDs liefern klare Fehler.');
   } finally {
     rendernode.submit = originalSubmit;
     costs.recordCost = originalRecordCost;

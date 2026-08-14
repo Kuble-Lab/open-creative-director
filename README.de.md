@@ -14,7 +14,8 @@ Inspiriert vom Higgsfield-«Supercomputer»-Konzept — neu gebaut als offene, l
 
 - **Produktion per Chat** — der Director stellt die richtigen Fragen und generiert dann. Tool-Calling, Live-Streaming, Kostentransparenz pro Generierung.
 - **Bilder** — GPT-Image-2-Generierung und -Bearbeitung, Referenzbilder, SVG-Rasterung.
-- **Video** — Seedance 2.5 Text-zu-Video und Bild-zu-Video (4–30 s). Stimm- und Figuren-Konsistenz über Bild-, Video- und Audio-Referenzen.
+- **Video** — Seedance 2.5 Text-zu-Video und Bild-zu-Video (4–30 s). Stimm- und Figuren-Konsistenz über Bild-, Video- und Audio-Referenzen. Finale Schnitte via `concat_videos`: ffmpeg hängt fertige Clips verlustfrei aneinander, ohne Grössenlimit (braucht `ffmpeg` im PATH).
+- **Live-Produktionsstatus** — laufende Jobs erscheinen in einer Live-Statusleiste mit Laufzeit, der Director meldet Ergebnisse und Fehler von selbst im Chat, und die Denk-Anzeige zeigt, was gerade ausgeführt wird.
 - **Sprache** — ElevenLabs Text-to-Speech für Voice-Over und Voice-Master (optional).
 - **Higgsfield-Integration** — higgsfield.ai-Konto mit einem Klick verbinden (kein API-Key nötig): 30+ Bild-/Videomodelle für den Director, abgerechnet als Higgsfield-Credits auf deinem Plan (optional).
 - **Motion Graphics** — HTML/GSAP-Compositions als MP4, gerendert auf einem oder mehreren Render-Nodes (16:9, 9:16, 1:1) (optional).
@@ -49,6 +50,7 @@ Das ist alles. Der Rest ist optional und degradiert sauber.
 | `OPENROUTER_API_KEY` | **Ja** | Director-LLM, GPT-Image-2-Bilder, Seedance-2.5-Video — alles über ein OpenRouter-Konto abgerechnet | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `ELEVENLABS_API_KEY` | Optional | Text-to-Speech (`generate_speech`, Stimmenliste) | [elevenlabs.io](https://elevenlabs.io) |
 | Higgsfield-Konto | Optional | 30+ zusätzliche Bild-/Videomodelle für den Director | Kein Key — in den ⚙️ Einstellungen auf **Verbinden** klicken und im Browser bestätigen (Device-Flow, Tokens bleiben auf deinem Rechner) |
+| ChatGPT-Abo | Optional | Der Director läuft auf GPT-5.6-Modellen über dein ChatGPT-Plus/Pro-Abo statt Token-Abrechnung | Kein Key — in der [Codex CLI](https://github.com/openai/codex) mit «Sign in with ChatGPT» einloggen, dann in den ⚙️ Einstellungen **Aus Codex-CLI-Login übernehmen** klicken. Inoffizieller Weg über das Codex-Backend (Grauzone der OpenAI-Nutzungsbedingungen) — Nutzung auf eigene Verantwortung |
 | `RENDER_NODE_URL` + `RENDER_NODE_TOKEN` | Optional | HTML/GSAP-Motion-Graphics-Rendering | Eigenen Render-Node betreiben (siehe unten); mehrere Nodes in den ⚙️ Einstellungen verwaltbar |
 | `PUBLIC_BASE_URL` | Optional | Seedance-Audio-/Video-Referenzen (brauchen öffentlich erreichbare HTTPS-URLs) | Nur beim öffentlichen Hosting nötig |
 | `AUTH_WHOAMI_URL` + `ADMIN_EMAILS` | Optional | Team-Betrieb hinter eigenem Auth-Proxy | Nur fürs Team-Hosting — lokal läuft die App offen |
@@ -76,7 +78,7 @@ Keine Datenbank, kein Cloud-Speicher: Sessions, generierte Assets, Brandings und
 
 ## Motion-Graphics-Render-Node (optional)
 
-Das Tool `render_motion_graphics` schickt HTML/GSAP-Compositions an einen kleinen Render-Service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg), der auf demselben Rechner oder jedem anderen Computer laufen kann — direkt erreichbar oder über einen SSH-Tunnel. Mehrere Nodes werden automatisch verteilt (idle zuerst, dann kürzeste Queue). Nodes verwaltest du in **⚙️ Einstellungen → Render-Nodes**.
+Das Tool `render_motion_graphics` schickt HTML/GSAP-Compositions an einen kleinen Render-Service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg), der auf demselben Rechner oder jedem anderen Computer laufen kann — direkt erreichbar oder über einen SSH-Tunnel. Der Service liegt in diesem Repo unter [`render-node/`](render-node/README.md). Mehrere Nodes werden automatisch verteilt (idle zuerst, dann kürzeste Queue), und importierte Medien streamen in Blöcken zum Node (bis 500 MB pro Render). Nodes verwaltest du in **⚙️ Einstellungen → Render-Nodes**.
 
 ## Team-Betrieb (optional)
 

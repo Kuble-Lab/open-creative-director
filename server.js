@@ -5,7 +5,13 @@ const compression = require('compression');
 const path = require('path');
 const archiver = require('archiver');
 
-const { PATHS, loadEnv, loadConfig } = require('./lib/config');
+const {
+  PATHS,
+  loadEnv,
+  loadConfig,
+  availableBrainModels,
+  availableDefaultBrain
+} = require('./lib/config');
 const store = require('./lib/store');
 const or = require('./lib/openrouter');
 const brain = require('./lib/brain');
@@ -23,6 +29,7 @@ const cast = require('./lib/cast');
 const { createWhoamiMiddleware } = require('./lib/whoami');
 const settings = require('./lib/settings');
 const higgsfield = require('./lib/higgsfield');
+const chatgpt = require('./lib/chatgpt');
 const promptPresets = require('./lib/prompt-presets');
 const admins = require('./lib/admins');
 
@@ -240,12 +247,15 @@ function requireFolderName(req, res) {
 }
 
 function jobsWithUrls(session) {
+  const renderNodes = new Map(rendernode.listConfiguredNodes().map((node) => [node.id, node]));
   return session.jobs.map((job) => ({
     jobId: job.jobId,
     assetId: job.assetId,
     status: job.status,
     prompt: job.prompt,
     submittedAt: job.submittedAt,
+    createdAt: job.createdAt || job.submittedAt || null,
+    startedAt: job.startedAt || null,
     completedAt: job.completedAt || null,
     error: job.error || null,
     cost: typeof job.cost === 'number' ? job.cost : null,
@@ -254,6 +264,8 @@ function jobsWithUrls(session) {
     kind: job.kind || 'video',
     resultAssetIds: Array.isArray(job.resultAssetIds) ? job.resultAssetIds : [],
     renderNodeId: job.renderNodeId || null,
+    nodeId: job.renderNodeId || job.nodeId || null,
+    nodeName: job.nodeName || renderNodes.get(job.renderNodeId || job.nodeId)?.name || null,
     url: job.status === 'completed' && job.file ? store.assetUrl(session.id, job.file) : null
   }));
 }
@@ -364,6 +376,18 @@ async function higgsfieldStatusPayload() {
   return payload;
 }
 
+function publicRuntimeConfig() {
+  const brainModels = availableBrainModels(runtime.brainModels, chatgpt.status().connected);
+  return {
+    hasKey: or.hasKey(),
+    brainModels,
+    defaultBrain: availableDefaultBrain(runtime.defaultBrain, brainModels),
+    imageModel: runtime.imageModel,
+    videoModel: runtime.videoModel,
+    gts: { enabled: gts.hasToken() }
+  };
+}
+
 /* ---------- API ---------- */
 
 app.get('/api/prompt-presets', (_req, res) => {
@@ -402,14 +426,7 @@ app.delete('/api/prompt-presets/custom/:id', (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-  res.json({
-    hasKey: or.hasKey(),
-    brainModels: runtime.brainModels,
-    defaultBrain: runtime.defaultBrain,
-    imageModel: runtime.imageModel,
-    videoModel: runtime.videoModel,
-    gts: { enabled: gts.hasToken() }
-  });
+  res.json(publicRuntimeConfig());
 });
 
 app.get('/api/settings', (req, res) => {
@@ -538,6 +555,29 @@ app.delete('/api/higgsfield/auth', async (req, res) => {
     higgsfieldBalanceCache = null;
     await higgsfield.disconnect();
     res.json({ connected: false, refreshExpiresAt: null, pending: false });
+  } catch (err) {
+    fail(res, 500, err.message);
+  }
+});
+
+app.get('/api/chatgpt/status', (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  res.json(chatgpt.status());
+});
+
+app.post('/api/chatgpt/import', async (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    res.json(await chatgpt.importFromCodexCli());
+  } catch (err) {
+    fail(res, err.status || 400, err.message);
+  }
+});
+
+app.post('/api/chatgpt/disconnect', async (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    res.json(await chatgpt.disconnect());
   } catch (err) {
     fail(res, 500, err.message);
   }
@@ -1216,10 +1256,15 @@ app.post('/api/sessions/:id/message', async (req, res) => {
   }, 15000);
 
   const { text, brainModel, attachments, renderMode, brandingWizard } = req.body || {};
-  const model = runtime.brainModels.includes(brainModel) ? brainModel : runtime.defaultBrain;
+  const configPayload = publicRuntimeConfig();
+  const requestedChatGPTModel = chatgpt.BRAIN_MODELS.includes(brainModel);
+  const model = configPayload.brainModels.includes(brainModel) ? brainModel : configPayload.defaultBrain;
 
   try {
-    if (!or.hasKey()) throw new Error('Kein OPENROUTER_API_KEY gesetzt. Unter ⚙️ Einstellungen hinterlegen.');
+    if (requestedChatGPTModel && !chatgpt.status().connected) throw new Error(chatgpt.DISCONNECTED_MESSAGE);
+    if (!brain.isChatGPTModel(model) && !or.hasKey()) {
+      throw new Error('Kein OPENROUTER_API_KEY gesetzt. Unter ⚙️ Einstellungen hinterlegen.');
+    }
     await brain.runTurn({
       sessionId: id,
       text,
@@ -1291,4 +1336,4 @@ function startServer() {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, renderNodeStatus, isAdmin };
+module.exports = { app, startServer, renderNodeStatus, isAdmin, publicRuntimeConfig };

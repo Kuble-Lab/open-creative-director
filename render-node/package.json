@@ -1,0 +1,10 @@
+{
+  "name": "render-node",
+  "version": "1.0.0",
+  "description": "HyperFrames motion-graphics render node for Open Creative Director",
+  "main": "service.js",
+  "type": "commonjs",
+  "dependencies": {
+    "hyperframes": "^0.7.106"
+  }
+}

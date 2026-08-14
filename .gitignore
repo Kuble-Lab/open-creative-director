@@ -5,3 +5,6 @@ assets/
 projects/
 *.log
 .DS_Store
+render-node/node_modules/
+render-node/service.env
+render-node/keys/

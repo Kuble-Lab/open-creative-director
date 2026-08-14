@@ -42,7 +42,12 @@ function clientWithStatuses(statuses, requests = []) {
       requests.push({ url, options });
       if (parsed.pathname === '/health') {
         const status = statuses[key] || { online: false, running: false, queue: 0 };
-        return jsonResponse({ ok: status.online, running: status.running, queue: status.queue });
+        return jsonResponse({
+          ok: status.online,
+          running: status.running,
+          queue: status.queue,
+          streamingUploads: status.streamingUploads === true
+        });
       }
       if (parsed.pathname === '/render') return jsonResponse({ jobId: `job-${key}` });
       if (parsed.pathname.startsWith('/jobs/')) return jsonResponse({ status: 'running', node: key });
@@ -182,9 +187,9 @@ async function testAggregate() {
   const expected = {
     enabled: true,
     nodes: [
-      { id: 'node-0000000a', name: 'Alpha', online: true, running: true, queue: 2 },
-      { id: 'node-0000000b', name: 'Beta', online: false, running: false, queue: 0 },
-      { id: 'node-0000000c', name: 'Gamma', online: true, running: false, queue: 3 }
+      { id: 'node-0000000a', name: 'Alpha', online: true, running: true, queue: 2, streamingUploads: false },
+      { id: 'node-0000000b', name: 'Beta', online: false, running: false, queue: 0, streamingUploads: false },
+      { id: 'node-0000000c', name: 'Gamma', online: true, running: false, queue: 3, streamingUploads: false }
     ],
     online: true,
     running: true,
@@ -244,7 +249,7 @@ async function testAdminApi() {
     process.env.AUTH_WHOAMI_URL = 'https://whoami.test';
     process.env.ADMIN_EMAILS = 'admin@example.com';
     rendernode.listConfiguredNodes = () => [apiNode];
-    rendernode.nodeStatus = async () => ({ online: true, running: false, queue: 0 });
+    rendernode.nodeStatus = async () => ({ online: true, running: false, queue: 0, streamingUploads: true });
     rendernode.resetStatusCache = () => calls.push(['reset']);
     renderNodesStoreModule.createNode = (body) => calls.push(['create', body]);
     renderNodesStoreModule.updateNode = (id, body) => calls.push(['update', id, body]);
@@ -259,7 +264,7 @@ async function testAdminApi() {
     assert.equal(JSON.stringify(listed.body).includes(apiNode.token), false, 'Die Admin-API darf Tokens nie voll ausgeben.');
     assert.deepEqual(
       Object.keys(listed.body.nodes[0]).sort(),
-      ['enabled', 'id', 'implicit', 'name', 'online', 'queue', 'running', 'token', 'url'].sort()
+      ['enabled', 'id', 'implicit', 'name', 'online', 'queue', 'running', 'streamingUploads', 'token', 'url'].sort()
     );
 
     const created = await invokeRoute(app, '/api/rendernodes', 'post', {
