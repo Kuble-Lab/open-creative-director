@@ -8,6 +8,8 @@ You describe what you want in plain language ("a 15-second vertical ad for my co
 
 Inspired by the Higgsfield "Supercomputer" concept — rebuilt as an open, local-first app.
 
+![Open Creative Director — chat with a generated hero image, cost badges and the Director's quality check](docs/screenshots/chat.png)
+
 ## Features
 
 - **Chat-driven production** — the Director asks the right questions, then generates. Tool calling, live streaming, cost transparency per generation.

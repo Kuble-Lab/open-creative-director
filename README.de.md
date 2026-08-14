@@ -8,6 +8,8 @@ Du beschreibst in normaler Sprache, was du willst («eine 15-Sekunden-Hochformat
 
 Inspiriert vom Higgsfield-«Supercomputer»-Konzept — neu gebaut als offene, lokale App.
 
+![Open Creative Director — Chat mit generiertem Hero-Bild, Kosten-Badges und Qualitäts-Check des Directors](docs/screenshots/chat.png)
+
 ## Features
 
 - **Produktion per Chat** — der Director stellt die richtigen Fragen und generiert dann. Tool-Calling, Live-Streaming, Kostentransparenz pro Generierung.

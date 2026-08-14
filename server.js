@@ -1252,7 +1252,7 @@ const BIND_HOST = process.env.HOST || '0.0.0.0';
 
 function listen(port, attemptsLeft) {
   const server = app.listen(port, BIND_HOST, () => {
-    console.log(`\n  Video Creative Director laeuft auf http://localhost:${port}`);
+    console.log(`\n  Open Creative Director laeuft auf http://localhost:${port}`);
     console.log(`  Bildmodell: ${runtime.imageModel} | Videomodell: ${runtime.videoModel}`);
     if (!or.hasKey()) {
       console.log('  WARNUNG: kein OPENROUTER_API_KEY gesetzt - Generierung ist deaktiviert.');
