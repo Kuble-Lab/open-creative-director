@@ -68,7 +68,13 @@ async function main() {
     assert.match(imported.toolResult, /Branding-Datei importiert/);
     assert.equal(imported.inject.length, 1);
     assert.equal(imported.inject[0].hidden, true);
-    assert.equal(imported.inject[0].content[1].type, 'image_url');
+    // Die Vorschau verweist auf die Datei im Asset-Ordner, statt das Bild als base64
+    // in die Session zu schreiben.
+    const vorschau = imported.inject[0].content[1];
+    assert.equal(vorschau.type, 'image_ref');
+    assert.ok(vorschau.file, 'der Verweis braucht eine Datei');
+    const geladen = await store.readInlineImage(session.id, vorschau.file);
+    assert.ok(geladen.length > 0, 'die verwiesene Datei muss lesbar sein');
     assert.ok(events.some((event) => event.type === 'asset'));
     console.log('Branding-Tools: Erstellen, Aktualisieren, Asset sichern und PNG mit Vorschau importieren sind korrekt.');
   } finally {
