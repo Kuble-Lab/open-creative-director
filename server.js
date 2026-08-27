@@ -560,8 +560,20 @@ app.delete('/api/higgsfield/auth', async (req, res) => {
   }
 });
 
-app.get('/api/chatgpt/status', (req, res) => {
+app.get('/api/chatgpt/status', async (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  // Ein gespeicherter Token heisst noch nicht, dass die Verbindung lebt: laeuft der
+  // Refresh-Token ab (7 Tage), meldet die App sonst weiter «verbunden», und der
+  // Fehler faellt erst auf, wenn jemand ein Abo-Modell waehlt. Darum hier einmal
+  // wirklich nachfragen - schlaegt es fehl, raeumt der Client den Token selbst auf.
+  const gespeichert = chatgpt.status();
+  if (gespeichert.connected) {
+    try {
+      await chatgpt.ensureAccessToken();
+    } catch (err) {
+      console.warn(`[chatgpt] Verbindung nicht mehr gueltig: ${err.message}`);
+    }
+  }
   res.json(chatgpt.status());
 });
 
