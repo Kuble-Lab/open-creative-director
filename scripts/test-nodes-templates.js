@@ -1,6 +1,6 @@
 'use strict';
 
-// Starter templates of the node view (SPEC §15): all seven load and validate against the registry, texts
+// Starter templates of the node view (SPEC §15): all eight load and validate against the registry, texts
 // exist in de/en/es (Swiss spelling), `requires` covers the node types, the localized documents create
 // workflows through the real routes, and the batch template maps a text list through the engine (with
 // fake executors derived from the real node definitions, so no provider is contacted).
@@ -14,6 +14,7 @@ const path = require('path');
 
 const store = require('../lib/store');
 const higgsfieldLib = require('../lib/higgsfield');
+const falLib = require('../lib/fal');
 const templates = require('../lib/nodes/templates');
 const nodeRegistry = require('../lib/nodes/registry');
 const { createRegistry } = nodeRegistry;
@@ -24,13 +25,14 @@ const { registerNodeRoutes } = require('../lib/nodes/routes');
 const nodesBasic = require('../lib/nodes/nodes-basic');
 const { textValue, listValue } = require('../lib/nodes/types');
 
-const EXPECTED = ['dub-clip', 'frame-chain', 'hero-variants', 'image-to-ad', 'masked-edit', 'motion-title', 'series-shots'];
+const EXPECTED = ['dub-clip', 'frame-chain', 'hero-variants', 'image-to-ad', 'masked-edit', 'motion-title', 'series-shots', 'talking-portrait'];
 
 // requirement key that a node type needs (mirrors the availability predicates of the node modules)
 function requirementOf(type) {
   if (type.startsWith('llm.')) return 'openrouter';
   if (['image.generate', 'image.edit', 'image.relight', 'video.seedance'].includes(type)) return 'openrouter';
   if (type === 'audio.tts') return 'elevenlabs';
+  if (type.startsWith('fal.')) return 'fal';
   if (type === 'video.motion_graphics') return 'rendernode';
   if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) return 'higgsfield';
   const def = nodeRegistry.get(type);
@@ -71,7 +73,7 @@ async function main() {
   let server = null;
 
   try {
-    /* ----- the seven templates exist, load and validate ----- */
+    /* ----- the eight templates exist, load and validate ----- */
     const all = templates.loadTemplates();
     assert.deepEqual(all.map((template) => template.id).sort(), EXPECTED);
     for (const template of all) {
@@ -119,6 +121,18 @@ async function main() {
     assert.deepEqual(byId['dub-clip'].graph.edges.filter((edge) => edge.from.node === 'n1').map((edge) => edge.to.node), ['n2', 'n3', 'n4']);
     assert.deepEqual(byId['dub-clip'].graph.edges.filter((edge) => edge.to.node === 'n5').map((edge) => edge.from.node), ['n2', 'n3', 'n4']);
     assert.equal(templates.resolveTemplate('dub-clip', { lang: 'de' }).name, 'Clip in drei Landessprachen');
+    // talking-portrait: portrait + script -> ElevenLabs voice -> H3 Max lip sync on fal.ai -> result
+    assert.deepEqual(types('talking-portrait'), ['input.image', 'input.text', 'audio.tts', 'fal.h3_lipsync', 'output.result']);
+    assert.deepEqual(byId['talking-portrait'].requires, ['fal', 'elevenlabs']);
+    assert.deepEqual(
+      byId['talking-portrait'].graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`),
+      ['n2.text>n3.text', 'n1.image>n4.image', 'n3.audio>n4.audio', 'n4.video>n5.inputs']
+    );
+    assert.equal(byId['talking-portrait'].app.enabled, true);
+    assert.deepEqual(byId['talking-portrait'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.text', 'n4.resolution']);
+    assert.equal(templates.resolveTemplate('talking-portrait', { lang: 'de' }).name, 'Sprechendes Porträt (H3 Max Lip Sync)');
+    assert.equal(templates.resolveTemplate('talking-portrait', { lang: 'en' }).name, 'Talking portrait (H3 Max lip sync)');
+    assert.ok(/Retrato parlante/.test(templates.resolveTemplate('talking-portrait', { lang: 'es' }).name));
     // frame-chain: the clip edges into concat are in playback order
     const concatEdges = byId['frame-chain'].graph.edges.filter((edge) => edge.to.port === 'clips');
     assert.deepEqual(concatEdges.map((edge) => edge.from.node), ['n2', 'n5']);
@@ -167,7 +181,8 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => item.id !== 'image-to-ad').every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait'].includes(item.id)).every((item) => item.available));
+      assert.deepEqual(noAudio.find((item) => item.id === 'talking-portrait').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       // Higgsfield is a requirement of its own: a template with hf.* nodes is available exactly when Higgsfield is connected
       const noHiggsfield = templates.listTemplates({ lang: 'en', checks: { ...allOn, higgsfield: () => 'Higgsfield is not connected' } });
       const dub = noHiggsfield.find((item) => item.id === 'dub-clip');
@@ -175,6 +190,22 @@ async function main() {
       assert.deepEqual(dub.missing, [{ key: 'higgsfield', reason: 'Higgsfield is not connected' }]);
       assert.deepEqual(dub.requires, ['higgsfield']);
       assert.ok(noHiggsfield.filter((item) => item.id !== 'dub-clip').every((item) => item.available));
+      // fal.ai is a requirement of its own: available exactly when FAL_KEY is set
+      const noFal = templates.listTemplates({ lang: 'en', checks: { ...allOn, fal: () => 'FAL_KEY is not set' } });
+      const portrait = noFal.find((item) => item.id === 'talking-portrait');
+      assert.equal(portrait.available, false);
+      assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
+      assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
+      assert.ok(noFal.filter((item) => item.id !== 'talking-portrait').every((item) => item.available));
+      const originalHasKey = falLib.hasKey;
+      try {
+        falLib.hasKey = () => true;
+        assert.equal(templates.REQUIREMENT_CHECKS.fal(), true);
+        falLib.hasKey = () => false;
+        assert.match(templates.REQUIREMENT_CHECKS.fal(), /FAL_KEY/);
+      } finally {
+        falLib.hasKey = originalHasKey;
+      }
       // the real check follows the connection state (mocked: no provider is contacted)
       const originalStatus = higgsfieldLib.status;
       try {

@@ -1,6 +1,6 @@
 # Node View — Implementation Notes
 
-Status: v1 as built, plus phase 2c (Higgsfield lip sync, voice change, motion transfer and speech; 2026-09-29). Companion to [SPEC.md](SPEC.md). The SPEC is the design that was implemented; this file records the architecture as it ended up, every relevant deviation from the SPEC, a recipe for adding node types, the tests, the decisions taken and the backlog. **Where the SPEC and the code disagree, the code wins.**
+Status: v1 as built, plus phase 2c (Higgsfield lip sync, voice change, motion transfer and speech; 2026-09-29) the fal.ai / MiniMax H3 Max nodes (2026-09-29, §2.7) and the Prompt node with its quick pick (2026-09-29, §2.8). Companion to [SPEC.md](SPEC.md). The SPEC is the design that was implemented; this file records the architecture as it ended up, every relevant deviation from the SPEC, a recipe for adding node types, the tests, the decisions taken and the backlog. **Where the SPEC and the code disagree, the code wins.**
 
 ---
 
@@ -12,10 +12,10 @@ Browser   public/nodes/*.js   (window.OCDNodes, classic scripts, no build)
 server.js ─ registerNodeRoutes(app, deps)                         lib/nodes/routes.js
   │           └─ createEngine({ store, getConfig })                lib/nodes/engine.js
   ├─ workflows-store   data/workflows/<wfId>/{workflow.json, results.json, runs/<runId>.json}
-  ├─ registry          nodes-basic · nodes-generate · nodes-edit   (declarative definitions + executors)
+  ├─ registry          nodes-basic · nodes-generate · nodes-fal · nodes-edit   (declarative definitions + executors)
   ├─ events            per-workflow bus → SSE
   └─ reused unchanged  tools.executeTool · store (sessions, ledger) · poller · ffmpeg · OpenRouter / ChatGPT
-                       Higgsfield · ElevenLabs · render nodes · cost journal
+                       Higgsfield · fal.ai · ElevenLabs · render nodes · cost journal
 ```
 
 - **One hidden backing session per workflow** (`kind: 'workflow'`, title `Workflow: <name>`, same `folder` as the workflow). Every input and output is a ledger asset of that session; chat assets are copied in. `store.listSessions` skips such sessions unless `includeHidden: true`; the poller passes it, so async jobs complete exactly as in the chat. Deleting a workflow deletes its folder and the backing session including all assets; cost journal lines remain.
@@ -24,16 +24,17 @@ server.js ─ registerNodeRoutes(app, deps)                         lib/nodes/ro
 - **Registry-driven UI.** Cards, palette, inspector and pre-run validation are generated from `GET /api/nodes/registry`. A new node type needs no client code, only i18n rows.
 - **Values.** `{type:'text'|'number', value}`, media `{type:'image'|'video'|'audio', sessionId, assetId, file, url, duration?}`, lists `{type:'list', of, items}`.
 - **Language.** Errors of the node modules are English; errors that come from `lib/tools.js` stay German, as in the chat.
-- **62 node types:** 13 basic, 23 generative, 26 editing (`registry.list()`).
+- **72 node types:** 14 basic, 23 generative, 9 fal.ai, 26 editing (`registry.list()`).
 
 ### Backend (`lib/`, all new unless noted)
 
 | File | Purpose |
 | --- | --- |
 | `lib/nodes/types.js` | Port types, `canConnect`, value constructors and guards, `adaptValue` (coercion, list wrapping, implicit-map detection), canonical JSON and fingerprints for cache keys. Pure. |
-| `lib/nodes/registry.js` | Declarative registry: `createRegistry()` plus the default instance, definition validation, `portsFor`, `normalizeParams`, `checkParams`, `availability`, `publicRegistry()` (payload of `GET /api/nodes/registry`). Loads the three node modules at the bottom. |
-| `lib/nodes/nodes-basic.js` | 13 basic types: inputs, text utilities, `util.pick`, `util.router`, `output.result`. |
+| `lib/nodes/registry.js` | Declarative registry: `createRegistry()` plus the default instance, definition validation, `portsFor`, `normalizeParams`, `checkParams`, `availability`, `publicRegistry()` (payload of `GET /api/nodes/registry`). Loads the four node modules at the bottom. |
+| `lib/nodes/nodes-basic.js` | 14 basic types: inputs (incl. the Prompt node), text utilities, `util.pick`, `util.router`, `output.result`. |
 | `lib/nodes/nodes-generate.js` | 23 provider-backed types: 5 LLM, image / video / audio generation, dynamic Higgsfield models, 9 experimental Higgsfield types (5 edit types plus dubbing, voice change, motion transfer and speech, §2.6). |
+| `lib/nodes/nodes-fal.js` | 9 fal.ai types (§2.7): the MiniMax H3 Max endpoints and the free-form model node. Pure input builders (`planH3Video` …) that check everything, then one call of the tool `fal_generate`. |
 | `lib/nodes/nodes-edit.js` | 26 local types (ffmpeg, resvg): image / video / audio edits, `media.info`, `image.svg_rasterize`, `image.text_render`. Helpers `ffmpegNode()` and `runOp()` (probe, scratch dir, ffmpeg, ledger asset). |
 | `lib/nodes/ffmpeg-ops.js` | Pure ffmpeg argument builders per edit op, `assembleArgs`, tolerant `probeMedia`. |
 | `lib/nodes/llm.js` | Non-streaming text completion for the LLM nodes: OpenRouter `/chat/completions` or the ChatGPT subscription for `chatgpt/*`; journals `brain` costs. |
@@ -44,13 +45,15 @@ server.js ─ registerNodeRoutes(app, deps)                         lib/nodes/ro
 | `lib/nodes/workflows-store.js` | File store for `workflow.json` / `results.json` / `runs/*.json`, backing-session lifecycle, `rev` rules, import / export validation, graph helpers (`topoSort`, `ancestorsOf`, `descendantsOf`), folder sync, `markInterruptedRuns`. `defaultStore` lives in `data/workflows`. |
 | `lib/nodes/engine.js` | `createEngine`: `plan`, `start`, `cancel`, `activeRun`, `whenFinished`; validation, cache, pool, lists, partial results, timeouts, events. |
 | `lib/nodes/routes.js` | `registerNodeRoutes(app, deps)`: every REST and SSE route, streamed uploads, ZIP, send-to-chat. |
-| `lib/nodes/templates.js`, `lib/nodes/templates/*.json` | Seven starter workflows (export format plus `id`, `requires`, `i18n`), localisation, validation, availability. |
+| `lib/nodes/templates.js`, `lib/nodes/templates/*.json` | Eight starter workflows (export format plus `id`, `requires`, `i18n`), localisation, validation, availability. |
 | `lib/svg-safe.js` | `assertNoExternalReferences(svg)`, the shared SVG guard (§2.4). |
 | `lib/store.js` (changed) | `createSession({ folder, role, kind, title })`, session field `kind`, `listSessions({ includeHidden })`, folder rename / delete include hidden sessions, hook `onFolderChange(listener)`. |
-| `lib/poller.js` (changed) | `pollOnce` lists with `includeHidden: true`; Higgsfield audio results (`higgsfieldResultExtension`: `.mp3 .wav .m4a .aac`, fallback `.wav`). |
-| `lib/tools.js` (changed) | New exports for the node view, `extra_params` and an optional audio reference for Higgsfield generation, private `submitHiggsfieldJob` / `importHiggsfieldMedia` (URL import or `media_upload`), node-only tools `higgsfield_edit` (eight spec-driven tools) and `higgsfield_speech`, SVG guard in `storeImportedSessionAsset`. |
+| `lib/fal.js` (new) | fal.ai client (§2.7): `uploadFile`, `submit`, `getStatus`, `getResult`, streamed `downloadToFile`, `extractMedia`, `FalError`. Testable with an injected `fetch`. |
+| `lib/poller.js` (changed) | `pollOnce` lists with `includeHidden: true`; fal.ai jobs (source `fal`, 90 min, `pollFalJob`, `handleFalCompleted`, §2.7); Higgsfield audio results (`higgsfieldResultExtension`: `.mp3 .wav .m4a .aac`, fallback `.wav`). |
+| `lib/tools.js` (changed) | New exports for the node view, `extra_params` and an optional audio reference for Higgsfield generation, private `submitHiggsfieldJob` / `importHiggsfieldMedia` (URL import or `media_upload`), node-only tools `higgsfield_edit` (eight spec-driven tools), `higgsfield_speech` and `fal_generate` (§2.7), SVG guard in `storeImportedSessionAsset`. |
 | `lib/higgsfield.js` (changed) | `mcpCall(name, args, { withStructured: true })` resolves `{ text, structured }` (the structuredContent of the answer); the default is unchanged. |
 | `lib/brain.js` (changed) | `activeTurns` + `isTurnActive(sessionId)`; rejects tool calls whose name is not in the Director's `toolDefinitions()`. |
+| `lib/store.js` / `lib/costs.js` (changed, §2.7) | `completeAssetFile` takes optional `ext` and `kind` (a result whose type differs from the reservation); the cost journal accepts type `fal`. |
 | `lib/ffmpeg.js` (changed) | `runProcess` exported, optional `signal` (SIGKILL + `AbortError`). |
 | `lib/branding-import.js` (changed) | SVG guard in `rasteriseSvg`. |
 | `server.js` (changed) | Creates the engine, registers the routes before the catch-all, calls `markInterruptedRuns()` on start. |
@@ -189,6 +192,54 @@ All new nodes are category `higgsfield`, `experimental`, `paid` (credits), `asyn
 - **Template `dub-clip`** («Clip in drei Landessprachen»): `input.video` → 3× `hf.dubbing` (deu, fra, ita) → `output.result`, with a Design App (source clip plus the three languages). It adds the requirement `higgsfield` to the template logic; `REQUIREMENT_LABELS` in `public/nodes/main.js` knows it.
 - **Still to check live (costs credits):** the `media_upload` / `media_confirm` flow including whether the signed URL insists on the exact `Content-Type`; the job answers and results of `dubbing`, `voice_change`, `motion_control` and `generate_audio_batch`; the request shape `requests: [{ index, params }]` of `generate_audio_batch`; whether seed_audio takes a reference audio without a voice and how `text2speech_v2` describes itself (its fixture in the tests is assumed); the credit prices.
 
+### 2.7 fal.ai (MiniMax H3 Max)
+
+Status 2026-09-29: built and tested against mocks only; **not verified against the live fal.ai API** (no paid call was made). The 15 public endpoint schemas and list prices in `docs/fal-h3-max.json` (fetched the same day) are the source for every field name and enum. All nine node types are category `fal` (after `higgsfield`), `experimental`, `paid` (USD), `async`, and available as soon as `FAL_KEY` is set.
+
+**Connection.** `FAL_KEY` is a setting like `ELEVENLABS_API_KEY` (`lib/settings.js`, `.env.example`, the generic key list of the settings dialog; `GET /api/config` carries `fal: { enabled }`, never the key). Requests use the header `Authorization: Key <FAL_KEY>`, the key is read at call time. No error message, log line or job field contains the key or a signed URL (`FalError` messages are cut at 300 characters and every URL is replaced by `[URL]`).
+
+**Upload.** fal only accepts URLs, so session assets are uploaded first (`lib/fal.js` `uploadFile`): `POST https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3` (`{ content_type, file_name }`, header `X-Fal-Object-Lifecycle: {"expiration_duration_seconds":86400}`) answers `{ upload_url, file_url }`, then the bytes are streamed with `PUT upload_url` (`Content-Type`, `Content-Length`). Both URLs must be https; `file_url` goes into the model input. The official client switches to multipart at 90 MB; this app does not, so a file over 90 MB is refused with a clear message before any request. An asset that is used twice in one job is uploaded once.
+
+**Queue and poller.** The node-only tool `fal_generate` (`NODE_ONLY_TOOLS`, never offered in the chat) takes `{ endpoint, input, media: [{ field | placeholder, assetIds, multiple }], kind, estimateUsd, pricing, keepResult }`. Order: key, endpoint id (`isValidEndpointId`), input and pricing shape, session assets (own session only, finished, image / video / audio extension, at most 30 files, each at most 90 MB), then the sequential uploads, then `POST https://queue.fal.run/<endpoint>` (header `X-Fal-Object-Lifecycle-Preference` keeps the result 7 days). Nothing is uploaded or queued unless every check passed; a failing submit removes the reserved asset again. The answer's `status_url` / `response_url` must start with `https://queue.fal.run/` and are stored on the job (they are authoritative for nested endpoint ids). The job is a normal `session.jobs` entry: `source: 'fal'`, `jobId` = request id (duplicate request ids are refused like duplicate Higgsfield ids), `endpoint`, `statusUrl`, `responseUrl`, `kind` (the reserved ledger kind: `.mp4` / `.png` / `.mp3`, `auto` reserves a video), `resultKind` (what the node asked for, incl. `auto`), `timeoutAt` (90 min), `costEstimateUsd`, `pricing`, `keepResult`.
+
+The poller (`pollFalJob`) asks `GET status_url` every round: `IN_QUEUE` / `IN_PROGRESS` only update the job state (`queued`, `in_progress`); `COMPLETED` with an `error` fails the job; `COMPLETED` fetches `response_url`, picks the medium with `extractMedia(result, resultKind)` (video: `video.url` or `videos[0].url`; image: `images[0].url` or `image.url`; audio: `audio.url`, `audio_file.url`, `audio_url`; `auto` = first hit in that order), streams it with `downloadToFile` (https, hosts `fal.media`, `*.fal.media`, `*.fal.run`, `*.fal.ai` only, redirects re-checked, at most 1 GB, partial file removed on failure) into a temp file inside the session asset directory and moves it into the reserved asset (`completeAssetFile` with the real extension and kind). No medium in the result fails the job. HTTP 401 / 403 / 404 / 422 and other non-retryable answers fail the job with a clear message; network errors, timeouts, 408, 429 and 5xx leave it open until the 90 minutes are over (`fal.ai-Job hat nach 90 Minuten das Zeitlimit erreicht.`). Without a key the poller skips fal jobs. The job keeps small metadata: `seed`, `expanded_prompt` (2000 characters), `duration`, and for the free node `resultJson` (50 KB).
+
+**Prices** (`PRICES` in `nodes-fal.js`, source `docs/fal-h3-max.json`, fetched 2026-09-29): the **list prices after the launch discounts end on 2026-09-30**, USD per generated second. H3 Max (video, reference, camera, extend, 3D) 480P 0.05 / 768P 0.08 / 1080P 0.16 / 2K 0.32 (2K only extend and lip sync); Turbo 0.025 / 0.04 / 0.08; lip sync as H3 Max, ×1.2 above 15 s; insert scene 480p 0.05 / 768p 0.06 (only the new scene); styles 0.08. Until 2026-09-30 fal charges half, so the estimate is too high before that date. `estimate(params)` = duration × price wherever the duration is a param; lip sync and 3D know their duration only from the connected media (measured with ffprobe in `execute`; 3D bills at least 5 s), the free node has no estimate. Not estimated: reference tokens above the free 4096-token allowance (reference, extend, insert, 3D) and the reference images fal generates for 3D. The booked cost of a finished job is `duration × perSecond` when the result reports a duration (lip sync: `duration`, insert: `injected_duration`, others none; extend ignores it because it may include the source clip), otherwise the estimate. It goes to the ledger, the job and the cost journal (type `fal`, billing "Schaetzung (Listenpreis)") and is marked as an estimate (`~$` in the chat message). fal reports no price.
+
+| Type | Ports (in → out) | Endpoint | Notes |
+| --- | --- | --- | --- |
+| `fal.h3_video` | `prompt`!, `first_frame`, `last_frame`, `audio` → `video`, `expanded_prompt` | `minimax/h3-max[-turbo]/text-to-video`, or `…/image-to-video` with an image | `model` max / turbo; `aspect_ratio` only sent without images; `audio` = `target_audio_url` (≥ 2 s, ≤ 15 MB) |
+| `fal.h3_reference` | `prompt`!, `images` (9), `videos` (3), `audios` (3) → `video`, `expanded_prompt` | `minimax/h3-max/reference-to-video` | at most 12 files; videos / audios 2–15 s each, 15 s together; use "Image 1", "Video 1", "Audio 1" in the prompt in connection order |
+| `fal.h3_lipsync` | `image`!, `audio`! → `video` | `minimax/h3-max/lip-sync/image-to-video` | image ratio 0.4–2.5, audio 5 s–15 min; `transcription`; resolution up to 2K |
+| `fal.h3_camera` | `image`!, `prompt` → `video`, `expanded_prompt` | `minimax/h3-max/camera-controls` | presets as keyframe lists (below) or a custom path; blank prompt is omitted |
+| `fal.h3_extend` | `video`!, `prompt`! → `video`, `expanded_prompt` | `minimax/h3-max/extend-video` | source 1.625–60 s, ≤ 50 MB, ratio 0.4–2.5; `output` extended / continuation |
+| `fal.h3_insert` | `video`!, `prompt`, `images` (9), `videos` (3) → `video`, `expanded_prompt` | `minimax/h3-max/insert-video` | `start_time` 1.625–60, `resume_time` ≥ `start_time`, both inside the video (checked when ffprobe is there); resolutions `480p` / `768p` lower case; no safety switch |
+| `fal.h3_3d` | `video`!, `prompt`, `images` (8) → `video` | `minimax/h3-max/3d-to-video` | video ≤ 15 s, prompt ≤ 2000 characters; no seed, no safety switch |
+| `fal.h3_style` | `prompt`!, `first_frame` → `video` | `minimax/h3-max/styles/<vhs, retro-toon-70s, low-poly, hand-drawn, 16bit-pixel>` | `damage_level` only for vhs; `aspect_ratio` only without image |
+| `fal.model` | `prompt`, `images` (10), `videos` (5), `audios` (5) → `media`, `json` | any valid endpoint id | `input_json` with placeholders (below); `output_kind` auto / video / image / audio |
+
+Fields are built exactly as the schemas name them: empty options are left out, `sync_mode` is never sent, resolution enums keep their spelling (`480P` upper case except `insert-video`), the prompt expansion is `prompt_expansion_mode` (`disabled` / `balanced` / `quality`) for video / reference / camera and the boolean `enable_prompt_expansion` for extend and insert, safety is `enable_safety_checker`. Every executor checks first (params, number and kind of the connections, durations and ratios ffprobe can measure, file sizes; without ffprobe only sizes) and only then calls the tool, so a bad input costs nothing. The result value is the first result asset; `expanded_prompt` comes from the job metadata and falls back to the sent prompt.
+
+**Camera presets** (keyframes `{ time, azimuth, elevation, distance }`, start `{0, 0, 0, 1}`): `orbit_left` / `orbit_right` azimuth −90 / +90, `orbit_360` +360, `dolly_in` / `dolly_out` distance 1 → 0.5 / 1.5, `crane_up` elevation 0 → 30, `crane_down` elevation 30 → 0 (the only preset that does not start at elevation 0). The direction of positive azimuth and elevation is an assumption; the first live test should confirm it. `custom` takes a JSON array: 2 to 12 keyframes with exactly these four numeric fields, `time` in 0..1 and strictly ascending, `elevation` in −90..90, `distance` > 0, at most 32 turns (11520°) of total azimuth travel. The same check runs in `validate` (before the run) and in `execute`.
+
+**Free node.** `input_json` is parsed first; the placeholders are replaced in the **parsed** value, never in the text: a string value that is exactly `{{image_1}}`, `{{video_2}}` or `{{audio_1}}` becomes the uploaded URL of that connection (1-based, in connection order), `{{images}}` / `{{videos}}` / `{{audios}}` the list of URLs, and `{{prompt}}` inside a string is replaced by the prompt text (a `$` in the prompt is literal; the inserted text is not scanned again, so a prompt cannot inject JSON or media references; object keys are never rewritten). A media placeholder that is not the whole string, or that points past the connected media, is an error before anything is uploaded; only referenced media are uploaded. The tool receives sentinels (`@@fal:image_1@@`) and swaps them after the upload. The result JSON (from `keepResult`) is cut at 50 KB and returned as the `json` text.
+
+**Not offered.** `minimax/h3-max/director` is a realtime WebRTC endpoint (billed at least 60 s), not a queue API; it does not fit the job model and is not implemented. `docs/fal-h3-max.json` therefore holds the 15 queue endpoints only.
+
+**Template `talking-portrait`** («Sprechendes Porträt (H3 Max Lip Sync)»): `input.image` + `input.text` → `audio.tts` → `fal.h3_lipsync` → `output.result` with a Design App (portrait, speech text, resolution). Requirements `fal` and `elevenlabs` (the `fal` check is the key; `REQUIREMENT_LABELS` in `public/nodes/main.js` knows it).
+
+**Still to check live (costs money):** one paid call per endpoint to confirm the field names, the result shape (`video.url`, `duration`, `injected_duration`, `expanded_prompt`), the queue URLs of nested endpoint ids, the camera direction conventions, whether `resume_time` may equal `start_time`, the exact billing of extend (`duration` of the result) and the storage upload (`Content-Type`, lifecycle header).
+
+### 2.8 Prompt node, "move into a Prompt node" and the quick pick
+
+Feedback: prompts could only be written in the embedded field of a generation node or in the inspector, and the generic node was called "Text input", so the graph did not show which prompt goes where. Three additions, no server change besides one node type:
+
+- **`input.prompt` («Prompt»)** in `nodes-basic.js`, before `input.text` (which stays, so saved workflows and templates keep working). Category `input`, output `prompt` (`text`), one inline `textarea` param `prompt`, executes like `input.text`. The palette pins it to the top of «Inputs» (`rankPaletteEntries`), and a search for "prompt" ranks it before "Text input". On the card the field is large (5 rows, grows with `autosize` up to 360 px, then scrolls; card width 340 px via `data-type`), typing is undoable like every inline field. Its placeholder is `nodes.prompt.placeholder`; embedded `prompt` fields of generation nodes that also have a text input read «Prompt eingeben oder Prompt-Node verbinden» (`promptFieldOptions` in `node-ui.js`, used by card and inspector).
+- **Move into a Prompt node** (`graph.js`: `extractTextParamToNode(reg, graph, nodeId, portId, options)`, `canExtractTextParam`, `extractTextParamIssue`). Only an unconnected `text` input backed by a `textarea` param qualifies (all `prompt` inputs, `audio.tts` text, `llm.chat` system, ...). It adds an `input.prompt` node left of the target (x = target.x - 340 - 56, at its height, nudged down in steps of 48 px while it would land on another card; `options.position` overrides), copies the text, clears the param, connects `prompt` to the port and returns `{ graph, node, edge }` or `{ graph, error: { reason } }` (`no_prompt_type`, `unknown_node`, `unknown_port`, `not_extractable`, `connected`; deliberately not `code`, so the connection-error i18n check does not apply). The parameter order `(reg, graph, ...)` follows `addNode` / `connect`. `main.js` applies it as one `applyGraph(..., { history: 'extract-prompt' })`, so one undo step restores everything. UI: a small icon button in the top right corner of the embedded field on the card and a button next to the label in the inspector; both are absent once the port is connected.
+- **Quick pick when a connection is dropped on the empty canvas.** The drop handler already opened the palette with a type filter; it now opens it as a compact popover at the release point (`palette.open({ at })`, clamped into the canvas, canvas stays visible) instead of the centred overlay. Filter and order are the pure `rankPaletteEntries` / `quickPickTargets` in `graph.js` (same compatibility as connecting; when the drag starts on an unconnected TEXT input the Prompt node gets a +10 rank boost and leads the list, also for the search "prompt"). Picking places the node at the release point and connects it to the first compatible port in one undo step (`addNodeAt` with `anchor`); Esc or a click beside the popover closes it without a change. Dragging an existing connection away still detaches it; a drag that starts on a connected input never opens the picker.
+
+Checked visually with headless Chrome against a static harness (the real `canvas.js`, `palette.js`, `node-ui.js`, registry payload), not against the full app.
+
 ---
 
 ## 3. How to add a node type
@@ -197,7 +248,7 @@ A node type is one registry definition plus i18n rows. The palette, card, inspec
 
 1. **Choose the module.** Pure logic → `lib/nodes/nodes-basic.js`; provider-backed → `nodes-generate.js` (via `tools.executeTool(ctx.toolCtx, …)` or `llm.js`); local ffmpeg / resvg → `nodes-edit.js`. For a new family create `lib/nodes/nodes-<name>.js`, export `registerAll(registry)` and add `require('./nodes-<name>').registerAll(defaultRegistry);` at the bottom of `lib/nodes/registry.js`. Higgsfield models need no code: they appear dynamically.
 2. **Write the definition.**
-   - `type`: `<family>.<name>`, matching `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$` and unique. `category` is one of `input, llm, text, image, video, audio, edit-image, edit-video, edit-audio, higgsfield, utility, output` (a new category also needs an entry in `CATEGORIES`, `nodes.category.<id>` and a `--nv-cat-<id>` colour plus `[data-cat]` rule in `nodes.css`).
+   - `type`: `<family>.<name>`, matching `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$` and unique. `category` is one of `input, llm, text, image, video, audio, edit-image, edit-video, edit-audio, higgsfield, fal, utility, output` (a new category also needs an entry in `CATEGORIES`, `nodes.category.<id>` and a `--nv-cat-<id>` colour plus `[data-cat]` rule in `nodes.css`).
    - `version`: bump it whenever the output for identical inputs changes; it is part of the cache key.
    - `inputs` / `outputs`: `{ id, type, required?, multiple?, param?, hidden?, max? }`; port ids match `^[a-z][a-z0-9_]{0,31}$`; types are `text | number | image | video | audio | any`, each optionally as `T[]`. `param` names an inline fallback param for text / number ports. A scalar port fed by a `T[]` runs the node once per item, so executors never need to loop.
    - `params`: `{ id, kind, default, min?, max?, step?, options? | optionsSource?, optional?, inline?, showIf? }`; kinds `text, textarea, code, number, integer, slider, boolean, select, color, asset, assets, tags`; `optionsSource` is `brain-models`, `elevenlabs-voices`, `higgsfield-image-models`, `higgsfield-video-models` or `higgsfield-voices` (more via `deps.optionSources` of `registerNodeRoutes`).
@@ -208,7 +259,7 @@ A node type is one registry definition plus i18n rows. The palette, card, inspec
    - `nodes.port.<id>` for every port id that no other node uses yet;
    - `nodes.param.<id>` for every new param id;
    - `nodes.option.<value>` for every select option that is not a number, ratio or resolution (`/^[0-9.:]+[a-z]*$/i` stays literal).
-4. **Test it.** Add cases to the matching script (pure logic / registry → `test-nodes-types.js`, mocked executors → `test-nodes-generate.js`, ffmpeg builders and real ops → `test-nodes-ffmpeg.js`, engine behaviour → `test-nodes-engine.js`), then run `node scripts/test-nodes-i18n.js`, which fails on any missing key. Some tests pin a module's type list (`test-nodes-types.js` the basic types, `test-nodes-generate.js` the generative ones) and `test-nodes-i18n.js` and `test-nodes-graph.js` assert at least 62 types: update those lists.
+4. **Test it.** Add cases to the matching script (pure logic / registry → `test-nodes-types.js`, mocked executors → `test-nodes-generate.js`, ffmpeg builders and real ops → `test-nodes-ffmpeg.js`, engine behaviour → `test-nodes-engine.js`), then run `node scripts/test-nodes-i18n.js`, which fails on any missing key. Some tests pin a module's type list (`test-nodes-types.js` the basic types, `test-nodes-generate.js` the generative ones) and `test-nodes-i18n.js` and `test-nodes-graph.js` assert at least 71 types: update those lists.
 
 Mini example, a pure text node. Add it to the `definitions` array of `lib/nodes/nodes-basic.js` (`textValue` is already imported there):
 
@@ -242,17 +293,19 @@ Plain Node scripts (`assert/strict`), no network, no build. There is no test run
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/test-nodes-types.js` | Port types, compatibility rules, values, fingerprints, registry framework, the 13 basic nodes. |
+| `scripts/test-nodes-types.js` | Port types, compatibility rules, values, fingerprints, registry framework, the 14 basic nodes (incl. `input.prompt`). |
 | `scripts/test-nodes-store.js` | Backing-session support in `lib/store.js` and the poller, workflow store (CRUD, `rev` conflicts, import / export validation, results, runs), asset helpers. |
 | `scripts/test-nodes-engine.js` | Engine with fake executors: topo order, pool limit, cache, force, plan, errors, cancel, lists, partial map results, overrides, job waiting. |
 | `scripts/test-nodes-api.js` | Every route against a private express app (temp workflow dir, fake executors, real HTTP): status codes and shapes, streamed uploads and size cap, SVG guard, asset import, runs, SSE, ZIP, templates, send-to-chat incl. `CHAT_BUSY`, rename events, folder sync. |
 | `scripts/test-nodes-generate.js` | Generative nodes, `llm.js`, Higgsfield catalogue, `extra_params`, node-only tools, the phase 2c nodes (dubbing / voice change / motion arguments and validation, speech incl. the reference-voice role, `video.higgsfield` with audio, voices parser / paging / cache, the `media_upload` fallback with a mocked `fetch`, error paths and "no signed URL in messages"); all providers mocked. |
 | `scripts/test-nodes-ffmpeg.js` | Pure ffmpeg builders (always) and real ffmpeg / resvg ops on generated inputs, abortable `runProcess`. Prints `SKIP ffmpeg fehlt` and exits 0 when ffmpeg / ffprobe are missing. |
-| `scripts/test-nodes-graph.js` | Pure graph model of the client: connections, cycles, clipboard, groups, viewport maths, fuzzy search. |
+| `scripts/test-nodes-graph.js` | Pure graph model of the client: connections, cycles, clipboard, groups, viewport maths, fuzzy search, palette ranking, the quick pick filter (Prompt first for text inputs, incompatible types missing) and "move into a Prompt node" (refused when connected, text moves, param cleared, edge set, placed left, one undo step). |
 | `scripts/test-nodes-history.js` | Undo / redo stack. |
 | `scripts/test-nodes-i18n.js` | de / en / es parity, Swiss spelling, placeholders, coverage of every registry type / category / port / param / option and of every key literal used in `public/nodes/*.js`, script order in `index.html`, `app.js` untouched. |
 | `scripts/test-nodes-run-client.js` | SSE reducer for every event type, result / cost helpers, plan description; static checks (no `innerHTML`, no native dialogs). |
-| `scripts/test-nodes-templates.js` | All seven templates validate against the registry, texts exist in de / en / es, they create workflows through the routes, the batch template maps a list through the engine, the `higgsfield` requirement follows the connection. |
+| `scripts/test-nodes-templates.js` | All eight templates validate against the registry, texts exist in de / en / es, they create workflows through the routes, the batch template maps a list through the engine, the `higgsfield` and `fal` requirements follow the connection, the talking-portrait graph. |
+| `scripts/test-fal.js` | `lib/fal.js` with an injected `fetch` (upload payload and headers, 90 MB cap, submit, status mapping, 422 details, host allowlist, streamed download and size limit, no key or signed URL in any message), the tool `fal_generate` (every check before the first upload, sequential uploads, placeholders, duplicate request ids) and the poller branch (progress, completion with cost from the duration, `auto` kinds, failures, temporary errors, timeout, missing key). No network. |
+| `scripts/test-nodes-fal.js` | The nine fal.ai node types: registry and defaults, list-price estimates, exact input per endpoint, validation with ffprobe values BEFORE the first upload (nothing is uploaded or queued when a check fails), camera presets and strict custom paths, the free node's placeholders (also against JSON injection through the prompt) and an engine run. No network. |
 | `scripts/test-nodes-app.js` | Design App: batch-counter parity with the server list parser, app validation, a local batch run with `overrides` that leaves the saved graph unchanged, static browser-wiring checks. |
 
 Also relevant: `scripts/test-i18n.js` (chat dictionaries and the two `sidebar.nodes*` keys). After node-view changes also run the existing regression scripts, e.g. `test-api-handlers.js`, `test-session-meta.js`, `test-folders.js`, `test-concat-videos.js`, `test-higgsfield.js` (also covers the audio result extension and the end-to-end completion of audio jobs), `test-video-frames.js`.
@@ -272,6 +325,7 @@ There is no browser test in the repo. Focus and `inert`, the first fit and the l
 - **Cost estimate = last actual cost** of the node type in the workflow; otherwise "unknown". No price table; Higgsfield shows a credit estimate from the catalogue.
 - **ElevenLabs costs are not journaled**, as in the chat; the TTS node shows no cost.
 - **Deleting a workflow deletes its backing session including all assets**, after an in-app confirmation. No archive; cost journal lines remain.
+- **fal.ai nodes are experimental and untested against the live API (2026-09-29).** All nine carry the badge until one paid call per endpoint has confirmed §2.7. Costs shown are list-price estimates; the realtime `director` endpoint is not implemented.
 - **Canvas: left-drag = rectangle selection.** Hand tool (`H`) and select tool (`V`); Space, middle mouse and trackpad scroll pan. No setting to swap the defaults.
 
 ---
@@ -288,6 +342,7 @@ Features the SPEC (§3, §17) parked, with what they would need:
 | Real relighting | A dedicated relight model; `image.relight` is a GPT Image 2 edit with a lighting prompt. |
 | Seeds / deterministic re-runs | Seed parameters in the OpenRouter / Seedance wrappers. |
 | Seedance last-frame conditioning | `buildVideoPayload` currently sends only `first_frame`; needs a `last_frame` port and payload support. |
+| Live test of the fal.ai nodes | One paid call per H3 Max endpoint and one for the free node to confirm the schemas, result shapes, queue URLs, camera conventions and prices (§2.7). Until then the nodes are `experimental`. |
 | Live verification of the phase 2c nodes | One paid call each for `dubbing`, `voice_change`, `motion_control`, `generate_audio_batch` and the `media_upload` flow to confirm the answer formats (§2.6). The tool schemas, `list_voices` and the `seed_audio` description were checked read-only on 2026-09-29. |
 | More Higgsfield audio (music, sound effects), lip sync driven by a speech track | `hf.speech` covers `seed_audio` and `text2speech_v2`; `sonilo_music`, `mirelo_text_to_audio` and `inworld_text_to_speech` are game-pipeline models per the MCP. `video.higgsfield` takes audio tracks for models that declare an audio role. Dedicated nodes need the live parameter sets. |
 | 3D | Higgsfield `generate_3d` (GLB), a viewer (three.js from a CDN) and a GLB asset kind. |

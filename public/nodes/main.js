@@ -1105,6 +1105,29 @@
     applyGraph(next, { history: 'params', key: key || `p:${nodeId}:${Object.keys(patch).join(',')}` });
   }
 
+  // Moves the text of an embedded prompt field into its own Prompt node (one undo step).
+  function extractPrompt(nodeId, portId) {
+    if (!state.workflow || !state.reg) return;
+    const result = graphLib.extractTextParamToNode(state.reg, state.graph, nodeId, portId, { sizes: canvas.getSizes(), reserved: state.reserved });
+    if (result.error) {
+      ui.toast(ui.T('nodes.prompt.extractFailed'), { kind: 'warn' });
+      return;
+    }
+    reserveId(result.node.id);
+    // A prompt field shared in the Design App would vanish (it is now driven by a connection): share the new
+    // Prompt node's text instead, with the same label.
+    const target = graphLib.getNode(state.graph, nodeId);
+    const port = target ? graphLib.portsFor(state.reg, target).inputs.find((item) => item.id === portId) : null;
+    const app = state.workflow.app;
+    if (port && port.param && app && app.inputs.some((entry) => entry.node === nodeId && entry.param === port.param)) {
+      state.workflow.app = {
+        ...app,
+        inputs: app.inputs.map((entry) => (entry.node === nodeId && entry.param === port.param ? { ...entry, node: result.node.id, param: 'prompt' } : entry))
+      };
+    }
+    applyGraph(result.graph, { history: 'extract-prompt' });
+  }
+
   function renameNode(nodeId, title) {
     applyGraph(graphLib.setTitle(state.graph, nodeId, title), { history: 'rename', key: `t:${nodeId}` });
   }
@@ -1181,7 +1204,7 @@
   function openPalette(context = {}, filter = null) {
     if (!state.workflow || !state.reg) return;
     const world = context.world || pointerWorld();
-    palette.open({ filter, context: { ...context, world } });
+    palette.open({ filter, context: { ...context, world }, at: filter && context.client ? context.client : null });
   }
 
   function onPalettePick(entry, context, filter) {
@@ -1351,7 +1374,7 @@
 
   /* ---------- templates, projects, chat bridge (WP7) ---------- */
 
-  const REQUIREMENT_LABELS = { openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', elevenlabs: 'ElevenLabs', rendernode: 'Render node', higgsfield: 'Higgsfield' };
+  const REQUIREMENT_LABELS = { openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', elevenlabs: 'ElevenLabs', rendernode: 'Render node', higgsfield: 'Higgsfield', fal: 'fal.ai' };
 
   function currentLang() {
     return typeof global.getLang === 'function' ? global.getLang() : 'en';
@@ -1925,8 +1948,8 @@
         applyGraph(graphLib.disconnect(state.graph, edgeId), { history: 'disconnect' });
       },
       onDropEmpty({ anchor, portType, world, client }) {
-        void client;
-        openPalette({ world, anchor, exact: true }, { dir: anchor.dir, type: portType });
+        // Weavy-style quick pick at the release point: only nodes with a compatible port, Prompt first for text inputs.
+        openPalette({ world, anchor, exact: true, client }, { dir: anchor.dir, type: portType });
       },
       onCanvasDoubleClick({ world }) {
         openPalette({ world, exact: true });
@@ -1934,6 +1957,7 @@
       onContextMenu: onCanvasContextMenu,
       onParam: (nodeId, paramId, value, meta) => applyParams(nodeId, { [paramId]: value }, meta, `p:${nodeId}:${paramId}`),
       onRename: renameNode,
+      onExtractPrompt: extractPrompt,
       onNoteChange(id, patch) {
         applyGraph(graphLib.updateNote(state.graph, id, patch), { history: 'note', key: `note:${id}:${Object.keys(patch).join(',')}` });
       },
@@ -1954,6 +1978,7 @@
         onParam: (nodeId, paramId, value, meta) => applyParams(nodeId, { [paramId]: value }, meta, `p:${nodeId}:${paramId}`),
         onParams: (nodeId, patch, meta, key) => applyParams(nodeId, patch, meta, `p:${nodeId}:${key || Object.keys(patch).join(',')}`),
         onTitle: (nodeId, title) => renameNode(nodeId, title),
+        onExtractPrompt: extractPrompt,
         onDelete: deleteSelection,
         onDuplicate: duplicateSelection,
         onGroupSelection: groupSelected,

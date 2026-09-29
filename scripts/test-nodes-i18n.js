@@ -83,7 +83,7 @@ function testRegistryCoverage() {
     }
   }
   assert.deepEqual([...new Set(missing)], [], `registry strings without translation: ${[...new Set(missing)].join(', ')}`);
-  assert.ok(payload.nodeTypes.length >= 62);
+  assert.ok(payload.nodeTypes.length >= 72);
 }
 
 function sourceFiles() {

@@ -1,0 +1,75 @@
+{
+  "id": "talking-portrait",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Talking portrait (H3 Max lip sync)",
+  "description": "Turn a portrait photo and a script into a speaking video: ElevenLabs voices the text and MiniMax H3 Max on fal.ai lip-syncs the portrait to the audio.",
+  "requires": ["fal", "elevenlabs"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 80, "title": "Portrait", "params": { "asset": null } },
+      { "id": "n2", "type": "input.text", "typeVersion": 1, "x": 80, "y": 420, "title": "Speech text", "params": { "text": "Hello and welcome. Today I want to show you how a single photo can start talking. Thanks for watching, and see you soon." } },
+      { "id": "n3", "type": "audio.tts", "typeVersion": 1, "x": 520, "y": 420, "title": "Voice", "params": { "text": "", "voice_id": "21m00Tcm4TlvDq8ikWAM", "model_id": "eleven_multilingual_v2" } },
+      { "id": "n4", "type": "fal.h3_lipsync", "typeVersion": 1, "x": 960, "y": 200, "title": "Lip sync", "params": { "resolution": "768P", "transcription": false, "seed": null, "safety": true } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1400, "y": 240, "params": { "label": "Talking portrait" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n2", "port": "text" }, "to": { "node": "n3", "port": "text" } },
+      { "id": "e2", "from": { "node": "n1", "port": "image" }, "to": { "node": "n4", "port": "image" } },
+      { "id": "e3", "from": { "node": "n3", "port": "audio" }, "to": { "node": "n4", "port": "audio" } },
+      { "id": "e4", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 680, "w": 380, "h": 190, "text": "Upload a portrait (aspect ratio between 0.4 and 2.5, face clearly visible). The spoken text must last at least 5 seconds. ElevenLabs and fal.ai cost money: the run asks for confirmation first. The fal.ai nodes are experimental and were not verified against the live API yet." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Talking portrait",
+    "description": "Upload a portrait, write what it should say and choose the resolution. You get a video in which the portrait speaks the text.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Portrait" },
+      { "node": "n2", "param": "text", "label": "Speech text" },
+      { "node": "n4", "param": "resolution", "label": "Resolution" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Talking portrait" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Sprechendes Porträt (H3 Max Lip Sync)",
+      "description": "Mache aus einem Porträtfoto und einem Text ein sprechendes Video: ElevenLabs spricht den Text, MiniMax H3 Max auf fal.ai synchronisiert die Lippen des Porträts mit dem Audio.",
+      "node.n1": "Porträt",
+      "node.n2": "Sprechtext",
+      "node.n3": "Stimme",
+      "node.n4": "Lippensync",
+      "param.n2.text": "Hallo und willkommen. Heute zeige ich dir, wie ein einzelnes Foto zu sprechen beginnt. Danke fürs Zuschauen und bis bald.",
+      "note.t1": "Lade ein Porträt hoch (Seitenverhältnis zwischen 0,4 und 2,5, Gesicht gut sichtbar). Der Sprechtext muss mindestens 5 Sekunden dauern. ElevenLabs und fal.ai kosten Geld: Der Lauf fragt vorher nach der Bestätigung. Die fal.ai-Nodes sind experimentell und wurden noch nicht gegen die Live-API geprüft.",
+      "app.title": "Sprechendes Porträt",
+      "app.description": "Lade ein Porträt hoch, schreibe, was es sagen soll, und wähle die Auflösung. Du erhältst ein Video, in dem das Porträt den Text spricht.",
+      "app.input.n1.asset": "Porträt",
+      "app.input.n2.text": "Sprechtext",
+      "app.input.n4.resolution": "Auflösung",
+      "app.output.n5": "Sprechendes Porträt"
+    },
+    "es": {
+      "name": "Retrato parlante (sincronización labial H3 Max)",
+      "description": "Convierte una foto de retrato y un texto en un vídeo hablado: ElevenLabs locuta el texto y MiniMax H3 Max en fal.ai sincroniza los labios del retrato con el audio.",
+      "node.n1": "Retrato",
+      "node.n2": "Texto hablado",
+      "node.n3": "Voz",
+      "node.n4": "Sincronización labial",
+      "param.n2.text": "Hola y bienvenidos. Hoy quiero mostrarte cómo una sola foto puede empezar a hablar. Gracias por verlo y hasta pronto.",
+      "note.t1": "Sube un retrato (proporción entre 0,4 y 2,5, rostro bien visible). El texto hablado debe durar al menos 5 segundos. ElevenLabs y fal.ai cuestan dinero: la ejecución pide confirmación antes de empezar. Los nodos de fal.ai son experimentales y aún no se han verificado con la API real.",
+      "app.title": "Retrato parlante",
+      "app.description": "Sube un retrato, escribe lo que debe decir y elige la resolución. Recibes un vídeo en el que el retrato dice el texto.",
+      "app.input.n1.asset": "Retrato",
+      "app.input.n2.text": "Texto hablado",
+      "app.input.n4.resolution": "Resolución",
+      "app.output.n5": "Retrato parlante"
+    }
+  }
+}

@@ -472,12 +472,19 @@
           const widget = ui.paramWidget(param, effective[param.id], {
             node,
             compact: false,
+            ...ui.promptFieldOptions(node, param, ports.inputs),
             onChange: (value, meta) => cb.onParam && cb.onParam(node.id, param.id, value, meta),
             uploadFile: (file, options) => (cb.uploadFile ? cb.uploadFile(node.id, file, options) : Promise.reject(new Error('Upload unavailable')))
           });
           widgets.set(param.id, widget);
           const inlineField = ['boolean'].includes(param.kind);
           const fieldOptions = { inline: inlineField };
+          const extractPort = param.kind === 'textarea' && cb.onExtractPrompt && reg.types.has('input.prompt')
+            ? ports.inputs.find((port) => port.param === param.id && port.type === 'text' && !port.hidden && !connectedPorts.has(port.id))
+            : null;
+          if (extractPort) {
+            fieldOptions.action = { icon: 'extract', label: ui.T('nodes.prompt.extractShort'), title: ui.T('nodes.prompt.extract'), onClick: () => cb.onExtractPrompt(node.id, extractPort.id) };
+          }
           if (cb.app) {
             const active = cb.app.isExposed(node.id, param.id);
             fieldOptions.expose = {

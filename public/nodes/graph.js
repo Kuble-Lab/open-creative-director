@@ -18,6 +18,11 @@
   const MAX_NODES = 500;
   const ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
   const GROUP_COLORS = Object.freeze(['amber', 'blue', 'green', 'violet', 'rose', 'grey']);
+  const PROMPT_TYPE = 'input.prompt';
+  // Approximate footprint of a freshly extracted prompt node (card width + gap to its target).
+  const PROMPT_NODE_WIDTH = 340;
+  const PROMPT_NODE_GAP = 56;
+  const PROMPT_BOOST = 10;
 
   /* ---------- basics ---------- */
 
@@ -835,7 +840,101 @@
     return best ? best.port : null;
   }
 
-  // Conditional param visibility (registry showIf): { param, equals } or { port, connected }.
+  // Palette candidates for a dragged connection, best first. Same compatibility as compatibleTargets();
+  // dragging from an unconnected TEXT input puts the Prompt node on top (it is the natural source).
+  function quickPickTargets(reg, dir, portType) {
+    const targets = compatibleTargets(reg, dir, portType);
+    const source = parseType(portType);
+    const boost = dir === 'in' && source && source.base === 'text' && reg.types.has(PROMPT_TYPE);
+    return targets
+      .map((target) => (boost && target.type === PROMPT_TYPE ? { ...target, rank: target.rank + PROMPT_BOOST } : target))
+      .sort((a, b) => b.rank - a.rank);
+  }
+
+  // Filters and orders palette entries (pure part of the command palette).
+  // entries: [{ type, category, label, search, model? }]. filter: { dir, type } from a dragged connection.
+  // Returns the entries (with `compat` = the matching port target or null), best match first.
+  function rankPaletteEntries(reg, entries, options = {}) {
+    const { query = '', category = 'all', filter = null, limit = 90 } = options;
+    let list = entries;
+    let compat = null;
+    if (filter) {
+      compat = new Map(quickPickTargets(reg, filter.dir, filter.type).map((item) => [item.type, item]));
+      list = list.filter((entry) => compat.has(entry.type));
+    }
+    if (category !== 'all') list = list.filter((entry) => entry.category === category);
+    const text = String(query).trim();
+    const categoryOrder = new Map((reg.categories || []).map((id, index) => [id, index]));
+    const scored = list
+      .map((entry) => ({ entry, score: fuzzyScore(text, entry.search), rank: compat ? compat.get(entry.type).rank : 0 }))
+      .filter((item) => item.score > 0);
+    scored.sort((a, b) => {
+      if (text) return b.score - a.score || b.rank - a.rank || a.entry.label.localeCompare(b.entry.label);
+      if (compat && b.rank !== a.rank) return b.rank - a.rank;
+      const ca = categoryOrder.get(a.entry.category) ?? 99;
+      const cb = categoryOrder.get(b.entry.category) ?? 99;
+      // The Prompt node is pinned to the top of its category ("Inputs"); the rest is alphabetical.
+      const pa = a.entry.type === PROMPT_TYPE ? 0 : 1;
+      const pb = b.entry.type === PROMPT_TYPE ? 0 : 1;
+      return ca - cb || pa - pb || Number(Boolean(a.entry.model)) - Number(Boolean(b.entry.model)) || a.entry.label.localeCompare(b.entry.label);
+    });
+    return scored.slice(0, limit).map((item) => ({ ...item.entry, compat: compat ? compat.get(item.entry.type) : null }));
+  }
+
+  /* ---------- extract a prompt into its own node ---------- */
+
+  // Why the textarea param behind input port `portId` cannot be moved into a Prompt node, or null when it can.
+  // Only unconnected `text` inputs backed by a `textarea` param qualify.
+  function extractTextParamIssue(reg, graph, nodeId, portId) {
+    if (!reg.types.has(PROMPT_TYPE)) return 'no_prompt_type';
+    const node = getNode(graph, nodeId);
+    if (!node) return 'unknown_node';
+    const port = findPort(reg, node, 'in', portId);
+    if (!port || port.hidden) return 'unknown_port';
+    const def = reg.types.get(node.type);
+    const param = port.param && def ? (def.params || []).find((item) => item.id === port.param) : null;
+    if (port.type !== 'text' || !param || param.kind !== 'textarea') return 'not_extractable';
+    if (incomingEdges(graph, nodeId, portId).length) return 'connected';
+    return null;
+  }
+
+  function canExtractTextParam(reg, graph, nodeId, portId) {
+    return extractTextParamIssue(reg, graph, nodeId, portId) === null;
+  }
+
+  // Moves the text of an embedded prompt field into a new Prompt node placed left of the target and
+  // connects it to that input. Returns { graph, node, edge } or { graph, error: { reason } }.
+  // One call = one undo step for the caller. options: { newNodeId, edgeId, position, sizes, reserved }.
+  function extractTextParamToNode(reg, graph, nodeId, portId, options = {}) {
+    const reason = extractTextParamIssue(reg, graph, nodeId, portId);
+    if (reason) return { graph, error: { reason } };
+    const target = getNode(graph, nodeId);
+    const port = findPort(reg, target, 'in', portId);
+    const def = reg.types.get(target.type);
+    const text = String(effectiveParams(def, target)[port.param] ?? '');
+    let position = options.position && Number.isFinite(options.position.x) && Number.isFinite(options.position.y) ? { x: options.position.x, y: options.position.y } : null;
+    if (!position) {
+      const x = snap(target.x - PROMPT_NODE_WIDTH - PROMPT_NODE_GAP, 8);
+      let y = snap(target.y, 8);
+      // Step down while the spot overlaps another card (bounded, the canvas can always be tidied up).
+      const height = 200;
+      for (let guard = 0; guard < 40; guard += 1) {
+        const rect = { x, y, w: PROMPT_NODE_WIDTH, h: height };
+        const clash = graph.nodes.some((other) => other.id !== nodeId && rectsIntersect(rect, nodeRect(other, options.sizes)));
+        if (!clash) break;
+        y += 48;
+      }
+      position = { x, y };
+    }
+    const added = addNode(reg, graph, PROMPT_TYPE, { id: options.newNodeId, x: position.x, y: position.y, params: { prompt: text }, reserved: options.reserved });
+    const linked = connect(reg, added.graph, { node: added.node.id, port: 'prompt' }, { node: nodeId, port: portId }, { id: options.edgeId, reserved: options.reserved });
+    if (linked.error) return { graph, error: { reason: linked.error.code } };
+    const cleared = setParams(linked.graph, nodeId, { [port.param]: '' });
+    return { graph: cleared, node: added.node, edge: linked.edge };
+  }
+
+  // Conditional param visibility (registry showIf): { param, equals }, { port, connected } or { ports: [...], connected }
+  // (connected false = none of the ports is connected, true = at least one).
   function isVisible(showIf, node, def, connectedPorts) {
     if (!showIf) return true;
     if (showIf.param !== undefined) {
@@ -845,6 +944,10 @@
     if (showIf.port !== undefined) {
       const connected = Boolean(connectedPorts && connectedPorts.has(showIf.port));
       return connected === Boolean(showIf.connected);
+    }
+    if (Array.isArray(showIf.ports)) {
+      const any = showIf.ports.some((port) => Boolean(connectedPorts && connectedPorts.has(port)));
+      return any === Boolean(showIf.connected);
     }
     return true;
   }
@@ -919,6 +1022,12 @@
     validate,
     fuzzyScore,
     compatibleTargets,
+    quickPickTargets,
+    rankPaletteEntries,
+    extractTextParamIssue,
+    canExtractTextParam,
+    extractTextParamToNode,
+    PROMPT_TYPE,
     firstCompatiblePort,
     isVisible
   };

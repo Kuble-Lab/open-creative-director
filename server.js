@@ -16,6 +16,7 @@ const store = require('./lib/store');
 const or = require('./lib/openrouter');
 const brain = require('./lib/brain');
 const gts = require('./lib/gts');
+const fal = require('./lib/fal');
 const poller = require('./lib/poller');
 const discovery = require('./lib/discovery');
 const rendernode = require('./lib/rendernode');
@@ -432,7 +433,8 @@ function publicRuntimeConfig() {
     defaultBrain: availableDefaultBrain(runtime.defaultBrain, brainModels),
     imageModel: runtime.imageModel,
     videoModel: runtime.videoModel,
-    gts: { enabled: gts.hasToken() }
+    gts: { enabled: gts.hasToken() },
+    fal: { enabled: fal.hasKey() }
   };
 }
 

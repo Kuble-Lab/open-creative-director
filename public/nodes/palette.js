@@ -10,6 +10,8 @@
   const { el } = ui;
 
   const MAX_RESULTS = 90;
+  const ANCHORED_WIDTH = 380;
+  const ANCHORED_MAX_HEIGHT = 440;
   const HIGGSFIELD_SOURCES = [
     { type: 'image.higgsfield', source: 'higgsfield-image-models', kind: 'image' },
     { type: 'video.higgsfield', source: 'higgsfield-video-models', kind: 'video' }
@@ -71,31 +73,7 @@
     }
 
     function visibleEntries() {
-      const reg = getReg();
-      let entries = state.entries;
-      let compat = null;
-      if (state.filter) {
-        compat = new Map(graphLib.compatibleTargets(reg, state.filter.dir, state.filter.type).map((item) => [item.type, item]));
-        entries = entries.filter((entry) => compat.has(entry.type));
-      }
-      if (state.category !== 'all') entries = entries.filter((entry) => entry.category === state.category);
-      const query = state.query.trim();
-      const categoryOrder = new Map(reg.categories.map((category, index) => [category, index]));
-      const scored = entries
-        .map((entry) => {
-          const match = graphLib.fuzzyScore(query, entry.search);
-          const rank = compat ? compat.get(entry.type).rank : 0;
-          return { entry, score: match, rank };
-        })
-        .filter((item) => item.score > 0);
-      scored.sort((a, b) => {
-        if (query) return b.score - a.score || b.rank - a.rank || a.entry.label.localeCompare(b.entry.label);
-        if (compat && b.rank !== a.rank) return b.rank - a.rank;
-        const ca = categoryOrder.get(a.entry.category) ?? 99;
-        const cb = categoryOrder.get(b.entry.category) ?? 99;
-        return ca - cb || Number(Boolean(a.entry.model)) - Number(Boolean(b.entry.model)) || a.entry.label.localeCompare(b.entry.label);
-      });
-      return scored.slice(0, MAX_RESULTS).map((item) => ({ ...item.entry, compat: compat ? compat.get(item.entry.type) : null }));
+      return graphLib.rankPaletteEntries(getReg(), state.entries, { query: state.query, category: state.category, filter: state.filter, limit: MAX_RESULTS });
     }
 
     function renderChips() {
@@ -215,12 +193,26 @@
       }
     }
 
-    function open({ filter = null, context = null } = {}) {
+    // Anchored mode (drag to empty canvas): a compact popover at the release point instead of the centred overlay.
+    function placeAnchored(panel, at) {
+      const bounds = root.getBoundingClientRect();
+      const width = Math.min(ANCHORED_WIDTH, Math.max(240, bounds.width - 16));
+      const height = Math.min(ANCHORED_MAX_HEIGHT, Math.max(200, bounds.height - 16));
+      const left = Math.min(Math.max(at.x - bounds.left, 8), Math.max(8, bounds.width - width - 8));
+      const top = Math.min(Math.max(at.y - bounds.top, 8), Math.max(8, bounds.height - height - 8));
+      panel.style.width = `${width}px`;
+      panel.style.maxHeight = `${height}px`;
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    }
+
+    function open({ filter = null, context = null, at = null } = {}) {
       if (state) close();
       previousFocus = document.activeElement;
       const reg = getReg();
       if (!reg) return;
-      root = el('div', { class: 'nv-palette-backdrop' });
+      const anchored = Boolean(filter && at && Number.isFinite(at.x) && Number.isFinite(at.y));
+      root = el('div', { class: `nv-palette-backdrop ${anchored ? 'is-anchored' : ''}`.trim() });
       const panel = el('div', { class: 'nv-palette', role: 'dialog', 'aria-label': ui.T('nodes.palette.title') });
       const input = el('input', {
         class: 'nv-pal-input',
@@ -252,6 +244,7 @@
       panel.append(chips, list, foot);
       root.append(panel);
       host.append(root);
+      if (anchored) placeAnchored(panel, at);
       state = { input, chips, list, filter, context, query: '', category: 'all', index: 0, results: [], entries: buildEntries() };
       renderChips();
       renderList();

@@ -71,6 +71,22 @@ async function main() {
     assert.deepEqual(JSON.parse(await fsp.readFile(file, 'utf8')), {});
     assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 
+    // fal.ai key (node view): whitelisted, mirrored into the environment, masked in the status list
+    assert.ok(SETTING_NAMES.includes('FAL_KEY'));
+    delete process.env.FAL_KEY;
+    settings.loadSettings();
+    assert.equal(settings.listSettingsStatus().find((entry) => entry.name === 'FAL_KEY').source, null);
+    settings.setSetting('FAL_KEY', ' 00000000-aaaa-bbbb-cccc-000000000000:secretvalue ');
+    assert.equal(settings.getSetting('FAL_KEY'), '00000000-aaaa-bbbb-cccc-000000000000:secretvalue');
+    assert.equal(process.env.FAL_KEY, '00000000-aaaa-bbbb-cccc-000000000000:secretvalue');
+    assert.deepEqual(
+      settings.listSettingsStatus().find((entry) => entry.name === 'FAL_KEY'),
+      { name: 'FAL_KEY', source: 'settings', masked: '0000…alue' }
+    );
+    settings.setSetting('FAL_KEY', '');
+    assert.equal(process.env.FAL_KEY, undefined);
+    assert.deepEqual(JSON.parse(await fsp.readFile(file, 'utf8')), {});
+
     console.log('Settings: Whitelist, Maskierung, Set/Get/Delete, Env-Fallback, Spiegelung und Dateirechte sind korrekt.');
   } finally {
     for (const name of SETTING_NAMES) {

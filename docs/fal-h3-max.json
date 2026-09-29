@@ -1,0 +1,3264 @@
+{
+  "_about": "Public fal.ai queue OpenAPI input/output schemas and list pricing of the MiniMax H3 Max endpoints, fetched 2026-09-29 from https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=<id> and https://fal.ai/models/<id>/llms.txt. minimax/h3-max/director is a realtime WebRTC endpoint (no queue API) and is not included.",
+  "endpoints": {
+    "minimax/h3-max/text-to-video": {
+      "summary": "fal's H3 Max is a post-trained variant of MiniMax H3, tuned for stronger prompt adherence and better aesthetics while co-optimized with our custom inference stack for higher throughput with no compromises on output quality",
+      "pricing": "Video costs $0.025 per second at 480p, $0.04 per second at 768p, and $0.08 per second at 1080p. Note: these are promotional launch rates, 50% off for a limited time. The discount ends September 30, after which 480p is $0.05/second, 768p is $0.08/second, and 1080p is $0.16/second.",
+      "input": {
+        "title": "TurboTextToVideoHailuo03Input",
+        "required": [
+          "prompt",
+          "prompt_expansion_mode"
+        ],
+        "x-fal-order-properties": [
+          "prompt",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_safety_checker",
+          "sync_mode",
+          "prompt_expansion_mode",
+          "target_audio_url",
+          "aspect_ratio"
+        ],
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "Text prompt for video generation",
+            "examples": [
+              "A white kitten chases a butterfly across a sunlit garden. Gentle camera tracking, natural movement, soft afternoon light filtering through the leaves."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "prompt_expansion_mode": {
+            "title": "Prompt Expansion Mode",
+            "default": "balanced",
+            "description": "How much effort to spend rewriting the prompt before generation. 'disabled' skips prompt expansion. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.",
+            "examples": [
+              "disabled",
+              "balanced",
+              "quality"
+            ],
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed. A random seed is selected when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "If set to true, the safety checker will be enabled.",
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "The native generation resolution, or 1080P latent refinement from a native 768P source.",
+            "type": "string"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "default": "16:9",
+            "description": "The aspect ratio of the generated video.",
+            "type": "string"
+          },
+          "duration": {
+            "minimum": 5,
+            "default": 5,
+            "description": "The duration of the video in seconds.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "default": false,
+            "description": "Return the generated video as base64 instead of a CDN URL.",
+            "type": "boolean"
+          },
+          "target_audio_url": {
+            "title": "Target Audio Url",
+            "description": "Optional URL of an audio clip at least 2 seconds long (maximum 15 MB) to pin to the generated soundtrack. Longer clips are trimmed to the requested video duration, keeping the beginning. The original audio replaces the output soundtrack, padded with silence if shorter than the video, without changing playback speed. Exceptionally high sample rates may be resampled to 96 kHz. Accepts an HTTP(S) URL or a base64 data URI.",
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string",
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "output": {
+        "title": "TurboTextToVideoHailuo03Output",
+        "required": [
+          "video"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "expanded_prompt",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The generated video",
+            "examples": [
+              {
+                "content_type": "video/mp4",
+                "url": "https://v3b.fal.media/files/b/0aa46818/--prs89fkHtWW406fmEs__NRhTqNku.mp4",
+                "file_name": "--prs89fkHtWW406fmEs__NRhTqNku.mp4",
+                "file_size": 6463396
+              }
+            ]
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/image-to-video": {
+      "summary": "fal's H3 Max is a post-trained variant of MiniMax H3, tuned for stronger prompt adherence and better aesthetics while co-optimized with our custom inference stack for higher throughput with no compromises on output quality",
+      "pricing": "Video costs $0.025 per second at 480p, $0.04 per second at 768p, and $0.08 per second at 1080p. Note: these are promotional launch rates, 50% off for a limited time. The discount ends September 30, after which 480p is $0.05/second, 768p is $0.08/second, and 1080p is $0.16/second.",
+      "input": {
+        "title": "TurboImageToVideoHailuo03Input",
+        "required": [
+          "prompt",
+          "prompt_expansion_mode"
+        ],
+        "x-fal-order-properties": [
+          "prompt",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_safety_checker",
+          "sync_mode",
+          "prompt_expansion_mode",
+          "target_audio_url",
+          "image_url",
+          "end_image_url"
+        ],
+        "type": "object",
+        "properties": {
+          "end_image_url": {
+            "title": "End Image URL",
+            "description": "Optional URL of the image to use as the last frame. It may be provided alone for end-only keyframe generation; in that case the output canvas follows this image.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "Text prompt for video generation",
+            "examples": [
+              "The camera slowly pulls back from the scene, revealing the full landscape as clouds drift overhead and light shifts across the terrain."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "image_url": {
+            "title": "Image URL",
+            "description": "Optional URL of the image to use as the first frame. When provided, the output canvas follows this image. If only end_image_url is provided, the canvas follows that last frame instead. If both images are omitted, the request is handled as text-to-video (16:9 by default).",
+            "examples": [
+              "https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg"
+            ],
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt_expansion_mode": {
+            "title": "Prompt Expansion Mode",
+            "default": "balanced",
+            "description": "How much effort to spend rewriting the prompt before generation. 'disabled' skips prompt expansion. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.",
+            "examples": [
+              "disabled",
+              "balanced",
+              "quality"
+            ],
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed. A random seed is selected when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "If set to true, the safety checker will be enabled.",
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "The native generation resolution, or 1080P latent refinement from a native 768P source.",
+            "type": "string"
+          },
+          "duration": {
+            "minimum": 5,
+            "default": 5,
+            "description": "The duration of the video in seconds.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "default": false,
+            "description": "Return the generated video as base64 instead of a CDN URL.",
+            "type": "boolean"
+          },
+          "target_audio_url": {
+            "title": "Target Audio Url",
+            "description": "Optional URL of an audio clip at least 2 seconds long (maximum 15 MB) to pin to the generated soundtrack. Longer clips are trimmed to the requested video duration, keeping the beginning. The original audio replaces the output soundtrack, padded with silence if shorter than the video, without changing playback speed. Exceptionally high sample rates may be resampled to 96 kHz. Accepts an HTTP(S) URL or a base64 data URI.",
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string",
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "output": {
+        "title": "TurboImageToVideoHailuo03Output",
+        "required": [
+          "video"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "expanded_prompt",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The generated video"
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/reference-to-video": {
+      "summary": "fal's H3 Max is a post-trained variant of MiniMax H3, tuned for stronger prompt adherence and better aesthetics while co-optimized with our custom inference stack for higher throughput with no compromises on output quality",
+      "pricing": "Billing uses the requested output duration at $0.05 per second for 480p, $0.08 for 768p, and $0.16 for 1080p. Each request includes 4,096 reference tokens, shared across all reference images, videos, and audio clips; additional usage costs $0.02 per 1,000 tokens, prorated. Square reference images, including 1024 × 1024 and 2048 × 2048 uploads, contribute 1,024 tokens each. With no video or audio references, the first four square images add no reference charge, and each additional square image adds $0.02048 (about $0.02). For example, a 5-second 768p output costs $0.40 with up to four square reference images, or $0.42048 with five. See the pricing details below for other image shapes, video references, and audio references.",
+      "input": {
+        "title": "TurboReferenceToVideoHailuo03Input",
+        "required": [
+          "prompt",
+          "prompt_expansion_mode"
+        ],
+        "x-fal-order-properties": [
+          "prompt",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_safety_checker",
+          "sync_mode",
+          "prompt_expansion_mode",
+          "aspect_ratio",
+          "reference_image_urls",
+          "reference_video_urls",
+          "reference_audio_urls"
+        ],
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "Text prompt for video generation. Refer to reference assets by their modality and order in the reference lists: Image 1, Image 2, Video 1, Audio 1, and so on.",
+            "examples": [
+              "Image 1 is the female protagonist. Image 2 is her small dog. Keep the woman and dog consistent with their respective reference images while they walk together through a sunlit garden."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "prompt_expansion_mode": {
+            "title": "Prompt Expansion Mode",
+            "default": "balanced",
+            "description": "How much effort to spend rewriting the prompt before generation. 'disabled' skips prompt expansion. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.",
+            "examples": [
+              "disabled",
+              "balanced",
+              "quality"
+            ],
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "The native generation resolution, or 1080P latent refinement from a native 768P source.",
+            "type": "string"
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "If set to true, the safety checker will be enabled.",
+            "type": "boolean"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed. A random seed is selected when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "enum": [
+              "adaptive",
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "default": "adaptive",
+            "description": "The aspect ratio of the generated video.",
+            "type": "string"
+          },
+          "duration": {
+            "minimum": 5,
+            "default": 5,
+            "description": "The duration of the video in seconds.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "reference_video_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Video URLs",
+            "description": "URLs of motion/reference video clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Video 1, Video 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.",
+            "type": "array",
+            "maxItems": 3
+          },
+          "reference_audio_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Audio URLs",
+            "description": "URLs of reference audio clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Audio 1, Audio 2, and so on. Images, videos, and audio can be provided individually or together. Reference images, videos, and audio clips must add up to at most 12 files.",
+            "type": "array",
+            "maxItems": 3
+          },
+          "reference_image_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Image URLs",
+            "description": "URLs of subject/style reference images, referenced in the prompt as Image 1, Image 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.",
+            "examples": [
+              [
+                "https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg"
+              ]
+            ],
+            "type": "array",
+            "maxItems": 9
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "default": false,
+            "description": "Return the generated video as base64 instead of a CDN URL.",
+            "type": "boolean"
+          }
+        }
+      },
+      "output": {
+        "title": "TurboReferenceToVideoHailuo03Output",
+        "required": [
+          "video",
+          "seed"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "expanded_prompt",
+          "seed",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The generated video"
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Base seed for reproducing the generation.",
+            "type": "integer"
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/lip-sync/image-to-video": {
+      "summary": "H3 Max Lip Sync generates a video from an image and supplied audio, synchronizing mouth movements to the soundtrack. It supports optional transcription guidance and output resolutions from 480p to 2K.",
+      "pricing": "Billing is calculated per second of generated video. Video costs $0.05 per second at 480p, $0.08 per second at 768p, $0.16 per second at 1080p, and $0.32 per second at 2K. A 1.2x multiplier is added to videos over 15 seconds. A 5-second video at 768p costs $0.40. A 30-second video at 768p costs $2.88.",
+      "input": {
+        "title": "LipSyncImageInput",
+        "required": [
+          "image_url",
+          "audio_url"
+        ],
+        "x-fal-order-properties": [
+          "image_url",
+          "audio_url",
+          "resolution",
+          "enable_transcription",
+          "seed",
+          "enable_safety_checker"
+        ],
+        "type": "object",
+        "properties": {
+          "audio_url": {
+            "title": "Audio Url",
+            "description": "Audio to synchronize the mouth movements to, at least 5 seconds long. Supports up to 15 minutes. The output video matches the supplied audio duration.",
+            "type": "string"
+          },
+          "enable_transcription": {
+            "title": "Enable Transcription",
+            "default": false,
+            "description": "Transcribe the supplied audio to guide lip synchronization. When disabled, synchronize to the audio without a transcript.",
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P",
+              "2K"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "Output resolution. Uses the supported aspect ratio nearest the image.",
+            "type": "string"
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "Enable content safety checks.",
+            "type": "boolean"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed; selected randomly if omitted.",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image_url": {
+            "title": "Image Url",
+            "description": "Image to animate. The aspect ratio must be between 0.4 and 2.5.",
+            "type": "string"
+          }
+        }
+      },
+      "output": {
+        "title": "LipSyncOutput",
+        "required": [
+          "video",
+          "seed",
+          "duration"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "seed",
+          "duration",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend, summed over every window this request generated. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "Lip-synced video with the supplied soundtrack."
+          },
+          "duration": {
+            "title": "Duration",
+            "description": "Output duration in seconds.",
+            "type": "number"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed used for generation.",
+            "type": "integer"
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/camera-controls": {
+      "summary": "H3 Max Multi Angle turns a single image into a video with precise, keyframe-based control over the camera's orbit, elevation, and distance in 3D space",
+      "pricing": "Video costs $0.025 per second at 480p, $0.04 per second at 768p, and $0.08 per second at 1080p. Note: these are promotional launch rates, 50% off for a limited time. The discount ends September 30, after which 480p is $0.05/second, 768p is $0.08/second, and 1080p is $0.16/second.",
+      "input": {
+        "title": "H3MaxMultiAngleInput",
+        "description": "MiniMax H3 Multi-angle input with a fixed internal camera LoRA.",
+        "x-fal-order-properties": [
+          "prompt",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_safety_checker",
+          "sync_mode",
+          "prompt_expansion_mode",
+          "image_url",
+          "camera_trajectory"
+        ],
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "title": "Prompt",
+            "default": "The same elements in the reference are rigid. Preserve every element exactly. The entire scene is frozen. Only the camera moves. no scene motion only camera motion",
+            "description": "Text prompt for video generation. When omitted or blank, defaults to preserving the frozen reference scene while only the camera moves.",
+            "examples": [
+              "Orbit precisely around the subject while preserving its identity and the scene."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "prompt_expansion_mode": {
+            "title": "Prompt Expansion Mode",
+            "default": "balanced",
+            "description": "How much effort to spend rewriting the prompt before generation. 'disabled' skips prompt expansion. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.",
+            "examples": [
+              "disabled",
+              "balanced",
+              "quality"
+            ],
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "title": "Resolution",
+            "default": "480P",
+            "description": "The native generation resolution, or 1080P latent refinement from a native 768P source.",
+            "type": "string"
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "If set to true, the safety checker will be enabled.",
+            "type": "boolean"
+          },
+          "camera_trajectory": {
+            "items": {
+              "$ref": "#/components/schemas/H3MaxCameraKeyframe"
+            },
+            "description": "Ordered camera keyframes. The first pose is held before its time and the final pose is held for the remainder of the video. Signed full turns are preserved, with at most 32 turns of total azimuth travel.",
+            "maxItems": 12,
+            "title": "Camera Trajectory",
+            "examples": [
+              [
+                {
+                  "time": 0,
+                  "elevation": 0,
+                  "azimuth": 0,
+                  "distance": 1
+                },
+                {
+                  "time": 0.3,
+                  "elevation": 15,
+                  "azimuth": 45,
+                  "distance": 0.2
+                },
+                {
+                  "time": 0.8,
+                  "elevation": -90,
+                  "azimuth": 90,
+                  "distance": 1
+                }
+              ]
+            ],
+            "type": "array",
+            "minItems": 2
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed. A random seed is selected when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration": {
+            "minimum": 3,
+            "default": 5,
+            "description": "The duration of the video in seconds.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "default": false,
+            "description": "Return the generated video as base64 instead of a CDN URL.",
+            "type": "boolean"
+          },
+          "image_url": {
+            "minLength": 1,
+            "title": "Image URL",
+            "description": "URL of the image to use as the first frame.",
+            "examples": [
+              "https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_url",
+          "prompt_expansion_mode"
+        ]
+      },
+      "output": {
+        "title": "TurboImageToVideoHailuo03Output",
+        "required": [
+          "video"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "expanded_prompt",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The generated video"
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "schemas": {
+        "H3MaxCameraKeyframe": {
+          "title": "H3MaxCameraKeyframe",
+          "description": "One camera pose at a normalized point in the generated clip.",
+          "x-fal-order-properties": [
+            "time",
+            "azimuth",
+            "elevation",
+            "distance"
+          ],
+          "type": "object",
+          "properties": {
+            "time": {
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Normalized video time, from 0 at the start to 1 at the end.",
+              "title": "Time",
+              "type": "number"
+            },
+            "elevation": {
+              "minimum": -90,
+              "maximum": 90,
+              "description": "Vertical camera angle around the subject, in degrees.",
+              "title": "Elevation",
+              "type": "number"
+            },
+            "azimuth": {
+              "title": "Azimuth",
+              "description": "Horizontal camera angle around the subject, in degrees.",
+              "type": "number"
+            },
+            "distance": {
+              "title": "Distance",
+              "description": "Camera distance from the subject in normalized scene units.",
+              "exclusiveMinimum": 0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "time",
+            "azimuth",
+            "elevation",
+            "distance"
+          ]
+        },
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/extend-video": {
+      "summary": "H3 Max Extend Video adds a text-guided continuation to an existing video. It supports prompt expansion, adjustable duration and aspect ratio, and output resolutions from 480p to 2K, returning either the full extended video or only the new footage.",
+      "pricing": "Billing is calculated per second of generated video, plus reference input charges beyond the included allowance. Video costs $0.05 per second at 480p, $0.08 per second at 768p, $0.16 per second at 1080p, and $0.32 per second at 2K. Each request includes 4,096 reference tokens at no additional charge. Reference usage above this allowance costs $0.02 per 1,000 tokens, prorated to the actual token count.",
+      "input": {
+        "title": "TurboExtendVideoHailuo03Input",
+        "description": "Extend a video with new footage based on a prompt.",
+        "x-fal-order-properties": [
+          "video_url",
+          "prompt",
+          "enable_prompt_expansion",
+          "duration",
+          "resolution",
+          "aspect_ratio",
+          "seed",
+          "output",
+          "enable_safety_checker"
+        ],
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "What happens next. Describe the continuation, not the source.",
+            "examples": [
+              "The red panda keeps walking along the log, then looks up at a bird."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "output": {
+            "enum": [
+              "extended",
+              "continuation"
+            ],
+            "title": "Output",
+            "default": "extended",
+            "description": "'extended' returns the whole source video followed by the new footage. 'continuation' returns only the generated continuation.",
+            "type": "string"
+          },
+          "enable_prompt_expansion": {
+            "title": "Enable Prompt Expansion",
+            "default": true,
+            "description": "Automatically enhance the prompt using the source video to help keep the continuation consistent. May increase processing time.",
+            "type": "boolean"
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "Moderate the source video and the prompt.",
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P",
+              "2K"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "Output video resolution.",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Seed for the continuation. Random when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "enum": [
+              "auto",
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "default": "auto",
+            "description": "Output aspect ratio. 'auto' follows the source video. Other values crop the video to fit the selected ratio.",
+            "type": "string"
+          },
+          "duration": {
+            "minimum": 5,
+            "default": 5,
+            "description": "Seconds of new footage to add after the source. The actual duration may be slightly longer.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "video_url": {
+            "minLength": 1,
+            "title": "Video Url",
+            "description": "URL of the video to extend. Must be 1.625 s to 60 s long, up to 50 MB, aspect ratio between 0.4 and 2.5.",
+            "examples": [
+              "https://storage.googleapis.com/falserverless/example_inputs/flux-3-red-panda.mp4"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_url",
+          "prompt"
+        ]
+      },
+      "output": {
+        "title": "TurboExtendVideoHailuo03Output",
+        "required": [
+          "video",
+          "seed",
+          "duration",
+          "source"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "seed",
+          "duration",
+          "source",
+          "expanded_prompt",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "source": {
+            "title": "Source",
+            "description": "Source video information: width, height, frame rate, duration, and audio.",
+            "type": "object"
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The extended video, or only the continuation per 'output'."
+          },
+          "duration": {
+            "title": "Duration",
+            "description": "Seconds of returned video.",
+            "type": "number"
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt used after expansion, or null when unchanged.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Seed used for the continuation.",
+            "type": "integer"
+          },
+          "timings": {
+            "title": "Timings",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/insert-video": {
+      "summary": "Insert a new scene into an existing video with H3 Max. Guide the scene with a prompt, reference images, or reference videos, then return to the original footage.",
+      "pricing": "Your request will cost $0.05 per second of generated scene at 480p or $0.06 per second at 768p. Only the newly generated scene duration is billed, not the full output video. The first 4,096 reference tokens are included; additional reference tokens cost $0.02 per 1,000 tokens, prorated.",
+      "input": {
+        "properties": {
+          "color_match": {
+            "title": "Color Match",
+            "type": "boolean",
+            "default": true
+          },
+          "resolution": {
+            "title": "Resolution",
+            "enum": [
+              "480p",
+              "768p"
+            ],
+            "type": "string",
+            "default": "768p"
+          },
+          "start_time": {
+            "maximum": 60,
+            "title": "Start Time",
+            "type": "number",
+            "minimum": 1.625
+          },
+          "reference_video_urls": {
+            "title": "Reference Video Urls",
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3
+          },
+          "duration": {
+            "maximum": 13,
+            "title": "Duration",
+            "type": "number",
+            "default": 5,
+            "minimum": 5
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string",
+                "maxLength": 50000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "enable_prompt_expansion": {
+            "title": "Enable Prompt Expansion",
+            "type": "boolean",
+            "default": true
+          },
+          "video_url": {
+            "title": "Video Url",
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference_image_urls": {
+            "title": "Reference Image Urls",
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 9
+          },
+          "resume_time": {
+            "maximum": 60,
+            "title": "Resume Time",
+            "type": "number",
+            "exclusiveMinimum": 1.625
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "x-fal-order-properties": [
+          "video_url",
+          "prompt",
+          "reference_image_urls",
+          "reference_video_urls",
+          "start_time",
+          "resume_time",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_prompt_expansion",
+          "color_match"
+        ],
+        "required": [
+          "video_url",
+          "start_time",
+          "resume_time"
+        ],
+        "title": "InjectVideoInput"
+      },
+      "output": {
+        "properties": {
+          "frame_count": {
+            "title": "Frame Count",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "injected_duration": {
+            "title": "Injected Duration",
+            "type": "number"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "number"
+          },
+          "duration": {
+            "title": "Duration",
+            "type": "number"
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoFile"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "expanded_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expanded Prompt"
+          },
+          "timings": {
+            "title": "Timings",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "object"
+          },
+          "resume_time": {
+            "title": "Resume Time",
+            "type": "number"
+          }
+        },
+        "x-fal-order-properties": [
+          "video",
+          "seed",
+          "width",
+          "height",
+          "frame_count",
+          "duration",
+          "start_time",
+          "resume_time",
+          "injected_duration",
+          "expanded_prompt",
+          "source",
+          "timings"
+        ],
+        "type": "object",
+        "required": [
+          "video",
+          "seed",
+          "width",
+          "height",
+          "frame_count",
+          "duration",
+          "start_time",
+          "resume_time",
+          "injected_duration",
+          "source",
+          "timings"
+        ],
+        "title": "InjectVideoOutput"
+      },
+      "schemas": {
+        "VideoFile": {
+          "properties": {
+            "duration": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Duration",
+              "description": "The duration of the video"
+            },
+            "height": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Height",
+              "description": "The height of the video"
+            },
+            "width": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Width",
+              "description": "The width of the video"
+            },
+            "file_size": {
+              "description": "The size of the file in bytes.",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File Size",
+              "examples": [
+                4404019
+              ]
+            },
+            "url": {
+              "type": "string",
+              "description": "The URL where the file can be downloaded from.",
+              "title": "Url"
+            },
+            "content_type": {
+              "description": "The mime type of the file.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Content Type",
+              "examples": [
+                "image/png"
+              ]
+            },
+            "fps": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fps",
+              "description": "The FPS of the video"
+            },
+            "file_name": {
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File Name",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ]
+            },
+            "num_frames": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Num Frames",
+              "description": "The number of frames in the video"
+            }
+          },
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size",
+            "width",
+            "height",
+            "fps",
+            "duration",
+            "num_frames"
+          ],
+          "type": "object",
+          "title": "VideoFile",
+          "required": [
+            "url"
+          ]
+        }
+      }
+    },
+    "minimax/h3-max/3d-to-video": {
+      "summary": "Transform Blender renders and 3D previs into photorealistic video. H3 Max uses the source clip to guide scene layout, camera movement, and timing, with optional image references for appearance.",
+      "pricing": "For every second of video you generate you will be charged $0.05 at 480p, $0.08 at 768p or $0.16 at 1080p (minimum 5 seconds), plus reference token usage for your input video and images, the same as H3 Max Reference to Video. If you don't provide reference images, up to max_generated_reference_images (default 2) are generated automatically at about $0.02–$0.04 each. For example, a 5 second 16:9 video at 768p with your own reference images costs about $0.96.",
+      "input": {
+        "properties": {
+          "video_url": {
+            "title": "Video",
+            "type": "string",
+            "description": "Blender video, up to 15 seconds and 32 shots, at a public HTTPS URL."
+          },
+          "prompt": {
+            "title": "Scene Intent",
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional clarification of what your proxies represent or how they move, for example: 'The moving block represents a running person.' Camera, trajectories, timing and object count remain defined by the video."
+          },
+          "reference_image_urls": {
+            "title": "Reference Images",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional environment, subject, interior or detail references. When supplied, uses these images directly without visual planning or generating new images; Scene Intent is optional. Without references, automatically creates appearance references within your new-image limit. Camera and movement always come from the video.",
+            "maxItems": 8
+          },
+          "max_generated_reference_images": {
+            "maximum": 8,
+            "title": "Maximum New References",
+            "type": "integer",
+            "minimum": 1,
+            "default": 2,
+            "description": "Maximum NEW images to generate when no reference images are supplied. Ignored when reference images are supplied. Uses fewer when enough views are covered. Uncovered shots stay in the video."
+          },
+          "resolution": {
+            "title": "Quality",
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "type": "string",
+            "default": "768P",
+            "description": "Output quality. Duration is taken automatically from the video."
+          }
+        },
+        "title": "Input",
+        "required": [
+          "video_url"
+        ],
+        "additionalProperties": false,
+        "type": "object",
+        "x-fal-order-properties": [
+          "video_url",
+          "prompt",
+          "reference_image_urls",
+          "max_generated_reference_images",
+          "resolution"
+        ]
+      },
+      "output": {
+        "properties": {
+          "video": {
+            "$ref": "#/components/schemas/Video",
+            "description": "The finished realistic video, matching the input duration."
+          }
+        },
+        "title": "Output",
+        "required": [
+          "video"
+        ],
+        "type": "object",
+        "x-fal-order-properties": [
+          "video"
+        ]
+      },
+      "schemas": {
+        "Video": {
+          "properties": {
+            "url": {
+              "title": "Url",
+              "type": "string",
+              "description": "The URL where the file can be downloaded from."
+            },
+            "content_type": {
+              "title": "Content Type",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The mime type of the file."
+            },
+            "file_name": {
+              "title": "File Name",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The name of the file. It will be auto-generated if not provided."
+            },
+            "file_size": {
+              "title": "File Size",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The size of the file in bytes."
+            }
+          },
+          "title": "Video",
+          "required": [
+            "url"
+          ],
+          "type": "object",
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ]
+        }
+      }
+    },
+    "minimax/h3-max-turbo/text-to-video": {
+      "summary": "fal's H3 Max Turbo is a post-trained variant of MiniMax H3, tuned for stronger prompt adherence and better aesthetics while co-optimized with our custom inference stack for higher throughput with no compromises on output quality",
+      "pricing": "Video costs $0.0125 per second at 480p, $0.02 per second at 768p, and $0.04 per second at 1080p. Note: these are promotional launch rates, 50% off for a limited time. The discount ends September 30, after which 480p is $0.025/second, 768p is $0.04/second, and 1080p is $0.08/second.",
+      "input": {
+        "title": "TurboTextToVideoHailuo03Input",
+        "required": [
+          "prompt",
+          "prompt_expansion_mode"
+        ],
+        "x-fal-order-properties": [
+          "prompt",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_safety_checker",
+          "sync_mode",
+          "prompt_expansion_mode",
+          "target_audio_url",
+          "aspect_ratio"
+        ],
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "Text prompt for video generation",
+            "examples": [
+              "A white kitten chases a butterfly across a sunlit garden. Gentle camera tracking, natural movement, soft afternoon light filtering through the leaves."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "prompt_expansion_mode": {
+            "title": "Prompt Expansion Mode",
+            "default": "balanced",
+            "description": "How much effort to spend rewriting the prompt before generation. 'disabled' skips prompt expansion. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.",
+            "examples": [
+              "disabled",
+              "balanced",
+              "quality"
+            ],
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed. A random seed is selected when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "If set to true, the safety checker will be enabled.",
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "The native generation resolution, or 1080P latent refinement from a native 768P source.",
+            "type": "string"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "default": "16:9",
+            "description": "The aspect ratio of the generated video.",
+            "type": "string"
+          },
+          "duration": {
+            "minimum": 5,
+            "default": 5,
+            "description": "The duration of the video in seconds.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "default": false,
+            "description": "Return the generated video as base64 instead of a CDN URL.",
+            "type": "boolean"
+          },
+          "target_audio_url": {
+            "title": "Target Audio Url",
+            "description": "Optional URL of an audio clip at least 2 seconds long (maximum 15 MB) to pin to the generated soundtrack. Longer clips are trimmed to the requested video duration, keeping the beginning. The original audio replaces the output soundtrack, padded with silence if shorter than the video, without changing playback speed. Exceptionally high sample rates may be resampled to 96 kHz. Accepts an HTTP(S) URL or a base64 data URI.",
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string",
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "output": {
+        "title": "TurboTextToVideoHailuo03Output",
+        "required": [
+          "video"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "expanded_prompt",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The generated video",
+            "examples": [
+              {
+                "content_type": "video/mp4",
+                "url": "https://v3b.fal.media/files/b/0aa46818/--prs89fkHtWW406fmEs__NRhTqNku.mp4",
+                "file_name": "--prs89fkHtWW406fmEs__NRhTqNku.mp4",
+                "file_size": 6463396
+              }
+            ]
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max-turbo/image-to-video": {
+      "summary": "fal's H3 Max Turbo is a post-trained variant of MiniMax H3, tuned for stronger prompt adherence and better aesthetics while co-optimized with our custom inference stack for higher throughput with no compromises on output quality",
+      "pricing": "Video costs $0.0125 per second at 480p, $0.02 per second at 768p, and $0.04 per second at 1080p. Note: these are promotional launch rates, 50% off for a limited time. The discount ends September 30, after which 480p is $0.025/second, 768p is $0.04/second, and 1080p is $0.08/second.",
+      "input": {
+        "title": "TurboImageToVideoHailuo03Input",
+        "required": [
+          "prompt",
+          "prompt_expansion_mode"
+        ],
+        "x-fal-order-properties": [
+          "prompt",
+          "duration",
+          "resolution",
+          "seed",
+          "enable_safety_checker",
+          "sync_mode",
+          "prompt_expansion_mode",
+          "target_audio_url",
+          "image_url",
+          "end_image_url"
+        ],
+        "type": "object",
+        "properties": {
+          "end_image_url": {
+            "title": "End Image URL",
+            "description": "Optional URL of the image to use as the last frame. It may be provided alone for end-only keyframe generation; in that case the output canvas follows this image.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "Text prompt for video generation",
+            "examples": [
+              "The camera slowly pulls back from the scene, revealing the full landscape as clouds drift overhead and light shifts across the terrain."
+            ],
+            "type": "string",
+            "maxLength": 50000
+          },
+          "image_url": {
+            "title": "Image URL",
+            "description": "Optional URL of the image to use as the first frame. When provided, the output canvas follows this image. If only end_image_url is provided, the canvas follows that last frame instead. If both images are omitted, the request is handled as text-to-video (16:9 by default).",
+            "examples": [
+              "https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg"
+            ],
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt_expansion_mode": {
+            "title": "Prompt Expansion Mode",
+            "default": "balanced",
+            "description": "How much effort to spend rewriting the prompt before generation. 'disabled' skips prompt expansion. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.",
+            "examples": [
+              "disabled",
+              "balanced",
+              "quality"
+            ],
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "description": "Random seed. A random seed is selected when omitted.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enable_safety_checker": {
+            "title": "Enable Safety Checker",
+            "default": true,
+            "description": "If set to true, the safety checker will be enabled.",
+            "type": "boolean"
+          },
+          "resolution": {
+            "enum": [
+              "480P",
+              "768P",
+              "1080P"
+            ],
+            "title": "Resolution",
+            "default": "768P",
+            "description": "The native generation resolution, or 1080P latent refinement from a native 768P source.",
+            "type": "string"
+          },
+          "duration": {
+            "minimum": 5,
+            "default": 5,
+            "description": "The duration of the video in seconds.",
+            "maximum": 15,
+            "type": "integer",
+            "title": "Duration"
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "default": false,
+            "description": "Return the generated video as base64 instead of a CDN URL.",
+            "type": "boolean"
+          },
+          "target_audio_url": {
+            "title": "Target Audio Url",
+            "description": "Optional URL of an audio clip at least 2 seconds long (maximum 15 MB) to pin to the generated soundtrack. Longer clips are trimmed to the requested video duration, keeping the beginning. The original audio replaces the output soundtrack, padded with silence if shorter than the video, without changing playback speed. Exceptionally high sample rates may be resampled to 96 kHz. Accepts an HTTP(S) URL or a base64 data URI.",
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string",
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "output": {
+        "title": "TurboImageToVideoHailuo03Output",
+        "required": [
+          "video"
+        ],
+        "x-fal-order-properties": [
+          "video",
+          "expanded_prompt",
+          "timings"
+        ],
+        "type": "object",
+        "properties": {
+          "timings": {
+            "title": "Timings",
+            "description": "Timing breakdown in seconds. 'inference' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/File",
+            "description": "The generated video"
+          },
+          "expanded_prompt": {
+            "title": "Expanded Prompt",
+            "description": "The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/styles/vhs": {
+      "summary": "Generates 768p VHS-style video with audio from text prompts or an optional first-frame image. Supports 5–15 second clips and adjustable tape damage, from subtle analog noise to strong tracking distortion.",
+      "pricing": "Billing is calculated per second of video generated. Video at 768p costs $0.08 per second, with audio included. A 5-second video costs $0.40, and a 15-second video costs $1.20.",
+      "input": {
+        "properties": {
+          "image_url": {
+            "description": "Optional first-frame image. Use a 4:3 image for the classic VHS frame; the image's aspect ratio determines the output canvas.",
+            "title": "Image Url",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "description": "Describe the scene, action, camera and sound. VHS style and tape damage are applied automatically.",
+            "minLength": 1,
+            "type": "string",
+            "maxLength": 49910,
+            "title": "Prompt",
+            "examples": [
+              "A camcorder explores an abandoned shopping mall at midnight. A lone carousel starts turning beneath flickering fluorescent lights. Handheld push-in, mechanical creaks and distant music."
+            ]
+          },
+          "damage_level": {
+            "description": "Tape wear: light adds subtle analog noise, medium adds visible damage, and heavy adds strong tracking errors and distortion.",
+            "enum": [
+              "light",
+              "medium",
+              "heavy"
+            ],
+            "type": "string",
+            "title": "Damage Level",
+            "default": "medium"
+          },
+          "seed": {
+            "description": "Random seed. Omit to choose one automatically.",
+            "title": "Seed",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "description": "Video aspect ratio for text-only generation. Ignored when image_url is provided.",
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "type": "string",
+            "title": "Aspect Ratio",
+            "default": "16:9"
+          },
+          "duration": {
+            "maximum": 15,
+            "description": "Requested video duration in seconds.",
+            "type": "integer",
+            "title": "Duration",
+            "minimum": 5,
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "VHSInput",
+        "x-fal-order-properties": [
+          "prompt",
+          "image_url",
+          "damage_level",
+          "duration",
+          "aspect_ratio",
+          "seed"
+        ],
+        "required": [
+          "prompt"
+        ]
+      },
+      "output": {
+        "properties": {
+          "video": {
+            "description": "Generated 768P VHS-style video with audio.",
+            "$ref": "#/components/schemas/File"
+          },
+          "seed": {
+            "description": "Seed used for this generation.",
+            "type": "integer",
+            "title": "Seed"
+          }
+        },
+        "x-fal-order-properties": [
+          "video",
+          "seed"
+        ],
+        "type": "object",
+        "title": "VHSOutput",
+        "required": [
+          "video",
+          "seed"
+        ]
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/styles/retro-toon-70s": {
+      "summary": "Generates 768p video with audio in a retro 1970s hand-painted animation style from text prompts or an optional first-frame image. Supports durations of 5–15 seconds.",
+      "pricing": "Billing is calculated per second of video generated. Video at 768p costs $0.08 per second, with audio included. A 5-second video costs $0.40, and a 15-second video costs $1.20.",
+      "input": {
+        "properties": {
+          "image_url": {
+            "description": "Optional first-frame image. Use painted-style artwork for the most consistent look; the image's aspect ratio determines the output canvas.",
+            "title": "Image Url",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "description": "Describe the scene, action, camera and sound. The retro 1970s hand-painted animation style is applied automatically.",
+            "minLength": 1,
+            "type": "string",
+            "maxLength": 49864,
+            "title": "Prompt",
+            "examples": [
+              "A lone warrior with a broadsword stands on a windswept rocky ridge at sunset as an enormous dragon glides past below him. Wide heroic shot. Wind and the slow beat of dragon wings, no speech."
+            ]
+          },
+          "seed": {
+            "description": "Random seed. Omit to choose one automatically.",
+            "title": "Seed",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "description": "Video aspect ratio for text-only generation. Ignored when image_url is provided.",
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "type": "string",
+            "title": "Aspect Ratio",
+            "default": "16:9"
+          },
+          "duration": {
+            "maximum": 15,
+            "description": "Requested video duration in seconds.",
+            "type": "integer",
+            "title": "Duration",
+            "minimum": 5,
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RetroToonInput",
+        "x-fal-order-properties": [
+          "prompt",
+          "image_url",
+          "duration",
+          "aspect_ratio",
+          "seed"
+        ],
+        "required": [
+          "prompt"
+        ]
+      },
+      "output": {
+        "properties": {
+          "video": {
+            "description": "Generated 768P retro hand-painted animation video with audio.",
+            "$ref": "#/components/schemas/File"
+          },
+          "seed": {
+            "description": "Seed used for this generation.",
+            "type": "integer",
+            "title": "Seed"
+          }
+        },
+        "x-fal-order-properties": [
+          "video",
+          "seed"
+        ],
+        "type": "object",
+        "title": "RetroToonOutput",
+        "required": [
+          "video",
+          "seed"
+        ]
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/styles/low-poly": {
+      "summary": "Generates 768p video with audio in a retro low-poly 3D style from text prompts or an optional first-frame image. Supports durations of 5–15 seconds.",
+      "pricing": "Billing is calculated per second of video generated. Video at 768p costs $0.08 per second, with audio included. A 5-second video costs $0.40, and a 15-second video costs $1.20.",
+      "input": {
+        "properties": {
+          "image_url": {
+            "description": "Optional first-frame image. Use low-poly or retro 3D artwork for the most consistent look; the image's aspect ratio determines the output canvas.",
+            "title": "Image Url",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "description": "Describe the scene, action, camera and sound. The retro low-poly 3D style is applied automatically.",
+            "minLength": 1,
+            "type": "string",
+            "maxLength": 49914,
+            "title": "Prompt",
+            "examples": [
+              "A woman in a red coat runs across a rainy rooftop at night, jumps over a low ventilation duct and keeps running. A helicopter searchlight sweeps the buildings behind her. The camera tracks alongside her."
+            ]
+          },
+          "seed": {
+            "description": "Random seed. Omit to choose one automatically.",
+            "title": "Seed",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "description": "Video aspect ratio for text-only generation. Ignored when image_url is provided.",
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "type": "string",
+            "title": "Aspect Ratio",
+            "default": "16:9"
+          },
+          "duration": {
+            "maximum": 15,
+            "description": "Requested video duration in seconds.",
+            "type": "integer",
+            "title": "Duration",
+            "minimum": 5,
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LowPolyInput",
+        "x-fal-order-properties": [
+          "prompt",
+          "image_url",
+          "duration",
+          "aspect_ratio",
+          "seed"
+        ],
+        "required": [
+          "prompt"
+        ]
+      },
+      "output": {
+        "properties": {
+          "video": {
+            "description": "Generated 768P retro low-poly 3D video with audio.",
+            "$ref": "#/components/schemas/File"
+          },
+          "seed": {
+            "description": "Seed used for this generation.",
+            "type": "integer",
+            "title": "Seed"
+          }
+        },
+        "x-fal-order-properties": [
+          "video",
+          "seed"
+        ],
+        "type": "object",
+        "title": "LowPolyOutput",
+        "required": [
+          "video",
+          "seed"
+        ]
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/styles/hand-drawn": {
+      "summary": "Generates 768p video with audio in a hand-drawn animation style from text prompts or an optional first-frame image. Supports durations of 5–15 seconds.",
+      "pricing": "Billing is calculated per second of video generated. Video at 768p costs $0.08 per second, with audio included. A 5-second video costs $0.40, and a 15-second video costs $1.20.",
+      "input": {
+        "properties": {
+          "image_url": {
+            "description": "Optional first-frame image. Use pencil artwork for the most consistent look; the image's aspect ratio determines the output canvas.",
+            "title": "Image Url",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "description": "Describe the scene, action, camera and sound. The Hand drawn style is applied automatically.",
+            "minLength": 1,
+            "type": "string",
+            "maxLength": 49868,
+            "title": "Prompt",
+            "examples": [
+              "A weary office worker watches his neck stretch upward as a tiny bird lands on his head. Medium locked shot, exaggerated surprise. Soft wing flutters and distant city ambience, no speech."
+            ]
+          },
+          "seed": {
+            "description": "Random seed. Omit to choose one automatically.",
+            "title": "Seed",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "description": "Video aspect ratio for text-only generation. Ignored when image_url is provided.",
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "type": "string",
+            "title": "Aspect Ratio",
+            "default": "16:9"
+          },
+          "duration": {
+            "maximum": 15,
+            "description": "Requested video duration in seconds.",
+            "type": "integer",
+            "title": "Duration",
+            "minimum": 5,
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HandDrawnInput",
+        "x-fal-order-properties": [
+          "prompt",
+          "image_url",
+          "duration",
+          "aspect_ratio",
+          "seed"
+        ],
+        "required": [
+          "prompt"
+        ]
+      },
+      "output": {
+        "properties": {
+          "video": {
+            "description": "Generated 768P hand-drawn animation video with audio.",
+            "$ref": "#/components/schemas/File"
+          },
+          "seed": {
+            "description": "Seed used for this generation.",
+            "type": "integer",
+            "title": "Seed"
+          }
+        },
+        "x-fal-order-properties": [
+          "video",
+          "seed"
+        ],
+        "type": "object",
+        "title": "HandDrawnOutput",
+        "required": [
+          "video",
+          "seed"
+        ]
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "minimax/h3-max/styles/16bit-pixel": {
+      "summary": "Generates 768p video with audio in a 16-bit pixel-art style from text prompts or an optional first-frame image. Supports durations of 5–15 seconds.",
+      "pricing": "Billing is calculated per second of video generated. Video at 768p costs $0.08 per second, with audio included. A 5-second video costs $0.40, and a 15-second video costs $1.20.",
+      "input": {
+        "properties": {
+          "image_url": {
+            "description": "Optional first-frame image. Use pixel artwork for the most consistent style. When provided, its aspect ratio determines the output canvas.",
+            "title": "Image Url",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "description": "Describe the scene, action, camera and sound. The 16-bit pixel style is applied automatically.",
+            "minLength": 1,
+            "type": "string",
+            "maxLength": 49815,
+            "title": "Prompt",
+            "examples": [
+              "A young bicycle courier pedals through a sunlit flower market. Medium side view, steady tracking camera, measured pedaling. Bicycle chain clicks and gentle market ambience."
+            ]
+          },
+          "seed": {
+            "description": "Random seed. Omit to choose one automatically.",
+            "title": "Seed",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aspect_ratio": {
+            "description": "Video aspect ratio for text-only generation. Ignored when image_url is provided.",
+            "enum": [
+              "21:9",
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16"
+            ],
+            "type": "string",
+            "title": "Aspect Ratio",
+            "default": "16:9"
+          },
+          "duration": {
+            "maximum": 15,
+            "description": "Requested video duration in seconds.",
+            "type": "integer",
+            "title": "Duration",
+            "minimum": 5,
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PixelInput",
+        "x-fal-order-properties": [
+          "prompt",
+          "image_url",
+          "duration",
+          "aspect_ratio",
+          "seed"
+        ],
+        "required": [
+          "prompt"
+        ]
+      },
+      "output": {
+        "properties": {
+          "video": {
+            "description": "Generated 768P pixel-animation video with audio.",
+            "$ref": "#/components/schemas/File"
+          },
+          "seed": {
+            "description": "Seed used for this generation.",
+            "type": "integer",
+            "title": "Seed"
+          }
+        },
+        "x-fal-order-properties": [
+          "video",
+          "seed"
+        ],
+        "type": "object",
+        "title": "PixelOutput",
+        "required": [
+          "video",
+          "seed"
+        ]
+      },
+      "schemas": {
+        "File": {
+          "title": "File",
+          "required": [
+            "url"
+          ],
+          "x-fal-order-properties": [
+            "url",
+            "content_type",
+            "file_name",
+            "file_size"
+          ],
+          "type": "object",
+          "properties": {
+            "content_type": {
+              "title": "Content Type",
+              "description": "The mime type of the file.",
+              "examples": [
+                "image/png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "url": {
+              "title": "Url",
+              "description": "The URL where the file can be downloaded from.",
+              "type": "string"
+            },
+            "file_name": {
+              "title": "File Name",
+              "description": "The name of the file. It will be auto-generated if not provided.",
+              "examples": [
+                "z9RV14K95DvU.png"
+              ],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "file_size": {
+              "title": "File Size",
+              "description": "The size of the file in bytes.",
+              "examples": [
+                4404019
+              ],
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

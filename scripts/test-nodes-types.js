@@ -179,7 +179,7 @@ function testRegistry() {
 async function testBasicNodes() {
   const registry = registryModule.registry;
   const expected = [
-    'input.text', 'input.number', 'input.text_list', 'input.image', 'input.video', 'input.audio', 'input.media_list',
+    'input.prompt', 'input.text', 'input.number', 'input.text_list', 'input.image', 'input.video', 'input.audio', 'input.media_list',
     'text.template', 'text.join', 'text.split', 'util.pick', 'util.router', 'output.result'
   ];
   for (const type of expected) {
@@ -207,6 +207,15 @@ async function testBasicNodes() {
   assert.equal(list.variants[0].items.of, 'text');
 
   assert.equal((await exec('input.text', {}, { text: 'hi' })).variants[0].text.value, 'hi');
+  // the Prompt node: same value as input.text on an output port named prompt, listed first in the inputs
+  const promptDef = registry.get('input.prompt');
+  assert.deepEqual(promptDef.outputs, [{ id: 'prompt', type: 'text' }]);
+  assert.deepEqual(promptDef.inputs, []);
+  assert.equal(promptDef.params.find((param) => param.id === 'prompt').kind, 'textarea');
+  assert.equal(promptDef.params.find((param) => param.id === 'prompt').inline, true);
+  assert.equal(registry.list().findIndex((def) => def.type === 'input.prompt') < registry.list().findIndex((def) => def.type === 'input.text'), true, 'Prompt is registered before Text input');
+  assert.deepEqual((await exec('input.prompt', {}, { prompt: 'a red fox' })).variants[0].prompt, textValue('a red fox'));
+  assert.deepEqual((await exec('input.prompt', {}, {})).variants[0].prompt, textValue(''));
   assert.deepEqual((await exec('input.number', {}, { value: '3.5' })).variants[0].value, numberValue(3.5));
   const numberDef = registry.get('input.number');
   assert.deepEqual(numberDef.validate(registry.normalizeParams(numberDef, { value: 5, min: 6 })), ['value is below min (6)']);

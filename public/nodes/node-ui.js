@@ -68,6 +68,7 @@
     'edit-video': 'M4 5h16v14H4zM8 5v14M16 5v14M4 9h4M4 15h4M16 9h4M16 15h4',
     'edit-audio': 'M3 12h3l2-6 4 12 3-9 2 3h4',
     higgsfield: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3.1-5.4 3.1 1.2-6-4.5-4.2 6.1-.7z',
+    fal: 'M13 3L5 13.5h6L10 21l8-10.5h-6z',
     utility: 'M12 9a3 3 0 100 6 3 3 0 000-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1',
     output: 'M12 15V4m0 0L8 8m4-4l4 4M5 17v3h14v-3',
     unknown: 'M9.5 9a2.5 2.5 0 115 0c0 1.7-2.5 2-2.5 4M12 17h.01',
@@ -117,7 +118,8 @@
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     arrowUp: 'M12 19V5m0 0l-5 5m5-5l5 5',
     arrowDown: 'M12 5v14m0 0l-5-5m5 5l5-5',
-    external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6'
+    external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+    extract: 'M9 6H5v12h4M9 12h11m0 0l-4-4m4 4l-4 4'
   };
 
   function icon(name, size = 16, className = '') {
@@ -616,7 +618,19 @@
     };
   }
 
+  // Widget options of a prompt textarea: the Prompt node gets a large field, embedded prompt fields that
+  // also have a text input hint at the second way (connect a Prompt node). Empty object for other params.
+  function promptFieldOptions(node, param, inputs) {
+    if (!param || param.kind !== 'textarea') return {};
+    if (node && node.type === 'input.prompt') return { large: true, rows: 5, maxHeight: 360, placeholder: T('nodes.prompt.placeholder') };
+    if (param.id === 'prompt' && (inputs || []).some((port) => port.param === param.id && port.type === 'text')) {
+      return { placeholder: T('nodes.prompt.embeddedPlaceholder') };
+    }
+    return {};
+  }
+
   // Builds the widget of one param. ctx = { node, onChange(value, { commit }), uploadFile, compact }.
+  // Optional ctx.placeholder / rows / maxHeight / large (see promptFieldOptions) shape textarea fields.
   // Returns { el, set(value), get() }; set() is used when the node is updated from outside.
   function paramWidget(param, value, ctx) {
     const kind = param.kind;
@@ -626,14 +640,14 @@
 
     if (kind === 'textarea' || kind === 'code') {
       const area = el('textarea', {
-        class: `nv-input nv-textarea nv-nodrag ${kind === 'code' ? 'is-code' : ''}`.trim(),
-        rows: compact ? 3 : kind === 'code' ? 8 : 4,
+        class: `nv-input nv-textarea nv-nodrag ${kind === 'code' ? 'is-code' : ''} ${ctx.large ? 'is-prompt' : ''}`.trim(),
+        rows: ctx.rows || (compact ? 3 : kind === 'code' ? 8 : 4),
         spellcheck: kind === 'code' ? 'false' : null,
         'aria-label': paramLabel(param.id),
-        placeholder: paramLabel(param.id)
+        placeholder: ctx.placeholder || paramLabel(param.id)
       });
       area.value = value ?? '';
-      const max = compact ? 220 : 320;
+      const max = ctx.maxHeight || (compact ? 220 : 320);
       area.addEventListener('input', () => {
         if (compact) autosize(area, max);
         ctx.onChange(area.value, { commit: false });
@@ -829,7 +843,25 @@
     const wrap = el('div', { class: `nv-field ${options.inline ? 'is-inline' : ''}`.trim() });
     if (labelText) {
       const label = el('label', { class: 'nv-field-label', text: labelText });
-      if (options.expose) {
+      if (options.action) {
+        // small text button next to the label, e.g. "Move into a Prompt node"
+        const action = el('button', { type: 'button', class: 'nv-field-action', title: options.action.title, 'aria-label': options.action.title }, icon(options.action.icon || 'extract', 12), el('span', { text: options.action.label }));
+        action.addEventListener('click', options.action.onClick);
+        const tools = el('div', { class: 'nv-field-tools' }, action);
+        if (options.expose) {
+          const toggle = el('button', {
+            type: 'button',
+            class: `nv-expose ${options.expose.active ? 'is-on' : ''}`.trim(),
+            title: options.expose.title,
+            'aria-label': options.expose.title,
+            'aria-pressed': options.expose.active ? 'true' : 'false'
+          });
+          toggle.append(icon('app', 12), el('span', { text: T('nodes.app.badge') }));
+          toggle.addEventListener('click', options.expose.onToggle);
+          tools.append(toggle);
+        }
+        wrap.append(el('div', { class: 'nv-field-head' }, label, tools));
+      } else if (options.expose) {
         const toggle = el('button', {
           type: 'button',
           class: `nv-expose ${options.expose.active ? 'is-on' : ''}`.trim(),
@@ -1019,6 +1051,7 @@
         const widget = paramWidget(param, effective[param.id], {
           node,
           compact: true,
+          ...promptFieldOptions(node, param, list.inputs),
           onChange: (value, meta) => {
             paintCount(value);
             ctx.onParam(state.node.id, param.id, value, meta);
@@ -1027,6 +1060,19 @@
         });
         state.widgets.set(param.id, widget);
         row.append(widget.el);
+        // "Move into a Prompt node": only for an unconnected text input backed by this textarea.
+        const extractPort = param.kind === 'textarea' && ctx.onExtract && ctx.reg.types.has('input.prompt')
+          ? list.inputs.find((port) => port.param === param.id && port.type === 'text' && !port.hidden && !connected.has(port.id))
+          : null;
+        if (extractPort) {
+          row.classList.add('has-extract');
+          const button = el('button', { type: 'button', class: 'nv-extract-btn nv-nodrag', title: T('nodes.prompt.extract'), 'aria-label': T('nodes.prompt.extract') }, icon('extract', 13));
+          button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            ctx.onExtract(state.node.id, extractPort.id);
+          });
+          row.append(button);
+        }
         if (counter) {
           paintCount(effective[param.id]);
           row.append(counter);
@@ -1057,6 +1103,7 @@
     state.node = node;
     const { refs } = state;
     state.el.dataset.cat = def?.category || 'unknown';
+    state.el.dataset.type = node.type;
     state.el.classList.toggle('is-unknown', !def);
     state.el.classList.toggle('is-unavailable', Boolean(def) && def.available !== true);
     const heading = node.title || (def ? typeLabel(def) : node.type);
@@ -1210,6 +1257,7 @@
     isMediaValue,
     renderValue,
     paramWidget,
+    promptFieldOptions,
     field,
     autosize,
     acceptFor,

@@ -23,7 +23,7 @@ function build() {
 }
 
 function testRegistryIndex() {
-  assert.ok(reg.types.size >= 62, 'registry index has all node types');
+  assert.ok(reg.types.size >= 72, 'registry index has all node types');
   assert.ok(reg.types.has('image.generate'));
   assert.equal(reg.listSuffix, '[]');
   const ports = graphLib.portsFor(reg, { type: 'input.media_list', params: {} });
@@ -443,12 +443,161 @@ function testFuzzyAndPalette() {
   assert.equal(back.id, 'image');
 }
 
+// Palette entries the way palette.js builds them (label = English registry label, no i18n needed here).
+function paletteEntries() {
+  return reg.list.map((def) => ({
+    key: def.type,
+    type: def.type,
+    category: def.category,
+    label: def.label,
+    search: [def.label, def.category, ...(def.keywords || []), def.type].join(' ')
+  }));
+}
+
+function testPromptNodeRegistered() {
+  const def = reg.types.get('input.prompt');
+  assert.ok(def, 'input.prompt is in the registry');
+  assert.equal(def.category, 'input');
+  assert.deepEqual(def.outputs, [{ id: 'prompt', type: 'text' }]);
+  assert.ok(reg.types.has('input.text'), 'input.text stays for saved workflows');
+  const inputs = reg.list.filter((entry) => entry.category === 'input');
+  assert.equal(inputs[0].type, 'input.prompt', 'Prompt is the first node of the input category');
+}
+
+function testPaletteRanking() {
+  const entries = paletteEntries();
+  // browsing the palette: "Inputs" first, Prompt at the very top
+  assert.equal(graphLib.rankPaletteEntries(reg, entries)[0].type, 'input.prompt');
+  // searching "prompt": the Prompt node beats "Text input" (which only has the keyword)
+  const search = graphLib.rankPaletteEntries(reg, entries, { query: 'prompt' }).map((entry) => entry.type);
+  assert.equal(search[0], 'input.prompt');
+  assert.ok(search.indexOf('input.prompt') < search.indexOf('input.text'));
+}
+
+function testQuickPick() {
+  const entries = paletteEntries();
+  const rank = (dir, type, options = {}) => graphLib.rankPaletteEntries(reg, entries, { filter: { dir, type }, ...options });
+
+  // dragging from an unconnected text input: producers of text, Prompt on top
+  const fromTextInput = rank('in', 'text');
+  assert.equal(fromTextInput[0].type, 'input.prompt', 'Prompt first for a text input');
+  assert.equal(fromTextInput[0].compat.portId, 'prompt');
+  const producers = new Set(fromTextInput.map((entry) => entry.type));
+  assert.ok(producers.has('input.text') && producers.has('llm.chat'), 'other text producers stay available');
+  assert.ok(!producers.has('image.crop'), 'image.crop has no text output');
+  assert.ok(!producers.has('output.result'), 'output nodes produce nothing');
+  assert.equal(rank('in', 'text', { query: 'prompt' })[0].type, 'input.prompt');
+  // no Prompt boost for other types, and Prompt is not offered for an image input
+  assert.ok(!rank('in', 'image').some((entry) => entry.type === 'input.prompt'), 'a text output does not fit an image input');
+  assert.equal(rank('in', 'image')[0].type, 'input.image', 'exact matches lead for image inputs');
+  // dragging from an output: only nodes with a compatible input, no Prompt (it has no inputs)
+  const fromImageOutput = rank('out', 'image').map((entry) => entry.type);
+  assert.ok(fromImageOutput.includes('image.crop'));
+  assert.ok(!fromImageOutput.includes('input.prompt') && !fromImageOutput.includes('input.image'));
+  const fromTextOutput = rank('out', 'text').map((entry) => entry.type);
+  assert.ok(fromTextOutput.includes('image.generate') && !fromTextOutput.includes('image.crop'), 'incompatible types are filtered out');
+  // the filter honours the compatibility matrix (video does not fit an image input)
+  assert.ok(!rank('out', 'video').some((entry) => entry.type === 'image.crop'));
+  // category chips still narrow the quick pick
+  assert.ok(rank('in', 'text', { category: 'llm' }).every((entry) => entry.category === 'llm'));
+  // pure targets used by the ranking
+  const targets = graphLib.quickPickTargets(reg, 'in', 'text');
+  assert.equal(targets[0].type, 'input.prompt');
+  assert.deepEqual(graphLib.quickPickTargets(reg, 'in', 'bogus'), []);
+}
+
+function testExtractPrompt() {
+  const b = build();
+  const gen = b.add('image.generate', 600, 200, { prompt: 'a lighthouse at dawn' });
+  const before = b.graph;
+  const nodeCount = before.nodes.length;
+
+  assert.equal(graphLib.canExtractTextParam(reg, before, gen, 'prompt'), true);
+  const result = graphLib.extractTextParamToNode(reg, before, gen, 'prompt');
+  assert.ok(!result.error);
+  assert.equal(result.graph.nodes.length, nodeCount + 1);
+  assert.equal(result.node.type, 'input.prompt');
+  assert.equal(result.node.params.prompt, 'a lighthouse at dawn', 'the text moves into the Prompt node');
+  assert.equal(graphLib.getNode(result.graph, gen).params.prompt, '', 'the param of the target is cleared');
+  assert.equal(result.graph.edges.length, 1);
+  assert.deepEqual(result.graph.edges[0].from, { node: result.node.id, port: 'prompt' });
+  assert.deepEqual(result.graph.edges[0].to, { node: gen, port: 'prompt' });
+  assert.deepEqual(graphLib.validate(reg, result.graph), []);
+  // placed to the left of the target, at its height, without covering it
+  assert.ok(result.node.x + 340 < 600, 'ends left of the target card');
+  assert.equal(result.node.y, 200);
+  // the input is connected now: extracting again is refused
+  assert.equal(graphLib.canExtractTextParam(reg, result.graph, gen, 'prompt'), false);
+  const again = graphLib.extractTextParamToNode(reg, result.graph, gen, 'prompt');
+  assert.equal(again.error.reason, 'connected');
+  assert.equal(again.graph, result.graph, 'a refused extraction returns the graph unchanged');
+  // input already connected before: refused, nothing changes
+  const text = b.add('input.text', 100, 0, { text: 'x' });
+  const wired = graphLib.connect(reg, b.graph, { node: text, port: 'text' }, { node: gen, port: 'prompt' });
+  assert.equal(graphLib.extractTextParamToNode(reg, wired.graph, gen, 'prompt').error.reason, 'connected');
+  // only text inputs backed by a textarea qualify
+  const dur = b.add('image.to_video', 900, 0);
+  assert.equal(graphLib.extractTextParamIssue(reg, b.graph, dur, 'duration'), 'not_extractable', 'number inputs are not extractable');
+  assert.equal(graphLib.extractTextParamIssue(reg, b.graph, gen, 'nope'), 'unknown_port');
+  assert.equal(graphLib.extractTextParamIssue(reg, b.graph, 'zz', 'prompt'), 'unknown_node');
+  const html = b.add('video.motion_graphics', 900, 300);
+  assert.equal(graphLib.extractTextParamIssue(reg, b.graph, html, 'html'), 'not_extractable', 'code fields are not extractable');
+  // a registry without the Prompt type refuses gracefully
+  const noPrompt = { ...reg, types: new Map([...reg.types].filter(([type]) => type !== 'input.prompt')) };
+  assert.equal(graphLib.extractTextParamIssue(noPrompt, b.graph, gen, 'prompt'), 'no_prompt_type');
+  // explicit ids and position are honoured
+  const custom = graphLib.extractTextParamToNode(reg, before, gen, 'prompt', { newNodeId: 'p9', edgeId: 'e9', position: { x: -80, y: 16 } });
+  assert.equal(custom.node.id, 'p9');
+  assert.equal(custom.edge.id, 'e9');
+  assert.deepEqual([custom.node.x, custom.node.y], [-80, 16]);
+  // an occupied spot is avoided: another card sits where the Prompt node would land
+  const c = build();
+  const target = c.add('image.generate', 600, 200, { prompt: 'p' });
+  const blocker = c.add('input.text', 204, 200);
+  const nudged = graphLib.extractTextParamToNode(reg, c.graph, target, 'prompt');
+  const blockerRect = graphLib.nodeRect(graphLib.getNode(c.graph, blocker));
+  assert.equal(graphLib.rectsIntersect({ x: nudged.node.x, y: nudged.node.y, w: 340, h: 200 }, blockerRect), false, 'does not land on top of another card');
+  // one undo step restores everything (history snapshots of before / after)
+  const history = require('../public/nodes/history').createHistory({ now: () => 0 });
+  history.reset(graphLib.content(before));
+  history.commit(graphLib.content(result.graph), { label: 'extract-prompt' });
+  assert.equal(history.size, 2, 'the extraction is a single history entry');
+  const undone = graphLib.withContent(result.graph, history.undo());
+  assert.equal(undone.nodes.length, nodeCount);
+  assert.equal(graphLib.getNode(undone, gen).params.prompt, 'a lighthouse at dawn', 'undo restores the text in the target');
+  assert.equal(undone.edges.length, 0, 'undo removes the edge');
+  assert.equal(graphLib.sameContent(undone, before), true);
+  const redone = graphLib.withContent(undone, history.redo());
+  assert.equal(graphLib.sameContent(redone, result.graph), true);
+}
+
+function testQuickPickCreatesConnectedNode() {
+  // What main.js does after a pick: add the node and connect it to the first compatible port, as one graph.
+  const b = build();
+  const gen = b.add('image.generate', 600, 200);
+  const added = graphLib.addNode(reg, b.graph, 'input.prompt', { x: 300, y: 180 });
+  const port = graphLib.firstCompatiblePort(reg, added.node, 'in', 'text');
+  assert.equal(port.id, 'prompt');
+  const linked = graphLib.connect(reg, added.graph, { node: added.node.id, port: port.id }, { node: gen, port: 'prompt' });
+  assert.ok(!linked.error);
+  assert.equal(linked.graph.edges.length, 1);
+  assert.deepEqual(graphLib.validate(reg, linked.graph), []);
+}
+
 function testShowIf() {
   const def = reg.types.get('video.seedance');
   const node = { type: 'video.seedance', params: {} };
   const aspect = def.params.find((param) => param.id === 'aspect_ratio');
   assert.equal(graphLib.isVisible(aspect.showIf, node, def, new Set()), true, 'visible while first_frame is not connected');
   assert.equal(graphLib.isVisible(aspect.showIf, node, def, new Set(['first_frame'])), false, 'hidden once first_frame is connected');
+  // H3 Max video: the ratio is hidden as soon as a first OR a last frame is connected
+  const h3 = reg.types.get('fal.h3_video');
+  const h3Aspect = h3.params.find((param) => param.id === 'aspect_ratio');
+  const h3Node = { type: 'fal.h3_video', params: {} };
+  assert.equal(graphLib.isVisible(h3Aspect.showIf, h3Node, h3, new Set()), true);
+  assert.equal(graphLib.isVisible(h3Aspect.showIf, h3Node, h3, new Set(['first_frame'])), false);
+  assert.equal(graphLib.isVisible(h3Aspect.showIf, h3Node, h3, new Set(['last_frame'])), false);
+  assert.equal(graphLib.isVisible(h3Aspect.showIf, h3Node, h3, new Set(['audio'])), true);
   const crop = reg.types.get('image.crop');
   const width = crop.params.find((param) => param.id === 'width');
   assert.equal(graphLib.isVisible(width.showIf, { type: 'image.crop', params: { mode: 'pixels' } }, crop, new Set()), true);
@@ -483,6 +632,11 @@ const tests = [
   testNormalizeLoaded,
   testContentSnapshots,
   testFuzzyAndPalette,
+  testPromptNodeRegistered,
+  testPaletteRanking,
+  testQuickPick,
+  testExtractPrompt,
+  testQuickPickCreatesConnectedNode,
   testShowIf,
   testEveryTypeCanBePlaced
 ];

@@ -228,6 +228,7 @@
       },
       onParam: (nodeId, paramId, value, meta) => opts.onParam && opts.onParam(nodeId, paramId, value, meta),
       onRename: (nodeId, title) => opts.onRename && opts.onRename(nodeId, title),
+      onExtract: (nodeId, portId) => opts.onExtractPrompt && opts.onExtractPrompt(nodeId, portId),
       uploadFile: (nodeId, file, settings) => (opts.uploadFile ? opts.uploadFile(nodeId, file, settings) : Promise.reject(new Error('Upload unavailable')))
     };
 
