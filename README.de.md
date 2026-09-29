@@ -50,10 +50,10 @@ Das ist alles. Der Rest ist optional und degradiert sauber.
 | --- | --- | --- | --- |
 | `OPENROUTER_API_KEY` | **Ja** | Director-LLM, GPT-Image-2-Bilder, Seedance-2.5-Video — alles über ein OpenRouter-Konto abgerechnet | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `ELEVENLABS_API_KEY` | Optional | Text-to-Speech (`generate_speech`, Stimmenliste) | [elevenlabs.io](https://elevenlabs.io) |
-| Higgsfield-Konto | Optional | 30+ zusätzliche Bild-/Videomodelle für den Director | Kein Key — in den ⚙️ Einstellungen auf **Verbinden** klicken und im Browser bestätigen (Device-Flow, Tokens bleiben auf deinem Rechner) |
+| Higgsfield-Konto | Optional | 30+ zusätzliche Bild-/Videomodelle für den Director | Kein Key — in den ⚙️ Einstellungen auf **Verbinden** klicken und im Browser bei Higgsfield anmelden (OAuth-Login, Tokens bleiben auf dem Server). Hinter einem Reverse-Proxy `PUBLIC_BASE_URL` setzen, damit der Browser die Callback-URL erreicht |
 | ChatGPT-Abo | Optional | Der Director läuft auf GPT-5.6-Modellen über dein ChatGPT-Plus/Pro-Abo statt Token-Abrechnung | Kein Key — in der [Codex CLI](https://github.com/openai/codex) mit «Sign in with ChatGPT» einloggen, dann in den ⚙️ Einstellungen **Aus Codex-CLI-Login übernehmen** klicken. Inoffizieller Weg über das Codex-Backend (Grauzone der OpenAI-Nutzungsbedingungen) — Nutzung auf eigene Verantwortung |
 | `RENDER_NODE_URL` + `RENDER_NODE_TOKEN` | Optional | HTML/GSAP-Motion-Graphics-Rendering | Eigenen Render-Node betreiben (siehe unten); mehrere Nodes in den ⚙️ Einstellungen verwaltbar |
-| `PUBLIC_BASE_URL` | Optional | Seedance-Audio-/Video-Referenzen (brauchen öffentlich erreichbare HTTPS-URLs) | Nur beim öffentlichen Hosting nötig |
+| `PUBLIC_BASE_URL` | Optional | Seedance-Audio-/Video-Referenzen (brauchen öffentlich erreichbare HTTPS-URLs); ausserdem Basis der Higgsfield-Login-Callback-URL (`<PUBLIC_BASE_URL>/api/higgsfield/oauth/callback`) | Nur beim öffentlichen Hosting oder hinter einem Reverse-Proxy nötig |
 | `AUTH_WHOAMI_URL` + `ADMIN_EMAILS` | Optional | Team-Betrieb hinter eigenem Auth-Proxy | Nur fürs Team-Hosting — lokal läuft die App offen |
 | `GTS_API_TOKEN` + `GTS_BASE_URL` | Optional | Wissensdatenbank-Dokumente als Chat-Kontext | Jeder kompatible GTS-Endpunkt; der Beispiel-Default zeigt auf `gts.kuble.com` |
 
@@ -70,7 +70,7 @@ Node/Express-Server (server.js)
    ├─ generate_image / edit_image ── GPT Image 2 via OpenRouter
    ├─ generate_video ── Seedance 2.5 via OpenRouter (asynchrone Jobs + Poller)
    ├─ generate_speech / list_voices ── ElevenLabs (optional)
-   ├─ higgsfield_* ── Higgsfield-MCP-Client, Device-Flow-Auth (optional)
+   ├─ higgsfield_* ── Higgsfield-MCP-Client, OAuth-Login im Browser (optional)
    ├─ render_motion_graphics ── eigene HyperFrames-Render-Node(s) (optional)
    └─ Speicher: Sessions, Assets, Brandings, Cast, Projekte — einfache Dateien unter data/ und assets/
 ```

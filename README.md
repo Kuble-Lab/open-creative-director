@@ -50,10 +50,10 @@ That's it. Everything else is optional and degrades gracefully.
 | --- | --- | --- | --- |
 | `OPENROUTER_API_KEY` | **Yes** | The Director LLM, GPT Image 2 images, Seedance 2.5 video — all billed through one OpenRouter account | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `ELEVENLABS_API_KEY` | Optional | Text-to-speech (`generate_speech`, voice list) | [elevenlabs.io](https://elevenlabs.io) |
-| Higgsfield account | Optional | 30+ extra image/video models for the Director | No key — click **Connect** in ⚙️ Settings and confirm in the browser (device flow, tokens stay on your machine) |
+| Higgsfield account | Optional | 30+ extra image/video models for the Director | No key — click **Connect** in ⚙️ Settings and sign in to Higgsfield in the browser (OAuth login, tokens stay on the server). Behind a reverse proxy set `PUBLIC_BASE_URL` so the browser can reach the callback |
 | ChatGPT subscription | Optional | Run the Director on GPT-5.6 models billed to your ChatGPT Plus/Pro plan instead of per-token | No key — log in to the [Codex CLI](https://github.com/openai/codex) with "Sign in with ChatGPT", then click **Import from Codex CLI login** in ⚙️ Settings. Unofficial route via the Codex backend (gray area in OpenAI's terms) — use at your own discretion |
 | `RENDER_NODE_URL` + `RENDER_NODE_TOKEN` | Optional | HTML/GSAP motion-graphics rendering | Run your own render node (see below); multiple nodes manageable in ⚙️ Settings |
-| `PUBLIC_BASE_URL` | Optional | Seedance audio/video references (they require publicly reachable HTTPS URLs) | Only needed when hosting publicly |
+| `PUBLIC_BASE_URL` | Optional | Seedance audio/video references (they require publicly reachable HTTPS URLs); also the base of the Higgsfield login callback (`<PUBLIC_BASE_URL>/api/higgsfield/oauth/callback`) | Only needed when hosting publicly or behind a reverse proxy |
 | `AUTH_WHOAMI_URL` + `ADMIN_EMAILS` | Optional | Multi-user mode behind your own auth proxy | Only for team hosting — locally the app runs open |
 | `GTS_API_TOKEN` + `GTS_BASE_URL` | Optional | Attach knowledge-base documents as chat context | Any compatible GTS endpoint; the example default points to `gts.kuble.com` |
 
@@ -70,7 +70,7 @@ Node/Express server (server.js)
    ├─ generate_image / edit_image ── GPT Image 2 via OpenRouter
    ├─ generate_video ── Seedance 2.5 via OpenRouter (async jobs + poller)
    ├─ generate_speech / list_voices ── ElevenLabs (optional)
-   ├─ higgsfield_* ── Higgsfield MCP client, device-flow auth (optional)
+   ├─ higgsfield_* ── Higgsfield MCP client, OAuth login in the browser (optional)
    ├─ render_motion_graphics ── your HyperFrames render node(s) (optional)
    └─ Storage: sessions, assets, brandings, cast, projects — plain files under data/ and assets/
 ```

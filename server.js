@@ -325,9 +325,11 @@ function stopHiggsfieldConnectPolling() {
   higgsfieldPollInFlight = false;
 }
 
+// OAuth login: the browser callback completes the connection. The timer only watches the pending state
+// (no HTTP request) so that it stops as soon as the login is done or has expired.
 function startHiggsfieldConnectPolling(expiresIn) {
   stopHiggsfieldConnectPolling();
-  const expiresAt = Date.now() + Math.max(1, Number(expiresIn) || 900) * 1000;
+  const expiresAt = Date.now() + Math.max(1, Number(expiresIn) || 600) * 1000;
   higgsfieldConnectTimer = setInterval(async () => {
     if (higgsfieldPollInFlight) return;
     if (Date.now() >= expiresAt) return stopHiggsfieldConnectPolling();
@@ -336,12 +338,54 @@ function startHiggsfieldConnectPolling(expiresIn) {
       const result = await higgsfield.pollConnect();
       if (result.connected || !result.pending) stopHiggsfieldConnectPolling();
     } catch (err) {
-      console.warn('[higgsfield] Device-Flow-Polling:', err.message);
+      console.warn('[higgsfield] Anmeldestatus:', err.message);
     } finally {
       higgsfieldPollInFlight = false;
     }
   }, 3000);
   higgsfieldConnectTimer.unref?.();
+}
+
+const HIGGSFIELD_CALLBACK_PATH = '/api/higgsfield/oauth/callback';
+
+// Redirect URI of the OAuth login: PUBLIC_BASE_URL (without trailing slash) when set, otherwise derived from the
+// request (X-Forwarded-Proto / Host; X-Forwarded-Host only with TRUST_PROXY_HOST=1). Behind a reverse proxy with a path prefix PUBLIC_BASE_URL must be set.
+function higgsfieldRedirectUri(req) {
+  const configured = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (configured) return `${configured}${HIGGSFIELD_CALLBACK_PATH}`;
+  const headers = req.headers || {};
+  const forwarded = String(headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const protocol = forwarded === 'https' || forwarded === 'http' ? forwarded : (req.protocol === 'https' ? 'https' : 'http');
+  // X-Forwarded-Host is client-controlled unless a trusted proxy sets it, so it is only read on explicit opt-in.
+  const trustProxy = /^(1|true|yes)$/i.test(String(process.env.TRUST_PROXY_HOST || '').trim());
+  const host = String((trustProxy && headers['x-forwarded-host']) || headers.host || '').split(',')[0].trim();
+  return `${protocol}://${host}${HIGGSFIELD_CALLBACK_PATH}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+function higgsfieldCallbackPage(ok, message) {
+  const title = ok ? 'Higgsfield ist verbunden' : 'Higgsfield-Anmeldung fehlgeschlagen';
+  const text = ok ? 'Higgsfield ist verbunden \u2013 du kannst dieses Fenster schliessen.' : message;
+  return `<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#eee}main{max-width:32rem;padding:2rem;text-align:center}h1{font-size:1.3rem}p{color:#bbb}</style>
+</head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(text)}</p></main></body></html>
+`;
+}
+
+function sendHiggsfieldCallbackPage(res, status, ok, message) {
+  res.status(status);
+  res.set({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"
+  });
+  res.send(higgsfieldCallbackPage(ok, message));
 }
 
 async function higgsfieldStatusPayload() {
@@ -543,7 +587,7 @@ app.get('/api/higgsfield/status', async (req, res) => {
 app.post('/api/higgsfield/connect', async (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
   try {
-    const result = await higgsfield.startConnect();
+    const result = await higgsfield.startConnect({ redirectUri: higgsfieldRedirectUri(req) });
     higgsfieldBalanceCache = null;
     startHiggsfieldConnectPolling(result.expiresIn);
     res.json(result);
@@ -552,11 +596,35 @@ app.post('/api/higgsfield/connect', async (req, res) => {
   }
 });
 
+// Browser callback of the Higgsfield OAuth login (authorization code + PKCE); answers a small static page.
+app.get(HIGGSFIELD_CALLBACK_PATH, async (req, res) => {
+  if (!isAdmin(req)) return sendHiggsfieldCallbackPage(res, 403, false, 'Zugriff verweigert.');
+  const param = (name) => (typeof req.query?.[name] === 'string' ? req.query[name] : '');
+  try {
+    await higgsfield.completeConnect({
+      code: param('code'),
+      state: param('state'),
+      iss: param('iss'),
+      error: param('error'),
+      errorDescription: param('error_description')
+    });
+    stopHiggsfieldConnectPolling();
+    higgsfieldBalanceCache = null;
+    nodeHiggsfieldCatalog.clearCache(); // model and voice lists belong to the account that just signed in
+    sendHiggsfieldCallbackPage(res, 200, true);
+  } catch (err) {
+    // A stray request (wrong state) leaves a still valid pending login untouched.
+    if (!higgsfield.status().pending) stopHiggsfieldConnectPolling();
+    sendHiggsfieldCallbackPage(res, 400, false, err.message);
+  }
+});
+
 app.delete('/api/higgsfield/auth', async (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
   try {
     stopHiggsfieldConnectPolling();
     higgsfieldBalanceCache = null;
+    nodeHiggsfieldCatalog.clearCache();
     await higgsfield.disconnect();
     res.json({ connected: false, refreshExpiresAt: null, pending: false });
   } catch (err) {

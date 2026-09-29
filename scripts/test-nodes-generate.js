@@ -1434,6 +1434,22 @@ async function main() {
         await assert.rejects(execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, {}), /groesser als 500 MB/);
         assert.equal(uploads, uploadsBeforeEmpty, 'no upload for empty or oversized files');
 
+        // a refused duration/extra_params sends no reference file to Higgsfield
+        {
+          const uploadsBeforeRefused = uploads;
+          const putsBeforeRefused = puts.length;
+          await assert.rejects(
+            tools.executeTool(editCtx().toolCtx, 'higgsfield_generate_image', { model: 'kling-3', prompt: 'x', reference_asset_ids: [image1.assetId, image2.assetId], extra_params: [1] }),
+            /extra_params muss ein Objekt sein/
+          );
+          await assert.rejects(
+            tools.executeTool(editCtx().toolCtx, 'higgsfield_generate_video', { model: 'kling-3', prompt: 'x', reference_asset_ids: [image1.assetId], duration: 2.5 }),
+            /ganze Zahl/
+          );
+          assert.equal(uploads, uploadsBeforeRefused, 'no media_upload before the parameters are valid');
+          assert.equal(puts.length, putsBeforeRefused, 'no PUT before the parameters are valid');
+        }
+
         // the signed URL never reaches a log line
         assert.ok(!logged.some((line) => line.includes('SECRET') || line.includes('upload.example.test')), 'no signed URL in the logs');
       } finally {
@@ -1455,7 +1471,8 @@ async function main() {
       assert.deepEqual(parse(`upload_url: ${url}\nmedia_id: ${id}`), expected);
       assert.deepEqual(parse(`"upload_url" = "${url}"\n"media_id" = "${id}"`), expected);
       assert.deepEqual(parse(`curl -X PUT -H 'Content-Type: video/mp4' --data-binary @a.mp4 '${url}'\nmedia: ${id}`), expected, 'curl style, unlabelled uuid');
-      assert.deepEqual(parse(`Upload to ${url} (media ${id}).`), expected, 'a single URL is the upload URL');
+      assert.throws(() => parse(`Upload to ${url} (media ${id}).`), /Antwortformat/, 'a bare URL in prose is never the upload target');
+      assert.throws(() => parse(`Quota erreicht, Request ${id}, siehe https://higgsfield.ai/pricing`), /Antwortformat/, 'a hint link is not an upload target');
       // JSON with the url but without an id falls back to the text
       assert.equal(parse(`${JSON.stringify({ uploads: [{ upload_url: url }] })}\nmedia_id: ${id}`).mediaId, id);
       // a uuid inside the URL is not taken for the media id

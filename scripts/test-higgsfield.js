@@ -39,50 +39,8 @@ async function writeTokens(file, value) {
   await fsp.writeFile(file, `${JSON.stringify(value)}\n`, { mode: 0o600 });
 }
 
-async function testDeviceFlow(directory) {
-  const file = path.join(directory, 'device-auth.json');
-  const requests = [];
-  const responses = [
-    jsonResponse({
-      device_code: 'device-123',
-      verification_uri: 'https://higgsfield.ai/device/test',
-      expires_in: 900,
-      interval: 3
-    }),
-    jsonResponse({ error: 'authorization_pending' }, 400),
-    jsonResponse({
-      access_token: 'access-1',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      refresh_token: 'refresh-1',
-      refresh_expires_in: 604800
-    })
-  ];
-  const client = createHiggsfieldClient({
-    store: createFileTokenStore(file),
-    now: () => 1_000_000,
-    fetchImpl: async (url, options) => {
-      requests.push({ url, body: JSON.parse(options.body) });
-      return responses.shift();
-    }
-  });
-
-  assert.deepEqual(await client.startConnect(), {
-    verificationUri: 'https://higgsfield.ai/device/test',
-    expiresIn: 900
-  });
-  assert.deepEqual(await client.pollConnect(), { connected: false, pending: true });
-  assert.deepEqual(await client.pollConnect(), { connected: true });
-  assert.deepEqual(requests.map((request) => request.body), [{}, { device_code: 'device-123' }, { device_code: 'device-123' }]);
-  assert.equal(client.status().connected, true);
-  const saved = JSON.parse(await fsp.readFile(file, 'utf8'));
-  assert.equal(saved.access_token, 'access-1');
-  assert.equal(saved.refresh_token, 'refresh-1');
-  assert.equal(saved.access_expires_at, 4_600_000);
-  assert.equal(saved.refresh_expires_at, 605_800_000);
-  assert.equal((await fsp.stat(file)).mode & 0o777, 0o600);
-}
-
+// Legacy device-flow tokens (no `auth` field) keep refreshing through fnf-device-auth; the OAuth login itself is
+// covered by test-higgsfield-oauth.js.
 async function testRotatingRefresh(directory) {
   const file = path.join(directory, 'refresh-auth.json');
   await writeTokens(file, {
@@ -345,7 +303,6 @@ async function testAudioResults() {
 async function main() {
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcd-higgsfield-'));
   try {
-    await testDeviceFlow(directory);
     await testRotatingRefresh(directory);
     await testRefreshFailureDisconnects(directory);
     await testMcpFormatsAnd401(directory);
@@ -356,7 +313,7 @@ async function main() {
   } finally {
     await fsp.rm(directory, { recursive: true, force: true });
   }
-  console.log('higgsfield ok: Device-Flow, Rotation, Fehler, JSON/SSE, 401, structuredContent, Parser, Tool-Gating und Audio-Ergebnisse');
+  console.log('higgsfield ok: Legacy-Refresh, Rotation, Fehler, JSON/SSE, 401, structuredContent, Parser, Tool-Gating und Audio-Ergebnisse');
 }
 
 main().catch((err) => {

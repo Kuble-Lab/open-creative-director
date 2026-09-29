@@ -23,7 +23,8 @@ Install and run the open-source app "Open Creative Director" on this machine:
 6. Open http://localhost:3111 in my browser. Give me a one-paragraph tour:
    how to start my first production in the chat, where the ✨ prompt presets are,
    and that ⚙️ Settings lets me add keys later and connect my Higgsfield account
-   with one click (no API key needed).
+   with an OAuth login in the browser (no API key needed; behind a reverse proxy
+   PUBLIC_BASE_URL must be set so the callback is reachable).
 7. If ffmpeg is missing, mention (don't install unless I say yes) that installing
    it enables automatic visual consistency checks on finished videos.
 ```
@@ -48,7 +49,9 @@ Installiere und starte die Open-Source-App «Open Creative Director» auf diesem
 6. Oeffne http://localhost:3111 in meinem Browser. Gib mir eine kurze Tour:
    wie ich im Chat meine erste Produktion starte, wo die ✨-Prompt-Vorlagen sind,
    und dass ich in den ⚙️ Einstellungen spaeter Keys ergaenzen und mein
-   Higgsfield-Konto mit einem Klick verbinden kann (kein API-Key noetig).
+   Higgsfield-Konto per OAuth-Login im Browser verbinden kann (kein API-Key
+   noetig; hinter einem Reverse-Proxy muss PUBLIC_BASE_URL gesetzt sein, damit
+   der Callback erreichbar ist).
 7. Falls ffmpeg fehlt: Erwaehne (aber installiere nur nach meinem Ja), dass es
    automatische Konsistenz-Checks auf fertigen Videos aktiviert.
 ```
