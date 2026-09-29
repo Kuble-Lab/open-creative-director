@@ -385,6 +385,10 @@
     ['nodes.type.hf.upscale_video.label', 'Video hochskalieren (Higgsfield)', 'Upscale video (Higgsfield)', 'Escalar vídeo (Higgsfield)'],
     ['nodes.type.hf.outpaint_image.label', 'Bild erweitern (Higgsfield)', 'Outpaint image (Higgsfield)', 'Extender imagen (Higgsfield)'],
     ['nodes.type.hf.reframe_video.label', 'Video neu einpassen (Higgsfield)', 'Reframe video (Higgsfield)', 'Reencuadrar vídeo (Higgsfield)'],
+    ['nodes.type.hf.dubbing.label', 'Dubbing mit Lippensync (Higgsfield)', 'Dub with lip sync (Higgsfield)', 'Doblaje con sincronización labial (Higgsfield)'],
+    ['nodes.type.hf.voice_change.label', 'Stimme wechseln (Higgsfield)', 'Change voice (Higgsfield)', 'Cambiar voz (Higgsfield)'],
+    ['nodes.type.hf.motion_control.label', 'Bewegung übertragen (Higgsfield)', 'Motion transfer (Higgsfield)', 'Transferir movimiento (Higgsfield)'],
+    ['nodes.type.hf.speech.label', 'Sprachausgabe (Higgsfield)', 'Speech (Higgsfield)', 'Voz (Higgsfield)'],
     ['nodes.type.image.crop.label', 'Bild zuschneiden', 'Crop image', 'Recortar imagen'],
     ['nodes.type.image.resize.label', 'Bildgrösse ändern', 'Resize image', 'Cambiar tamaño de imagen'],
     ['nodes.type.image.adjust.label', 'Farben anpassen', 'Adjust colours', 'Ajustar colores'],
@@ -449,6 +453,8 @@
     ['nodes.port.width', 'Breite', 'Width', 'Ancho'],
     ['nodes.port.height', 'Höhe', 'Height', 'Alto'],
     ['nodes.port.svg', 'SVG', 'SVG', 'SVG'],
+    ['nodes.port.reference_audio', 'Referenzstimme', 'Reference voice', 'Voz de referencia'],
+    ['nodes.port.motion', 'Bewegung', 'Motion', 'Movimiento'],
 
     /* params */
     ['nodes.param.text', 'Text', 'Text', 'Texto'],
@@ -540,6 +546,10 @@
     ['nodes.param.font_weight', 'Schriftstärke', 'Font weight', 'Grosor de fuente'],
     ['nodes.param.align', 'Ausrichtung', 'Alignment', 'Alineación'],
     ['nodes.param.line_height', 'Zeilenhöhe', 'Line height', 'Interlineado'],
+    ['nodes.param.target_language', 'Zielsprache', 'Target language', 'Idioma de destino'],
+    ['nodes.param.voice', 'Stimme', 'Voice', 'Voz'],
+    ['nodes.param.voice_custom', 'Eigene Voice-ID (optional; «element:ID» für eigene Stimmen)', 'Custom voice ID (optional; "element:ID" for own voices)', 'ID de voz propia (opcional; «element:ID» para voces propias)'],
+    ['nodes.param.scene_control', 'Hintergrund aus', 'Background from', 'Fondo de'],
 
     /* option values */
     ['nodes.option.default', 'Standard', 'Default', 'Predeterminado'],
@@ -612,6 +622,27 @@
     ['nodes.option.mix', 'Mischen', 'Mix', 'Mezclar'],
     ['nodes.option.shortest', 'Kürzeste', 'Shortest', 'La más corta'],
     ['nodes.option.longest', 'Längste', 'Longest', 'La más larga'],
+    ['nodes.option.eng', 'Englisch', 'English', 'Inglés'],
+    ['nodes.option.cmn', 'Chinesisch', 'Chinese', 'Chino'],
+    ['nodes.option.fra', 'Französisch', 'French', 'Francés'],
+    ['nodes.option.hin', 'Hindi', 'Hindi', 'Hindi'],
+    ['nodes.option.ita', 'Italienisch', 'Italian', 'Italiano'],
+    ['nodes.option.jpn', 'Japanisch', 'Japanese', 'Japonés'],
+    ['nodes.option.kor', 'Koreanisch', 'Korean', 'Coreano'],
+    ['nodes.option.por', 'Portugiesisch', 'Portuguese', 'Portugués'],
+    ['nodes.option.rus', 'Russisch', 'Russian', 'Ruso'],
+    ['nodes.option.tur', 'Türkisch', 'Turkish', 'Turco'],
+    ['nodes.option.spa', 'Spanisch', 'Spanish', 'Español'],
+    ['nodes.option.deu', 'Deutsch', 'German', 'Alemán'],
+    ['nodes.option.ara', 'Arabisch', 'Arabic', 'Árabe'],
+    ['nodes.option.pol', 'Polnisch', 'Polish', 'Polaco'],
+    ['nodes.option.ind', 'Indonesisch', 'Indonesian', 'Indonesio'],
+    ['nodes.option.fil', 'Filipino', 'Filipino', 'Filipino'],
+    ['nodes.option.swe', 'Schwedisch', 'Swedish', 'Sueco'],
+    ['nodes.option.fin', 'Finnisch', 'Finnish', 'Finlandés'],
+
+    ['nodes.option.seed_audio', 'Seed Audio', 'Seed Audio', 'Seed Audio'],
+    ['nodes.option.text2speech_v2', 'Text2Speech v2', 'Text2Speech v2', 'Text2Speech v2'],
 
     /* asset picker (WP7) */
     ['nodes.picker.browse', 'Aus Chats oder Workflow wählen', 'Choose from chats or this workflow', 'Elegir de chats o de este workflow'],

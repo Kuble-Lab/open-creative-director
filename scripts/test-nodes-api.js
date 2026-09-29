@@ -243,6 +243,8 @@ async function main() {
 
       // without an injected Higgsfield catalogue (this private app has none) the routes answer 503
       assert.equal((await api('GET', '/api/nodes/options/higgsfield-image-models')).status, 503);
+      assert.equal((await api('GET', '/api/nodes/options/higgsfield-audio-models')).status, 404, 'no audio model list: hf.speech offers a fixed pair');
+      assert.equal((await api('GET', '/api/nodes/options/higgsfield-voices')).status, 503);
       assert.equal((await api('GET', '/api/nodes/higgsfield-models/some-model')).status, 503);
     }
 

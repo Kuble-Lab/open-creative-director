@@ -23,7 +23,7 @@ function build() {
 }
 
 function testRegistryIndex() {
-  assert.ok(reg.types.size >= 58, 'registry index has all node types');
+  assert.ok(reg.types.size >= 62, 'registry index has all node types');
   assert.ok(reg.types.has('image.generate'));
   assert.equal(reg.listSuffix, '[]');
   const ports = graphLib.portsFor(reg, { type: 'input.media_list', params: {} });

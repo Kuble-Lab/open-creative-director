@@ -1351,7 +1351,7 @@
 
   /* ---------- templates, projects, chat bridge (WP7) ---------- */
 
-  const REQUIREMENT_LABELS = { openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', elevenlabs: 'ElevenLabs', rendernode: 'Render node' };
+  const REQUIREMENT_LABELS = { openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', elevenlabs: 'ElevenLabs', rendernode: 'Render node', higgsfield: 'Higgsfield' };
 
   function currentLang() {
     return typeof global.getLang === 'function' ? global.getLang() : 'en';
@@ -1375,7 +1375,7 @@
     return select;
   }
 
-  // "New from template": cards of the six starter workflows with their requirements.
+  // "New from template": cards of the starter workflows with their requirements.
   async function openTemplateDialog() {
     let templates;
     try {

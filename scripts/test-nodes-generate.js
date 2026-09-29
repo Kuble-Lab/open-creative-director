@@ -1,8 +1,9 @@
 'use strict';
 
 // Tests for the generative node types (lib/nodes/nodes-generate.js, llm.js, higgsfield-catalog.js) and the
-// tools.js extensions they need (extra_params, higgsfield_edit). No provider is contacted: every provider function is
-// replaced on its module object and restored in `finally`. Backing sessions and temp files are removed at the end.
+// tools.js extensions they need (extra_params, higgsfield_edit, higgsfield_speech, the media_upload path). No provider
+// is contacted: every provider function (and global.fetch for the uploads) is replaced and restored in `finally`.
+// Backing sessions and temp files are removed at the end.
 
 const assert = require('assert/strict');
 const fsp = require('fs/promises');
@@ -90,12 +91,13 @@ function startJobCompleter(sessionId, { cost = null, results = 1, fail = null } 
       }
       const isHiggsfield = job.provider === 'higgsfield';
       const kind = job.kind || 'video';
-      const ids = [(await store.completeAsset(sessionId, job.assetId, kind === 'image' ? PNG : Buffer.from('fake-mp4'), isHiggsfield ? 0 : cost)).id];
+      const bytes = kind === 'image' ? PNG : Buffer.from(kind === 'audio' ? 'fake-wav' : 'fake-mp4');
+      const ids = [(await store.completeAsset(sessionId, job.assetId, bytes, isHiggsfield ? 0 : cost)).id];
       for (let index = 1; index < results; index += 1) {
         const extra = await store.saveAsset(sessionId, {
           kind,
-          buffer: kind === 'image' ? PNG : Buffer.from('fake-mp4'),
-          ext: kind === 'image' ? '.png' : '.mp4',
+          buffer: bytes,
+          ext: kind === 'image' ? '.png' : kind === 'audio' ? '.wav' : '.mp4',
           prompt: job.prompt,
           cost: 0
         });
@@ -195,6 +197,50 @@ function modelJson(extra = {}) {
   });
 }
 
+// seed_audio as the live MCP describes it (2026-09-29): its one media slot is typed "image" and carries both reference roles
+function seedAudioJson(extra = {}) {
+  return JSON.stringify({
+    id: 'seed_audio',
+    name: 'Seed Audio',
+    provider_name: 'ByteDance',
+    description: 'Speech',
+    output_type: 'audio',
+    parameters: [
+      { name: 'prompt', required: 'required', type: 'string' },
+      { name: 'format', required: 'optional', type: 'string', options: ['wav', 'mp3', 'pcm', 'ogg_opus'], default: 'wav' },
+      { name: 'sample_rate', required: 'optional', type: 'number', options: [8000, 16000, 24000, 32000, 44100, 48000], default: 24000 },
+      { name: 'speech_rate', required: 'optional', type: 'integer', min: -50, max: 100, default: 0 },
+      { name: 'loudness_rate', required: 'optional', type: 'integer', min: -50, max: 100, default: 0 },
+      { name: 'pitch_rate', required: 'optional', type: 'integer', min: -12, max: 12, default: 0 },
+      { name: 'voice_type', required: 'optional', type: 'string', options: ['preset', 'element'] },
+      { name: 'voice_id', required: 'optional', type: 'string' }
+    ],
+    medias: [{ name: 'medias', type: 'image', roles: ['image_references', 'audio_references'] }],
+    supports_unlim: true,
+    unlim: { available: false },
+    credits_per_unit: 4,
+    credit_unit: 'per_generation',
+    ...extra
+  });
+}
+
+// text2speech_v2 (no media slot, needs a variant); the exact shape is assumed, the variant names come from the CLI docs
+function speechV2Json(extra = {}) {
+  return JSON.stringify({
+    id: 'text2speech_v2',
+    name: 'Text2Speech v2',
+    output_type: 'audio',
+    parameters: [
+      { name: 'prompt', required: 'required', type: 'string' },
+      { name: 'variant', required: 'required', type: 'string', options: ['elevenlabs', 'minimax', 'seed_speech', 'vibe_voice', 'cozy_voice'] },
+      { name: 'speed', required: 'optional', type: 'number', min: 0.5, max: 2 }
+    ],
+    credits_per_unit: 2,
+    credit_unit: 'per_generation',
+    ...extra
+  });
+}
+
 async function main() {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-nodes-generate-'));
   const bus = createEventBus();
@@ -220,6 +266,7 @@ async function main() {
     const image1 = await upload('.png');
     const image2 = await upload('.png');
     const video1 = await upload('.mp4', Buffer.from('fake-mp4'));
+    const audio1 = await upload('.mp3', Buffer.from('fake-mp3'));
 
     const removedRefs = [];
     let jobCounter = 0;
@@ -260,11 +307,20 @@ async function main() {
         'llm.chat', 'llm.prompt_enhancer', 'llm.image_describer', 'llm.video_describer', 'llm.motion_html',
         'image.generate', 'image.edit', 'image.relight', 'image.higgsfield',
         'video.seedance', 'video.higgsfield', 'video.motion_graphics', 'video.concat', 'audio.tts',
-        'hf.remove_background', 'hf.upscale_image', 'hf.upscale_video', 'hf.outpaint_image', 'hf.reframe_video'
+        'hf.remove_background', 'hf.upscale_image', 'hf.upscale_video', 'hf.outpaint_image', 'hf.reframe_video',
+        'hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech'
       ];
       for (const type of expected) oneOf(registry, type);
       assert.equal(generate.definitions.length, expected.length);
       assert.ok(oneOf(registry, 'hf.upscale_image').experimental && oneOf(registry, 'hf.reframe_video').experimental);
+      for (const type of ['hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech']) {
+        const def = oneOf(registry, type);
+        assert.equal(def.category, 'higgsfield', type);
+        assert.equal(def.experimental, true, type);
+        assert.equal(def.paid, true, type);
+        assert.equal(def.async, true, type);
+        assert.equal(def.cost.unit, 'credits', type);
+      }
       assert.ok(!oneOf(registry, 'image.higgsfield').experimental);
       assert.equal(oneOf(registry, 'image.higgsfield').category, 'higgsfield');
 
@@ -283,17 +339,23 @@ async function main() {
       assert.equal(registry.availability(oneOf(registry, 'image.generate')), true);
 
       patch(higgsfield, 'status', () => ({ connected: false }));
-      for (const type of ['image.higgsfield', 'video.higgsfield', 'hf.remove_background', 'hf.upscale_video']) {
+      for (const type of ['image.higgsfield', 'video.higgsfield', 'hf.remove_background', 'hf.upscale_video', 'hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech']) {
         assert.match(registry.availability(oneOf(registry, type)), /Higgsfield/, type);
       }
       patch(higgsfield, 'status', () => ({ connected: true }));
       assert.equal(registry.availability(oneOf(registry, 'image.higgsfield')), true);
-      assert.match(registry.availability(oneOf(registry, 'hf.remove_background')), /PUBLIC_BASE_URL/, 'edit tools need PUBLIC_BASE_URL');
-      assert.match(registry.availability(oneOf(registry, 'hf.outpaint_image')), /PUBLIC_BASE_URL/);
+      // the Higgsfield nodes depend on the connection only: without PUBLIC_BASE_URL the sources are uploaded (media_upload)
+      patch(ffmpeg, 'binaries', () => ({ ffmpeg: '/x/ffmpeg', ffprobe: '/x/ffprobe', available: true }));
+      for (const type of ['hf.remove_background', 'hf.upscale_image', 'hf.upscale_video', 'hf.outpaint_image', 'hf.reframe_video', 'hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech']) {
+        assert.equal(registry.availability(oneOf(registry, type)), true, `${type} without PUBLIC_BASE_URL`);
+      }
       withEnv('PUBLIC_BASE_URL', 'https://example.test');
       assert.equal(registry.availability(oneOf(registry, 'hf.remove_background')), true);
       patch(ffmpeg, 'binaries', () => ({ ffmpeg: null, ffprobe: null, available: false }));
       assert.equal(registry.availability(oneOf(registry, 'hf.outpaint_image')), true);
+      for (const type of ['hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech']) {
+        assert.equal(registry.availability(oneOf(registry, type)), true, `${type} does not probe with ffmpeg`);
+      }
       assert.match(registry.availability(oneOf(registry, 'hf.upscale_image')), /ffmpeg/);
       assert.match(registry.availability(oneOf(registry, 'video.concat')), /ffmpeg/);
       assert.match(registry.availability(oneOf(registry, 'llm.video_describer')), /ffmpeg/);
@@ -318,6 +380,36 @@ async function main() {
       const removeBackground = oneOf(registry, 'hf.remove_background');
       assert.equal(registry.portsFor(removeBackground, { kind: 'video' }).outputs[0].type, 'video');
       assert.equal(registry.portsFor(removeBackground, { kind: 'image' }).inputs[0].type, 'image');
+      const portSummary = (type) => {
+        const def = oneOf(registry, type);
+        return [def.inputs.map((port) => `${port.id}:${port.type}${port.required ? '!' : ''}`), def.outputs.map((port) => `${port.id}:${port.type}`)];
+      };
+      assert.deepEqual(portSummary('hf.dubbing'), [['video:video!'], ['video:video']]);
+      assert.deepEqual(portSummary('hf.voice_change'), [['video:video!'], ['video:video']]);
+      assert.deepEqual(portSummary('hf.motion_control'), [['image:image!', 'motion:video!'], ['video:video']]);
+      assert.deepEqual(portSummary('hf.speech'), [['text:text!', 'reference_audio:audio'], ['audio:audio']]);
+      assert.equal(oneOf(registry, 'hf.speech').inputs[0].param, 'text', 'the text may be typed inline');
+      assert.deepEqual(portSummary('video.higgsfield')[0], ['prompt:text!', 'refs:image', 'audio:audio'], 'the audio input is optional');
+      assert.deepEqual(portSummary('image.higgsfield')[0], ['prompt:text!', 'refs:image'], 'image models have no audio input');
+      const paramOf = (type, id) => oneOf(registry, type).params.find((param) => param.id === id);
+      assert.deepEqual(paramOf('hf.dubbing', 'target_language').options, tools.HIGGSFIELD_DUBBING_LANGUAGES);
+      assert.equal(tools.HIGGSFIELD_DUBBING_LANGUAGES.length, 18);
+      assert.equal(paramOf('hf.dubbing', 'target_language').default, 'eng');
+      assert.equal(paramOf('hf.voice_change', 'voice').optionsSource, 'higgsfield-voices');
+      assert.equal(paramOf('hf.speech', 'voice').optionsSource, 'higgsfield-voices');
+      assert.deepEqual(paramOf('hf.speech', 'model').options, ['seed_audio', 'text2speech_v2'], 'only the verified speech models are offered');
+      assert.deepEqual(paramOf('hf.speech', 'model').options, tools.HIGGSFIELD_SPEECH_MODELS);
+      assert.equal(paramOf('hf.speech', 'model').optionsSource, undefined);
+      assert.equal(paramOf('hf.speech', 'model').default, 'seed_audio');
+      const portOf = (type, id) => oneOf(registry, type).inputs.find((port) => port.id === id);
+      assert.deepEqual([portOf('hf.speech', 'reference_audio').multiple, portOf('hf.speech', 'reference_audio').max], [true, 2], 'seed_audio takes 0..2 reference audios');
+      assert.deepEqual([portOf('video.higgsfield', 'audio').multiple, portOf('video.higgsfield', 'audio').max], [true, 15], 'up to 15 tracks, the model limit is checked at run time');
+      assert.ok(!portOf('video.higgsfield', 'audio').required);
+      assert.equal(paramOf('hf.speech', 'extra_params').dynamic, 'higgsfield-model');
+      assert.deepEqual(paramOf('hf.motion_control', 'resolution').options, ['720p', '1080p']);
+      assert.equal(paramOf('hf.motion_control', 'resolution').default, '720p');
+      assert.deepEqual(paramOf('hf.motion_control', 'scene_control').options, ['image', 'video']);
+      assert.equal(paramOf('hf.motion_control', 'scene_control').default, 'image');
 
       // the public descriptor serialises (no functions) and keeps the dynamic-param hints
       const descriptor = registry.publicDescriptor(oneOf(registry, 'video.higgsfield'));
@@ -340,6 +432,7 @@ async function main() {
         'concat_videos', 'higgsfield_models', 'higgsfield_generate_image', 'higgsfield_generate_video', 'higgsfield_check_balance'
       ]);
       assert.ok(!names.includes('higgsfield_edit'));
+      assert.ok(!names.includes('higgsfield_speech'), 'speech is node view only, too');
       // the Director's Higgsfield schemas stay closed: no extra_params for it
       for (const definition of tools.toolDefinitions().filter((item) => item.function.name.startsWith('higgsfield_generate'))) {
         assert.equal(definition.function.parameters.additionalProperties, false);
@@ -535,7 +628,10 @@ async function main() {
       assert.equal(calls.length, 4, 'refetched after the TTL');
       await catalog.listModels('video', { refresh: true });
       assert.equal(calls.length, 6, 'manual refresh');
-      await assert.rejects(catalog.listModels('audio'), /Unknown model type/);
+      await assert.rejects(catalog.listModels('3d'), /Unknown model type/);
+      calls.length = 0;
+      await catalog.listModels('audio');
+      assert.equal(calls[0].args.type, 'audio', 'audio models are listed, too');
 
       const model = await catalog.getModel('kling-3');
       assert.equal(model.id, 'kling-3', 'tolerates text after the JSON');
@@ -634,13 +730,9 @@ async function main() {
         assert.ok(directorSubmit, 'the Director call still submits');
         assert.ok(!('quality' in directorSubmit.args.requests[0].params) && !('num_images' in directorSubmit.args.requests[0].params), 'extra_params are ignored without ctx.nodeView');
 
-        // image node with references (needs PUBLIC_BASE_URL) - the start_image role comes from the model
+        // image node with references imported by URL (PUBLIC_BASE_URL set; the upload path has its own section below)
+        // - the start_image role comes from the model
         calls.length = 0;
-        await assert.rejects(
-          execute(registry, 'image.higgsfield', makeCtx(sessionId), { prompt: text('x'), refs: list('image', [image1]) }, { model: 'kling-3' }),
-          /PUBLIC_BASE_URL/
-        );
-        assert.ok(!calls.some((call) => call.name.endsWith('_batch')), 'nothing is submitted without PUBLIC_BASE_URL');
         withEnv('PUBLIC_BASE_URL', 'https://example.test');
         const withRefs = await execute(registry, 'image.higgsfield', makeCtx(sessionId), { prompt: text('Portrait'), refs: list('image', [image1, image2]) }, { model: 'kling-3', aspect_ratio: '9:16' });
         const imageSubmit = calls.find((call) => call.name === 'generate_image_batch');
@@ -698,8 +790,8 @@ async function main() {
       assert.match(issuesOf(registry, 'image.higgsfield', { model: '' })[0].message, /select a Higgsfield model/);
       assert.match(issuesOf(registry, 'video.higgsfield', { model: 'm', extra_params: '{nope' })[0].message, /not valid JSON/);
       assert.match(issuesOf(registry, 'video.higgsfield', { model: 'm', extra_params: '[1]' })[0].message, /JSON object/);
-      const refWarning = issuesOf(registry, 'image.higgsfield', { model: 'm' }, { refs: { connected: true, count: 1 } });
-      assert.equal(refWarning[0].level, 'warning');
+      // references no longer warn about PUBLIC_BASE_URL: without it the images are uploaded
+      assert.deepEqual(issuesOf(registry, 'image.higgsfield', { model: 'm' }, { refs: { connected: true, count: 1 } }), []);
       assert.deepEqual(generate.parseExtraParams(''), {});
     }
 
@@ -1037,13 +1129,984 @@ async function main() {
         await assert.rejects(tools.executeTool(editCtx().toolCtx, 'higgsfield_edit', { tool: 'format_disk', kind: 'image', source_asset_ids: [image1.assetId] }), /Unbekanntes Higgsfield-Edit-Tool/);
         await assert.rejects(tools.executeTool(editCtx().toolCtx, 'higgsfield_edit', { tool: 'outpaint_image', kind: 'image', source_asset_ids: [] }), /genau eine Asset-ID/);
         await assert.rejects(tools.executeTool(editCtx().toolCtx, 'higgsfield_edit', { tool: 'upscale_video', kind: 'video', source_asset_ids: [image1.assetId] }), /keine gueltige Video-Quelle/);
-        withEnv('PUBLIC_BASE_URL', undefined);
-        const submitted = calls.length;
-        await assert.rejects(execute(registry, 'hf.outpaint_image', editCtx(), { image: image1 }, {}), /PUBLIC_BASE_URL/);
-        assert.equal(calls.length, submitted, 'nothing is imported without PUBLIC_BASE_URL');
       } finally {
         stop();
       }
+    }
+
+    /* ----- Higgsfield dubbing, voice change and motion transfer (experimental): arguments and param validation ----- */
+    {
+      resetMocks();
+      patch(higgsfield, 'status', () => ({ connected: true }));
+      const calls = [];
+      const mediaIds = [];
+      const jobIds = [];
+      let imported = [];
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        calls.push({ name, args });
+        if (name === 'media_import_url') {
+          mediaIds.push(`cccccccc-cccc-4ccc-8ccc-${String(mediaIds.length + 1).padStart(12, '0')}`);
+          imported.push(mediaIds.at(-1));
+          return `Imported media ${mediaIds.at(-1)}`;
+        }
+        jobIds.push(nextJobId());
+        // the answer names the imported sources as well: the job id must not be mistaken for one of them
+        const reply = `Submitted for ${imported.join(' and ')}: ${jobIds.at(-1)} (pending)`;
+        imported = [];
+        return reply;
+      });
+      withEnv('PUBLIC_BASE_URL', 'https://example.test');
+      const editCtx = () => makeCtx(sessionId);
+      const runEdit = (args) => tools.executeTool(editCtx().toolCtx, 'higgsfield_edit', { kind: 'video', source_asset_ids: [video1.assetId], ...args });
+      const stop = startJobCompleter(sessionId, {});
+      try {
+        // enums come straight from the tool schemas
+        const schemas = JSON.parse(await fsp.readFile(path.join(__dirname, '..', 'docs', 'higgsfield-tools.json'), 'utf8'));
+        const propertiesOf = (name) => schemas.find((tool) => tool.name === name).inputSchema.properties.params.properties;
+        assert.deepEqual(tools.HIGGSFIELD_DUBBING_LANGUAGES, propertiesOf('dubbing').target_language.enum);
+        assert.deepEqual(tools.HIGGSFIELD_VOICE_TYPES, propertiesOf('voice_change').voice_type.enum);
+        assert.deepEqual(tools.HIGGSFIELD_MOTION_RESOLUTIONS, propertiesOf('motion_control').resolution.enum);
+        assert.deepEqual(tools.HIGGSFIELD_SCENE_CONTROLS, propertiesOf('motion_control').scene_control.enum);
+        assert.equal(propertiesOf('dubbing').target_language.enum.length, 18);
+
+        /* dubbing */
+        const dubbed = await execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, {});
+        assert.deepEqual(calls.at(-1), { name: 'dubbing', args: { params: { video_id: mediaIds[0], target_language: 'eng' } } }, 'English is the default');
+        assert.equal(dubbed.variants[0].video.type, 'video');
+        assert.equal(dubbed.cost, undefined, 'the credits are unknown');
+        const record = (await store.readSession(sessionId)).jobs.find((job) => job.jobId === jobIds[0]);
+        assert.deepEqual([record.mode, record.model, record.kind, record.provider], ['higgsfield_edit', 'dubbing', 'video', 'higgsfield']);
+        await execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, { target_language: 'deu' });
+        assert.equal(calls.at(-1).args.params.target_language, 'deu');
+
+        // bad params fail before anything is imported (nothing to pay, nothing to clean up)
+        const before = calls.length;
+        await assert.rejects(runEdit({ tool: 'dubbing', params: { target_language: 'xx' } }), /target_language "xx" ist ungueltig/);
+        await assert.rejects(runEdit({ tool: 'dubbing', params: {} }), /target_language fehlt/);
+        await assert.rejects(runEdit({ tool: 'dubbing' }), /target_language fehlt/);
+        assert.equal(calls.length, before, 'no import for invalid params');
+        // unknown keys are dropped (the schema has additionalProperties: false)
+        await runEdit({ tool: 'dubbing', params: { target_language: 'jpn', video_id: 'evil', prompt: 'x', count: 3 } });
+        assert.deepEqual(calls.at(-1).args, { params: { video_id: mediaIds.at(-1), target_language: 'jpn' } });
+        await assert.rejects(runEdit({ tool: 'dubbing', params: { target_language: 'deu' }, source_asset_ids: [image1.assetId] }), /keine gueltige Video-Quelle/);
+        await assert.rejects(runEdit({ tool: 'dubbing', params: { target_language: 'deu' }, source_asset_ids: [] }), /genau eine Asset-ID/);
+
+        /* voice change */
+        await execute(registry, 'hf.voice_change', editCtx(), { video: video1 }, { voice: 'element:el-42' });
+        assert.deepEqual(calls.at(-1), { name: 'voice_change', args: { params: { video_id: mediaIds.at(-1), voice_id: 'el-42', voice_type: 'element' } } });
+        await execute(registry, 'hf.voice_change', editCtx(), { video: video1 }, { voice: 'preset:from-list', voice_custom: ' typed-id ' });
+        assert.deepEqual(calls.at(-1).args.params, { video_id: mediaIds.at(-1), voice_id: 'typed-id', voice_type: 'preset' }, 'a typed voice id wins and a bare id is a preset');
+        await execute(registry, 'hf.voice_change', editCtx(), { video: video1 }, { voice: 'preset:a', voice_custom: 'element:mine' });
+        assert.deepEqual([calls.at(-1).args.params.voice_id, calls.at(-1).args.params.voice_type], ['mine', 'element']);
+        assert.equal(issuesOf(registry, 'hf.voice_change', {}).length, 1, 'no voice is reported before the run');
+        assert.match(issuesOf(registry, 'hf.voice_change', {})[0].message, /select a voice or enter a voice ID/);
+        assert.equal(issuesOf(registry, 'hf.voice_change', { voice_custom: 'x' }).length, 0);
+        assert.equal(issuesOf(registry, 'hf.voice_change', { voice: 'preset:a' }).length, 0);
+        const beforeVoice = calls.length;
+        await assert.rejects(execute(registry, 'hf.voice_change', editCtx(), { video: video1 }, {}), /select a voice or enter a voice ID/);
+        await assert.rejects(runEdit({ tool: 'voice_change', params: { voice_id: '  ' } }), /voice_id fehlt/);
+        await assert.rejects(runEdit({ tool: 'voice_change', params: {} }), /voice_id fehlt/);
+        await assert.rejects(runEdit({ tool: 'voice_change', params: { voice_id: 'v', voice_type: 'cloned' } }), /voice_type "cloned" ist ungueltig/);
+        assert.equal(calls.length, beforeVoice, 'no import for invalid voices');
+        await runEdit({ tool: 'voice_change', params: { voice_id: 'plain', extra: true } });
+        assert.deepEqual(calls.at(-1).args.params, { video_id: mediaIds.at(-1), voice_id: 'plain', voice_type: 'preset' }, 'preset is the default type, unknown keys are dropped');
+        assert.deepEqual(generate.parseVoiceParam('', ''), null);
+        assert.deepEqual(generate.parseVoiceParam('element:', ''), null);
+        assert.deepEqual(generate.parseVoiceParam('ELEMENT:abc:def', ''), { voiceType: 'element', voiceId: 'abc:def' });
+
+        /* motion transfer: image + motion video, both imported (image first) */
+        const published = [];
+        patch(publicrefs, 'publishAsset', async (session, assetId) => {
+          published.push(assetId);
+          return { url: `https://example.test/refs/${assetId}`, file: `${assetId}.bin` };
+        });
+        const moved = await execute(registry, 'hf.motion_control', editCtx(), { image: image1, motion: video1 }, {});
+        assert.deepEqual(published, [image1.assetId, video1.assetId], 'the character image is imported before the motion video');
+        assert.deepEqual(calls.at(-1), {
+          name: 'motion_control',
+          args: { params: { image_id: mediaIds.at(-2), motion_video_id: mediaIds.at(-1), resolution: '720p', scene_control: 'image' } }
+        });
+        assert.equal(moved.variants[0].video.type, 'video');
+        await execute(registry, 'hf.motion_control', editCtx(), { image: image1, motion: video1 }, { resolution: '1080p', scene_control: 'video' });
+        assert.deepEqual([calls.at(-1).args.params.resolution, calls.at(-1).args.params.scene_control], ['1080p', 'video']);
+        const beforeMotion = calls.length;
+        const motionArgs = (args) => runEdit({ tool: 'motion_control', kind: 'video', source_asset_ids: [image1.assetId, video1.assetId], ...args });
+        await assert.rejects(motionArgs({ source_asset_ids: [image1.assetId] }), /genau 2 Asset-IDs enthalten \(Bild, Video\)/);
+        await assert.rejects(motionArgs({ source_asset_ids: [video1.assetId, image1.assetId] }), /keine gueltige Bild-Quelle/, 'a video cannot be the character');
+        await assert.rejects(motionArgs({ source_asset_ids: [image1.assetId, image2.assetId] }), /keine gueltige Video-Quelle/, 'an image cannot be the motion');
+        await assert.rejects(motionArgs({ params: { resolution: '4k' } }), /resolution "4k" ist ungueltig/);
+        await assert.rejects(motionArgs({ params: { scene_control: 'both' } }), /scene_control "both" ist ungueltig/);
+        assert.equal(calls.length, beforeMotion, 'nothing is imported for invalid motion control calls');
+        await motionArgs({ params: { unknown: 1 } });
+        assert.deepEqual(Object.keys(calls.at(-1).args.params).sort(), ['image_id', 'motion_video_id', 'resolution', 'scene_control']);
+
+        // the Director can never reach the new tools' entry point
+        const directorCtx = { ...editCtx().toolCtx, nodeView: undefined };
+        const beforeDirector = calls.length;
+        await assert.rejects(tools.executeTool(directorCtx, 'higgsfield_edit', { tool: 'dubbing', kind: 'video', source_asset_ids: [video1.assetId], params: { target_language: 'deu' } }), /nur in der Node-Ansicht/);
+        assert.equal(calls.length, beforeDirector);
+      } finally {
+        stop();
+      }
+    }
+
+    /* ----- media_upload path without PUBLIC_BASE_URL: parsing, PUT, confirm, error paths, no signed URL in messages ----- */
+    {
+      resetMocks();
+      patch(higgsfield, 'status', () => ({ connected: true }));
+      patch(publicrefs, 'publishAsset', async () => {
+        throw new Error('the URL import must not be used without PUBLIC_BASE_URL');
+      });
+      const logged = [];
+      for (const level of ['log', 'info', 'warn', 'error']) patch(console, level, (...args) => logged.push(args.join(' ')));
+      const calls = [];
+      const events = [];
+      const puts = [];
+      const media = [];
+      const jobIds = [];
+      let imported = [];
+      const SECRET = 'X-Amz-Signature=SECRETSIGNATURE';
+      const uploadUrlFor = (n) => `https://upload.example.test/bucket/${n}?${SECRET}&X-Amz-Expires=900`;
+      const uploadRecord = (args, n, extra = {}) => ({
+        upload_url: uploadUrlFor(n),
+        media_id: media[n - 1],
+        url: `https://cdn.example.test/${n}`,
+        expires_in_seconds: 900,
+        method: 'PUT',
+        content_type: args.content_type,
+        instructions: 'Run the curl command, then call media_confirm.',
+        ...extra
+      });
+      let uploadReply = (args, n) => JSON.stringify({ uploads: [uploadRecord(args, n)] });
+      let confirmReply = (args) => JSON.stringify({ results: [{ media_id: args.media_id, status: 'confirmed', type: args.type }] });
+      let putResponse = () => new Response('', { status: 200 });
+      let uploads = 0;
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        calls.push({ name, args });
+        events.push(name);
+        if (name === 'media_upload') {
+          uploads += 1;
+          media.push(`dddddddd-dddd-4ddd-8ddd-${String(uploads).padStart(12, '0')}`);
+          imported.push(media.at(-1));
+          return uploadReply(args, uploads);
+        }
+        if (name === 'media_confirm') return confirmReply(args);
+        if (name === 'media_import_url') assert.fail('media_import_url must not be used without PUBLIC_BASE_URL');
+        if (name === 'models_explore') return modelJson({ id: args.model_id });
+        jobIds.push(nextJobId());
+        const reply = `Submitted for ${imported.join(' and ')}: ${jobIds.at(-1)} (pending)`;
+        imported = [];
+        return reply;
+      });
+      patch(global, 'fetch', async (url, options) => {
+        const chunks = [];
+        for await (const chunk of options.body) chunks.push(chunk);
+        events.push('put');
+        puts.push({ url, method: options.method, headers: options.headers, duplex: options.duplex, body: Buffer.concat(chunks) });
+        return putResponse(url, options);
+      });
+      catalogLib.clearCache();
+      const editCtx = () => makeCtx(sessionId);
+      const submits = (tool) => calls.filter((call) => call.name === tool).length;
+      const stop = startJobCompleter(sessionId, {});
+      try {
+        // video source: media_upload -> PUT (Content-Type, Content-Length, streamed bytes) -> media_confirm -> edit tool
+        const dubbed = await execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, { target_language: 'ita' });
+        assert.deepEqual(events.slice(0, 4), ['media_upload', 'put', 'media_confirm', 'dubbing']);
+        assert.deepEqual(calls[0], { name: 'media_upload', args: { filename: `${video1.assetId}.mp4`, content_type: 'video/mp4' } });
+        assert.equal(puts.length, 1);
+        assert.equal(puts[0].url, uploadUrlFor(1));
+        assert.equal(puts[0].method, 'PUT');
+        assert.equal(puts[0].headers['Content-Type'], 'video/mp4');
+        assert.equal(puts[0].headers['Content-Length'], String(Buffer.byteLength('fake-mp4')));
+        assert.equal(puts[0].duplex, 'half');
+        assert.deepEqual(puts[0].body, Buffer.from('fake-mp4'));
+        assert.deepEqual(calls[1], { name: 'media_confirm', args: { type: 'video', media_id: media[0] } });
+        assert.deepEqual(calls.at(-1), { name: 'dubbing', args: { params: { video_id: media[0], target_language: 'ita' } } });
+        assert.equal(dubbed.variants[0].video.type, 'video');
+
+        // image source: the type follows the extension
+        await execute(registry, 'hf.outpaint_image', editCtx(), { image: image1 }, { aspect_ratio: '16:9' });
+        assert.deepEqual(calls.filter((call) => call.name === 'media_upload').at(-1).args, { filename: `${image1.assetId}.png`, content_type: 'image/png' });
+        assert.equal(puts.at(-1).headers['Content-Type'], 'image/png');
+        assert.deepEqual(puts.at(-1).body, PNG);
+        assert.deepEqual(calls.filter((call) => call.name === 'media_confirm').at(-1).args, { type: 'image', media_id: media.at(-1) });
+        assert.deepEqual(calls.at(-1).args.params, { aspect_ratio: '16:9', image_id: media.at(-1) });
+
+        // two sources: uploaded one after the other, image first
+        const uploadsBefore = uploads;
+        await execute(registry, 'hf.motion_control', editCtx(), { image: image1, motion: video1 }, {});
+        assert.deepEqual(calls.filter((call) => call.name === 'media_upload').slice(-2).map((call) => call.args.content_type), ['image/png', 'video/mp4']);
+        assert.deepEqual(calls.filter((call) => call.name === 'media_confirm').slice(-2).map((call) => call.args.type), ['image', 'video']);
+        assert.equal(uploads, uploadsBefore + 2);
+        assert.deepEqual(calls.at(-1).args.params, { image_id: media.at(-2), motion_video_id: media.at(-1), resolution: '720p', scene_control: 'image' });
+
+        // the Content-Type Higgsfield answers with is the one that was signed: it is sent as is
+        uploadReply = (args, n) => JSON.stringify({ uploads: [uploadRecord(args, n, { content_type: 'application/octet-stream' })] });
+        await execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, {});
+        assert.equal(puts.at(-1).headers['Content-Type'], 'application/octet-stream');
+
+        // other answer formats (the real one is not verified): JSON in prose, plain text, curl text, camelCase
+        const bodies = [];
+        const variants = [
+          (args, n) => `Upload prepared:\n${JSON.stringify(uploadRecord(args, n))}\nRun the PUT, then confirm.`,
+          (args, n) => JSON.stringify(uploadRecord(args, n)),
+          (args, n) => `upload_url: ${uploadUrlFor(n)}\nmedia_id: ${media[n - 1]}\nexpires_in_seconds: 900`,
+          (args, n) => `curl -X PUT -H "Content-Type: ${args.content_type}" --data-binary @clip.mp4 "${uploadUrlFor(n)}"\nThen call media_confirm for ${media[n - 1]}.`,
+          (args, n) => JSON.stringify({ data: { uploads: [{ uploadUrl: uploadUrlFor(n), mediaId: media[n - 1] }] } })
+        ];
+        for (const format of variants) {
+          uploadReply = format;
+          const putsBefore = puts.length;
+          await execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, { target_language: 'fra' });
+          assert.equal(puts.length, putsBefore + 1);
+          assert.equal(puts.at(-1).url, uploadUrlFor(uploads), 'the signed URL of this answer was used');
+          assert.equal(calls.at(-1).args.params.video_id, media.at(-1), 'the media id of this answer was used');
+          bodies.push(puts.at(-1).body.toString());
+        }
+        assert.ok(bodies.every((body) => body === 'fake-mp4'));
+
+        // image references of a Higgsfield generation take the same path
+        uploadReply = (args, n) => JSON.stringify({ uploads: [uploadRecord(args, n)] });
+        const withRefs = await execute(registry, 'image.higgsfield', editCtx(), { prompt: text('Portrait'), refs: list('image', [image1, image2]) }, { model: 'kling-3' });
+        const generation = calls.find((call) => call.name === 'generate_image_batch');
+        assert.deepEqual(generation.args.requests[0].params.medias, [{ value: media.at(-2), role: 'start_image' }, { value: media.at(-1), role: 'start_image' }]);
+        assert.equal(withRefs.variants[0].image.type, 'image');
+        assert.ok(!calls.some((call) => call.name === 'media_import_url'));
+
+        // ----- error paths: nothing is submitted, no signed URL in the message -----
+        const failures = [];
+        const expectFailure = async (label, run, pattern) => {
+          imported = [];
+          const submitted = submits('dubbing') + submits('outpaint_image');
+          const putCount = puts.length;
+          let caught = null;
+          try {
+            await run();
+          } catch (err) {
+            caught = err;
+          }
+          assert.ok(caught, `${label} fails`);
+          assert.match(caught.message, pattern, label);
+          assert.ok(!caught.message.includes('SECRET'), `${label}: no signature in the message`);
+          assert.ok(!/https?:\/\//.test(caught.message), `${label}: no URL in the message`);
+          assert.equal(submits('dubbing') + submits('outpaint_image'), submitted, `${label}: no job submitted`);
+          failures.push([label, putCount, puts.length]);
+        };
+        const dub = () => execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, { target_language: 'spa' });
+
+        uploadReply = () => `Upload prepared. Use ${uploadUrlFor(99)} and remember the id.`;
+        await expectFailure('answer without a media id', dub, /Antwortformat von media_upload unbekannt/);
+        uploadReply = () => 'Sorry, the upload could not be prepared.';
+        await expectFailure('answer without any URL', dub, /Antwortformat von media_upload unbekannt/);
+        uploadReply = (args, n) => JSON.stringify({ uploads: [uploadRecord(args, n, { upload_url: `http://upload.example.test/insecure?${SECRET}` })] });
+        await expectFailure('non-https upload url', dub, /Antwortformat von media_upload unbekannt/);
+        uploadReply = (args, n) => JSON.stringify({ uploads: [uploadRecord(args, n)] });
+        assert.equal(failures.every(([, before, after]) => before === after), true, 'nothing was uploaded for unusable answers');
+
+        putResponse = () =>
+          new Response(`<?xml version="1.0"?><Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match ${SECRET}</Message><StringToSign>https://upload.example.test/x?${SECRET}</StringToSign></Error>`, { status: 403 });
+        const confirmsBefore = submits('media_confirm');
+        await expectFailure('PUT refused', dub, /HTTP 403, SignatureDoesNotMatch/);
+        assert.equal(submits('media_confirm'), confirmsBefore, 'a failed PUT is not confirmed');
+        putResponse = () => new Response('Service Unavailable', { status: 503 });
+        await expectFailure('PUT unavailable', dub, /HTTP 503\)/);
+        putResponse = () => {
+          throw new Error(`connect ECONNREFUSED ${uploadUrlFor(1)}`);
+        };
+        await expectFailure('network error', dub, /Upload zu Higgsfield fehlgeschlagen: connect ECONNREFUSED \[URL\]/);
+        putResponse = () => new Response('', { status: 200 });
+
+        confirmReply = () => JSON.stringify({ error: `not found ${uploadUrlFor(1)}` });
+        await expectFailure('confirm refused', dub, /nicht bestaetigen: not found \[URL\]/);
+        confirmReply = (args) => JSON.stringify({ results: [{ media_id: args.media_id, status: 'failed' }] });
+        await expectFailure('confirm failed status', dub, /nicht bestaetigen: Status failed/);
+        confirmReply = (args) => JSON.stringify({ results: [{ media_id: args.media_id, status: 'confirmed' }] });
+
+        // unusable files are rejected before media_upload
+        const emptyClip = await upload('.mp4', Buffer.alloc(0));
+        const uploadsBeforeEmpty = uploads;
+        await assert.rejects(execute(registry, 'hf.dubbing', editCtx(), { video: emptyClip }, {}), /leere Datei/);
+        const originalStat = fsp.stat;
+        patch(fsp, 'stat', async (file, ...rest) =>
+          String(file).endsWith(video1.file) ? { isFile: () => true, size: 501 * 1024 * 1024 } : originalStat.call(fsp, file, ...rest)
+        );
+        await assert.rejects(execute(registry, 'hf.dubbing', editCtx(), { video: video1 }, {}), /groesser als 500 MB/);
+        assert.equal(uploads, uploadsBeforeEmpty, 'no upload for empty or oversized files');
+
+        // the signed URL never reaches a log line
+        assert.ok(!logged.some((line) => line.includes('SECRET') || line.includes('upload.example.test')), 'no signed URL in the logs');
+      } finally {
+        stop();
+      }
+    }
+
+    /* ----- parseHiggsfieldUpload: tolerant parsing of the (unverified) media_upload answer ----- */
+    {
+      const id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+      const url = 'https://upload.example.test/put/1?X-Amz-Signature=abc&X-Amz-Expires=900';
+      const parse = tools.parseHiggsfieldUpload;
+      const expected = { uploadUrl: url, mediaId: id, contentType: '' };
+      assert.deepEqual(parse(JSON.stringify({ uploads: [{ upload_url: url, media_id: id }] })), expected);
+      assert.deepEqual(parse(JSON.stringify([{ upload_url: url, media_id: id }])), expected);
+      assert.deepEqual(parse(JSON.stringify({ upload_url: url, media_id: id, content_type: 'video/mp4' })), { ...expected, contentType: 'video/mp4' });
+      assert.deepEqual(parse(JSON.stringify({ result: { uploadUrl: url, mediaId: id } })), expected);
+      assert.deepEqual(parse(`Ready.\n${JSON.stringify({ uploads: [{ upload_url: url, media_id: id }] })}\nDone.`), expected);
+      assert.deepEqual(parse(`upload_url: ${url}\nmedia_id: ${id}`), expected);
+      assert.deepEqual(parse(`"upload_url" = "${url}"\n"media_id" = "${id}"`), expected);
+      assert.deepEqual(parse(`curl -X PUT -H 'Content-Type: video/mp4' --data-binary @a.mp4 '${url}'\nmedia: ${id}`), expected, 'curl style, unlabelled uuid');
+      assert.deepEqual(parse(`Upload to ${url} (media ${id}).`), expected, 'a single URL is the upload URL');
+      // JSON with the url but without an id falls back to the text
+      assert.equal(parse(`${JSON.stringify({ uploads: [{ upload_url: url }] })}\nmedia_id: ${id}`).mediaId, id);
+      // a uuid inside the URL is not taken for the media id
+      assert.throws(() => parse(`upload_url: https://upload.example.test/${id}.mp4?sig=1`), /media_id/);
+      assert.throws(() => parse(`upload_url: http://upload.example.test/x\nmedia_id: ${id}`), /Antwortformat/);
+      assert.throws(() => parse(`two urls https://a.example/x and https://b.example/y, media ${id}`), /Antwortformat/, 'ambiguous URLs are not guessed');
+      assert.throws(() => parse(''), /Antwortformat/);
+      // the error text carries no URL
+      try {
+        parse(`Use ${url} please`);
+        assert.fail('must throw');
+      } catch (err) {
+        assert.ok(!err.message.includes('Signature') && !err.message.includes('example.test'), err.message);
+      }
+    }
+
+    /* ----- hf.speech: seed_audio / text2speech_v2 requests, voice rules, reference voices, WAV results ----- */
+    {
+      resetMocks();
+      patch(higgsfield, 'status', () => ({ connected: true }));
+      const audio2 = await upload('.wav', Buffer.from('fake-wav'));
+      const calls = [];
+      const speechJobs = [];
+      let reuseJob = null;
+      let imports = 0;
+      const importId = (n) => `eeeeeeee-eeee-4eee-8eee-${String(n).padStart(12, '0')}`;
+      let modelResponse = (args) => (args.model_id === 'text2speech_v2' ? speechV2Json() : seedAudioJson());
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        calls.push({ name, args });
+        if (name === 'models_explore') return modelResponse(args);
+        if (name === 'media_import_url') {
+          imports += 1;
+          return `Imported media ${importId(imports)}`;
+        }
+        if (name === 'generate_audio_batch') {
+          const id = reuseJob || nextJobId();
+          speechJobs.push(id);
+          return `Submitted 1/1 generations.\n- index 0: ${id} (pending)`;
+        }
+        throw new Error(`unexpected MCP call ${name}`);
+      });
+      catalogLib.clearCache();
+      const submitted = () => calls.filter((call) => call.name === 'generate_audio_batch');
+      const sentParams = () => submitted().at(-1).args.requests[0].params;
+      const toolCtx = () => makeCtx(sessionId).toolCtx;
+      const speak = (inputs, params, ctx = makeCtx(sessionId)) => execute(registry, 'hf.speech', ctx, inputs, params);
+      const sentNothing = () => !calls.some((call) => ['generate_audio_batch', 'media_import_url', 'media_upload'].includes(call.name));
+      const reset = () => {
+        calls.length = 0;
+        imports = 0;
+      };
+
+      const stop = startJobCompleter(sessionId, {});
+      try {
+        // one request: model default, prompt = text, voice pair, no unlimited credits; the result is a WAV asset
+        const ctx = makeCtx(sessionId);
+        const spoken = await speak({ text: text('Hello world') }, { voice: 'preset:sarah' }, ctx);
+        assert.deepEqual(submitted()[0].args, {
+          requests: [{ index: 0, params: { model: 'seed_audio', prompt: 'Hello world', use_unlim: false, voice_type: 'preset', voice_id: 'sarah' } }]
+        });
+        assert.equal(spoken.variants.length, 1);
+        assert.equal(spoken.variants[0].audio.type, 'audio');
+        assert.match(spoken.variants[0].audio.file, /\.wav$/, 'the reserved result asset is a WAV: seed_audio answers WAV by default');
+        assert.deepEqual(spoken.cost, { credits: 4 });
+        const ledger = await store.readLedger(sessionId);
+        assert.equal(ledger.find((entry) => entry.id === spoken.variants[0].audio.assetId).kind, 'audio');
+        const record = (await store.readSession(sessionId)).jobs.find((job) => job.jobId === speechJobs[0]);
+        assert.deepEqual([record.provider, record.kind, record.mode, record.model], ['higgsfield', 'audio', 'higgsfield_audio', 'seed_audio']);
+        assert.ok(journal.some((entry) => entry.type === 'higgsfield' && entry.model === 'seed_audio' && entry.cost === 0));
+        assert.ok(ctx.toolEvents.some((event) => event.type === 'generation_job' && event.kind === 'audio'));
+
+        // a typed voice wins over the list; "element:" selects an own voice
+        await speak({ text: text('Hi') }, { voice: 'preset:sarah', voice_custom: 'element:mine' });
+        assert.deepEqual([sentParams().voice_type, sentParams().voice_id], ['element', 'mine']);
+
+        // model parameters through extra_params: whitelisted against the model, the voice stays with the voice fields
+        const extraCtx = makeCtx(sessionId);
+        await speak({ text: text('Hi') }, {
+          voice_custom: 'v1',
+          extra_params: JSON.stringify({ format: 'mp3', sample_rate: 48000, speech_rate: 20, pitch_rate: 1.5, loudness_rate: 200, voice_id: 'x', bogus: 1, prompt: 'evil', use_unlim: true })
+        }, extraCtx);
+        assert.deepEqual(sentParams(), {
+          model: 'seed_audio', prompt: 'Hi', use_unlim: false, voice_type: 'preset', voice_id: 'v1', format: 'mp3', sample_rate: 48000, speech_rate: 20
+        });
+        const notes = extraCtx.logs.join('\n');
+        assert.match(notes, /extra_params\.voice_id ist fuer die Sprachausgabe reserviert/);
+        assert.match(notes, /pitch_rate muss eine ganze Zahl sein/);
+        assert.match(notes, /loudness_rate ist groesser als 100/);
+        assert.match(notes, /bogus ist fuer seed_audio nicht definiert/);
+        assert.match(notes, /prompt ist reserviert/);
+        assert.match(notes, /use_unlim ist reserviert/);
+
+        // only formats the app can play: wav (default) and mp3; pcm and ogg_opus are refused before anything is called
+        for (const format of ['pcm', 'ogg_opus', 'flac', 'WAV']) {
+          reset();
+          await assert.rejects(
+            speak({ text: text('x') }, { voice_custom: 'v', extra_params: JSON.stringify({ format }) }),
+            /wird von der App nicht unterstuetzt \(erlaubt: wav, mp3;/
+          );
+          assert.ok(sentNothing(), `format ${format}: nothing is imported or submitted`);
+        }
+        reset();
+        await assert.rejects(tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_id: 'v', extra_params: { format: 'pcm' } }), /Audioformat "pcm"/);
+        assert.equal(calls.length, 0, 'the tool refuses without even reading the model');
+        assert.match(issuesOf(registry, 'hf.speech', { voice_custom: 'v', extra_params: '{"format":"ogg_opus"}' })[0].message, /only wav or mp3/);
+        for (const format of ['wav', 'mp3']) assert.equal(issuesOf(registry, 'hf.speech', { voice_custom: 'v', extra_params: JSON.stringify({ format }) }).length, 0);
+
+        // reference voices: the role comes from the roles of the model (its one slot is typed "image"); 0..2 in total
+        withEnv('PUBLIC_BASE_URL', 'https://example.test');
+        reset();
+        await speak({ text: text('Clone me'), reference_audio: audio1 }, {});
+        assert.deepEqual(sentParams(), { model: 'seed_audio', prompt: 'Clone me', use_unlim: false, medias: [{ value: importId(1), role: 'audio_references' }] });
+        assert.ok(calls.findIndex((call) => call.name === 'media_import_url') < calls.findIndex((call) => call.name === 'generate_audio_batch'));
+        reset();
+        await speak({ text: text('Both'), reference_audio: list('audio', [audio1, audio2]) }, { voice: 'preset:sarah' });
+        assert.deepEqual(sentParams().medias, [{ value: importId(1), role: 'audio_references' }, { value: importId(2), role: 'audio_references' }], 'a voice plus two references');
+        assert.equal(sentParams().voice_id, 'sarah');
+        reset();
+        await assert.rejects(speak({ text: text('x'), reference_audio: list('audio', [audio1, audio2, audio1]) }, { voice_custom: 'v' }), /reference_audio: at most 2 are allowed \(got 3\)/);
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_id: 'v', reference_audio_asset_ids: [audio1.assetId, audio2.assetId, audio1.assetId] }),
+          /hoechstens 2 Referenz-Audiodateien \(3 angegeben\)/
+        );
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_id: 'v', reference_audio_asset_ids: [image1.assetId] }),
+          /keine gueltige Audio-Referenz/
+        );
+        assert.ok(sentNothing());
+        assert.equal(issuesOf(registry, 'hf.speech', { voice_custom: 'v' }, { reference_audio: { connected: true, count: 3 } }).length, 1);
+
+        // a readable model without an audio role, or with a smaller limit, fails before anything is imported or submitted
+        modelResponse = (args) => modelJson({ id: args.model_id, output_type: 'audio' });
+        catalogLib.clearCache();
+        reset();
+        await assert.rejects(speak({ text: text('x'), reference_audio: audio1 }, { voice_custom: 'v' }), /Model seed_audio declares no audio input/);
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_id: 'v', reference_audio_asset_ids: [audio1.assetId] }),
+          /deklariert keine Audio-Referenz/
+        );
+        assert.ok(sentNothing());
+        modelResponse = (args) => modelJson({ id: args.model_id, medias: [{ name: 'voice', type: 'image', max: 1, roles: ['audio_references'] }] });
+        catalogLib.clearCache();
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_id: 'v', reference_audio_asset_ids: [audio1.assetId, audio2.assetId] }),
+          /akzeptiert hoechstens 1 Audio-Referenzen/
+        );
+        assert.ok(sentNothing());
+
+        // a model that cannot be read at all gets the documented role; extra_params still need a verifiable model
+        for (const unreadable of [() => { throw new Error('models_explore down'); }, () => 'Model not found', () => '{"error":"nope"}']) {
+          modelResponse = unreadable;
+          catalogLib.clearCache();
+          reset();
+          await speak({ text: text('x'), reference_audio: audio1 }, { voice_custom: 'v' });
+          assert.deepEqual(sentParams().medias, [{ value: importId(1), role: 'audio_references' }]);
+        }
+        reset();
+        await assert.rejects(speak({ text: text('x') }, { voice_custom: 'v', extra_params: '{"speech_rate":5}' }), /konnte nicht geprueft werden/);
+        assert.ok(sentNothing());
+        modelResponse = (args) => (args.model_id === 'text2speech_v2' ? speechV2Json() : seedAudioJson());
+        catalogLib.clearCache();
+
+        // text2speech_v2: needs a variant and a voice, takes no reference audio
+        reset();
+        await speak({ text: text('Grüezi') }, { model: 'text2speech_v2', voice_custom: 'v2-voice', extra_params: JSON.stringify({ variant: 'minimax', speed: 1.25 }) });
+        assert.deepEqual(sentParams(), {
+          model: 'text2speech_v2', prompt: 'Grüezi', use_unlim: false, voice_type: 'preset', voice_id: 'v2-voice', variant: 'minimax', speed: 1.25
+        });
+        reset();
+        await assert.rejects(speak({ text: text('x') }, { model: 'text2speech_v2', voice_custom: 'v' }), /variant fehlt oder ist ungueltig/);
+        await assert.rejects(speak({ text: text('x') }, { model: 'text2speech_v2', voice_custom: 'v', extra_params: '{"variant":"siri"}' }), /variant fehlt oder ist ungueltig \(text2speech_v2 braucht eine dieser Varianten: elevenlabs, minimax, seed_speech, vibe_voice, cozy_voice\)/);
+        await assert.rejects(speak({ text: text('x') }, { model: 'text2speech_v2', extra_params: '{"variant":"minimax"}' }), /select a voice or enter a voice ID/);
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { model: 'text2speech_v2', prompt: 'x', extra_params: { variant: 'minimax' } }),
+          /voice_id fehlt \(text2speech_v2 braucht eine Stimme\)/
+        );
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { model: 'text2speech_v2', prompt: 'x', voice_id: 'v', extra_params: { variant: 'siri' } }),
+          /variant fehlt oder ist ungueltig/
+        );
+        assert.equal(calls.length, 0, 'an invalid variant is refused before the model is even read');
+        await assert.rejects(
+          speak({ text: text('x'), reference_audio: audio1 }, { model: 'text2speech_v2', voice_custom: 'v', extra_params: '{"variant":"minimax"}' }),
+          /Model text2speech_v2 declares no audio input/
+        );
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { model: 'text2speech_v2', prompt: 'x', voice_id: 'v', reference_audio_asset_ids: [audio1.assetId], extra_params: { variant: 'minimax' } }),
+          /text2speech_v2 nimmt keine Referenz-Audiodatei/
+        );
+        assert.ok(sentNothing(), 'nothing is submitted for an incomplete text2speech_v2 call');
+        // a variant the model does not define is dropped by the whitelist: the call is refused instead of sent without it
+        modelResponse = (args) => JSON.stringify({ id: args.model_id, name: 'V2', output_type: 'audio', parameters: [{ name: 'speed', required: 'optional', type: 'number' }] });
+        catalogLib.clearCache();
+        await assert.rejects(
+          speak({ text: text('x') }, { model: 'text2speech_v2', voice_custom: 'v', extra_params: '{"variant":"minimax"}' }),
+          /variant fehlt oder ist ungueltig.*Es wurde nichts eingereicht/
+        );
+        assert.ok(sentNothing());
+        modelResponse = (args) => (args.model_id === 'text2speech_v2' ? speechV2Json() : seedAudioJson());
+        catalogLib.clearCache();
+        // plan-time checks of the node
+        assert.match(issuesOf(registry, 'hf.speech', { model: 'text2speech_v2', voice_custom: 'v' })[0].message, /variant: text2speech_v2 needs one of elevenlabs, minimax/);
+        assert.equal(issuesOf(registry, 'hf.speech', { model: 'text2speech_v2', voice_custom: 'v', extra_params: '{"variant":"cozy_voice"}' }).length, 0);
+        assert.match(
+          issuesOf(registry, 'hf.speech', { model: 'text2speech_v2', voice_custom: 'v', extra_params: '{"variant":"minimax"}' }, { reference_audio: { connected: true, count: 1 } })[0].message,
+          /text2speech_v2 takes no reference audio/
+        );
+        assert.match(issuesOf(registry, 'hf.speech', { model: 'text2speech_v2', extra_params: '{"variant":"minimax"}' })[0].message, /select a voice or enter a voice ID/);
+
+        // only the speech models can be run; the game-pipeline audio models of the MCP cannot
+        reset();
+        for (const model of ['sonilo_music', 'mirelo_text_to_audio', 'inworld_text_to_speech']) {
+          await assert.rejects(tools.executeTool(toolCtx(), 'higgsfield_speech', { model, prompt: 'x', voice_id: 'v' }), /ist fuer die Sprachausgabe nicht vorgesehen \(erlaubt: seed_audio, text2speech_v2\)/);
+        }
+        assert.equal(calls.length, 0);
+
+        // argument checks of the tool itself: nothing is submitted for bad input
+        await assert.rejects(tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: ' ', voice_id: 'v' }), /prompt fehlt/);
+        await assert.rejects(tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x' }), /voice_id fehlt/);
+        await assert.rejects(tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_id: 'v', voice_type: 'cloned' }), /voice_type "cloned" ist ungueltig/);
+        await assert.rejects(tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_type: 'element' }), /voice_type und voice_id gehoeren zusammen/);
+        await assert.rejects(
+          tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', voice_type: 'preset', reference_audio_asset_ids: [audio1.assetId] }),
+          /voice_type und voice_id gehoeren zusammen/
+        );
+        await assert.rejects(
+          tools.executeTool({ ...toolCtx(), nodeView: undefined }, 'higgsfield_speech', { prompt: 'x', voice_id: 'v' }),
+          /nur in der Node-Ansicht/
+        );
+        assert.equal(calls.length, 0, 'nothing was called');
+        // a half voice cannot slip in through extra_params (voice_type without voice_id is refused by the API)
+        await tools.executeTool(toolCtx(), 'higgsfield_speech', { prompt: 'x', reference_audio_asset_ids: [audio1.assetId], extra_params: { voice_type: 'element' } });
+        assert.ok(!('voice_type' in sentParams()) && !('voice_id' in sentParams()));
+
+        // Higgsfield answering with a job id that is already in use never creates a duplicate job
+        reuseJob = speechJobs[0];
+        const count = (await store.readLedger(sessionId)).length;
+        await assert.rejects(speak({ text: text('Again') }, { voice_custom: 'v' }), /bereits fuer .* verwendete Job-ID/);
+        assert.equal((await store.readLedger(sessionId)).length, count, 'the reserved asset is removed again');
+        reuseJob = null;
+      } finally {
+        stop();
+      }
+
+      // validation before the run
+      assert.match(issuesOf(registry, 'hf.speech', {})[0].message, /select a voice or enter a voice ID/);
+      assert.equal(issuesOf(registry, 'hf.speech', {}, { reference_audio: { connected: true, count: 1 } }).length, 0, 'a reference voice can stand in for a voice');
+      assert.equal(issuesOf(registry, 'hf.speech', { voice_custom: 'v' }).length, 0);
+      assert.equal(issuesOf(registry, 'hf.speech', { voice: 'element:e' }).length, 0);
+      assert.match(issuesOf(registry, 'hf.speech', { voice_custom: 'v', extra_params: '{nope' })[0].message, /not valid JSON/);
+      await assert.rejects(speak({ text: text('x') }, {}), /select a voice or enter a voice ID/);
+      // the credits estimate of the plan comes from the cached model without I/O
+      await catalogLib.getModel('seed_audio');
+      assert.deepEqual(oneOf(registry, 'hf.speech').cost.estimate({ model: 'seed_audio' }), { credits: 4 });
+      assert.deepEqual(oneOf(registry, 'hf.speech').cost.estimate({ model: '' }), { credits: 4 }, 'an empty model means the default');
+      assert.equal(oneOf(registry, 'hf.speech').cost.estimate({ model: 'text2speech_v2' }), null, 'not cached yet');
+      catalogLib.clearCache();
+    }
+
+    /* ----- video.higgsfield with audio inputs: role and limit from the model, an image reference is required ----- */
+    {
+      resetMocks();
+      patch(higgsfield, 'status', () => ({ connected: true }));
+      const audio2 = await upload('.wav', Buffer.from('fake-wav'));
+      const calls = [];
+      const videoJobs = [];
+      let imports = 0;
+      const importId = (n) => `ffffffff-ffff-4fff-8fff-${String(n).padStart(12, '0')}`;
+      // the audio role shares its slot with the image roles, like the one of seed_audio (limit of the audio part unknown)
+      const combinedSlot = (args) =>
+        modelJson({ id: args.model_id, medias: [{ name: 'medias', type: 'image', max: 4, roles: ['start_image', 'end_image', 'image_references', 'audio_references'] }] });
+      // a slot with only the audio role states how many tracks the model takes
+      const audioSlot = (args) =>
+        modelJson({
+          id: args.model_id,
+          medias: [
+            { name: 'start', type: 'image', max: 2, roles: ['start_image', 'end_image'] },
+            { name: 'sound', type: 'image', max: 2, roles: ['audio_references'] }
+          ]
+        });
+      let modelResponse = combinedSlot;
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        calls.push({ name, args });
+        if (name === 'models_explore') return modelResponse(args);
+        if (name === 'media_import_url') {
+          imports += 1;
+          return `Imported media ${importId(imports)}`;
+        }
+        if (name === 'generate_video_batch') {
+          videoJobs.push(nextJobId());
+          return `Submitted 1/1 generations.\n- index 0: ${videoJobs.at(-1)} (pending)`;
+        }
+        throw new Error(`unexpected MCP call ${name}`);
+      });
+      catalogLib.clearCache();
+      withEnv('PUBLIC_BASE_URL', 'https://example.test');
+      const submits = () => calls.filter((call) => call.name === 'generate_video_batch');
+      const sentNothing = () => !calls.some((call) => call.name === 'media_import_url' || call.name.endsWith('_batch'));
+      const reset = () => {
+        calls.length = 0;
+        imports = 0;
+      };
+      const generateVideo = (inputs, params = {}) => execute(registry, 'video.higgsfield', makeCtx(sessionId), inputs, { model: 'kling-3', duration: 5, ...params });
+      const stop = startJobCompleter(sessionId, {});
+      try {
+        // without audio nothing changes: no audio slot is touched
+        const plain = await generateVideo({ prompt: text('Silent') });
+        assert.ok(!('medias' in submits()[0].args.requests[0].params));
+        assert.equal(plain.variants[0].video.type, 'video');
+
+        // an image reference plus one audio track: the image role is the image one, the audio role comes from the model
+        reset();
+        const talking = await generateVideo({ prompt: text('Talking head'), refs: list('image', [image1]), audio: audio1 });
+        assert.deepEqual(submits()[0].args.requests[0].params.medias, [
+          { value: importId(1), role: 'start_image' },
+          { value: importId(2), role: 'audio_references' }
+        ]);
+        assert.equal(talking.variants[0].video.type, 'video');
+
+        // several tracks (single value or list); a slot shared with the image roles states no limit of its own
+        reset();
+        await generateVideo({ prompt: text('Two tracks'), refs: list('image', [image1, image2]), audio: list('audio', [audio1, audio2]) });
+        assert.deepEqual(submits()[0].args.requests[0].params.medias, [
+          { value: importId(1), role: 'start_image' },
+          { value: importId(2), role: 'start_image' },
+          { value: importId(3), role: 'audio_references' },
+          { value: importId(4), role: 'audio_references' }
+        ]);
+
+        // audio references need an image reference next to them: refused by the node and by the tool, nothing imported
+        reset();
+        await assert.rejects(generateVideo({ prompt: text('x'), audio: audio1 }), /audio: audio tracks need at least one image reference \(connect refs\)/);
+        await assert.rejects(
+          tools.executeTool(makeCtx(sessionId).toolCtx, 'higgsfield_generate_video', { model: 'kling-3', prompt: 'x', duration: 5, reference_audio_asset_ids: [audio1.assetId] }),
+          /Audio-Referenzen brauchen mindestens eine Bild- oder Video-Referenz/
+        );
+        assert.ok(sentNothing());
+        assert.equal(calls.length, 0, 'refused before even reading the model');
+        const noRefs = issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, { audio: { connected: true, count: 1 } });
+        assert.equal(noRefs.length, 1);
+        assert.match(noRefs[0].message, /at least one image reference/);
+        assert.equal(issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, { refs: { connected: true, count: 1 }, audio: { connected: true, count: 1 } }).length, 0);
+
+        // the limit of a slot with only the audio role comes from the catalogue: node, plan and tool agree
+        modelResponse = audioSlot;
+        catalogLib.clearCache();
+        reset();
+        await generateVideo({ prompt: text('Fits'), refs: list('image', [image1]), audio: list('audio', [audio1, audio2]) });
+        assert.equal(submits().length, 1);
+        reset();
+        await assert.rejects(
+          generateVideo({ prompt: text('Too many'), refs: list('image', [image1]), audio: list('audio', [audio1, audio2, audio1]) }),
+          /Model kling-3 accepts at most 2 audio tracks \(got 3\)/
+        );
+        await assert.rejects(
+          tools.executeTool(makeCtx(sessionId).toolCtx, 'higgsfield_generate_video', {
+            model: 'kling-3', prompt: 'x', duration: 5, reference_asset_ids: [image1.assetId], reference_audio_asset_ids: [audio1.assetId, audio2.assetId, audio1.assetId]
+          }),
+          /akzeptiert hoechstens 2 Audio-Referenzen \(3 angegeben\)/
+        );
+        assert.ok(sentNothing());
+        await catalogLib.getModel('kling-3');
+        const tooMany = issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, { refs: { connected: true, count: 1 }, audio: { connected: true, count: 3 } });
+        assert.equal(tooMany.length, 1);
+        assert.match(tooMany[0].message, /accepts at most 2 audio tracks/);
+        assert.equal(issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, { refs: { connected: true, count: 1 }, audio: { connected: true, count: 2 } }).length, 0);
+        // hard limit of 15, whatever the model says
+        reset();
+        await assert.rejects(
+          generateVideo({ prompt: text('x'), refs: list('image', [image1]), audio: list('audio', Array.from({ length: 16 }, () => audio1)) }),
+          /audio: at most 15 are allowed \(got 16\)/
+        );
+        assert.match(issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, { refs: { connected: true, count: 1 }, audio: { connected: true, count: 16 } })[0].message, /at most 15 audio tracks/);
+        assert.ok(sentNothing());
+
+        // a non-audio asset is refused by the tool
+        reset();
+        await assert.rejects(generateVideo({ prompt: text('x'), refs: list('image', [image1]), audio: image1 }), /keine gueltige Audio-Referenz/);
+        assert.ok(!calls.some((call) => call.name === 'media_import_url' || call.name.endsWith('_batch')));
+
+        // a model without an audio role: nothing is imported or submitted
+        modelResponse = (args) => modelJson({ id: args.model_id });
+        catalogLib.clearCache();
+        reset();
+        const ledgerBefore = (await store.readLedger(sessionId)).length;
+        await assert.rejects(
+          generateVideo({ prompt: text('x'), refs: list('image', [image1]), audio: audio1 }),
+          /Model kling-3 declares no audio input/
+        );
+        assert.ok(sentNothing());
+        await assert.rejects(
+          tools.executeTool(makeCtx(sessionId).toolCtx, 'higgsfield_generate_video', {
+            model: 'kling-3', prompt: 'x', duration: 5, reference_asset_ids: [image1.assetId], reference_audio_asset_ids: [audio1.assetId]
+          }),
+          /deklariert keine Audio-Referenz/
+        );
+        assert.ok(sentNothing());
+        assert.equal((await store.readLedger(sessionId)).length, ledgerBefore, 'no reserved asset is left behind');
+        // the plan reports it from the cached model (no I/O), and only for a connected audio port
+        await catalogLib.getModel('kling-3');
+        const withRefs = { refs: { connected: true, count: 1 }, audio: { connected: true, count: 1 } };
+        const issues = issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, withRefs);
+        assert.equal(issues.length, 1);
+        assert.match(issues[0].message, /declares no audio input/);
+        const videoDef = oneOf(registry, 'video.higgsfield');
+        assert.equal(videoDef.validate(registry.normalizeParams(videoDef, { model: 'kling-3' }), withRefs)[0].port, 'audio', 'the issue points at the audio port');
+        assert.equal(issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, { refs: withRefs.refs }).length, 0, 'no audio connected, no issue');
+        assert.equal(issuesOf(registry, 'video.higgsfield', { model: 'unknown' }, withRefs).length, 0, 'an unknown model is not judged before the run');
+        modelResponse = combinedSlot;
+        catalogLib.clearCache();
+        await catalogLib.getModel('kling-3');
+        assert.equal(issuesOf(registry, 'video.higgsfield', { model: 'kling-3' }, withRefs).length, 0);
+
+        // a model that cannot be read at all: the documented role audio_references
+        modelResponse = () => {
+          throw new Error('models_explore down');
+        };
+        catalogLib.clearCache();
+        reset();
+        await generateVideo({ prompt: text('x'), refs: list('image', [image1]), audio: audio1 });
+        assert.deepEqual(submits()[0].args.requests[0].params.medias, [
+          { value: importId(1), role: 'image' },
+          { value: importId(2), role: 'audio_references' }
+        ], 'the safe image role and the documented audio role');
+
+        // the Director (no ctx.nodeView) cannot pass audio at all
+        modelResponse = combinedSlot;
+        catalogLib.clearCache();
+        reset();
+        await tools.executeTool(
+          { ...makeCtx(sessionId).toolCtx, nodeView: undefined },
+          'higgsfield_generate_video',
+          { model: 'kling-3', prompt: 'x', duration: 5, reference_audio_asset_ids: [audio1.assetId] }
+        );
+        assert.equal(submits().length, 1, 'the Director call still submits');
+        assert.ok(!('medias' in submits()[0].args.requests[0].params), 'the audio reference is ignored without ctx.nodeView');
+        assert.ok(!calls.some((call) => call.name === 'media_import_url'));
+      } finally {
+        stop();
+      }
+      catalogLib.clearCache();
+    }
+
+    /* ----- voices: parser (structured and text answers), paging, cache ----- */
+    {
+      resetMocks();
+      const parse = catalogLib.parseVoices;
+      // structuredContent of the live MCP: voices, has_more and the paging cursor (which the text does not carry)
+      const structured = parse('5 voice(s):', {
+        voices: [
+          { voice_id: 'v-1', voice_type: 'preset', name: 'Grady', gender: 'male', preview_url: 'https://cdn.example/p1.mp3', logo_url: 'https://cdn.example/l1.png' },
+          { voice_id: 'e-2', voice_type: 'element', name: 'My voice', gender: null },
+          { voice_id: 'v-3', voice_type: 'preset', name: '', gender: 'female' },
+          { name: 'no id' },
+          'junk'
+        ],
+        has_more: true,
+        next_cursor: ':4'
+      });
+      assert.deepEqual(structured.voices.map((voice) => [voice.value, voice.label]), [
+        ['preset:v-1', 'Grady (male)'],
+        ['element:e-2', 'My voice'],
+        ['preset:v-3', 'v-3 (female)']
+      ], 'label = name plus gender, when there is one');
+      assert.equal(structured.nextCursor, ':4');
+      assert.equal(structured.hasMore, true);
+      assert.deepEqual(parse('x', { voices: [], has_more: false }), { voices: [], nextCursor: '', hasMore: false, error: '' });
+      assert.equal(parse('x', { error: 'not allowed' }).error, 'not allowed');
+      assert.equal(parse('- Anna (voice_id=a-1, voice_type=preset)', { unrelated: true }).voices[0].value, 'preset:a-1', 'a structured part without voices falls back to the text');
+      // the text of the live MCP answer, as a fallback
+      const live = parse([
+        '5 voice(s):',
+        '- Grady (voice_id=e2a2d2e6-0000-4000-8000-000000000001, voice_type=preset)',
+        '- Ainsley (voice_id=e2a2d2e6-0000-4000-8000-000000000002, voice_type=preset)',
+        '- My clone (voice_id=abc123, voice_type=element)'
+      ].join('\n'));
+      assert.deepEqual(live.voices.map((voice) => [voice.value, voice.name]), [
+        ['preset:e2a2d2e6-0000-4000-8000-000000000001', 'Grady'],
+        ['preset:e2a2d2e6-0000-4000-8000-000000000002', 'Ainsley'],
+        ['element:abc123', 'My clone']
+      ]);
+      assert.equal(live.nextCursor, '', 'the text carries no cursor');
+      assert.equal(live.hasMore, null);
+      // the CLI spells the fields id / type; JSON in several shapes
+      assert.deepEqual(parse(JSON.stringify({ voices: [{ id: 'c-1', type: 'element', name: 'CLI voice' }] })).voices.map((voice) => voice.value), ['element:c-1']);
+      assert.equal(parse('[{"voice_id":"a","name":"A"}]').voices[0].value, 'preset:a', 'a bare array');
+      assert.equal(parse(JSON.stringify({ items: [{ id: 'i-1', type: 'element', name: 'Item' }] })).voices[0].value, 'element:i-1', 'items / id / type aliases');
+      assert.equal(parse(`Here you go:\n${JSON.stringify({ results: [{ voiceId: 'r-1' }] })}`).voices[0].value, 'preset:r-1', 'JSON inside prose');
+      assert.deepEqual(parse('{"voices":[],"has_more":false}'), { voices: [], nextCursor: '', hasMore: false, error: '' });
+      assert.equal(parse('{"error":"not allowed"}').error, 'not allowed');
+      // other plain text shapes
+      const plain = parse([
+        'Voices (2 of 5):',
+        '1. Sarah - voice_id: sarah-01, voice_type: preset, gender: female',
+        '- Max (voice_id: max-02, voice_type: element)',
+        'voice_id: bare-03',
+        'next_cursor: abc123',
+        'has_more: true'
+      ].join('\n'));
+      assert.deepEqual(plain.voices.map((voice) => voice.value), ['preset:sarah-01', 'element:max-02', 'preset:bare-03']);
+      assert.equal(plain.voices[0].name, 'Sarah');
+      assert.equal(plain.voices[0].label, 'Sarah (female)');
+      assert.equal(plain.voices[1].name, 'Max');
+      assert.equal(plain.voices[2].name, 'bare-03', 'the id is the name when none is given');
+      assert.equal(plain.nextCursor, 'abc123');
+      assert.equal(plain.hasMore, true);
+      assert.deepEqual(parse('No voices found.'), { voices: [], nextCursor: '', hasMore: null, error: '' });
+      assert.equal(parse('next_cursor: null').nextCursor, '');
+      assert.deepEqual(parse('').voices, []);
+
+      // paging through next_cursor of the structured part (size 100), de-duplication, cache, refresh
+      const calls = [];
+      let clock = 5000;
+      const pages = {
+        '': { voices: [{ voice_id: 'a', name: 'A' }, { voice_id: 'b', name: 'B' }], next_cursor: ':2', has_more: true },
+        ':2': { voices: [{ voice_id: 'c', name: 'C' }, { voice_id: 'a', name: 'A again' }], next_cursor: ':4', has_more: true },
+        ':4': { voices: [{ voice_id: 'd', voice_type: 'element', name: 'D' }], has_more: false }
+      };
+      const fake = {
+        status: () => ({ connected: true }),
+        mcpCall: async (name, args, options) => {
+          calls.push({ name, args, options });
+          assert.equal(name, 'list_voices');
+          const page = pages[args.cursor || ''];
+          // the live answer: a text part without cursor and the structured part with it
+          return { text: `${page.voices.length} voice(s):\n${page.voices.map((voice) => `- ${voice.name} (voice_id=${voice.voice_id}, voice_type=preset)`).join('\n')}`, structured: page };
+        }
+      };
+      const catalog = catalogLib.createCatalog({ higgsfield: fake, now: () => clock, ttlMs: 500 });
+      const voices = await catalog.listVoices();
+      assert.deepEqual(voices.map((voice) => voice.value), ['preset:a', 'preset:b', 'preset:c', 'element:d'], 'follows next_cursor and de-duplicates');
+      assert.deepEqual(calls.map((call) => call.args), [{ size: 100 }, { size: 100, cursor: ':2' }, { size: 100, cursor: ':4' }], 'flat arguments, size 100');
+      assert.ok(calls.every((call) => call.options && call.options.withStructured === true), 'the structured part is requested');
+      await catalog.listVoices();
+      assert.equal(calls.length, 3, 'cached');
+      clock += 501;
+      await catalog.listVoices();
+      assert.equal(calls.length, 6, 'refetched after the TTL');
+      await catalog.listVoices({ refresh: true });
+      assert.equal(calls.length, 9, 'manual refresh');
+      catalog.clearCache();
+      await catalog.listVoices();
+      assert.equal(calls.length, 12, 'clearCache forgets the voices');
+
+      // at most five pages, a repeated cursor ends the loop, has_more:false wins (plain string answers work, too)
+      let endless = 0;
+      const many = catalogLib.createCatalog({
+        higgsfield: {
+          status: () => ({ connected: true }),
+          mcpCall: async () => {
+            endless += 1;
+            return JSON.stringify({ voices: [{ voice_id: `v${endless}` }], next_cursor: `n${endless}`, has_more: true });
+          }
+        }
+      });
+      assert.equal((await many.listVoices()).length, catalogLib.MAX_VOICE_PAGES);
+      assert.equal(endless, 5, 'at most 5 pages');
+      let loops = 0;
+      const looping = catalogLib.createCatalog({
+        higgsfield: {
+          status: () => ({ connected: true }),
+          mcpCall: async () => {
+            loops += 1;
+            return { text: '', structured: { voices: [{ voice_id: `l${loops}` }], next_cursor: 'same' } };
+          }
+        }
+      });
+      assert.equal((await looping.listVoices()).length, 2);
+      assert.equal(loops, 2, 'the same cursor twice stops the loop');
+      let single = 0;
+      const finished = catalogLib.createCatalog({
+        higgsfield: {
+          status: () => ({ connected: true }),
+          mcpCall: async () => {
+            single += 1;
+            return { text: '', structured: { voices: [{ voice_id: 'only' }], next_cursor: 'more', has_more: false } };
+          }
+        }
+      });
+      assert.equal((await finished.listVoices()).length, 1);
+      assert.equal(single, 1, 'has_more:false ends the paging');
+      // an answer without a structured part (text only) is one page: the text has no cursor
+      let textOnly = 0;
+      const texted = catalogLib.createCatalog({
+        higgsfield: {
+          status: () => ({ connected: true }),
+          mcpCall: async () => {
+            textOnly += 1;
+            return { text: '- Yan (voice_id=y-1, voice_type=preset)\n- Zed (voice_id=z-2, voice_type=element)', structured: null };
+          }
+        }
+      });
+      assert.deepEqual((await texted.listVoices()).map((voice) => voice.value), ['preset:y-1', 'element:z-2']);
+      assert.equal(textOnly, 1);
+      // a text answer that names a cursor pages the same way
+      const textCalls = [];
+      const cursored = catalogLib.createCatalog({
+        higgsfield: {
+          status: () => ({ connected: true }),
+          mcpCall: async (name, args) => {
+            textCalls.push(args);
+            return args.cursor ? '- Zed - voice_id: z-2\nhas_more: false' : '- Yan - voice_id: y-1\nnext_cursor: t2\nhas_more: true';
+          }
+        }
+      });
+      assert.deepEqual((await cursored.listVoices()).map((voice) => voice.value), ['preset:y-1', 'preset:z-2']);
+      assert.equal(textCalls.length, 2);
+
+      // disconnected: no call; an error answer fails (and is not cached), a later success works
+      const offline = catalogLib.createCatalog({ higgsfield: { status: () => ({ connected: false }), mcpCall: async () => assert.fail('no call expected') } });
+      assert.deepEqual(await offline.listVoices(), []);
+      let healthy = false;
+      let tries = 0;
+      const flaky = catalogLib.createCatalog({
+        higgsfield: {
+          status: () => ({ connected: true }),
+          mcpCall: async () => {
+            tries += 1;
+            return healthy ? JSON.stringify({ voices: [{ voice_id: 'ok' }] }) : { text: '', structured: { error: 'quota exceeded' } };
+          }
+        }
+      });
+      await assert.rejects(flaky.listVoices(), /Higgsfield list_voices: quota exceeded/);
+      healthy = true;
+      assert.equal((await flaky.listVoices()).length, 1);
+      assert.equal(tries, 2, 'a failed answer is not cached');
+      const throwing = catalogLib.createCatalog({ higgsfield: { status: () => ({ connected: true }), mcpCall: async () => { throw new Error('MCP down'); } } });
+      await assert.rejects(throwing.listVoices(), /MCP down/);
+
+      // model parameters of seed_audio as the live MCP lists them: integers and numeric options are exposed, the audio
+      // formats the app cannot play are not offered
+      const described = catalogLib.createCatalog({ higgsfield: { status: () => ({ connected: true }), mcpCall: async () => seedAudioJson() } });
+      const seed = described.describeModel(await described.getModel('seed_audio'));
+      const seedParam = Object.fromEntries(seed.params.map((param) => [param.id, param]));
+      assert.deepEqual(seedParam.format.options, ['wav', 'mp3'], 'pcm and ogg_opus are not offered');
+      assert.equal(seedParam.format.default, 'wav');
+      assert.equal(seedParam.format.target, 'extra_params');
+      assert.deepEqual(seedParam.sample_rate.options, [8000, 16000, 24000, 32000, 44100, 48000]);
+      assert.equal(seedParam.sample_rate.default, 24000);
+      assert.deepEqual([seedParam.speech_rate.kind, seedParam.speech_rate.min, seedParam.speech_rate.max, seedParam.speech_rate.default], ['integer', -50, 100, 0]);
+      assert.deepEqual([seedParam.pitch_rate.min, seedParam.pitch_rate.max], [-12, 12]);
+      assert.ok(!seedParam.prompt, 'reserved parameters are not exposed');
+      assert.ok(!seedParam.voice_id && !seedParam.voice_type, 'the voice has its own node params');
+      assert.equal(seed.type, 'audio');
+      assert.equal(seed.supportsUnlim, true);
+      assert.equal(seed.credits.perUnit, 4);
+      // other models keep such parameters (a video model with a voice_id can still be given one)
+      const videoVoice = described.describeModel(JSON.parse(modelJson({ parameters: [{ name: 'voice_id', type: 'string' }] })));
+      assert.ok(videoVoice.params.some((param) => param.id === 'voice_id'));
+      // image models keep their format options untouched
+      assert.deepEqual(described.describeModel(JSON.parse(modelJson({ parameters: [{ name: 'format', type: 'string', options: ['png', 'jpg'] }] }))).params.find((param) => param.id === 'format').options, ['png', 'jpg']);
     }
 
     /* ----- engine integration: list map, count variants, caching ----- */
@@ -1148,7 +2211,18 @@ async function main() {
     {
       resetMocks();
       patch(higgsfield, 'status', () => ({ connected: true }));
+      let voicesFail = false;
       patch(higgsfield, 'mcpCall', async (name, args) => {
+        if (name === 'list_voices') {
+          if (voicesFail) throw new Error('MCP down');
+          return JSON.stringify({
+            voices: [
+              { voice_id: 'v-1', voice_type: 'preset', name: 'Anna', gender: 'female' },
+              { voice_id: 'e-2', voice_type: 'element', name: 'My voice', gender: null }
+            ],
+            has_more: false
+          });
+        }
         assert.equal(name, 'models_explore');
         if (args.action === 'list') {
           return JSON.stringify({ items: [{ id: `${args.type}-model`, name: `Model for ${args.type}` }], has_more: false });
@@ -1169,6 +2243,22 @@ async function main() {
       assert.deepEqual(images.body.options, [{ value: 'image-model', label: 'Model for image' }]);
       const videos = await call('/api/nodes/options/:source', { source: 'higgsfield-video-models' });
       assert.deepEqual(videos.body.options, [{ value: 'video-model', label: 'Model for video' }]);
+      // hf.speech offers the two speech models itself: there is no catalogue list of audio models (game-pipeline models)
+      assert.equal((await call('/api/nodes/options/:source', { source: 'higgsfield-audio-models' })).status, 404);
+      const voices = await call('/api/nodes/options/:source', { source: 'higgsfield-voices' });
+      assert.equal(voices.status, 200);
+      assert.deepEqual(voices.body.options, [
+        { value: 'preset:v-1', label: 'Anna (female)' },
+        { value: 'element:e-2', label: 'My voice' }
+      ]);
+      // a failing voice list is a 502 (the inspector then falls back to the typed voice id) and is retried later
+      catalogLib.clearCache();
+      voicesFail = true;
+      const failed = await call('/api/nodes/options/:source', { source: 'higgsfield-voices' });
+      assert.equal(failed.status, 502);
+      assert.match(failed.body.error, /Higgsfield voices could not be loaded: MCP down/);
+      voicesFail = false;
+      assert.equal((await call('/api/nodes/options/:source', { source: 'higgsfield-voices' })).status, 200);
       const model = await call('/api/nodes/higgsfield-models/:modelId', { modelId: 'kling-3' });
       assert.equal(model.status, 200);
       assert.equal(model.body.name, 'Kling 3');

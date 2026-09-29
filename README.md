@@ -19,7 +19,7 @@ Inspired by the Higgsfield "Supercomputer" concept — rebuilt as an open, local
 - **Speech** — ElevenLabs text-to-speech for voice-overs and voice masters (optional).
 - **Higgsfield integration** — connect your higgsfield.ai account with one click (no API key needed) and the Director gains 30+ image/video models, billed as Higgsfield credits on your plan (optional).
 - **Motion graphics** — HTML/GSAP compositions rendered to MP4 on one or more render nodes (16:9, 9:16, 1:1) (optional).
-- **Node view** — build reusable production flows on a canvas (batch runs, six templates), publish them as a clean Design App and send results back to a chat.
+- **Node view** — build reusable production flows on a canvas (batch runs, seven templates), publish them as a clean Design App and send results back to a chat.
 - **Casting** — reusable characters per project: reference images plus a voice master keep faces and voices consistent across episodes.
 - **Branding studio** — colors, typography, logos, imagery, tone. Import a design system from a ZIP (e.g. exported from claude.ai/design), export as ZIP.
 - **Projects with production profiles** — briefing guidelines, context files, brandings, cast and a per-project memory the Director maintains itself.
@@ -87,7 +87,7 @@ Besides the chat, **🧩 Nodes** in the sidebar opens a canvas for building reus
 - **Runs** — a node, the selection or the whole flow runs on the server. Results are cached by their inputs, so unchanged nodes are skipped. Paid nodes are marked with `$`, the run dialog shows the last known cost, and a paid run always asks for confirmation.
 - **Batch** — a *Text list* (one item per line, or blocks separated by `---`) or a *Media list* makes the flow run once per item (up to 50). The counter under the list shows how many items are used.
 - **Assets** — every image/video/audio input takes an upload, a file from one of your chats, or an asset already produced in this workflow.
-- **Templates** — *New from template* offers six ready flows: Product hero (4 variants), Still to vertical ad with voice-over, Consistent character series (batch), Continuous shots via last frame, Motion title over footage and Masked edit. Templates whose provider is not configured are shown as unavailable; their texts come in English, German and Spanish.
+- **Templates** — *New from template* offers seven ready flows: Product hero (4 variants), Still to vertical ad with voice-over, Consistent character series (batch), Continuous shots via last frame, Motion title over footage, Masked edit and Clip in three national languages (Higgsfield dubbing with lip sync). Templates whose provider is not configured are shown as unavailable; their texts come in English, German and Spanish.
 - **Design App** — switch on *Design App* in the top bar, expose parameters of your nodes (the small toggle next to a field) and pick the result nodes. `#app=<workflow id>` then shows a clean form with a *Run* button, live status, a result gallery, downloads and *Send to chat*. The form values only apply to that run; the saved workflow is not changed.
 - **Chat bridge** — *Send to chat* copies results into a chat of your choice as a visible message with the media attached, so the Director can continue from there.
 - **Projects** — assign a workflow to a project (the same folders your chats use); the project name shows in the workflow list. Workflows are visible to the whole team; deleting one also deletes its media (the app asks for confirmation first).

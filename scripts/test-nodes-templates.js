@@ -1,6 +1,6 @@
 'use strict';
 
-// Starter templates of the node view (SPEC §15): all six load and validate against the registry, texts
+// Starter templates of the node view (SPEC §15): all seven load and validate against the registry, texts
 // exist in de/en/es (Swiss spelling), `requires` covers the node types, the localized documents create
 // workflows through the real routes, and the batch template maps a text list through the engine (with
 // fake executors derived from the real node definitions, so no provider is contacted).
@@ -13,6 +13,7 @@ const os = require('os');
 const path = require('path');
 
 const store = require('../lib/store');
+const higgsfieldLib = require('../lib/higgsfield');
 const templates = require('../lib/nodes/templates');
 const nodeRegistry = require('../lib/nodes/registry');
 const { createRegistry } = nodeRegistry;
@@ -23,7 +24,7 @@ const { registerNodeRoutes } = require('../lib/nodes/routes');
 const nodesBasic = require('../lib/nodes/nodes-basic');
 const { textValue, listValue } = require('../lib/nodes/types');
 
-const EXPECTED = ['frame-chain', 'hero-variants', 'image-to-ad', 'masked-edit', 'motion-title', 'series-shots'];
+const EXPECTED = ['dub-clip', 'frame-chain', 'hero-variants', 'image-to-ad', 'masked-edit', 'motion-title', 'series-shots'];
 
 // requirement key that a node type needs (mirrors the availability predicates of the node modules)
 function requirementOf(type) {
@@ -31,6 +32,7 @@ function requirementOf(type) {
   if (['image.generate', 'image.edit', 'image.relight', 'video.seedance'].includes(type)) return 'openrouter';
   if (type === 'audio.tts') return 'elevenlabs';
   if (type === 'video.motion_graphics') return 'rendernode';
+  if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) return 'higgsfield';
   const def = nodeRegistry.get(type);
   if (def && ['edit-image', 'edit-video', 'edit-audio'].includes(def.category)) return 'ffmpeg';
   if (['video.concat'].includes(type)) return 'ffmpeg';
@@ -69,7 +71,7 @@ async function main() {
   let server = null;
 
   try {
-    /* ----- the six templates exist, load and validate ----- */
+    /* ----- the seven templates exist, load and validate ----- */
     const all = templates.loadTemplates();
     assert.deepEqual(all.map((template) => template.id).sort(), EXPECTED);
     for (const template of all) {
@@ -110,6 +112,13 @@ async function main() {
     assert.equal(byId['frame-chain'].graph.nodes.find((node) => node.type === 'video.extract_frame').params.position, 'last');
     assert.ok(types('motion-title').includes('llm.motion_html') && types('motion-title').includes('video.motion_graphics') && types('motion-title').includes('input.video'));
     assert.ok(types('masked-edit').includes('image.mask_apply') && types('masked-edit').includes('image.composite'));
+    // dub-clip: one source video fans out to three dubbing nodes (deu, fra, ita) that all feed the result node
+    assert.deepEqual(types('dub-clip'), ['input.video', 'hf.dubbing', 'hf.dubbing', 'hf.dubbing', 'output.result']);
+    assert.deepEqual(byId['dub-clip'].graph.nodes.filter((node) => node.type === 'hf.dubbing').map((node) => node.params.target_language), ['deu', 'fra', 'ita']);
+    assert.deepEqual(byId['dub-clip'].requires, ['higgsfield']);
+    assert.deepEqual(byId['dub-clip'].graph.edges.filter((edge) => edge.from.node === 'n1').map((edge) => edge.to.node), ['n2', 'n3', 'n4']);
+    assert.deepEqual(byId['dub-clip'].graph.edges.filter((edge) => edge.to.node === 'n5').map((edge) => edge.from.node), ['n2', 'n3', 'n4']);
+    assert.equal(templates.resolveTemplate('dub-clip', { lang: 'de' }).name, 'Clip in drei Landessprachen');
     // frame-chain: the clip edges into concat are in playback order
     const concatEdges = byId['frame-chain'].graph.edges.filter((edge) => edge.to.port === 'clips');
     assert.deepEqual(concatEdges.map((edge) => edge.from.node), ['n2', 'n5']);
@@ -159,6 +168,23 @@ async function main() {
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.ok(noAudio.filter((item) => item.id !== 'image-to-ad').every((item) => item.available));
+      // Higgsfield is a requirement of its own: a template with hf.* nodes is available exactly when Higgsfield is connected
+      const noHiggsfield = templates.listTemplates({ lang: 'en', checks: { ...allOn, higgsfield: () => 'Higgsfield is not connected' } });
+      const dub = noHiggsfield.find((item) => item.id === 'dub-clip');
+      assert.equal(dub.available, false);
+      assert.deepEqual(dub.missing, [{ key: 'higgsfield', reason: 'Higgsfield is not connected' }]);
+      assert.deepEqual(dub.requires, ['higgsfield']);
+      assert.ok(noHiggsfield.filter((item) => item.id !== 'dub-clip').every((item) => item.available));
+      // the real check follows the connection state (mocked: no provider is contacted)
+      const originalStatus = higgsfieldLib.status;
+      try {
+        higgsfieldLib.status = () => ({ connected: true });
+        assert.equal(templates.REQUIREMENT_CHECKS.higgsfield(), true);
+        higgsfieldLib.status = () => ({ connected: false });
+        assert.match(templates.REQUIREMENT_CHECKS.higgsfield(), /Higgsfield/);
+      } finally {
+        higgsfieldLib.status = originalStatus;
+      }
       assert.equal(noAudio.find((item) => item.id === 'series-shots').batch, true);
       assert.equal(noAudio.find((item) => item.id === 'hero-variants').batch, false);
       assert.equal(templates.listTemplates({ lang: 'de', checks: allOn }).find((item) => item.id === 'hero-variants').name, 'Produkt-Hero, 4 Varianten');

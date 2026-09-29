@@ -1,0 +1,78 @@
+{
+  "id": "dub-clip",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Clip in three national languages",
+  "description": "Upload a short clip with speech and get it back dubbed into German, French and Italian: Higgsfield translates the speech, voices it in the target language and lip-syncs the result.",
+  "requires": ["higgsfield"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.video", "typeVersion": 1, "x": 80, "y": 300, "title": "Source clip", "params": { "asset": null } },
+      { "id": "n2", "type": "hf.dubbing", "typeVersion": 1, "x": 520, "y": 60, "title": "German version", "params": { "target_language": "deu" } },
+      { "id": "n3", "type": "hf.dubbing", "typeVersion": 1, "x": 520, "y": 340, "title": "French version", "params": { "target_language": "fra" } },
+      { "id": "n4", "type": "hf.dubbing", "typeVersion": 1, "x": 520, "y": 620, "title": "Italian version", "params": { "target_language": "ita" } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 960, "y": 340, "params": { "label": "Dubbed clips" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "video" }, "to": { "node": "n2", "port": "video" } },
+      { "id": "e2", "from": { "node": "n1", "port": "video" }, "to": { "node": "n3", "port": "video" } },
+      { "id": "e3", "from": { "node": "n1", "port": "video" }, "to": { "node": "n4", "port": "video" } },
+      { "id": "e4", "from": { "node": "n2", "port": "video" }, "to": { "node": "n5", "port": "inputs" } },
+      { "id": "e5", "from": { "node": "n3", "port": "video" }, "to": { "node": "n5", "port": "inputs" } },
+      { "id": "e6", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 560, "w": 340, "h": 190, "text": "Upload a short clip with clear speech. Every language costs Higgsfield credits and the run asks for confirmation first. The dubbing nodes are experimental: the Higgsfield answer format has not been verified against the live API." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Clip in three languages",
+    "description": "Upload a clip and choose the three target languages. You get one dubbed version per language.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Source clip" },
+      { "node": "n2", "param": "target_language", "label": "Language 1" },
+      { "node": "n3", "param": "target_language", "label": "Language 2" },
+      { "node": "n4", "param": "target_language", "label": "Language 3" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Dubbed clips" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Clip in drei Landessprachen",
+      "description": "Lade einen kurzen Clip mit Sprache hoch und erhalte ihn auf Deutsch, Französisch und Italienisch vertont: Higgsfield übersetzt die Sprache, spricht sie in der Zielsprache und synchronisiert die Lippen.",
+      "node.n1": "Quellclip",
+      "node.n2": "Deutsche Fassung",
+      "node.n3": "Französische Fassung",
+      "node.n4": "Italienische Fassung",
+      "note.t1": "Lade einen kurzen Clip mit gut verständlicher Sprache hoch. Jede Sprache kostet Higgsfield-Credits, der Lauf fragt vorher nach der Bestätigung. Die Dubbing-Nodes sind experimentell: Das Antwortformat von Higgsfield wurde noch nicht gegen die Live-API geprüft.",
+      "app.title": "Clip in drei Sprachen",
+      "app.description": "Lade einen Clip hoch und wähle die drei Zielsprachen. Du erhältst pro Sprache eine vertonte Fassung.",
+      "app.input.n1.asset": "Quellclip",
+      "app.input.n2.target_language": "Sprache 1",
+      "app.input.n3.target_language": "Sprache 2",
+      "app.input.n4.target_language": "Sprache 3",
+      "app.output.n5": "Vertonte Fassungen"
+    },
+    "es": {
+      "name": "Clip en tres lenguas nacionales",
+      "description": "Sube un clip corto con voz y recíbelo doblado al alemán, francés e italiano: Higgsfield traduce el habla, la locuta en el idioma de destino y sincroniza los labios.",
+      "node.n1": "Clip de origen",
+      "node.n2": "Versión en alemán",
+      "node.n3": "Versión en francés",
+      "node.n4": "Versión en italiano",
+      "note.t1": "Sube un clip corto con voz clara. Cada idioma cuesta créditos de Higgsfield y la ejecución pide confirmación antes de empezar. Los nodos de doblaje son experimentales: el formato de respuesta de Higgsfield aún no se ha verificado con la API real.",
+      "app.title": "Clip en tres idiomas",
+      "app.description": "Sube un clip y elige los tres idiomas de destino. Recibes una versión doblada por idioma.",
+      "app.input.n1.asset": "Clip de origen",
+      "app.input.n2.target_language": "Idioma 1",
+      "app.input.n3.target_language": "Idioma 2",
+      "app.input.n4.target_language": "Idioma 3",
+      "app.output.n5": "Versiones dobladas"
+    }
+  }
+}
