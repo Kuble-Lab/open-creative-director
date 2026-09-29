@@ -1,6 +1,6 @@
 {
   "name": "open-creative-director",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "AI creative director chat app that orchestrates image, video, speech and motion-graphics generation.",
   "type": "commonjs",
   "license": "MIT",
