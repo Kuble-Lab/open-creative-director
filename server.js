@@ -32,6 +32,10 @@ const higgsfield = require('./lib/higgsfield');
 const chatgpt = require('./lib/chatgpt');
 const promptPresets = require('./lib/prompt-presets');
 const admins = require('./lib/admins');
+const nodeWorkflows = require('./lib/nodes/workflows-store');
+const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
+const { registerNodeRoutes } = require('./lib/nodes/routes');
+const nodeHiggsfieldCatalog = require('./lib/nodes/higgsfield-catalog');
 
 loadEnv();
 settings.loadSettings();
@@ -1299,6 +1303,10 @@ app.post('/api/sessions/:id/message', async (req, res) => {
   }
 });
 
+// Node view API (registry, workflows, uploads, runs, SSE); must stay before the catch-all below.
+const nodeEngine = createNodeEngine({ store: nodeWorkflows.defaultStore, getConfig: () => runtime });
+registerNodeRoutes(app, { runtime, publicRuntimeConfig, engine: nodeEngine, higgsfieldCatalog: nodeHiggsfieldCatalog });
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(PATHS.publicDir, 'index.html'));
 });
@@ -1336,6 +1344,12 @@ function startServer() {
   });
 
   listen(BASE_PORT, 20);
+  nodeWorkflows.defaultStore
+    .markInterruptedRuns()
+    .then((count) => {
+      if (count > 0) console.log(`[nodes] ${count} unterbrochene(r) Workflow-Lauf/Laeufe markiert.`);
+    })
+    .catch((err) => console.warn('[nodes]', err.message));
   discovery
     .resolveModels(fileConfig)
     .then((models) => {

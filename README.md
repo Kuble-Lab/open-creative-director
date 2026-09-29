@@ -19,6 +19,7 @@ Inspired by the Higgsfield "Supercomputer" concept — rebuilt as an open, local
 - **Speech** — ElevenLabs text-to-speech for voice-overs and voice masters (optional).
 - **Higgsfield integration** — connect your higgsfield.ai account with one click (no API key needed) and the Director gains 30+ image/video models, billed as Higgsfield credits on your plan (optional).
 - **Motion graphics** — HTML/GSAP compositions rendered to MP4 on one or more render nodes (16:9, 9:16, 1:1) (optional).
+- **Node view** — build reusable production flows on a canvas (batch runs, six templates), publish them as a clean Design App and send results back to a chat.
 - **Casting** — reusable characters per project: reference images plus a voice master keep faces and voices consistent across episodes.
 - **Branding studio** — colors, typography, logos, imagery, tone. Import a design system from a ZIP (e.g. exported from claude.ai/design), export as ZIP.
 - **Projects with production profiles** — briefing guidelines, context files, brandings, cast and a per-project memory the Director maintains itself.
@@ -75,6 +76,21 @@ Node/Express server (server.js)
 ```
 
 No database, no cloud storage: sessions, generated assets, brandings and settings are plain files on your disk. Delete the folder, everything is gone.
+
+## Node view (workflows and Design Apps)
+
+![Open Creative Director — node view with the template Still to vertical ad with voice-over: inputs, an LLM description step, Seedance animation, voice-over and a result node on the canvas](docs/screenshots/nodes.png)
+
+Besides the chat, **🧩 Nodes** in the sidebar opens a canvas for building reusable production flows. Nodes for inputs (text, text list, images, videos, audio), LLM steps, image/video/audio generation, ffmpeg editing and results are wired together; every workflow keeps its media in its own hidden session, so nothing shows up in your chat list.
+
+- **Canvas** — left-drag on the empty canvas draws a selection marquee (Shift adds), the toolbar switches between *Select (V)* and *Hand (H)*; you can also pan with Space + drag, the middle mouse button or two fingers on a trackpad, and zoom with Ctrl/Cmd + wheel or a pinch toward the cursor. Undo/redo, copy/paste, groups and notes work as expected.
+- **Runs** — a node, the selection or the whole flow runs on the server. Results are cached by their inputs, so unchanged nodes are skipped. Paid nodes are marked with `$`, the run dialog shows the last known cost, and a paid run always asks for confirmation.
+- **Batch** — a *Text list* (one item per line, or blocks separated by `---`) or a *Media list* makes the flow run once per item (up to 50). The counter under the list shows how many items are used.
+- **Assets** — every image/video/audio input takes an upload, a file from one of your chats, or an asset already produced in this workflow.
+- **Templates** — *New from template* offers six ready flows: Product hero (4 variants), Still to vertical ad with voice-over, Consistent character series (batch), Continuous shots via last frame, Motion title over footage and Masked edit. Templates whose provider is not configured are shown as unavailable; their texts come in English, German and Spanish.
+- **Design App** — switch on *Design App* in the top bar, expose parameters of your nodes (the small toggle next to a field) and pick the result nodes. `#app=<workflow id>` then shows a clean form with a *Run* button, live status, a result gallery, downloads and *Send to chat*. The form values only apply to that run; the saved workflow is not changed.
+- **Chat bridge** — *Send to chat* copies results into a chat of your choice as a visible message with the media attached, so the Director can continue from there.
+- **Projects** — assign a workflow to a project (the same folders your chats use); the project name shows in the workflow list. Workflows are visible to the whole team; deleting one also deletes its media (the app asks for confirmation first).
 
 ## Motion-graphics render node (optional)
 

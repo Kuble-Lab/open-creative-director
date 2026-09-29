@@ -1,0 +1,863 @@
+# Node View — Specification
+
+Status: implemented v1 (2026-09-29) — see [IMPLEMENTATION-NOTES.md](IMPLEMENTATION-NOTES.md) for as-built deviations · Scope: analysis, architecture and work packages (this is the original design; where it differs from the code, the notes and the code win).
+
+Open Creative Director (Open CD) gets a second way to work next to the chat: a **node view** in the style of Weavy / Figma Weave. Users build visual pipelines on an infinite canvas (inputs → LLM → image → video → edit → output), run single nodes or whole graphs, compare variants, and publish a simplified **Design App** so teammates or clients only swap inputs.
+
+The node view is a new *front end over the existing generation stack*. It does not add providers or a second implementation of any generation logic.
+
+---
+
+## 1. Goals and non-goals
+
+### Goals
+
+1. An infinite canvas with typed, colour-coded ports, a searchable palette, multi-select, copy/paste, undo/redo, notes, groups, minimap, autosave, workflow list, import/export and templates.
+2. Server-side execution: topological order, dependency resolution, hash-based caching, run modes node / selection / all, cancel, bounded concurrency, live status via SSE.
+3. Every node executor is a thin adapter over an **existing** function (`lib/tools.js` executors, `lib/ffmpeg.js`, OpenRouter / ChatGPT, Higgsfield MCP, render nodes, ElevenLabs, resvg). Results are ordinary session assets; costs go to the existing cost journal (`data/costs.jsonl`).
+4. A declarative node registry (ports, parameter schema, cost hints, availability, executor) so that new nodes need little code. Higgsfield models show up dynamically.
+5. Variants and per-node run history with version selection; previews for image, video, audio and text inside the node.
+6. Design App mode, lists/batch, starter templates, and a bridge to the chat world (import assets from chats, send results to a chat).
+7. No new dependencies, no build step, no framework. Vanilla JS in the browser, CommonJS on the server.
+
+### Non-goals (v1)
+
+- Real-time multi-user co-editing (presence, cursors, CRDT). v1 uses optimistic concurrency (`rev`) only.
+- Public, unauthenticated share links for Design Apps.
+- New AI providers or models beyond what Open CD already reaches (OpenRouter, ChatGPT subscription, Higgsfield MCP, ElevenLabs, render nodes, local ffmpeg/resvg).
+- Pixel-accurate mask inpainting, segmentation ("select subject"), true relighting models, 3D.
+- A Director tool that runs or authors workflows (planned for phase 2, see §17).
+- Replacing the chat. The chat stays the default view.
+
+---
+
+## 2. Verified integration facts (what the design is built on)
+
+| Fact | Where | Consequence |
+| --- | --- | --- |
+| Every tool executor has the signature `executor(ctx, args)` with `ctx = { sessionId, config, emit, user }` and returns `{ toolResult, inject, asset? , job? }`. | `lib/tools.js` → `executeTool(ctx, name, args)`, `EXECUTORS` | Node executors call `tools.executeTool` directly and read `outcome.asset` / `outcome.job`. `toolResult`/`inject` (Director text) are ignored. |
+| All tools resolve inputs as **asset IDs inside `ctx.sessionId`** (`store.readLedger`, `store.assetDataUrl`, `sessionAssetDir`). | `referencesFromAssetIds`, `buildVideoPayload`, `renderAssetsFromIds`, `concatVideoSources` | Each workflow owns one hidden **backing session**. All workflow inputs/outputs live in its ledger. Assets from chats are *copied* in. |
+| Assets: `store.saveAsset`, `store.reserveAsset` (pending), `store.completeAsset`, `store.completeAssetFile` (moves a file from inside the session asset dir). IDs `img-001`, `vid-001`, `aud-001`, `upload-001`. URL `/assets/<sessionId>/<file>` (static, immutable). | `lib/store.js` | Assets are immutable once complete → `sessionId/assetId` is a valid cache fingerprint. |
+| Async jobs are appended to `session.jobs`; `lib/poller.js` polls every 6 s (`POLL_INTERVAL_MS`), completes the asset, sets `job.status` to `completed`/`failed`, Higgsfield sets `job.resultAssetIds`. The poller discovers jobs via `store.listSessions({ limit: Infinity })`. | `poller.pollOnce`, `handleCompleted`, `handleHiggsfieldCompleted`, `handleFailed` | The engine waits for a job by polling the backing session (`store.readSession`). Hiding workflow sessions from the chat list must be opt-in so the poller still sees them. |
+| Provider jobs cannot be cancelled (no cancel call in `lib/openrouter.js`, `lib/rendernode.js`, Higgsfield usage). | — | "Cancel" stops waiting and skips pending nodes; already submitted jobs finish remotely and still cost money. The UI says so. |
+| Sessions are **not user-scoped** today: every user sees every chat. `req.kubleUser` (whoami middleware) is only used for cost attribution and admin checks (`isAdmin`). | `lib/whoami.js`, `server.js` | Workflows follow the same model: team-visible, `createdBy`/`updatedBy` recorded, costs attributed to the running user. |
+| SSE pattern: `res.writeHead(200, {'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no'})`, frames `data: <json>\n\n`, keep-alive `: ping\n\n` every 15 s; compression skips `text/event-stream`. | `server.js` → `POST /api/sessions/:id/message` | Reused 1:1 for `GET /api/workflows/:id/events`. |
+| Catch-all `app.get('*')` serves `index.html`. | end of `server.js` | Node routes must be registered **before** it. |
+| Non-streaming LLM call: `or.postJson('/chat/completions', payload)`; cost from `completion.usage.cost`, journaled as `type: 'brain'`. ChatGPT subscription route: `chatgpt.streamResponses({ model, instructions, input: chatgpt.messagesToInput(messages), tools: [] })` → `{ text, toolCalls, usage }`, journaled with `cost: 0, billing: 'Abo'`. Vision support check: `discovery.brainSupportsImages(model)`. | `server.js` `/api/roles/generate`, `lib/brain.js` `recordBrainUsage`, `lib/chatgpt.js`, `lib/discovery.js` | LLM nodes get a small adapter `lib/nodes/llm.js`. |
+| Cost journal accepts types `image, video, motion, brain, higgsfield` only; unknown fields are dropped. | `lib/costs.js` `VALID_TYPES`, `normaliseEntry` | No journal change. Workflow costs are grouped by the backing session, whose title is `Workflow: <name>` so `/api/costs/summary` stays readable. |
+| ffmpeg: `ffmpeg.binaries()` (`FFMPEG_PATH`/`FFPROBE_PATH` overrides), `probeVideo(file)` (also works on still images: ffprobe reports a video stream), `concatVideos`, `PROCESS_TIMEOUT_MS`. `runProcess` is **not exported** and has no abort signal. | `lib/ffmpeg.js` | WP4 exports `runProcess` and adds an optional `signal`. |
+| Three frames of a video as JPEG buffers: `poller.extractVideoFrames(videoPath)` (10 %, 50 %, 95 %). | `lib/poller.js` | Reused by the Video Describer node. |
+| SVG → PNG via `@resvg/resvg-js` inside `storeImportedSessionAsset` (not exported). | `lib/tools.js` | WP3 exports it; image inputs get automatic SVG rasterisation without duplicating code. |
+| Seedance capabilities come from `discovery.videoCapabilities(model)`; fallback lists `frameImages: ['first_frame','last_frame']`, but `buildVideoPayload` only sends `first_frame`. | `lib/discovery.js`, `lib/tools.js` | Last-frame conditioning is "later". |
+| Higgsfield: `higgsfield.mcpCall(tool, args)`, `higgsfield.status().connected`, `extractJobIds`, `parseJobStatus`. `models_explore` returns JSON with `id, name, parameters[{name, required, type, options, min, max, default}], medias[{roles, max}], aspect_ratios, durations, duration_range, credits_per_unit, credit_unit`. References need `PUBLIC_BASE_URL` (`publicrefs.publishAsset` → `media_import_url`). The MCP catalogue snapshot in `docs/higgsfield-tools.json` also lists `remove_background`, `upscale_image`, `upscale_video`, `outpaint_image`, `reframe`, `motion_control`, `voice_change`, `dubbing`, `generate_audio`, `generate_3d`. | `lib/higgsfield.js`, `lib/tools.js` `runHiggsfieldGeneration`, `importHiggsfieldReferences` | Higgsfield models become palette entries dynamically. The edit tools are wired as *experimental* nodes (see §5.8). `runHiggsfieldGeneration` only forwards `aspect_ratio`, `resolution`, `duration`, references — model-specific params need a small extension. |
+| Frontend: one classic script `public/app.js` (global functions such as `openLightbox`, `rel`, `api`), `public/i18n.js` exposes `window.I18N`, `t()`, `applyI18n()`; `t()` resolves at call time, so dictionaries can be extended by later scripts. Hash routing `#s=<sessionId>` only (`sessionIdFromHash`, `hashchange` handler ignores other keys). Dark theme tokens on `:root` in `public/styles.css` (`--bg`, `--bg-panel`, `--bg-raised`, `--bg-input`, `--line`, `--line-soft`, `--text`, `--text-dim`, `--text-faint`, `--accent`, `--accent-soft`, `--danger`, `--radius`, `--radius-sm`, `--font`). Modals use z-index 60, the lightbox 50, sidebar popovers up to 45. | `public/*` | The node view is a separate set of scripts under `public/nodes/`, mounted as a full-window layer with its own hash keys `#w=` / `#app=`. |
+| `scripts/test-i18n.js` requires every `data-i18n*` key in `index.html` to exist in `public/i18n.js` (de) and all three languages to have identical key sets without "ß". | `scripts/test-i18n.js` | The single sidebar button key lives in `public/i18n.js`; everything else lives in `public/nodes/i18n-nodes.js` with its own parity test. |
+| Tests are plain Node scripts (`node scripts/test-*.js`), use `assert/strict`, monkey-patch module exports (`or.createImage = async () => …`), write to the real `data/`, `projects/`, `assets/` folders and clean up. Route tests call handlers via `app._router.stack` (`scripts/test-api-handlers.js`). | `scripts/` | Same pattern for all node tests. |
+
+---
+
+## 3. Weavy feature mapping (now vs. later)
+
+"Now" means: buildable in this project with the existing stack in work packages WP1–WP7. "Later" names the reason and what it would need.
+
+### 3.1 Canvas and editing
+
+| Weavy feature | Status | Notes |
+| --- | --- | --- |
+| Infinite canvas, pan, zoom, fit-to-view | Now | CSS-transformed world layer, SVG edges (§12). |
+| Minimap | Now | Small `<canvas>` drawing node rectangles; click/drag to navigate. |
+| Searchable node palette (double-click, `Tab`, `/`), categories | Now | Registry-driven, fuzzy search over label, category, keywords, Higgsfield model names. |
+| Typed, coloured ports with type checking | Now | §6. |
+| Drag an edge into empty space → palette filtered to compatible nodes → auto-connect | Now | §12.4. |
+| Multi-select, lasso, move, delete, duplicate, copy/paste (also across workflows) | Now | Clipboard JSON in `localStorage` + system clipboard. |
+| Undo/redo | Now | Snapshot stack (§12.6). |
+| Keyboard shortcuts | Now | §12.5. |
+| Sticky notes, groups/frames | Now | Graph-level `notes[]` and `groups[]`. |
+| Autosave | Now | Debounced `PUT` with optimistic `rev`. |
+| Workflow list, rename, duplicate, delete | Now | Left drawer. |
+| Import/export (JSON) | Now | Versioned format §7. Export with bundled assets (ZIP) is **later** (needs asset packing + re-import mapping; `archiver`/`yauzl` already installed). |
+| Templates | Now | Six starter workflows (§15). |
+| Real-time collaboration, comments on canvas | Later | Needs presence channel, conflict-free merge, comment store. |
+
+### 3.2 Execution
+
+| Weavy feature | Status | Notes |
+| --- | --- | --- |
+| Run one node incl. required predecessors | Now | Mode `node`; predecessors reuse cache. |
+| Run selection / whole workflow | Now | Modes `selection`, `all`. |
+| Cancel | Now (partial) | Stops waiting and skips pending nodes. Already submitted provider jobs continue remotely and are billed (no cancel API in the stack). |
+| Status per node (queued / running / waiting / cached / done / error / skipped / cancelled) | Now | SSE `node_status`. |
+| Caching of unchanged results, dirty propagation | Now | Cache key §9.3, plan endpoint paints "stale" badges. |
+| Previews inside the node (image, video, audio, text) | Now | Native `<img>`, `<video>`, `<audio>`, text block. |
+| Multiple results/variants per run | Now | `count` param (1–4) on generative nodes; Higgsfield multi-result jobs become variants. |
+| Run history per node, choose version | Now | `results.json`, max 30 entries per node. |
+| Cost display | Now (actual) / estimate partly | Actual USD from OpenRouter usage; Higgsfield shows credit estimate from `credits_per_unit`; GPT Image / Seedance have no price table in the code → estimate = last actual cost of that node type in this workflow, else "unknown". Pre-run confirmation lists paid nodes. |
+| Download (single, ZIP of outputs) | Now | Asset URL with `download`; ZIP via `archiver`. |
+| Seeds / deterministic re-runs | Later | Not exposed by the current OpenRouter/Seedance wrappers. |
+
+### 3.3 Node families
+
+| Weavy node family | Status | Backing / notes |
+| --- | --- | --- |
+| Inputs: text, number, image, video, audio, lists | Now | Upload into backing session, or copy from any chat session. |
+| Any LLM | Now | OpenRouter models from `config.brainModels` + ChatGPT subscription models when connected. |
+| Prompt enhancer, image describer, video describer, prompt concatenation/template | Now | LLM adapter; video describer uses `poller.extractVideoFrames` (visual only, no speech transcription). |
+| Image generation (many models) | Now | GPT Image 2 (`generate_image`), all Higgsfield image models (dynamic). |
+| Image editing with references | Now | GPT Image 2 edit (`edit_image`), Higgsfield models with references (needs `PUBLIC_BASE_URL`). |
+| Video generation t2v / i2v | Now | Seedance 2.5 (`generate_video`), Higgsfield video models (Kling, Veo, Sora, …). |
+| Motion graphics | Now | `render_motion_graphics` on render nodes; optional LLM "HTML writer" node. |
+| Audio / TTS | Now | ElevenLabs (`generate_speech`). Higgsfield `generate_audio`, `voice_change`, `dubbing` → later. |
+| Crop, resize, levels/colour, blur, sharpen, invert, flip/rotate | Now | ffmpeg filters (`crop`, `scale`, `eq`, `colorlevels`, `gblur`, `unsharp`, `negate`, `transpose`). |
+| Compositing / layers | Now (parametric) | ffmpeg `overlay` + `blend`; one layer per node, chain for stacks. An interactive drag-and-drop layer editor is later. |
+| Masks: apply mask, chroma-key mask | Now | ffmpeg `alphamerge`, `colorkey`. |
+| Mask painting (brush) | Later | Needs an in-node paint editor producing a PNG mask (~medium UI work). Uploaded masks work now. |
+| Inpainting (mask-constrained generation) | Later (approximation now) | OpenRouter `/images` payload in the code has no mask field; whether GPT Image 2 via OpenRouter accepts one is unverified (open question). Approximation now: `image.edit` on the whole image, then `image.mask_apply` + `image.composite` to paste only the masked region back onto the original (template "Masked edit"). Not pixel-stable if the model shifts geometry. |
+| Relight | Now (approximate) | `image.relight` = GPT Image 2 edit with a lighting prompt preset. It regenerates the image; no dedicated relight model (IC-Light etc.) is reachable. |
+| AI upscaling | Now (experimental) / non-AI now | Higgsfield `upscale_image` / `upscale_video` (requires Higgsfield + `PUBLIC_BASE_URL`, response format to be verified live). Non-AI Lanczos resize via ffmpeg now. |
+| Background removal | Now (experimental) / chroma key now | Higgsfield `remove_background` (image and video, same preconditions). Chroma key for solid backgrounds via ffmpeg now. GPT Image transparent background via OpenRouter: unverified (open question). |
+| Outpaint / reframe | Now (experimental) / approximate now | Higgsfield `outpaint_image`, `reframe` (video). Approximation: `image.pad` + `image.edit` "fill the empty border". |
+| Frame extraction, trim, merge audio, concat, speed, extract audio, image-to-video (Ken Burns) | Now | ffmpeg; concat reuses `concat_videos`. |
+| Segmentation / "select subject" masks | Later | No segmentation model reachable. |
+| Lip sync, motion transfer, voice change | Later | Higgsfield `dubbing`, `motion_control`, `voice_change` exist in the catalogue; wire after the experimental edit nodes are verified. |
+| 3D | Later | Higgsfield `generate_3d` returns GLB; needs a viewer (three.js from CDN) and GLB asset kind. |
+| Output / export | Now | `output.result` node: marks app outputs, download, ZIP, send to chat. |
+
+### 3.4 Design App, batch, chat
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Design App (exposed inputs/params, run button, outputs) | Now | `#app=<id>` view (§14). Same login as the main app. Public links later. |
+| Lists / batch (series production) | Now | Implicit map over list inputs (§9.6), list inputs in the app. Cartesian products / nested iterators later. |
+| Use chat/project assets as inputs | Now | Asset picker copies into the backing session. |
+| Send results to a chat | Now | Copies asset into the chat session and appends a visible user message with `uploadIds`. |
+| Cast / Branding input nodes | Later | Feasible (`cast.listMembers`, `cast.readMemberAsset`, `brandings`) but out of v1 scope. |
+| Director tool `run_workflow` / "create workflow from chat" | Later | Needs stable app schemas, async result delivery into the chat turn and a cost-confirmation step. The engine API is designed for it (§17). |
+
+---
+
+## 4. Architecture overview
+
+```
+Browser
+  public/app.js (chat, unchanged)          public/nodes/*.js (node view, new)
+        │                                           │  REST + SSE (EventSource)
+Node/Express server.js ── registerNodeRoutes(app, deps)   (lib/nodes/routes.js)
+        │
+        ├─ lib/nodes/workflows-store.js   workflow.json / results.json / runs/*.json
+        ├─ lib/nodes/engine.js            plan, topo sort, cache, pool, cancel, events
+        ├─ lib/nodes/events.js            per-workflow EventEmitter bus → SSE
+        ├─ lib/nodes/registry.js          node types (declarative) + availability
+        │     ├─ nodes-basic.js           inputs, text, utility, output
+        │     ├─ nodes-generate.js        LLM, GPT Image 2, Seedance, Higgsfield, ElevenLabs, render node
+        │     └─ nodes-edit.js            ffmpeg / resvg editing
+        ├─ lib/nodes/llm.js               OpenRouter / ChatGPT text completion adapter
+        ├─ lib/nodes/higgsfield-catalog.js models_explore cache → dynamic params
+        ├─ lib/nodes/ffmpeg-ops.js        pure ffmpeg argument builders
+        ├─ lib/nodes/assets.js            value <-> ledger helpers, copy/import, save output file
+        └─ lib/nodes/jobs.js              waitForSessionJob (reads session.jobs written by poller)
+              │
+              ▼   existing, reused
+        lib/tools.js executeTool · lib/store.js · lib/poller.js · lib/ffmpeg.js · lib/openrouter.js
+        lib/chatgpt.js · lib/higgsfield.js · lib/elevenlabs.js · lib/rendernode.js · lib/costs.js
+```
+
+Key decision: **one hidden backing session per workflow.** It makes every existing tool work unchanged (they only know `ctx.sessionId`), lets the existing poller finish async jobs, keeps assets in the existing `assets/<sessionId>/` layout and groups costs per workflow in the existing cost summary. The alternative (teaching every tool a new asset namespace) would touch all executors.
+
+---
+
+## 5. Node type catalogue
+
+Notation: ports `id:type` (`[]` = list, `*` = accepts multiple edges, `?` = optional). Params list `id (kind, default)`. "Backing" names the existing file and function the executor adapts. Cost: `usd` = actual cost journaled from provider usage; `credits` = Higgsfield credits (journal records 0); `local` = no provider cost.
+
+Availability predicates reuse existing checks: `or.hasKey()`, `elevenlabs.hasKey()`, `higgsfield.status().connected`, `rendernode.enabled()`, `ffmpeg.binaries().available`, `publicBaseUrl()` (from `lib/config.js`), `chatgpt.status().connected`.
+
+### 5.1 Inputs (WP1)
+
+| ID | Ports in → out | Params | Backing | Cost |
+| --- | --- | --- | --- | --- |
+| `input.text` | → `text:text` | `text` (textarea, "") | none | – |
+| `input.number` | → `value:number` | `value` (number, 0), `min`, `max`, `step` | none | – |
+| `input.text_list` | → `items:text[]` | `text` (textarea; one item per line, or blocks separated by a line `---`), `max` (integer, 50) | none | – |
+| `input.image` | → `image:image` | `asset` (asset picker: upload / from chat) | upload route + `lib/nodes/assets.js` (`store.saveAsset` / `reserveAsset`+`completeAssetFile`); SVG uploads are rasterised via `tools.storeImportedSessionAsset` (exported in WP3; until then SVG upload is rejected) | – |
+| `input.video` | → `video:video` | `asset` | same | – |
+| `input.audio` | → `audio:audio` | `asset` | same | – |
+| `input.media_list` | → `items:image[]` (param `kind` switches to `video[]`/`audio[]`) | `kind` (select image/video/audio), `assets` (multi picker, max 50) | same | – |
+
+### 5.2 Text and utility (WP1)
+
+| ID | Ports | Params | Backing | Cost |
+| --- | --- | --- | --- | --- |
+| `text.template` | `a?:text`, `b?:text`, `c?:text`, `d?:text`, `e?:text` → `text:text` | `template` (textarea, `"{{a}} {{b}}"`) | pure; unknown placeholders stay literal; numbers are stringified | – |
+| `text.join` | `items*:text` (or `text[]`) → `text:text` | `separator` (text, `"\n"`) | pure | – |
+| `text.split` | `text:text` → `items:text[]` | `separator` (text, newline), `trim` (bool, true), `max` (int, 50) | pure | – |
+| `util.pick` | `items:any[]` → `item:any` | `index` (int, 0; negative counts from the end) | pure | – |
+| `util.router` | `inputs*:any` → `out:any` | `index` (int, 0) | pure (Weavy "router/switch") | – |
+| `output.result` | `inputs*:any` → (none) | `label` (text) | pure; marks outputs for app mode, ZIP download, send-to-chat | – |
+
+Notes and groups are not nodes; they are `graph.notes[]` / `graph.groups[]` (§7).
+
+### 5.3 LLM (WP3)
+
+| ID | Ports | Params | Backing | Cost |
+| --- | --- | --- | --- | --- |
+| `llm.chat` | `prompt?:text` (→ param), `system?:text`, `images*?:image` (max 8) → `text:text` | `model` (select, options source `brain-models`, default `config.defaultBrain`), `system` (textarea), `prompt` (textarea), `temperature` (number 0–2, blank = provider default; ignored on ChatGPT route), `max_tokens` (int, blank), `json` (bool → `response_format: {type:'json_object'}` with 400-fallback exactly like `/api/roles/generate`), `count` (1–4) | `lib/nodes/llm.js completeText()` → `or.postJson('/chat/completions')` or `chatgpt.streamResponses` for `chatgpt/*`; images as data URLs via `store.assetDataUrl`; rejects images when `discovery.brainSupportsImages(model)` is false | usd (`type:'brain'`), Abo = 0 |
+| `llm.prompt_enhancer` | `prompt:text`, `images*?:image` → `text:text` | `model`, `target` (select image/video/speech/motion), `notes` (textarea) | `llm.chat` with fixed system prompt: rewrite into one production-ready **English** prompt (tools require English prompts), no preamble | usd |
+| `llm.image_describer` | `image:image` → `text:text` | `model`, `focus` (select: full / subject / style / composition), `language` (select en/de/es, default en) | `llm.js` + `store.assetDataUrl` | usd |
+| `llm.video_describer` | `video:video` → `text:text` | `model`, `focus` | `poller.extractVideoFrames(path)` (3 JPEG frames) + `llm.js`. Requires ffmpeg. Visual only. | usd |
+| `llm.motion_html` | `brief:text`, `assets*?:image\|video` (max 10) → `html:text` | `model`, `format` (landscape/portrait/square), `duration` (int s, 6) | `llm.js`; system prompt = the description of `RENDER_MOTION_GRAPHICS_DEFINITION` (exported from `lib/tools.js` in WP3) plus the asset filename list | usd |
+
+### 5.4 Image generation (WP3)
+
+| ID | Ports | Params | Backing | Cost |
+| --- | --- | --- | --- | --- |
+| `image.generate` | `prompt?:text` → `image:image` | `prompt` (textarea), `aspect_ratio` (select `IMAGE_RATIOS`, "1:1"), `count` (1–4) | `tools.executeTool(ctx,'generate_image',{prompt, aspect_ratio})` → `outcome.asset`; model = `config.imageModel` (GPT Image 2) | usd (journaled by `storeImageResult`) |
+| `image.edit` | `prompt?:text`, `images*:image` (1–8) → `image:image` | `prompt`, `aspect_ratio` (select incl. `auto` = omit), `count` | `executeTool('edit_image', {prompt, reference_asset_ids, aspect_ratio?})` | usd |
+| `image.relight` | `image:image`, `notes?:text` → `image:image` | `light` (select: golden hour, soft studio, hard noon sun, overcast, neon night, candle, custom), `custom` (text), `strength` (select subtle/strong), `count` | `edit_image` with a prompt preset ("Relight this exact scene… keep composition, identity and all objects unchanged") | usd |
+| `image.higgsfield` | `prompt?:text`, `refs*?:image` (max = model `medias[].max`, ≤12) → `image:image` | `model` (select, options source `higgsfield-image-models`), `prompt`, `aspect_ratio` (from model), `resolution` (from model), dynamic model params (§10.2) | `executeTool('higgsfield_generate_image', {model, prompt, aspect_ratio, resolution, reference_asset_ids, extra_params})` → job → `waitForSessionJob`; all `resultAssetIds` become variants | credits (estimate from `credits_per_unit`) |
+| `image.svg_rasterize` | `svg:text` → `image:image` | `width` (int, 1024) | `@resvg/resvg-js` exactly as in `storeImportedSessionAsset` | local |
+| `image.text_render` | `text?:text` → `image:image` (transparent PNG) | `text`, `font_family` (text, "Helvetica"), `font_size` (int 96), `font_weight` (select 400/600/800), `color` (colour), `width`/`height` (int), `align` (select), `line_height` | builds an SVG and rasterises it with resvg (system fonts). Used for titles in compositing. | local |
+
+### 5.5 Video generation (WP3)
+
+| ID | Ports | Params | Backing | Cost |
+| --- | --- | --- | --- | --- |
+| `video.seedance` | `prompt?:text`, `first_frame?:image`, `refs*?:image` (≤30), `ref_videos*?:video` (≤10), `ref_audios*?:audio` (≤10) → `video:video` | `prompt`, `duration` (int 4–30, 5), `aspect_ratio` (select `VIDEO_RATIOS`, t2v only; hidden when `first_frame` is connected), `resolution` (480p/720p) | `executeTool('generate_video', {prompt, mode, first_frame_asset_id, reference_asset_ids, reference_video_asset_ids, reference_audio_asset_ids, duration_seconds, aspect_ratio, resolution})`; mode = `image_to_video` iff `first_frame` connected; wait job. Video/audio references require `PUBLIC_BASE_URL` (tool throws otherwise; node shows it as a validation warning before run). | usd (journaled by poller) |
+| `video.higgsfield` | `prompt?:text`, `refs*?:image` (≤12) → `video:video` | `model` (options source `higgsfield-video-models`), `prompt`, `aspect_ratio`, `duration`, `resolution`, dynamic params | `executeTool('higgsfield_generate_video', …)` + wait | credits |
+| `video.motion_graphics` | `html?:text`, `assets*?:image\|video\|audio` (≤10) → `video:video` | `html` (code), `format` (landscape/portrait/square), `quality` (draft/standard/high), `label` (text) | `executeTool('render_motion_graphics', {html, label, quality, format, asset_ids})` + wait. Placeholders `{{asset:1}}…{{asset:10}}` in the HTML are replaced with the filenames `<assetId><ext>` that `renderAssetsFromIds` copies beside `index.html`. | local |
+| `video.concat` | `clips*:video` (2–20, edge order = playback order) or `clips:video[]` → `video:video` | `label` | `executeTool('concat_videos', {asset_ids, label})` (sync) | local |
+
+### 5.6 Audio (WP3)
+
+| ID | Ports | Params | Backing | Cost |
+| --- | --- | --- | --- | --- |
+| `audio.tts` | `text?:text` → `audio:audio` | `text` (≤2500 chars), `voice_id` (options source `elevenlabs-voices`, default `21m00Tcm4TlvDq8ikWAM`), `model_id` (default `eleven_multilingual_v2`) | `executeTool('generate_speech', {text, voice_id, model_id})` | ElevenLabs plan (not journaled today) |
+
+### 5.7 Editing — local ffmpeg / resvg (WP4)
+
+All require `ffmpeg.binaries().available`. Image ops output PNG (alpha preserved), video ops output MP4 (H.264 `yuv420p` + AAC, `-movflags +faststart`), audio ops output M4A (AAC). Every op runs through `ffmpeg.runProcess` with `timeoutMs = ffmpeg.PROCESS_TIMEOUT_MS` and the run's abort `signal`, in a scratch dir `fsp.mkdtemp(path.join(store.sessionAssetDir(sessionId), '.nodes-'))`, then `store.reserveAsset` + `store.completeAssetFile` (same pattern as `runConcatVideos`). Argument builders are pure functions in `lib/nodes/ffmpeg-ops.js`.
+
+| ID | Ports | Params | ffmpeg |
+| --- | --- | --- | --- |
+| `image.crop` | `image` → `image` | `mode` (pixels / aspect), `x`,`y`,`width`,`height`, `aspect` (select), `anchor` (center, top, …) | `crop=w:h:x:y` |
+| `image.resize` | `image` → `image` | `width`,`height` (0 = keep ratio), `fit` (contain/cover/stretch), `background` (colour or transparent for contain) | `scale=…:flags=lanczos` (+`pad` / `crop`) |
+| `image.adjust` | `image` → `image` | `brightness` (−1..1, 0), `contrast` (0..3, 1), `saturation` (0..3, 1), `gamma` (0.1..3, 1), `hue` (−180..180, 0) | `eq=…`, `hue=h=…` |
+| `image.levels` | `image` → `image` | `in_black`,`in_white`,`out_black`,`out_white` (0..1) | `colorlevels` |
+| `image.blur` | `image` → `image` | `radius` (0..50, 8) | `gblur=sigma=…` |
+| `image.sharpen` | `image` → `image` | `amount` (0..3, 1) | `unsharp=5:5:amount` |
+| `image.invert` | `image` → `image` | `alpha` (bool, false) | `negate` |
+| `image.transform` | `image` → `image` | `flip` (none/h/v/both), `rotate` (0/90/180/270) | `hflip`,`vflip`,`transpose` |
+| `image.pad` | `image` → `image` | `aspect` or `width`/`height`, `color` / transparent, `position` | `pad` |
+| `image.composite` | `background:image`, `layer:image`, `mask?:image` → `image` | `x`,`y` (px or %), `scale` (%), `opacity` (0..1), `blend` (normal/multiply/screen/overlay/darken/lighten) | `overlay` (+`colorchannelmixer=aa=` for opacity, `blend=all_mode=` for modes, `alphamerge` with mask) |
+| `image.mask_apply` | `image`, `mask:image` → `image` (RGBA) | `invert` (bool), `feather` (px) | `alphamerge` (+`gblur` on mask) |
+| `image.chroma_key` | `image` → `image` (RGBA), `mask:image` | `color` (colour, #00ff00), `similarity` (0.01..1), `blend` | `colorkey` / `chromakey`, `alphaextract` for the mask output |
+| `image.to_video` | `image`, `audio?:audio`, `duration?:number` → `video` | `duration` (s, 5; a connected `duration` port wins), `match_audio` (bool: use the audio length from `probeMedia`), `fps` (30), `zoom` (none / in / out — Ken Burns via `zoompan`) | `-loop 1`, `zoompan`, optional audio mux (`-shortest`) |
+| `video.extract_frame` | `video` → `image` | `position` (first / middle / last / time), `time` (s) | `-ss` + `-frames:v 1` PNG (last = duration − 1 frame via `probeVideo`) |
+| `video.trim` | `video` → `video` | `start`, `end` (s), `accurate` (bool, true = re-encode) | `-ss/-to` |
+| `video.resize` | `video` → `video` | `width`,`height`,`fit` | `scale`/`pad`/`crop` |
+| `video.adjust` | `video` → `video` | as `image.adjust` | `eq`, `hue` |
+| `video.speed` | `video` → `video` | `factor` (0.25..4) | `setpts`, chained `atempo` |
+| `video.overlay_image` | `video`, `image` → `video` | `x`,`y`,`scale`,`opacity`, `start`,`end` (s) | `overlay=enable='between(t,…)'` |
+| `video.merge_audio` | `video`, `audio` → `video` | `mode` (replace / mix), `audio_volume`, `video_volume`, `length` (shortest / video) | `-map`, `amix`, `volume`, `apad` |
+| `video.extract_audio` | `video` → `audio` | – | `-vn -c:a aac` |
+| `audio.trim` | `audio` → `audio` | `start`,`end`,`fade_in`,`fade_out` | `atrim`, `afade` |
+| `audio.mix` | `tracks*:audio` (2–8) → `audio` | `volumes` (list), `length` (longest/shortest/first) | `amix`, `volume` |
+| `media.info` | `media:any` → `duration:number`, `width:number`, `height:number` | – | `ffmpeg.probeVideo` for video/image; for audio a new tiny `probeMedia` (same ffprobe call, tolerant of missing video stream) in `lib/nodes/ffmpeg-ops.js` |
+
+### 5.8 Higgsfield edit tools — experimental (WP3, sub-step)
+
+Shown only when Higgsfield is connected **and** `PUBLIC_BASE_URL` is set (sources are published via `publicrefs.publishAsset` and imported with `media_import_url`, identical to `importHiggsfieldReferences`). Schemas come from `docs/higgsfield-tools.json`; the response shape (job id) is assumed to match generation (`higgsfield.extractJobIds`) and **must be verified once live by the user** (costs credits). Palette label carries an "experimental" badge.
+
+| ID | Ports | Params | MCP tool | Output kind |
+| --- | --- | --- | --- | --- |
+| `hf.remove_background` | `media:image\|video` → same type | – | `remove_background {media_id, media_type}` | image/video |
+| `hf.upscale_image` | `image` → `image` | `resolution` (2k/4k) | `upscale_image {image_id, width, height, resolution}` (width/height via `probeVideo`) | image |
+| `hf.upscale_video` | `video` → `video` | `provider` (topaz/bytedance), `resolution` | `upscale_video` | video |
+| `hf.outpaint_image` | `image` → `image` | `aspect_ratio` | `outpaint_image {image_id, aspect_ratio}` | image |
+| `hf.reframe_video` | `video` → `video` | `aspect_ratio`, `resolution` | `reframe {aspect_ratio, medias:[{value, role:'video'}], …}` | video |
+
+Implementation: a generic `runHiggsfieldEdit(ctx, { tool, params, sourceAssetIds, kind })` in `lib/tools.js`, sharing the job persistence with `runHiggsfieldGeneration` (extract a private helper `submitHiggsfieldJob`). It is added to `EXECUTORS` as `higgsfield_edit` but **not** to `toolDefinitions()` — the Director does not see it. The existing poller completes these jobs unchanged (they carry `provider: 'higgsfield'`, `kind`).
+
+---
+
+## 6. Port types and compatibility
+
+### 6.1 Types
+
+| Type | Value shape | Colour token |
+| --- | --- | --- |
+| `text` | `{ type:'text', value:string }` | `--nv-port-text: #8fb3ff` |
+| `number` | `{ type:'number', value:number }` | `--nv-port-number: #7fd1e0` |
+| `image` | `{ type:'image', sessionId, assetId, file, url }` (raster: png/jpg/webp; gif treated as image for display only) | `--nv-port-image: #d8a25f` (= `--accent`) |
+| `video` | `{ type:'video', sessionId, assetId, file, url, duration? }` (mp4/webm) | `--nv-port-video: #c49bff` |
+| `audio` | `{ type:'audio', sessionId, assetId, file, url, duration? }` (mp3/wav/m4a/aac) | `--nv-port-audio: #5fd3a2` |
+| `any` | any of the above | `--nv-port-any: #9aa1ab` |
+| `T[]` | `{ type:'list', of:T, items:[Value…] }` | same colour, square port glyph |
+
+Ledger → type mapping (`lib/nodes/assets.js valueFromLedgerEntry`): kind `image` → image; `video` → video; `audio` → audio; `upload` by extension (`.png .jpg .jpeg .webp .gif` → image, `.mp4 .webm` → video, `.mp3 .wav .m4a .aac` → audio, `.svg` → rejected for `image` ports with the message to use the PNG variant).
+
+### 6.2 Compatibility (`lib/nodes/types.js canConnect(fromType, toType)`)
+
+1. Same type → OK.
+2. `any` on either side → OK (executor validates at run time).
+3. `number` → `text` → OK (stringified). `text` → `number` → not allowed (use a param).
+4. `T[]` → `T` → OK: **implicit map** (node runs once per item, §9.6).
+5. `T` → `T[]` → OK: wrapped into a one-item list.
+6. `T[]` → `T[]` → OK.
+7. Everything else (e.g. `video` → `image`, `image` → `video`) → rejected; the palette suggests the bridging node (`video.extract_frame`, `image.to_video`).
+8. A port with `multiple: true` accepts several edges (order = order in `graph.edges`, shown as small index badges); otherwise a new edge replaces the old one.
+9. Cycles are rejected at connect time (client) and at validate time (server).
+
+The same `types.js` data is served to the client in `GET /api/nodes/registry` (`portTypes`, `compat` matrix) so client and server never diverge.
+
+---
+
+## 7. Data model
+
+### 7.1 Workflow document (`data/workflows/<wfId>/workflow.json`)
+
+```json
+{
+  "format": "ocd.workflow",
+  "version": 1,
+  "id": "wf-mt3k2p-a1b2c3",
+  "name": "Coffee hero → vertical ad",
+  "description": "",
+  "folder": "Northlight Roasters",
+  "sessionId": "mt3k2p9-4f1e2a",
+  "rev": 17,
+  "createdAt": "2026-09-29T10:12:00.000Z",
+  "updatedAt": "2026-09-29T10:40:12.000Z",
+  "createdBy": "lokal",
+  "updatedBy": "lokal",
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 120,
+        "params": { "text": "Specialty coffee cup, Scandinavian cafe, warm morning light" } },
+      { "id": "n2", "type": "llm.prompt_enhancer", "typeVersion": 1, "x": 420, "y": 120,
+        "params": { "model": "anthropic/claude-opus-4.6", "target": "image", "notes": "" } },
+      { "id": "n3", "type": "image.generate", "typeVersion": 1, "x": 760, "y": 80,
+        "params": { "prompt": "", "aspect_ratio": "9:16", "count": 4 }, "title": "Hero still" },
+      { "id": "n4", "type": "video.seedance", "typeVersion": 1, "x": 1100, "y": 80,
+        "params": { "prompt": "Slow push-in, steam rising, light flickers through leaves", "duration": 6, "resolution": "720p" } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1440, "y": 120,
+        "params": { "label": "Final clip" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "text" }, "to": { "node": "n2", "port": "prompt" } },
+      { "id": "e2", "from": { "node": "n2", "port": "text" }, "to": { "node": "n3", "port": "prompt" } },
+      { "id": "e3", "from": { "node": "n3", "port": "image" }, "to": { "node": "n4", "port": "first_frame" } },
+      { "id": "e4", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [ { "id": "g1", "title": "Look development", "x": 40, "y": 40, "w": 1020, "h": 420, "color": "amber" } ],
+    "notes":  [ { "id": "t1", "x": 80, "y": 520, "w": 260, "h": 120, "text": "Pick the best of 4 stills before running the video." } ],
+    "viewport": { "x": 0, "y": 0, "zoom": 0.8 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Vertical coffee ad",
+    "description": "Describe the scene, get a 6 s clip.",
+    "inputs":  [ { "node": "n1", "param": "text", "label": "Scene" },
+                 { "node": "n4", "param": "duration", "label": "Length (s)" } ],
+    "outputs": [ { "node": "n5", "label": "Clip" } ]
+  }
+}
+```
+
+Rules: node IDs `n<k>`, edge IDs `e<k>`, group `g<k>`, note `t<k>` (unique per workflow, `[A-Za-z0-9_-]{1,32}`). `typeVersion` allows registry-level param migrations. Unknown node types are kept on import and rendered as "unknown node" (not executable). `viewport` is saved but does not bump undo history.
+
+### 7.2 Results (`data/workflows/<wfId>/results.json`, engine-owned)
+
+```json
+{
+  "version": 1,
+  "nodes": {
+    "n3": {
+      "selected": { "entry": "h-mt3l0a-01", "variant": 2 },
+      "history": [
+        {
+          "id": "h-mt3l0a-01",
+          "runId": "r-mt3l0a-9c1d",
+          "createdAt": "2026-09-29T10:31:02.000Z",
+          "user": "lokal",
+          "cacheKey": "sha256:7f1c…",
+          "params": { "prompt": "", "aspect_ratio": "9:16", "count": 4 },
+          "variants": [
+            { "image": { "type": "image", "sessionId": "mt3k2p9-4f1e2a", "assetId": "img-004", "file": "img-004.png", "url": "/assets/mt3k2p9-4f1e2a/img-004.png" } },
+            { "image": { "type": "image", "sessionId": "mt3k2p9-4f1e2a", "assetId": "img-005", "file": "img-005.png", "url": "/assets/mt3k2p9-4f1e2a/img-005.png" } }
+          ],
+          "cost": { "usd": 0.0188, "credits": null },
+          "durationMs": 21450
+        }
+      ]
+    }
+  }
+}
+```
+
+- A **variant** is one complete output set (`{ portId: Value }`). `count: 4` → 4 variants in one history entry. Downstream nodes receive the *selected* variant.
+- History is capped at 30 entries per node (oldest dropped from the list; assets stay in the ledger).
+- Client autosave never writes this file; variant selection goes through `PATCH …/results/:nodeId`. This split avoids write races between autosave and a running engine.
+
+### 7.3 Run record (`data/workflows/<wfId>/runs/<runId>.json`, last 50 kept)
+
+```json
+{ "id": "r-mt3l0a-9c1d", "workflowId": "wf-…", "mode": "node", "targets": ["n3"], "force": true,
+  "user": "lokal", "status": "completed", "startedAt": "…", "finishedAt": "…",
+  "nodes": { "n1": {"status":"cached"}, "n2": {"status":"cached"}, "n3": {"status":"done","entry":"h-mt3l0a-01"} },
+  "cost": { "usd": 0.0188, "credits": 0 }, "overrides": {}, "error": null }
+```
+
+Run status: `running | completed | failed | cancelled | interrupted` (`interrupted` = server restarted mid-run; set on startup for stale `running` records).
+
+### 7.4 Backing session
+
+Created with `store.createSession({ folder, kind: 'workflow', title: 'Workflow: <name>' })` (WP1 extends `createSession`). It holds the ledger, jobs and poller messages. It is hidden from `GET /api/sessions` (WP1: `store.listSessions` skips `kind === 'workflow'` unless `includeHidden: true`; `poller.pollOnce` passes `includeHidden: true`). Its title follows workflow renames. Deleting a workflow deletes the backing session (`store.deleteSession`) after confirmation; cost journal lines remain.
+
+### 7.5 Export / import
+
+`GET /api/workflows/:id/export` returns `{ format:'ocd.workflow', version:1, exportedAt, name, description, graph, app }` (no `id`, `sessionId`, `rev`, results). Media input nodes keep their `asset` reference but it is marked `missing` after import into another workflow; the node shows "re-upload". Import (`POST /api/workflows/import`) validates `format`, runs `migrations[version]` (none yet), rejects cycles and dangling edges, keeps unknown node types, and creates a new workflow + backing session. Max import size 2 MB.
+
+---
+
+## 8. Registry format
+
+`lib/nodes/registry.js` holds `register(def)`, `get(type)`, `list()`, `publicDescriptor(def)`. A definition:
+
+```js
+register({
+  type: 'image.generate',
+  version: 1,
+  category: 'image',            // input | llm | text | image | video | audio | edit-image | edit-video | edit-audio | higgsfield | utility | output
+  label: 'Generate image (GPT Image 2)',   // English fallback; client uses i18n key nodes.type.<type>.label
+  keywords: ['gpt', 'image', 'text to image'],
+  inputs: [
+    { id: 'prompt', type: 'text', required: true, param: 'prompt' }   // param = inline fallback when unconnected
+  ],
+  outputs: [ { id: 'image', type: 'image' } ],
+  params: [
+    { id: 'prompt', kind: 'textarea', default: '', inline: true },       // inline = shown on the node card
+    { id: 'aspect_ratio', kind: 'select', options: IMAGE_RATIOS, default: '1:1' },
+    { id: 'count', kind: 'integer', min: 1, max: 4, default: 1 }
+  ],
+  paid: true,                                  // triggers pre-run confirmation
+  cost: { unit: 'usd', estimate: (params, ctx) => null },   // null = unknown → UI shows last actual
+  available: () => (or.hasKey() ? true : 'OPENROUTER_API_KEY missing'),
+  validate: (params, inputs) => [],            // warnings/errors shown before run (e.g. PUBLIC_BASE_URL)
+  execute: async (ctx, inputs, params) => ({ variants: [ { image: value } ], cost: { usd: 0.0047 } })
+});
+```
+
+Param kinds: `text`, `textarea`, `code` (monospace, for HTML), `number`, `integer`, `slider` (`min`,`max`,`step`), `boolean`, `select` (`options` static or `optionsSource`: `brain-models`, `elevenlabs-voices`, `higgsfield-image-models`, `higgsfield-video-models`), `color`, `asset` (media picker), `assets` (multi), `tags` (string array). Optional `showIf: { param|port, equals|connected }` for conditional UI (e.g. hide `aspect_ratio` on Seedance when `first_frame` is connected).
+
+`publicDescriptor` strips `execute`/`validate`/`estimate` functions and adds `available: true | reason`. The client auto-generates node cards and the inspector from this descriptor; most nodes need no client code.
+
+---
+
+## 9. Engine
+
+`lib/nodes/engine.js` exports `createEngine({ store: workflowsStore, registry, events, getConfig, limits })` → `{ plan(workflowId, opts), start(workflowId, opts) → runId, cancel(workflowId, runId), activeRun(workflowId) }`.
+
+### 9.1 Run request
+
+`{ mode: 'all' | 'node' | 'selection', nodeIds?: string[], force?: boolean, overrides?: { [nodeId]: { [paramId]: value } }, user }`.
+
+- `all`: targets = every executable node.
+- `node` / `selection`: targets = `nodeIds`.
+- Required set = targets ∪ all ancestors (walk incoming edges).
+- `force` applies **only to targets**: they execute even on a cache hit (new history entry = new variants). Ancestors always reuse cache. UI default: ▶ on a node = `mode:'node', force:true`; "Run all" = `force:false`.
+- `overrides` are merged over saved params for this run only (Design App, batch). They are part of the cache key; the graph is not modified.
+
+### 9.2 Algorithm
+
+1. Load `workflow.json` + `results.json`; `validateGraph` (types known, required inputs connected or inline param set, edge types compatible, no cycles via Kahn). Validation errors fail the run before any provider call.
+2. Topologically sort the required set (Kahn; ties by `y` then `x` for stable order).
+3. Ready-queue scheduling with a pool of `limits.parallel` (default 3; env `NODES_MAX_PARALLEL`). A node is ready when all its upstream nodes in the required set are `done` or `cached`.
+4. For each ready node: resolve inputs from upstream **selected** variants (fresh results of this run replace the selection first), apply `number→text` coercion and list wrapping, compute the cache key (§9.3).
+5. If not forced and some history entry has the same `cacheKey` → select it (keep the user's variant if it is the same entry), emit `cached`.
+6. Else `available()` must be true (else error `unavailable: <reason>`), then `execute(ctx, inputs, params)` inside a per-node timeout (sync executors 12 min, async waits 30 min). Append history entry, set `selected = { entry, variant: 0 }`, persist `results.json` under a per-workflow lock (`store.withLock('wf:' + id, …)` — the existing mutex is keyed by any string).
+7. On executor error: node `error` (message ≤ 500 chars), all descendants in the required set `skipped` (`blocked by n3`), independent branches continue. Run status `failed` if any node errored, else `completed`.
+8. Emit `run_finished`, write the run record, prune old run records.
+
+### 9.3 Cache key
+
+`sha256(canonicalJSON({ t: type, v: typeVersion, p: effectiveParams, i: inputFingerprints }))`, with keys sorted recursively.
+
+- `effectiveParams` = saved params ∪ overrides, minus UI-only params (`label`, `title`).
+- Fingerprints: text → `'t:' + sha256(value)`; number → value; media → `'<sessionId>/<assetId>'` (assets are immutable); list → array of item fingerprints.
+- Consequence: changing a param, an upstream result, or the selected upstream variant changes the key → the node is stale. Re-running an input node with identical params is a cache hit.
+
+### 9.4 Plan (dirty propagation, cost preview)
+
+`plan(workflowId, { mode, nodeIds, force, overrides })` walks the same topo order without executing: a node is `stale` if any upstream node in the plan is stale, or if its key (computed from current upstream selections) matches no history entry. Result per node: `{ status: 'cached' | 'stale' | 'forced' | 'unavailable' | 'invalid', paid, estimate: { usd, credits } | null, lastCost, reason? }`, plus totals. The client calls it (debounced 1 s after each successful autosave) to paint stale badges, and before a run to show the confirmation "N paid nodes will run (≈ $X known, Y credits est., Z unknown)".
+
+### 9.5 Executor context
+
+```js
+ctx = {
+  workflowId, runId, nodeId, sessionId, user, config,   // config = server runtime (imageModel, videoModel, brainModels, defaultBrain)
+  signal,                                               // AbortSignal of the run
+  toolCtx: { sessionId, config, user, emit },           // for tools.executeTool; emit maps tool events to node_log
+  log(label),                                           // → SSE node_log
+  waitForJob(job),                                      // lib/nodes/jobs.js waitForSessionJob(sessionId, job.jobId, { signal, timeoutMs })
+  saveOutputFile({ kind, ext, sourceFile, prompt, cost, duration })   // lib/nodes/assets.js → reserveAsset + completeAssetFile
+}
+```
+
+`waitForSessionJob` polls `store.readSession(sessionId).jobs` every 2 s: `completed` → returns `resultAssetIds || [assetId]`; `failed` → throws `job.error`; aborted → throws `AbortError`; timeout → throws. It never calls providers itself; the existing poller does. Asset costs are read from the ledger (`entry.cost`) after completion.
+
+### 9.6 Lists (batch)
+
+If a non-list input port receives a `T[]`, the node maps over the items: one execution per item, outputs collected into lists in item order. Multiple list inputs are zipped by index (length mismatch → validation error). Inside a map `count` is forced to 1. Max 50 items per map (`limits.maxListItems`). Items execute through the same pool; the history entry stores one variant whose ports hold lists. Per-item progress is emitted as `node_status` with `progress: { done, total }`.
+
+### 9.7 Cancel
+
+`cancel()` aborts the run's `AbortController`. Pending nodes → `cancelled`; running local ffmpeg processes are killed (WP4 adds `signal` to `runProcess`); waiting nodes stop waiting. Submitted provider jobs keep running remotely; their assets still arrive in the backing session ledger (visible in the asset picker) but are not attached to a history entry. The UI warns about this before cancelling when async nodes are running.
+
+### 9.8 Concurrency and limits
+
+- One active run per workflow (second start → HTTP 409 with the active `runId`).
+- Max 4 active runs server-wide (env `NODES_MAX_ACTIVE_RUNS`) → 429.
+- Global semaphore of 2 concurrent local ffmpeg jobs across all runs.
+- A server restart marks `running` run records as `interrupted`.
+
+---
+
+## 10. Dynamic Higgsfield models
+
+### 10.1 Catalogue
+
+`lib/nodes/higgsfield-catalog.js`: `listModels(type)` calls `higgsfield.mcpCall('models_explore', { action: 'list', type, limit: 100, after })` (read-only, no credits), follows `next_page_token`, parses JSON, caches per process for 60 minutes (manual refresh flag). `getModel(id)` uses `{ action: 'get', model_id }` with the same cache. When Higgsfield is disconnected both return `[]`.
+
+### 10.2 Model → param schema
+
+- `aspect_ratios[]` → `select aspect_ratio`; `durations[]` → `select duration`; `duration_range` → `integer duration` with min/max; `parameters[]`: `string` + `options` → `select`, `string` → `text`, `number` → `number` (min/max/default), `bool` → `boolean`, `string_array` → `tags`; `required: 'required'` → required flag.
+- `medias[]` → `refs` port max (sum of `max`, capped at 12). Role selection stays with `referenceRoleFromModel` in `lib/tools.js`.
+- `credits_per_unit` × (1 image | duration seconds) → credit estimate.
+
+The palette shows one entry per model (label = model `name`, category "Higgsfield", keywords = provider + tags); inserting it creates an `image.higgsfield` / `video.higgsfield` node with `params.model` preset. The inspector fetches `GET /api/nodes/higgsfield-models/:id` to render the dynamic params. If a model disappears, the node shows "model unavailable" but keeps its params.
+
+### 10.3 Required change in `lib/tools.js` (WP3)
+
+`runHiggsfieldGeneration` accepts an optional `args.extra_params` object. Each key must exist in the model's `parameters[]` (fetched via `models_explore get`, already done for roles) and must not be one of `model, prompt, medias, use_unlim`; values are type-checked; everything else is dropped with a correction note. The Director's tool schema is **not** changed (`additionalProperties: false` stays), so only node executors can pass `extra_params`.
+
+---
+
+## 11. REST and SSE API
+
+All routes live in `lib/nodes/routes.js` as `registerNodeRoutes(app, { runtime, publicRuntimeConfig, engine })`, called in `server.js` before `app.get('*')`. IDs are validated with `store.isValidId`. Errors use the existing `{ error }` shape. `req.kubleUser` is recorded as user.
+
+### 11.1 Registry and options
+
+| Method | Route | Response |
+| --- | --- | --- |
+| GET | `/api/nodes/registry` | `{ version, portTypes, compat, categories, nodeTypes: [publicDescriptor…] }` |
+| GET | `/api/nodes/options/:source` | `brain-models` → `publicRuntimeConfig().brainModels`; `elevenlabs-voices` → `elevenlabs.listVoices()` mapped to `{value,label}` (503 without key); `higgsfield-image-models` / `higgsfield-video-models` → catalogue list |
+| GET | `/api/nodes/higgsfield-models/:modelId` | model details + derived param schema |
+
+### 11.2 Workflows
+
+| Method | Route | Body → Response |
+| --- | --- | --- |
+| GET | `/api/workflows` | `?q=` → `{ workflows: [{ id, name, folder, updatedAt, updatedBy, nodeCount, app: {enabled}, thumbnail? }] }` (thumbnail = URL of the latest image result of an `output.result` or last image node) |
+| POST | `/api/workflows` | `{ name, folder?, templateId?, document? }` → 201 `{ workflow, results }` |
+| GET | `/api/workflows/:id` | `{ workflow, results, activeRun: runId \| null }` |
+| PUT | `/api/workflows/:id` | `{ baseRev, graph, name?, description?, app? }` → `{ rev, updatedAt }`; 409 `{ error, rev }` if `baseRev !== rev` |
+| PATCH | `/api/workflows/:id` | `{ name?, folder? }` (also renames backing session title) |
+| DELETE | `/api/workflows/:id` | deletes folder + backing session; 409 while a run is active |
+| POST | `/api/workflows/:id/duplicate` | new workflow (graph + app, new backing session, no results) |
+| GET | `/api/workflows/:id/export` | JSON attachment `<name>.ocd-workflow.json` |
+| POST | `/api/workflows/import` | `{ document }` → 201 |
+| GET | `/api/workflow-templates` | `[{ id, name, description, requires: ['openrouter','ffmpeg',…], available }]` |
+
+### 11.3 Assets
+
+| Method | Route | Notes |
+| --- | --- | --- |
+| POST | `/api/workflows/:id/uploads` | Raw body (`Content-Type` = file MIME, header `X-Filename`), streamed to a temp file inside the backing session asset dir, max 500 MB, extension whitelist as `extFromDataUrl` in `lib/brain.js`; SVG → additionally rasterised PNG (via `tools.storeImportedSessionAsset`). Response `{ value }` (§6.1). `express.json` does not touch non-JSON bodies, so no parser change is needed. |
+| POST | `/api/workflows/:id/import-asset` | `{ sessionId, assetId }` → copies a completed asset from any chat session (`fsp.copyFile` into a temp file + `reserveAsset`/`completeAssetFile`) → `{ value }` |
+| GET | `/api/workflows/:id/assets` | ledger of the backing session (for the picker "this workflow") |
+| POST | `/api/workflows/:id/send-to-chat` | `{ nodeId, entry?, variant?, port?, sessionId }` → copies the asset(s) into the chat session and appends `{ role:'user', content:'[Workflow «<name>»] <assetIds>', uploadIds:[…], ts }` via `store.mutateSession`. The chat renders it with the existing upload preview (`renderDetail` → `uploadIds`); the Director sees it on the next turn. |
+| GET | `/api/workflows/:id/outputs.zip` | `?runId=` (default: current selections of all `output.result` inputs) → ZIP via `archiver` |
+
+### 11.4 Runs and events
+
+| Method | Route | Notes |
+| --- | --- | --- |
+| POST | `/api/workflows/:id/runs/plan` | run request (§9.1) → plan (§9.4) |
+| POST | `/api/workflows/:id/runs` | run request + `rev` (must equal saved rev; client flushes autosave first) → 202 `{ runId }`; 409 active run or rev mismatch; 429 limit |
+| GET | `/api/workflows/:id/runs/:runId` | run record |
+| POST | `/api/workflows/:id/runs/:runId/cancel` | `{ ok }` |
+| PATCH | `/api/workflows/:id/results/:nodeId` | `{ entry, variant }` → updated node results (select version) |
+| GET | `/api/workflows/:id/events` | SSE stream |
+
+SSE events (`data: <json>\n\n`, `: ping` every 15 s, same headers as the chat stream). On connect the server first sends `snapshot`.
+
+| Event | Payload |
+| --- | --- |
+| `snapshot` | `{ activeRun: { runId, mode, nodes: {id: status} } \| null }` |
+| `run_started` | `{ runId, mode, targets, plan: {nodeId: 'cached'\|'stale'\|'forced'} }` |
+| `node_status` | `{ runId, nodeId, status: 'queued'\|'running'\|'waiting_job'\|'cached'\|'done'\|'error'\|'skipped'\|'cancelled', message?, progress?: {done,total} }` |
+| `node_log` | `{ runId, nodeId, label }` (mapped from tool `tool_start`, job submission etc.) |
+| `node_result` | `{ runId, nodeId, entry }` (full history entry) |
+| `run_cost` | `{ runId, usd, credits }` |
+| `run_finished` | `{ runId, status, error? }` |
+| `workflow_saved` | `{ rev, updatedBy }` (another tab/user saved → client offers reload) |
+
+Client uses `EventSource` (auto-reconnect); after a reconnect it calls `GET /api/workflows/:id` to reconcile.
+
+---
+
+## 12. Frontend architecture
+
+### 12.1 Files (all new, classic scripts, no build)
+
+| File | Responsibility |
+| --- | --- |
+| `public/nodes/nodes.css` | All node-view styles, prefix `nv-`. Uses existing `:root` tokens plus `--nv-*` tokens (§12.8). |
+| `public/nodes/i18n-nodes.js` | `Object.assign(window.I18N.de/en/es, {...})` with keys prefixed `nodes.` |
+| `public/nodes/graph.js` | Pure model: create/validate graph, add/remove/move nodes, connect/disconnect with `canConnect` + cycle check, groups/notes, clipboard serialise/paste with id remap, stale propagation helper, compatible-node filtering for the palette. UMD-style: `module.exports` in Node, `window.OCDNodes.graph` in the browser. |
+| `public/nodes/history.js` | Pure undo/redo snapshot stack (UMD). |
+| `public/nodes/api.js` | REST helpers (own `request()`, same error shape as `app.js api()`), upload with progress (`XMLHttpRequest`), `EventSource` wrapper. |
+| `public/nodes/canvas.js` | Viewport (pan/zoom/fit), world layer, SVG edge layer, pointer handling (drag nodes, marquee, edge drag), minimap. |
+| `public/nodes/node-ui.js` | Builds node cards from registry descriptors: header, ports, inline params, preview slot, status, cost badge. |
+| `public/nodes/inspector.js` | Right panel: full param form (auto-generated), validation warnings, history/variant strip, actions. |
+| `public/nodes/palette.js` | Search palette (categories, fuzzy search, type filter, keyboard navigation). |
+| `public/nodes/workflow-list.js` | Left drawer: list, search, new, templates, rename, duplicate, delete, import/export. |
+| `public/nodes/run.js` (WP6) | Run controls, plan/confirm dialog, SSE event reducer → per-node status. Reducer is pure (UMD) for tests. |
+| `public/nodes/preview.js` (WP6) | Media previews in nodes, media viewer overlay (image zoom, video, audio), downloads. |
+| `public/nodes/asset-picker.js` (WP7) | Upload / "from chats" / "this workflow" picker. |
+| `public/nodes/app-mode.js` (WP7) | Design App builder panel and `#app=` view. |
+| `public/nodes/main.js` | Bootstrap: hash routing, view mount/unmount, state container, autosave, keyboard shortcuts, wiring of all modules. |
+
+`public/index.html` changes (WP5): a sidebar button `<button id="nodesBtn" class="sidebar-brandings" type="button" data-i18n="sidebar.nodes" data-i18n-title="sidebar.nodesTitle">🧩 Nodes</button>` above Brandings; `<div id="nodeApp" class="nv-app hidden"></div>` before the lightbox; `<link rel="stylesheet" href="nodes/nodes.css">`; scripts after `app.js` in dependency order. The keys `sidebar.nodes`, `sidebar.nodesTitle` go into `public/i18n.js` (de/en/es) because `scripts/test-i18n.js` checks `index.html` keys there. `public/app.js` is **not** modified.
+
+### 12.2 Layout and navigation
+
+- `#nodeApp` is a fixed full-window layer (`position: fixed; inset: 0; z-index: 40`) — below the lightbox (50) and modals (60) so existing overlays (settings, costs, lightbox) still work on top of it.
+- Routes (own `hashchange` listener in `main.js`; `app.js` ignores these keys): `#w=` (workflow list, empty canvas), `#w=<wfId>` (editor), `#app=<wfId>` (Design App). "← Chat" restores the previous `#s=<sessionId>` (kept in `sessionStorage`).
+- Editor layout: top bar 48 px (back to chat, editable workflow name, save state "Saved / Saving… / Conflict", Run all ▶, Run selection, Cancel, last-run cost, App toggle, ⋯ menu), left drawer 240 px (workflow list, collapsible), canvas, right inspector 320 px (collapsible, opens on selection), bottom-left zoom controls + minimap.
+- Look: same dark palette as the chat (`docs/screenshots/chat.png`): `--bg` canvas with a subtle dot grid (`--line-soft`), node cards `--bg-panel` with `--line` border and `--radius`, selected = `--accent` outline, headers in the small uppercase letter-spaced style of "CREATIVE DIRECTOR", amber primary buttons like "Send".
+
+### 12.3 State and rendering
+
+A single state object in `main.js`: `{ registry, workflow, rev, results, selection:Set, viewport, plan, run: { runId, nodeStatus:{} }, saveState, clipboard }`. Mutations go through `graph.js` functions returning a new graph; `main.js` then calls `canvas.render(changedIds)`. Rendering is DOM-diffing by id: node cards are created once and patched (position via `transform`, params, status classes, preview); edges are recomputed per frame only for nodes being dragged. Target: smooth at 200 nodes. Text from LLM outputs and user input is always set via `textContent` (never `innerHTML`).
+
+### 12.4 Interactions
+
+- Left-drag on empty canvas = marquee select (Shift adds). Pan = Space+drag, middle-drag, or two-finger trackpad scroll; zoom = Ctrl/Cmd+wheel or pinch, range 0.1–2.5, zoom to cursor.
+- Drag node header to move (all selected move together); snap to 8 px grid with Alt to disable.
+- Drag from an output port: temporary bezier follows the cursor; compatible input ports highlight, incompatible ones dim. Drop on a port → connect. Drop on empty canvas → palette opens at the cursor, filtered to node types with a compatible input; choosing one places it there and auto-connects the first compatible port. Same in reverse from an input port.
+- Dragging from a connected input port detaches that edge (re-route or drop to delete).
+- Double-click canvas / `Tab` / `/` → palette. Double-click node title → rename.
+- Drag files from the desktop onto the canvas → creates the matching input node and uploads.
+- Right-click node → context menu (run, run from here, duplicate, delete, send to chat, copy asset URL).
+
+### 12.5 Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| `Tab`, `/`, double-click | Open palette |
+| `Delete` / `Backspace` | Delete selection |
+| `Cmd/Ctrl+C`, `X`, `V` | Copy, cut, paste (at cursor) |
+| `Cmd/Ctrl+D` | Duplicate |
+| `Cmd/Ctrl+A` | Select all |
+| `Cmd/Ctrl+Z`, `Shift+Cmd/Ctrl+Z` (`Ctrl+Y`) | Undo, redo |
+| `Cmd/Ctrl+Enter` | Run selection (force targets) |
+| `Shift+Cmd/Ctrl+Enter` | Run all |
+| `Esc` | Close palette/menus, clear selection; during a run it does **not** cancel |
+| `F` / `Shift+1` | Fit to view (selection if any) |
+| `Cmd/Ctrl+0` | Zoom 100 % |
+| `Cmd/Ctrl+G` | Group selection |
+| `N` | New sticky note at cursor |
+| Arrow keys (+Shift) | Nudge 1 px (10 px) |
+
+Shortcuts are ignored while focus is in an input, textarea or contenteditable.
+
+### 12.6 Undo/redo model
+
+Snapshot stack of `graph` (nodes, edges, groups, notes — not viewport, not results), max 100 entries. A snapshot is pushed after each committed action: add/delete/connect/disconnect, move (on pointer-up), paste/duplicate, group/ungroup, param change (coalesced per node+param with 500 ms debounce). Undo/redo restore the snapshot, re-render and trigger autosave. Variant selection is not undoable (server-side result state).
+
+### 12.7 Autosave
+
+Debounced 800 ms after any graph change and immediately before a run: `PUT /api/workflows/:id { baseRev, graph, name, app }`. On success store the new `rev` and request `plan`. On 409 show a banner "Changed elsewhere — Reload / Overwrite" (Overwrite = refetch rev, re-PUT). On network error retry with backoff and show "Offline — not saved". `beforeunload` warns when unsaved.
+
+### 12.8 i18n and CSS tokens
+
+- i18n prefix `nodes.`: e.g. `nodes.toolbar.runAll`, `nodes.status.running`, `nodes.category.image`, `nodes.type.image.generate.label`, `nodes.param.aspect_ratio`, `nodes.error.unavailable`. Every registry type and category must have a label key in de/en/es (test). Dynamic Higgsfield model names are shown raw. Swiss spelling rule (no "ß") applies to all languages.
+- New tokens in `nodes.css` (`.nv-app` scope, derived from `:root`): `--nv-grid: var(--line-soft)`, `--nv-node-bg: var(--bg-panel)`, `--nv-node-head: var(--bg-raised)`, `--nv-node-border: var(--line)`, `--nv-selected: var(--accent)`, `--nv-port-text`, `--nv-port-number`, `--nv-port-image`, `--nv-port-video`, `--nv-port-audio`, `--nv-port-any`, `--nv-status-running: var(--accent)`, `--nv-status-done: #5fd3a2`, `--nv-status-error: var(--danger)`, `--nv-status-stale: #e5c07b`.
+
+---
+
+## 13. Execution UX (WP6)
+
+- Status on each card: dot + label (queued / running with elapsed time / waiting for provider / cached / done / error / skipped / cancelled); running cards get an animated amber border; errors show the message on the card and in the inspector with "Retry".
+- Stale badge from the plan ("will re-run"); cached badge after runs.
+- Previews: image (`<img>`, click → viewer), video (`<video muted loop playsinline controls>` with poster = first frame when available), audio (`<audio controls>`), text (scrollable, max 8 lines, copy button), lists (grid of up to 12 thumbnails + "+N"), numbers (value).
+- Variants: pager "2 / 4" on the card; inspector shows the history strip (entries newest first, variants as thumbnails, cost, time, user); clicking selects (`PATCH results`) and downstream nodes become stale.
+- Costs: badge per node (last actual USD or "≈ N credits"), run total in the top bar, confirmation dialog for paid runs (plan totals, unknowns, Higgsfield credits hint, note that cancel does not refund).
+- Downloads: per output (`<a download>` on the asset URL), "Download outputs (ZIP)" in the ⋯ menu.
+- Run controls: Run all / Run selection / ▶ per node / "Run from here" (node + descendants: `mode:'selection'` with node and all descendants) / Cancel with warning when provider jobs are in flight.
+
+---
+
+## 14. Design App mode (WP7)
+
+- Builder: in the editor's App panel the user toggles "Expose" next to any param in the inspector (adds `{ node, param, label }` to `workflow.app.inputs`) and next to `output.result` nodes (outputs). Media input nodes can be exposed as a whole (upload field). `input.text_list` / `input.media_list` exposure enables batch.
+- `#app=<wfId>` renders a clean page (same theme, no canvas): title, description, auto-generated form fields (same param widgets as the inspector), Run button, result gallery (outputs of the run, with variants, download, "Send to chat"), run status line and cost.
+- Run = `POST /runs { mode:'all', overrides }` where overrides are the form values; uploads go to the backing session first. Results land in the normal `results.json`, so the builder sees them too.
+- Access = same login as the whole app (whoami); anyone who can open Open CD can use the app. Public links are later.
+- Validation: exposed params must exist; app outputs must reference `output.result` nodes (checked on save and in tests).
+
+---
+
+## 15. Templates (WP7)
+
+JSON files in `lib/nodes/templates/<id>.json` (same format as export plus `id`, `requires`). Each is validated by a test against the registry. `available` = all `requires` satisfied.
+
+| ID | Name | Graph | Requires |
+| --- | --- | --- | --- |
+| `hero-variants` | Product hero, 4 variants | text → prompt enhancer → image.generate (count 4) → image.resize → output | openrouter, ffmpeg |
+| `image-to-ad` | Still to vertical ad with voice-over | image input + text → image describer → template → Seedance i2v; text → TTS → video.merge_audio → output | openrouter, elevenlabs, ffmpeg |
+| `series-shots` | Consistent character series (batch) | reference image + text_list of scene prompts → image.edit (map) → Seedance i2v (map) → video.concat → output | openrouter, ffmpeg |
+| `frame-chain` | Continuous shots via last frame | Seedance t2v → extract_frame(last) → Seedance i2v → concat → output | openrouter, ffmpeg |
+| `motion-title` | Motion title over footage | text brief → llm.motion_html → video.motion_graphics (with video asset) → output | openrouter, rendernode |
+| `masked-edit` | Masked edit (approximate inpainting) | image + mask upload + prompt → image.edit → image.mask_apply → image.composite onto original → output | openrouter, ffmpeg |
+
+---
+
+## 16. Auth and scoping
+
+- Workflows are team-visible like chats (no per-user filtering exists in the codebase today). `createdBy`, `updatedBy`, run `user` and cost journal `user` come from `req.kubleUser` (`lokal` without `AUTH_WHOAMI_URL`).
+- No admin requirement for building or running (same as chat). Settings (keys, nodes, Higgsfield) stay admin-only as today.
+- Input validation: all IDs via `store.isValidId`; uploads: extension whitelist, 500 MB cap, temp file inside the session asset dir; import: 2 MB, schema validation; HTML for motion graphics is only sent to render nodes, never rendered in the app DOM; LLM text is rendered with `textContent`.
+- `PUBLIC_BASE_URL` requirements are surfaced as node validation warnings, not as runtime surprises.
+
+---
+
+## 17. Chat bridge
+
+Now (WP7): asset picker "From chats" (lists sessions via `GET /api/sessions`, assets via `GET /api/sessions/:id`) → `import-asset`; "Send to chat" on outputs (§11.3); workflows can be assigned to a project (`folder`) so the backing session shares the project context.
+
+Later (phase 2): Director tool `run_workflow { workflow_id, inputs }` (uses the Design App schema as the tool's argument schema, starts a run, returns immediately, posts results into the chat via the job-update message path), "Build a workflow from this chat" (Director emits a workflow document), "Open in node view" button on chat asset cards (needs a small `app.js` change in `mediaCard`), cast and branding input nodes.
+
+---
+
+## 18. Test strategy
+
+- Plain Node scripts under `scripts/`, `assert/strict`, no network: provider functions are monkey-patched on their module objects (`or.createImage`, `or.createVideo`, `or.postJson`, `higgsfield.mcpCall`, `elevenlabs.tts`, `elevenlabs.listVoices`, `rendernode.submit`, `chatgpt.streamResponses`, `discovery.brainSupportsImages`, `costs.recordCost`), and restored in `finally`.
+- Async jobs are simulated by mutating the backing session (`store.mutateSession` → job `completed`, `store.completeAsset`) while `waitForSessionJob` polls with a short interval (tests pass `intervalMs: 20`).
+- ffmpeg tests run real ffmpeg on generated inputs (`-f lavfi -i testsrc`, `color`, `sine`) when `ffmpeg.binaries().available`; otherwise they print `SKIP ffmpeg fehlt` and exit 0. Pure argument builders are always tested.
+- Frontend pure modules (`graph.js`, `history.js`, `run.js` reducer, `i18n-nodes.js`) are loaded with `require()` (UMD) or `vm.runInNewContext` as in `scripts/test-i18n.js`.
+- Route tests call handlers through `app._router.stack` like `scripts/test-api-handlers.js`; SSE route tested with a fake `res` that records `write` calls.
+- Every test creates its own workflows/sessions and deletes them in `finally` (tests write to the real `data/`, `projects/`, `assets/` like the existing ones).
+- Regression suite after every package: `node scripts/test-api-handlers.js`, `node scripts/test-session-meta.js`, `node scripts/test-folders.js`, `node scripts/test-i18n.js`, `node scripts/test-concat-videos.js`, `node scripts/test-higgsfield.js`, `node scripts/test-video-frames.js`.
+
+---
+
+## 19. Work packages
+
+Strictly sequential; one implementation agent (Claude Sonnet 5.5) per package. Each package may only create/modify the files listed. Never touch `render-node/jobs/` or `render-node/package-lock.json`. No commits unless the orchestrator asks.
+
+### WP1 — Engine and data foundation (backend, no HTTP)
+
+Scope: port types + compatibility, registry framework, basic nodes (§5.1, §5.2), workflow store (workflow/results/runs files, rev, export/import validation), backing-session support in `lib/store.js`, poller include flag, engine (plan, topo, cache, force, overrides, lists, errors, cancel, pool, events), job waiting, asset helpers.
+
+Files: create `lib/nodes/types.js`, `lib/nodes/registry.js`, `lib/nodes/nodes-basic.js`, `lib/nodes/engine.js`, `lib/nodes/events.js`, `lib/nodes/workflows-store.js`, `lib/nodes/assets.js`, `lib/nodes/jobs.js`, `scripts/test-nodes-types.js`, `scripts/test-nodes-engine.js`, `scripts/test-nodes-store.js`; modify `lib/store.js` (`createSession({ folder, role, kind, title })`, session field `kind`, `listSessions({ includeHidden })` skipping `kind === 'workflow'` by default), `lib/poller.js` (`pollOnce` → `listSessions({ limit: Infinity, includeHidden: true })`).
+
+Read first: `lib/store.js` (`createSession`, `listSessions`, `withLock`, `mutateSession`, `saveAsset`, `reserveAsset`, `completeAssetFile`, `readLedger`, `assetUrl`, `isValidId`), `lib/poller.js` (`pollOnce`, `handleCompleted`), `lib/tools.js` (`executeTool`, `runConcatVideos` for the reserve/complete pattern), this spec §6, §7, §8, §9.
+
+Acceptance: engine runs a graph of fake executors in correct topo order with max parallelism respected; cache hit skips execution; `force` re-executes only targets; changing a param or upstream selection makes descendants stale in `plan`; error blocks descendants and lets independent branches finish; cancel marks pending nodes `cancelled` and aborts a waiting executor; list input maps per item with zip semantics; overrides change the key but not the saved graph; `waitForSessionJob` resolves on `completed` (returns `resultAssetIds`), rejects on `failed`/abort; workflow CRUD with rev conflict; import rejects cycles/dangling edges and keeps unknown types; `GET /api/sessions` no longer lists workflow sessions while the poller still sees them; all regression tests pass.
+
+Tests: `node scripts/test-nodes-types.js`, `node scripts/test-nodes-engine.js`, `node scripts/test-nodes-store.js`, plus the regression suite (§18).
+
+### WP2 — REST/SSE API, uploads, asset import
+
+Scope: all routes of §11 except `outputs.zip`, `send-to-chat` and `workflow-templates` (WP6/WP7), SSE with snapshot/ping, raw streamed uploads with size cap, import-asset from chat sessions, startup marking of interrupted runs, backing-session title sync on rename.
+
+Files: create `lib/nodes/routes.js`, `scripts/test-nodes-api.js`; modify `server.js` (require + `registerNodeRoutes(app, { runtime, publicRuntimeConfig, engine })` before `app.get('*')`, engine creation, interrupted-run sweep in `startServer`), `lib/nodes/workflows-store.js` / `lib/nodes/assets.js` only if needed for route helpers.
+
+Read first: `server.js` (`fail`, `requireSessionId`, `POST /api/sessions/:id/message` SSE block, `publicRuntimeConfig`, `startServer`, catch-all), `scripts/test-api-handlers.js` (`routeHandler`, `invoke`), `lib/brain.js` (`extFromDataUrl` whitelist), spec §11.
+
+Acceptance: every route returns the documented shapes and status codes (400 invalid id, 404 unknown workflow, 409 rev/active run, 413 upload too large, 429 run limit); upload stores a ledger asset and returns a typed value; SVG upload returns 415 until WP3 exports `storeImportedSessionAsset`; import-asset copies a completed chat asset and rejects pending ones; SSE handler writes correct headers, a `snapshot` first, forwards bus events and cleans up on close; `GET /api/nodes/registry` lists WP1 node types with availability.
+
+Tests: `node scripts/test-nodes-api.js` + regression suite.
+
+### WP3 — Generative nodes (LLM, image, video, audio, Higgsfield)
+
+Scope: §5.3–§5.6, dynamic Higgsfield catalogue (§10), `extra_params`, experimental Higgsfield edit nodes (§5.8), option sources, SVG raster in uploads.
+
+Files: create `lib/nodes/llm.js`, `lib/nodes/nodes-generate.js`, `lib/nodes/higgsfield-catalog.js`, `scripts/test-nodes-generate.js`; modify `lib/nodes/registry.js` (load module), `lib/nodes/routes.js` (options sources, higgsfield model route, SVG upload), `lib/tools.js` (export `storeImportedSessionAsset`, `RENDER_MOTION_GRAPHICS_DEFINITION`, `IMAGE_RATIOS`, `VIDEO_RATIOS`, `VIDEO_RESOLUTIONS`; `extra_params` in `runHiggsfieldGeneration`; extract `submitHiggsfieldJob`; add `higgsfield_edit` executor to `EXECUTORS` only).
+
+Read first: `lib/tools.js` (`runGenerateImage`, `runEditImage`, `storeImageResult`, `runGenerateVideo`, `buildVideoPayload`, `runGenerateSpeech`, `runRenderMotionGraphics`, `renderAssetsFromIds`, `runConcatVideos`, `runHiggsfieldGeneration`, `importHiggsfieldReferences`, `referenceRoleFromModel`, `EXECUTORS`, `toolDefinitions`), `server.js` `/api/roles/generate` (non-stream LLM + cost), `lib/brain.js` `recordBrainUsage`, `lib/chatgpt.js` (`streamResponses`, `messagesToInput`), `lib/discovery.js` (`brainSupportsImages`, `videoCapabilities`), `lib/poller.js` (`extractVideoFrames`, `handleHiggsfieldCompleted`), `docs/higgsfield-tools.json` (models_explore output schema, edit tool schemas), `scripts/test-higgsfield.js`, spec §5, §10.
+
+Acceptance (all with mocks): image.generate with `count: 3` yields 3 variants and 3 cost journal calls; image.edit passes reference ids; Seedance node chooses `image_to_video` when `first_frame` is connected, waits for the simulated job and returns the completed asset; Higgsfield node forwards whitelisted `extra_params` and drops unknown ones, turns `resultAssetIds` into variants; motion node replaces `{{asset:N}}` placeholders; LLM node routes `chatgpt/*` to `streamResponses`, others to `postJson`, rejects images for non-vision models, journals `brain` cost; video describer sends 3 frames; catalogue maps model params to the param schema and caches; experimental edit nodes are unavailable without Higgsfield or `PUBLIC_BASE_URL`; Director `toolDefinitions()` is unchanged (snapshot compare of tool names); `scripts/test-higgsfield.js` still passes.
+
+Tests: `node scripts/test-nodes-generate.js`, `node scripts/test-higgsfield.js`, `node scripts/test-video-media-references.js`, `node scripts/test-render-motion-assets.js` + regression suite.
+
+### WP4 — Editing nodes (ffmpeg / resvg)
+
+Scope: §5.7 and `image.svg_rasterize`, `image.text_render`.
+
+Files: create `lib/nodes/ffmpeg-ops.js`, `lib/nodes/nodes-edit.js`, `scripts/test-nodes-ffmpeg.js`; modify `lib/ffmpeg.js` (export `runProcess`, optional `signal` that kills the child), `lib/nodes/registry.js` (load module).
+
+Read first: `lib/ffmpeg.js` (`runProcess`, `binaries`, `probeVideo`, `reencodeConcatArgs` style), `lib/tools.js` (`runConcatVideos` scratch-dir + `completeAssetFile` pattern, `storeImportedSessionAsset` resvg call), `lib/poller.js` (`extractVideoFrames` arguments), `scripts/test-concat-videos.js` (binary stubs), spec §5.7.
+
+Acceptance: pure builders produce the documented filter strings for every op (asserted without ffmpeg); with ffmpeg present each op transforms a generated test input and ffprobe confirms dimensions/duration/alpha where relevant; abort kills a long ffmpeg process; ops are unavailable without ffmpeg; outputs are ledger assets of the right kind; concat regression passes.
+
+Tests: `node scripts/test-nodes-ffmpeg.js`, `node scripts/test-concat-videos.js`, `node scripts/test-video-frames.js` + regression suite.
+
+### WP5 — Frontend editor core
+
+Scope: §12.1–§12.8 without run UX: node view mount and routing, workflow list drawer, canvas (pan/zoom/fit/grid/minimap), node cards from registry, ports and edge drawing with type checks, palette incl. drag-to-empty auto-connect, inspector with auto-generated params (option sources), selection/marquee, move/delete/duplicate/copy/paste, notes, groups, undo/redo, shortcuts, autosave with conflict banner, import/export, uploads via input nodes (basic picker: upload only), i18n de/en/es, styling in the existing look.
+
+Files: create `public/nodes/nodes.css`, `public/nodes/i18n-nodes.js`, `public/nodes/graph.js`, `public/nodes/history.js`, `public/nodes/api.js`, `public/nodes/canvas.js`, `public/nodes/node-ui.js`, `public/nodes/inspector.js`, `public/nodes/palette.js`, `public/nodes/workflow-list.js`, `public/nodes/main.js`, `scripts/test-nodes-graph.js`, `scripts/test-nodes-history.js`, `scripts/test-nodes-i18n.js`; modify `public/index.html` (button, container, stylesheet, scripts), `public/i18n.js` (`sidebar.nodes`, `sidebar.nodesTitle` in de/en/es only).
+
+Read first: `docs/screenshots/chat.png`, `public/styles.css` (`:root` tokens, `.sidebar-brandings`, `.modal`, `.lightbox`, buttons), `public/index.html` (sidebar-foot, script order), `public/i18n.js` (`t`, `applyI18n`, dictionaries), `public/app.js` (`api`, `rel`, `openLightbox`, `sessionIdFromHash`, `hashchange` handler), `scripts/test-i18n.js`, spec §6, §7.1, §12, `GET /api/nodes/registry` shape (§11.1).
+
+Acceptance: `#w=` opens the node view, "← Chat" returns to the last chat; create a workflow, add nodes via palette (search + categories), connect compatible ports, incompatible drops are refused; drag-to-empty opens a filtered palette and auto-connects; marquee, move, delete, duplicate, copy/paste across two workflows, notes and groups work; undo/redo restores every action; reload shows the same graph (autosave); a second tab saving triggers the conflict banner; export → import round-trips; all visible strings translated in de/en/es; chat view unchanged; manual check at 1440×900 and 1280×720 with 50 nodes stays smooth.
+
+Tests: `node scripts/test-nodes-graph.js`, `node scripts/test-nodes-history.js`, `node scripts/test-nodes-i18n.js`, `node scripts/test-i18n.js` + regression suite; manual smoke via `npm start`.
+
+### WP6 — Execution UX, previews, history, costs, downloads
+
+Scope: §13: run controls (node ▶, selection, all, run from here, cancel), plan-based stale badges and paid-run confirmation, SSE client and status reducer, in-node previews, media viewer, variant pager and history strip with selection, cost badges and totals, downloads and outputs ZIP route.
+
+Files: create `public/nodes/run.js`, `public/nodes/preview.js`, `scripts/test-nodes-run-client.js`; modify `public/nodes/main.js`, `public/nodes/node-ui.js`, `public/nodes/inspector.js`, `public/nodes/nodes.css`, `public/nodes/i18n-nodes.js`, `lib/nodes/routes.js` (`outputs.zip` via `archiver`), `scripts/test-nodes-api.js` (ZIP case).
+
+Read first: spec §9.4, §11.4, §13; `public/nodes/main.js`, `node-ui.js`, `inspector.js` from WP5; `public/app.js` (`mediaCard`, `formatCost`, `openLightbox`); `server.js` branding export (`archiver` usage in `GET /api/brandings/:id/export`).
+
+Acceptance: running a mocked or cheap workflow shows live statuses, cached badges and results without reload; reconnecting SSE mid-run restores state; variants can be paged and selected, making descendants stale; paid runs require confirmation with plan totals; cancel warns about in-flight provider jobs; downloads and ZIP work; reducer tests cover every event type.
+
+Tests: `node scripts/test-nodes-run-client.js`, `node scripts/test-nodes-api.js`, `node scripts/test-nodes-i18n.js` + regression suite; manual run of `hero-variants`-like graph with a real key only if the user approves the cost.
+
+### WP7 — Design App, templates, batch UI, chat bridge, docs
+
+Scope: §14, §15, §17 (now-part): app builder + `#app=` view with batch inputs, six templates with validation and "New from template", asset picker (upload / from chats / this workflow), send-to-chat route and UI, workflow ↔ project assignment, README sections (EN/DE) describing the node view.
+
+Files: create `public/nodes/app-mode.js`, `public/nodes/asset-picker.js`, `lib/nodes/templates.js`, `lib/nodes/templates/hero-variants.json`, `image-to-ad.json`, `series-shots.json`, `frame-chain.json`, `motion-title.json`, `masked-edit.json`, `scripts/test-nodes-templates.js`, `scripts/test-nodes-app.js`; modify `lib/nodes/routes.js` (`workflow-templates`, `send-to-chat`, template creation in `POST /api/workflows`), `public/nodes/main.js`, `inspector.js`, `workflow-list.js`, `node-ui.js`, `nodes.css`, `i18n-nodes.js`, `README.md`, `README.de.md`.
+
+Read first: spec §14, §15, §17, §11.2–§11.3; `lib/store.js` (`mutateSession`), `public/app.js` `renderDetail` (how `uploadIds` render), `server.js` `GET /api/sessions/:id`, WP5/WP6 frontend modules.
+
+Acceptance: every template validates (known types, compatible edges, no cycles, app references valid) and loads; app view runs with overrides and shows outputs; a text list with 3 items produces 3 results in the app; picker imports an asset from a chat; send-to-chat shows the asset as an upload bubble in the target chat and the Director receives the text note; README sections exist in EN and DE.
+
+Tests: `node scripts/test-nodes-templates.js`, `node scripts/test-nodes-app.js`, `node scripts/test-nodes-api.js`, `node scripts/test-nodes-i18n.js` + regression suite.
+
+---
+
+## 20. Risks
+
+1. **Cost surprises** (batch × video generation). Mitigation: plan endpoint, mandatory confirmation for paid runs, list cap 50, cancel warning; Higgsfield credits shown as estimates.
+2. **Backing sessions leaking into chat features** (sidebar, search, poller messages). Mitigation: opt-in `includeHidden`, title prefix `Workflow:`, tests on both `GET /api/sessions` and the poller.
+3. **Unverified provider behaviour** for Higgsfield edit tools, masks and transparent backgrounds. Mitigation: experimental badge, capability gating, open questions below.
+4. **Frontend size** (WP5 is the largest package). Mitigation: pure modules first (`graph.js`, `history.js`), registry-driven UI, no per-node client code.
+
+## 21. Open questions
+
+1. Should workflows stay team-visible like chats, or be private per user when `AUTH_WHOAMI_URL` is set? — **Decided (2026-09-29): team-visible**, like chats; `createdBy` / `updatedBy` are recorded.
+2. Higgsfield edit tools (`remove_background`, `upscale_*`, `outpaint_image`, `reframe`): one live verification of the response/job format is needed (costs credits). Should local users get a `media_upload` (presigned PUT) path so references work without `PUBLIC_BASE_URL`? — **Decided (2026-09-29): shipped as experimental nodes, untested against the live API; no `media_upload` path** (they need Higgsfield and `PUBLIC_BASE_URL`). The live verification itself is **open** (costs credits).
+3. Does OpenRouter's `/images` endpoint accept a mask or `background: transparent` for GPT Image 2? If yes, true inpainting and transparent generation move from "later" to "now". — **Decided (2026-09-29): no mask for OpenRouter images** in v1; inpainting stays the approximation of the "Masked edit" template. Whether the endpoint accepts a mask or a transparent background remains **open** (unverified).
+4. Is "last actual cost" an acceptable pre-run estimate for GPT Image 2 and Seedance, or should a small price table be maintained in `config.json`? — **Decided (2026-09-29): last actual cost** (per node type in the workflow), otherwise "unknown"; no price table.
+5. ElevenLabs costs are not journaled today — keep it that way for nodes? — **Decided (2026-09-29): keep it**; ElevenLabs costs are not journaled.
+6. Deleting a workflow deletes its generated assets (backing session). Acceptable, or archive instead? — **Decided (2026-09-29): acceptable**; deleting removes the backing session including all assets, after an in-app confirmation.
+7. Canvas control default: marquee on left-drag (Figma) vs. pan on left-drag (Weavy)? Spec uses marquee; a setting could switch. — **Decided (2026-09-29): marquee on left-drag**; the hand tool (`H`) / select tool (`V`) toggle serves as the switch, Space, middle mouse and trackpad scroll pan. No separate setting.
+8. Priority of phase 2: Director `run_workflow` tool vs. mask painter vs. Higgsfield lip-sync/voice nodes. — **Open.**

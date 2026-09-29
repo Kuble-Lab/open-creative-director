@@ -1,0 +1,74 @@
+{
+  "id": "hero-variants",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Product hero, 4 variants",
+  "description": "Describe a product scene, let an LLM turn it into a production-ready prompt and get four hero stills to choose from.",
+  "requires": ["openrouter", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 160, "title": "Product scene", "params": { "text": "Specialty coffee cup on a wooden table, Scandinavian cafe, warm morning light" } },
+      { "id": "n2", "type": "llm.prompt_enhancer", "typeVersion": 1, "x": 480, "y": 120, "title": "Prompt polish", "params": { "model": "", "target": "image", "notes": "Photorealistic product photography, shallow depth of field, no text in the image." } },
+      { "id": "n3", "type": "image.generate", "typeVersion": 1, "x": 880, "y": 80, "title": "Hero stills", "params": { "prompt": "", "aspect_ratio": "1:1", "count": 4 } },
+      { "id": "n4", "type": "image.resize", "typeVersion": 1, "x": 1280, "y": 120, "title": "Web size", "params": { "width": 1080, "height": 0, "fit": "contain", "background": "#000000", "transparent": false } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1680, "y": 160, "params": { "label": "Hero image" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "text" }, "to": { "node": "n2", "port": "prompt" } },
+      { "id": "e2", "from": { "node": "n2", "port": "text" }, "to": { "node": "n3", "port": "prompt" } },
+      { "id": "e3", "from": { "node": "n3", "port": "image" }, "to": { "node": "n4", "port": "image" } },
+      { "id": "e4", "from": { "node": "n4", "port": "image" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [
+      { "id": "g1", "title": "Look development", "x": 440, "y": 40, "w": 820, "h": 620, "color": "amber" }
+    ],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 520, "w": 300, "h": 150, "text": "Run all once, then page through the four stills on the Hero stills node. The version you select flows on to the resize step." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Product hero image",
+    "description": "Describe the scene and get a polished hero still. Uses four variants; the first is delivered.",
+    "inputs": [
+      { "node": "n1", "param": "text", "label": "Product scene" },
+      { "node": "n3", "param": "aspect_ratio", "label": "Format" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Hero image" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Produkt-Hero, 4 Varianten",
+      "description": "Beschreibe eine Produktszene, lass ein LLM daraus einen produktionsreifen Prompt machen und wähle aus vier Hero-Bildern.",
+      "node.n1": "Produktszene",
+      "node.n2": "Prompt schärfen",
+      "node.n3": "Hero-Bilder",
+      "node.n4": "Web-Grösse",
+      "group.g1": "Look-Entwicklung",
+      "note.t1": "Einmal alles ausführen, dann auf dem Knoten «Hero-Bilder» durch die vier Varianten blättern. Die gewählte Variante geht an den Skalierschritt weiter.",
+      "app.title": "Produkt-Hero-Bild",
+      "app.description": "Beschreibe die Szene und erhalte ein poliertes Hero-Bild. Es entstehen vier Varianten, geliefert wird die erste.",
+      "app.input.n1.text": "Produktszene",
+      "app.input.n3.aspect_ratio": "Format",
+      "app.output.n5": "Hero-Bild"
+    },
+    "es": {
+      "name": "Hero de producto, 4 variantes",
+      "description": "Describe una escena de producto, deja que un LLM la convierta en un prompt listo para producción y elige entre cuatro imágenes hero.",
+      "node.n1": "Escena de producto",
+      "node.n2": "Pulir prompt",
+      "node.n3": "Imágenes hero",
+      "node.n4": "Tamaño web",
+      "group.g1": "Desarrollo del look",
+      "note.t1": "Ejecuta todo una vez y luego recorre las cuatro variantes en el nodo «Imágenes hero». La variante elegida pasa al paso de escalado.",
+      "app.title": "Imagen hero de producto",
+      "app.description": "Describe la escena y obtén una imagen hero pulida. Se generan cuatro variantes y se entrega la primera.",
+      "app.input.n1.text": "Escena de producto",
+      "app.input.n3.aspect_ratio": "Formato",
+      "app.output.n5": "Imagen hero"
+    }
+  }
+}

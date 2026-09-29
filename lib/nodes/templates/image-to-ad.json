@@ -1,0 +1,95 @@
+{
+  "id": "image-to-ad",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Still to vertical ad with voice-over",
+  "description": "Turn a product still into a short vertical video with a spoken voice-over: the still is described, animated with Seedance and the ElevenLabs voice is mixed in.",
+  "requires": ["openrouter", "elevenlabs", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 60, "title": "Product still", "params": { "asset": null } },
+      { "id": "n2", "type": "llm.image_describer", "typeVersion": 1, "x": 480, "y": 60, "title": "Describe still", "params": { "model": "", "focus": "full", "language": "en" } },
+      { "id": "n3", "type": "input.text", "typeVersion": 1, "x": 480, "y": 400, "title": "Motion idea", "params": { "text": "Slow push-in, soft light flickers, a gentle breeze moves the scene" } },
+      { "id": "n4", "type": "text.template", "typeVersion": 1, "x": 880, "y": 200, "title": "Video prompt", "params": { "template": "{{a}}\n\nCamera and motion: {{b}}. Vertical 9:16 advertising shot, natural motion, no text." } },
+      { "id": "n5", "type": "video.seedance", "typeVersion": 1, "x": 1280, "y": 100, "title": "Animate still", "params": { "prompt": "", "duration": 6, "aspect_ratio": "9:16", "resolution": "720p" } },
+      { "id": "n6", "type": "input.text", "typeVersion": 1, "x": 880, "y": 640, "title": "Voice-over script", "params": { "text": "Meet the new morning ritual. Crafted with care, made to be enjoyed slowly." } },
+      { "id": "n7", "type": "audio.tts", "typeVersion": 1, "x": 1280, "y": 640, "title": "Voice-over", "params": { "text": "", "voice_id": "21m00Tcm4TlvDq8ikWAM", "model_id": "eleven_multilingual_v2" } },
+      { "id": "n8", "type": "video.merge_audio", "typeVersion": 1, "x": 1680, "y": 340, "title": "Mix voice-over", "params": { "mode": "replace", "audio_volume": 1, "video_volume": 1, "length": "video" } },
+      { "id": "n9", "type": "output.result", "typeVersion": 1, "x": 2080, "y": 380, "params": { "label": "Vertical ad" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "image" }, "to": { "node": "n2", "port": "image" } },
+      { "id": "e2", "from": { "node": "n2", "port": "text" }, "to": { "node": "n4", "port": "a" } },
+      { "id": "e3", "from": { "node": "n3", "port": "text" }, "to": { "node": "n4", "port": "b" } },
+      { "id": "e4", "from": { "node": "n4", "port": "text" }, "to": { "node": "n5", "port": "prompt" } },
+      { "id": "e5", "from": { "node": "n1", "port": "image" }, "to": { "node": "n5", "port": "first_frame" } },
+      { "id": "e6", "from": { "node": "n6", "port": "text" }, "to": { "node": "n7", "port": "text" } },
+      { "id": "e7", "from": { "node": "n5", "port": "video" }, "to": { "node": "n8", "port": "video" } },
+      { "id": "e8", "from": { "node": "n7", "port": "audio" }, "to": { "node": "n8", "port": "audio" } },
+      { "id": "e9", "from": { "node": "n8", "port": "video" }, "to": { "node": "n9", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 420, "w": 300, "h": 150, "text": "Upload a product still first. Seedance and ElevenLabs cost money: the run asks for confirmation before it starts." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Vertical ad from a still",
+    "description": "Upload a product still, describe the motion and write the voice-over. The result is a 9:16 video with voice.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Product still" },
+      { "node": "n3", "param": "text", "label": "Motion idea" },
+      { "node": "n6", "param": "text", "label": "Voice-over script" },
+      { "node": "n5", "param": "duration", "label": "Length (s)" }
+    ],
+    "outputs": [
+      { "node": "n9", "label": "Vertical ad" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Standbild zu vertikalem Spot mit Sprecher",
+      "description": "Mache aus einem Produktbild einen kurzen vertikalen Clip mit gesprochenem Text: Das Bild wird beschrieben, mit Seedance animiert und die ElevenLabs-Stimme dazugemischt.",
+      "node.n1": "Produktbild",
+      "node.n2": "Bild beschreiben",
+      "node.n3": "Bewegungsidee",
+      "node.n4": "Video-Prompt",
+      "node.n5": "Bild animieren",
+      "node.n6": "Sprechertext",
+      "node.n7": "Sprecher",
+      "node.n8": "Sprecher mischen",
+      "note.t1": "Zuerst ein Produktbild hochladen. Seedance und ElevenLabs kosten Geld: Der Lauf fragt vor dem Start nach der Bestätigung.",
+      "param.n6.text": "Das neue Morgenritual. Mit Sorgfalt gemacht, um langsam genossen zu werden.",
+      "app.title": "Vertikaler Spot aus einem Standbild",
+      "app.description": "Lade ein Produktbild hoch, beschreibe die Bewegung und schreibe den Sprechertext. Das Ergebnis ist ein 9:16-Video mit Stimme.",
+      "app.input.n1.asset": "Produktbild",
+      "app.input.n3.text": "Bewegungsidee",
+      "app.input.n6.text": "Sprechertext",
+      "app.input.n5.duration": "Länge (s)",
+      "app.output.n9": "Vertikaler Spot"
+    },
+    "es": {
+      "name": "Imagen fija a anuncio vertical con voz",
+      "description": "Convierte una imagen de producto en un vídeo vertical corto con locución: la imagen se describe, se anima con Seedance y se mezcla la voz de ElevenLabs.",
+      "node.n1": "Imagen de producto",
+      "node.n2": "Describir imagen",
+      "node.n3": "Idea de movimiento",
+      "node.n4": "Prompt de vídeo",
+      "node.n5": "Animar imagen",
+      "node.n6": "Guion de locución",
+      "node.n7": "Locución",
+      "node.n8": "Mezclar locución",
+      "note.t1": "Sube primero una imagen de producto. Seedance y ElevenLabs cuestan dinero: la ejecución pide confirmación antes de empezar.",
+      "param.n6.text": "Descubre el nuevo ritual de las mañanas. Hecho con cariño, para disfrutarlo despacio.",
+      "app.title": "Anuncio vertical desde una imagen",
+      "app.description": "Sube una imagen de producto, describe el movimiento y escribe la locución. El resultado es un vídeo 9:16 con voz.",
+      "app.input.n1.asset": "Imagen de producto",
+      "app.input.n3.text": "Idea de movimiento",
+      "app.input.n6.text": "Guion de locución",
+      "app.input.n5.duration": "Duración (s)",
+      "app.output.n9": "Anuncio vertical"
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "series-shots",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Consistent character series (batch)",
+  "description": "One reference image and a list of scene prompts: every line becomes an edited still, every still becomes a short clip, and the clips are joined into one series video.",
+  "requires": ["openrouter", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 60, "title": "Character reference", "params": { "asset": null } },
+      { "id": "n2", "type": "input.text_list", "typeVersion": 1, "x": 80, "y": 440, "title": "Scene prompts", "params": { "text": "The character walks through a sunlit market\nThe character sits at a cafe window while it rains\nThe character looks over the city from a rooftop at dusk", "max": 50 } },
+      { "id": "n3", "type": "image.edit", "typeVersion": 1, "x": 500, "y": 200, "title": "Scene stills", "params": { "prompt": "", "aspect_ratio": "16:9", "count": 1 } },
+      { "id": "n4", "type": "video.seedance", "typeVersion": 1, "x": 920, "y": 160, "title": "Animate stills", "params": { "prompt": "Subtle natural motion, gentle camera drift, cinematic lighting", "duration": 5, "aspect_ratio": "16:9", "resolution": "720p" } },
+      { "id": "n5", "type": "video.concat", "typeVersion": 1, "x": 1340, "y": 200, "title": "Join clips", "params": { "label": "Series" } },
+      { "id": "n6", "type": "output.result", "typeVersion": 1, "x": 1740, "y": 240, "params": { "label": "Series video" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "image" }, "to": { "node": "n3", "port": "images" } },
+      { "id": "e2", "from": { "node": "n2", "port": "items" }, "to": { "node": "n3", "port": "prompt" } },
+      { "id": "e3", "from": { "node": "n3", "port": "image" }, "to": { "node": "n4", "port": "first_frame" } },
+      { "id": "e4", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "clips" } },
+      { "id": "e5", "from": { "node": "n5", "port": "video" }, "to": { "node": "n6", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 500, "y": 560, "w": 340, "h": 150, "text": "Batch: the list of scene prompts is mapped automatically. Each line runs once through the still and the clip step (max. 50 items). Start with two or three lines, every clip costs money." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Character series",
+    "description": "Upload a character reference and list one scene per line. You get one clip per line and the joined series video.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Character reference" },
+      { "node": "n2", "param": "text", "label": "Scenes (one per line)" }
+    ],
+    "outputs": [
+      { "node": "n6", "label": "Series video" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Konsistente Figuren-Serie (Batch)",
+      "description": "Ein Referenzbild und eine Liste mit Szenen-Prompts: Jede Zeile wird zu einem bearbeiteten Bild, jedes Bild zu einem kurzen Clip, und die Clips werden zu einem Serienvideo verbunden.",
+      "node.n1": "Figuren-Referenz",
+      "node.n2": "Szenen-Prompts",
+      "node.n3": "Szenenbilder",
+      "node.n4": "Bilder animieren",
+      "node.n5": "Clips verbinden",
+      "note.t1": "Batch: Die Liste der Szenen-Prompts wird automatisch abgearbeitet. Jede Zeile läuft einmal durch den Bild- und den Clip-Schritt (max. 50 Einträge). Starte mit zwei oder drei Zeilen, jeder Clip kostet Geld.",
+      "param.n2.text": "Die Figur geht über einen sonnigen Markt\nDie Figur sitzt am Cafefenster, während es regnet\nDie Figur blickt in der Dämmerung vom Dach über die Stadt",
+      "app.title": "Figuren-Serie",
+      "app.description": "Lade eine Figuren-Referenz hoch und schreibe pro Zeile eine Szene. Du erhältst einen Clip pro Zeile und das verbundene Serienvideo.",
+      "app.input.n1.asset": "Figuren-Referenz",
+      "app.input.n2.text": "Szenen (eine pro Zeile)",
+      "app.output.n6": "Serienvideo"
+    },
+    "es": {
+      "name": "Serie de personaje coherente (lote)",
+      "description": "Una imagen de referencia y una lista de prompts de escena: cada línea se convierte en una imagen editada, cada imagen en un clip corto y los clips se unen en un vídeo de serie.",
+      "node.n1": "Referencia del personaje",
+      "node.n2": "Prompts de escena",
+      "node.n3": "Imágenes de escena",
+      "node.n4": "Animar imágenes",
+      "node.n5": "Unir clips",
+      "note.t1": "Lote: la lista de prompts de escena se procesa automáticamente. Cada línea pasa una vez por el paso de imagen y el de clip (máx. 50 elementos). Empieza con dos o tres líneas, cada clip cuesta dinero.",
+      "param.n2.text": "El personaje camina por un mercado soleado\nEl personaje se sienta en la ventana de un café mientras llueve\nEl personaje mira la ciudad desde una azotea al atardecer",
+      "app.title": "Serie de personaje",
+      "app.description": "Sube una referencia del personaje y escribe una escena por línea. Obtienes un clip por línea y el vídeo de serie unido.",
+      "app.input.n1.asset": "Referencia del personaje",
+      "app.input.n2.text": "Escenas (una por línea)",
+      "app.output.n6": "Vídeo de serie"
+    }
+  }
+}

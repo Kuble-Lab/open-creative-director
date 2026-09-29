@@ -19,6 +19,7 @@ Inspiriert vom Higgsfield-«Supercomputer»-Konzept — neu gebaut als offene, l
 - **Sprache** — ElevenLabs Text-to-Speech für Voice-Over und Voice-Master (optional).
 - **Higgsfield-Integration** — higgsfield.ai-Konto mit einem Klick verbinden (kein API-Key nötig): 30+ Bild-/Videomodelle für den Director, abgerechnet als Higgsfield-Credits auf deinem Plan (optional).
 - **Motion Graphics** — HTML/GSAP-Compositions als MP4, gerendert auf einem oder mehreren Render-Nodes (16:9, 9:16, 1:1) (optional).
+- **Node-Ansicht** — wiederverwendbare Produktionsabläufe auf einer Arbeitsfläche bauen (Batch-Läufe, sechs Vorlagen), als aufgeräumte Design App veröffentlichen und Ergebnisse in einen Chat zurückschicken.
 - **Casting** — wiederverwendbare Figuren pro Projekt: Referenzbilder plus Voice-Master halten Gesicht und Stimme über Episoden konsistent.
 - **Branding-Studio** — Farben, Typografie, Logos, Bildwelt, Tonalität. Design-System-Import per ZIP (z. B. aus claude.ai/design exportiert), Export als ZIP.
 - **Projekte mit Produktions-Profilen** — Briefing-Richtlinien, Kontextdateien, Brandings, Cast und ein Projekt-Gedächtnis, das der Director selbst pflegt.
@@ -75,6 +76,21 @@ Node/Express-Server (server.js)
 ```
 
 Keine Datenbank, kein Cloud-Speicher: Sessions, generierte Assets, Brandings und Einstellungen sind einfache Dateien auf deiner Disk. Ordner löschen — alles weg.
+
+## Node-Ansicht (Workflows und Design Apps)
+
+![Open Creative Director — Node-Ansicht mit der Vorlage Standbild zu vertikalem Spot mit Sprecher: Eingaben, LLM-Beschreibung, Seedance-Animation, Sprecher und Ergebnis-Node auf der Arbeitsfläche](docs/screenshots/nodes.png)
+
+Neben dem Chat öffnet **🧩 Nodes** in der Seitenleiste eine Arbeitsfläche für wiederverwendbare Produktionsabläufe. Nodes für Eingaben (Text, Textliste, Bilder, Videos, Audio), LLM-Schritte, Bild-/Video-/Audio-Generierung, ffmpeg-Bearbeitung und Ergebnisse werden verbunden; jeder Workflow legt seine Medien in einer eigenen versteckten Session ab, damit deine Chatliste sauber bleibt.
+
+- **Canvas** — Ziehen mit der linken Maustaste auf leerer Fläche zieht einen Auswahlrahmen (Shift ergänzt); die Werkzeugleiste wechselt zwischen *Auswahl (V)* und *Hand (H)*. Verschieben geht auch mit Leertaste + Ziehen, mittlerer Maustaste oder zwei Fingern auf dem Trackpad, Zoomen mit Ctrl/Cmd + Mausrad oder Pinch zum Cursor. Rückgängig/Wiederholen, Kopieren/Einfügen, Gruppen und Notizen funktionieren wie gewohnt.
+- **Läufe** — ein Node, die Auswahl oder der ganze Ablauf läuft auf dem Server. Ergebnisse werden anhand ihrer Eingaben gecacht, unveränderte Nodes werden übersprungen. Kostenpflichtige Nodes tragen ein `$`, der Lauf-Dialog zeigt die zuletzt bekannten Kosten, und ein kostenpflichtiger Lauf verlangt immer eine Bestätigung.
+- **Batch** — eine *Textliste* (ein Eintrag pro Zeile oder Blöcke, getrennt durch `---`) oder eine *Medienliste* lässt den Ablauf pro Eintrag einmal laufen (bis 50). Der Zähler unter der Liste zeigt, wie viele Einträge verwendet werden.
+- **Assets** — jede Bild-/Video-/Audio-Eingabe nimmt einen Upload, eine Datei aus einem deiner Chats oder ein bereits in diesem Workflow erzeugtes Asset.
+- **Vorlagen** — *Neu aus Vorlage* bietet sechs fertige Abläufe: Produkt-Hero (4 Varianten), Standbild zu vertikalem Spot mit Sprecher, Konsistente Figuren-Serie (Batch), Fortlaufende Einstellungen über das letzte Bild, Motion-Titel über Footage und Maskierte Bearbeitung. Vorlagen, deren Anbieter nicht konfiguriert ist, werden als nicht verfügbar angezeigt; ihre Texte gibt es auf Deutsch, Englisch und Spanisch.
+- **Design App** — in der Kopfleiste *Design App* einschalten, Parameter deiner Nodes freigeben (der kleine Schalter neben einem Feld) und die Ergebnis-Nodes wählen. `#app=<Workflow-ID>` zeigt dann ein aufgeräumtes Formular mit *Ausführen*, Live-Status, Ergebnisgalerie, Downloads und *In Chat senden*. Die Formularwerte gelten nur für diesen Lauf; der gespeicherte Workflow bleibt unverändert.
+- **Chat-Brücke** — *In Chat senden* kopiert Ergebnisse als sichtbare Nachricht mit angehängten Medien in einen Chat deiner Wahl, damit der Director dort weiterarbeiten kann.
+- **Projekte** — einen Workflow einem Projekt zuweisen (dieselben Ordner wie bei deinen Chats); der Projektname erscheint in der Workflow-Liste. Workflows sind für das ganze Team sichtbar; beim Löschen werden auch die Medien gelöscht (die App fragt vorher nach).
 
 ## Motion-Graphics-Render-Node (optional)
 

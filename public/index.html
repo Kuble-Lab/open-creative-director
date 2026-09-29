@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Open Creative Director</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="nodes/nodes.css" />
   </head>
   <body>
     <div class="app">
@@ -25,6 +26,7 @@
         </div>
         <div id="sessionList" class="session-list"></div>
         <div class="sidebar-foot">
+          <button id="nodesBtn" class="sidebar-brandings" type="button" title="Node-Ansicht öffnen" data-i18n="sidebar.nodes" data-i18n-title="sidebar.nodesTitle">🧩 Nodes</button>
           <button id="brandingsBtn" class="sidebar-brandings" type="button" title="Brandings verwalten" data-i18n="sidebar.brandings" data-i18n-title="sidebar.brandingsTitle">🎨 Brandings</button>
           <button id="settingsBtn" class="sidebar-brandings hidden" type="button" title="API-Keys verwalten" data-i18n="sidebar.settings" data-i18n-title="sidebar.settingsTitle">⚙️ Einstellungen</button>
           <div id="langSwitch" class="lang-switch" aria-label="Sprache" data-i18n-aria-label="lang.selector">
@@ -448,11 +450,27 @@
       </div>
     </div>
 
+    <div id="nodeApp" class="nv-app hidden"></div>
+
     <div id="lightbox" class="lightbox hidden">
       <img id="lightboxImg" alt="" aria-label="Vollansicht" data-i18n-aria-label="common.fullView" />
     </div>
 
     <script src="i18n.js"></script>
     <script src="app.js"></script>
+    <script src="nodes/i18n-nodes.js"></script>
+    <script src="nodes/graph.js"></script>
+    <script src="nodes/history.js"></script>
+    <script src="nodes/api.js"></script>
+    <script src="nodes/node-ui.js"></script>
+    <script src="nodes/preview.js"></script>
+    <script src="nodes/canvas.js"></script>
+    <script src="nodes/palette.js"></script>
+    <script src="nodes/inspector.js"></script>
+    <script src="nodes/workflow-list.js"></script>
+    <script src="nodes/asset-picker.js"></script>
+    <script src="nodes/run.js"></script>
+    <script src="nodes/app-mode.js"></script>
+    <script src="nodes/main.js"></script>
   </body>
 </html>

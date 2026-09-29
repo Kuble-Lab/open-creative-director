@@ -1,0 +1,73 @@
+{
+  "id": "motion-title",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Motion title over footage",
+  "description": "Write a short brief; an LLM builds the HTML/GSAP animation and a render node turns it into a video with your footage as background.",
+  "requires": ["openrouter", "rendernode"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 60, "title": "Title brief", "params": { "text": "Bold lower-third title \"Summer Sale\" with a thin amber line that wipes in, subtitle \"Up to 40% off\", elegant and calm." } },
+      { "id": "n2", "type": "input.video", "typeVersion": 1, "x": 80, "y": 380, "title": "Background footage", "params": { "asset": null } },
+      { "id": "n3", "type": "llm.motion_html", "typeVersion": 1, "x": 500, "y": 60, "title": "Animation code", "params": { "model": "", "format": "landscape", "duration": 6 } },
+      { "id": "n4", "type": "video.motion_graphics", "typeVersion": 1, "x": 920, "y": 80, "title": "Render title", "params": { "html": "", "format": "landscape", "quality": "standard", "label": "Motion title" } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1340, "y": 120, "params": { "label": "Title video" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "text" }, "to": { "node": "n3", "port": "brief" } },
+      { "id": "e2", "from": { "node": "n2", "port": "video" }, "to": { "node": "n3", "port": "assets" } },
+      { "id": "e3", "from": { "node": "n3", "port": "html" }, "to": { "node": "n4", "port": "html" } },
+      { "id": "e4", "from": { "node": "n2", "port": "video" }, "to": { "node": "n4", "port": "assets" } },
+      { "id": "e5", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 500, "y": 420, "w": 320, "h": 130, "text": "Needs a configured render node. The footage is passed to the animation as asset 1, so the LLM can place it as a video layer." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Motion title",
+    "description": "Upload footage and describe the title. You get a rendered title animation on top of your video.",
+    "inputs": [
+      { "node": "n2", "param": "asset", "label": "Background footage" },
+      { "node": "n1", "param": "text", "label": "Title brief" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Title video" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Motion-Titel über Footage",
+      "description": "Schreibe ein kurzes Briefing; ein LLM baut die HTML/GSAP-Animation und ein Render-Node macht daraus ein Video mit deinem Footage als Hintergrund.",
+      "node.n1": "Titel-Briefing",
+      "node.n2": "Hintergrund-Footage",
+      "node.n3": "Animationscode",
+      "node.n4": "Titel rendern",
+      "note.t1": "Braucht einen eingerichteten Render-Node. Das Footage geht als Asset 1 an die Animation, damit das LLM es als Videoebene einsetzen kann.",
+      "param.n1.text": "Kräftiger Lower-Third-Titel «Sommer-Sale» mit dünner Bernsteinlinie, die einläuft, Untertitel «Bis zu 40 % Rabatt», elegant und ruhig.",
+      "app.title": "Motion-Titel",
+      "app.description": "Lade Footage hoch und beschreibe den Titel. Du erhältst eine gerenderte Titelanimation über deinem Video.",
+      "app.input.n2.asset": "Hintergrund-Footage",
+      "app.input.n1.text": "Titel-Briefing",
+      "app.output.n5": "Titel-Video"
+    },
+    "es": {
+      "name": "Título animado sobre metraje",
+      "description": "Escribe un briefing corto; un LLM crea la animación HTML/GSAP y un nodo de render la convierte en vídeo con tu metraje de fondo.",
+      "node.n1": "Briefing del título",
+      "node.n2": "Metraje de fondo",
+      "node.n3": "Código de animación",
+      "node.n4": "Renderizar título",
+      "note.t1": "Necesita un nodo de render configurado. El metraje llega a la animación como recurso 1, así el LLM puede usarlo como capa de vídeo.",
+      "param.n1.text": "Título potente en tercio inferior «Rebajas de verano» con una fina línea ámbar que aparece, subtítulo «Hasta un 40 % de descuento», elegante y tranquilo.",
+      "app.title": "Título animado",
+      "app.description": "Sube metraje y describe el título. Obtienes una animación de título renderizada sobre tu vídeo.",
+      "app.input.n2.asset": "Metraje de fondo",
+      "app.input.n1.text": "Briefing del título",
+      "app.output.n5": "Vídeo con título"
+    }
+  }
+}

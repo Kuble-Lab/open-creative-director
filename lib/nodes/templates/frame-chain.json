@@ -1,0 +1,79 @@
+{
+  "id": "frame-chain",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Continuous shots via last frame",
+  "description": "Generate a first shot from text, take its last frame and use it as the start of the second shot. Both clips are joined for a continuous take.",
+  "requires": ["openrouter", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 60, "title": "Shot 1", "params": { "text": "A lighthouse on a cliff at sunrise, waves crashing below, slow aerial push-in" } },
+      { "id": "n2", "type": "video.seedance", "typeVersion": 1, "x": 480, "y": 40, "title": "Shot 1 video", "params": { "prompt": "", "duration": 5, "aspect_ratio": "16:9", "resolution": "720p" } },
+      { "id": "n3", "type": "video.extract_frame", "typeVersion": 1, "x": 880, "y": 40, "title": "Last frame", "params": { "position": "last", "time": 0 } },
+      { "id": "n4", "type": "input.text", "typeVersion": 1, "x": 880, "y": 420, "title": "Shot 2", "params": { "text": "The camera glides on towards the lighthouse door, gulls cross the sky, golden light" } },
+      { "id": "n5", "type": "video.seedance", "typeVersion": 1, "x": 1280, "y": 60, "title": "Shot 2 video", "params": { "prompt": "", "duration": 5, "aspect_ratio": "16:9", "resolution": "720p" } },
+      { "id": "n6", "type": "video.concat", "typeVersion": 1, "x": 1680, "y": 100, "title": "Join shots", "params": { "label": "Continuous take" } },
+      { "id": "n7", "type": "output.result", "typeVersion": 1, "x": 2080, "y": 140, "params": { "label": "Continuous take" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "text" }, "to": { "node": "n2", "port": "prompt" } },
+      { "id": "e2", "from": { "node": "n2", "port": "video" }, "to": { "node": "n3", "port": "video" } },
+      { "id": "e3", "from": { "node": "n3", "port": "image" }, "to": { "node": "n5", "port": "first_frame" } },
+      { "id": "e4", "from": { "node": "n4", "port": "text" }, "to": { "node": "n5", "port": "prompt" } },
+      { "id": "e5", "from": { "node": "n2", "port": "video" }, "to": { "node": "n6", "port": "clips" } },
+      { "id": "e6", "from": { "node": "n5", "port": "video" }, "to": { "node": "n6", "port": "clips" } },
+      { "id": "e7", "from": { "node": "n6", "port": "video" }, "to": { "node": "n7", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 320, "w": 300, "h": 140, "text": "The order of the connections into Join shots is the playback order (small numbers on the input). Shot 1 always runs first." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Continuous take",
+    "description": "Describe two consecutive shots. The second one starts on the last frame of the first.",
+    "inputs": [
+      { "node": "n1", "param": "text", "label": "Shot 1" },
+      { "node": "n4", "param": "text", "label": "Shot 2" }
+    ],
+    "outputs": [
+      { "node": "n7", "label": "Continuous take" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Fortlaufende Einstellungen über das letzte Bild",
+      "description": "Erzeuge eine erste Einstellung aus Text, nimm deren letztes Bild als Start der zweiten Einstellung und verbinde beide Clips zu einer durchgehenden Aufnahme.",
+      "node.n1": "Einstellung 1",
+      "node.n2": "Video Einstellung 1",
+      "node.n3": "Letztes Bild",
+      "node.n4": "Einstellung 2",
+      "node.n5": "Video Einstellung 2",
+      "node.n6": "Einstellungen verbinden",
+      "note.t1": "Die Reihenfolge der Verbindungen in «Einstellungen verbinden» ist die Abspielreihenfolge (kleine Nummern am Eingang). Einstellung 1 läuft immer zuerst.",
+      "app.title": "Durchgehende Aufnahme",
+      "app.description": "Beschreibe zwei aufeinanderfolgende Einstellungen. Die zweite startet auf dem letzten Bild der ersten.",
+      "app.input.n1.text": "Einstellung 1",
+      "app.input.n4.text": "Einstellung 2",
+      "app.output.n7": "Durchgehende Aufnahme"
+    },
+    "es": {
+      "name": "Planos continuos con el último fotograma",
+      "description": "Genera un primer plano a partir de texto, usa su último fotograma como inicio del segundo plano y une ambos clips en una toma continua.",
+      "node.n1": "Plano 1",
+      "node.n2": "Vídeo plano 1",
+      "node.n3": "Último fotograma",
+      "node.n4": "Plano 2",
+      "node.n5": "Vídeo plano 2",
+      "node.n6": "Unir planos",
+      "note.t1": "El orden de las conexiones en «Unir planos» es el orden de reproducción (números pequeños en la entrada). El plano 1 siempre se ejecuta primero.",
+      "app.title": "Toma continua",
+      "app.description": "Describe dos planos consecutivos. El segundo empieza en el último fotograma del primero.",
+      "app.input.n1.text": "Plano 1",
+      "app.input.n4.text": "Plano 2",
+      "app.output.n7": "Toma continua"
+    }
+  }
+}

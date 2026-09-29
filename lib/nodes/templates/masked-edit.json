@@ -1,0 +1,84 @@
+{
+  "id": "masked-edit",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Masked edit (approximate inpainting)",
+  "description": "Edit a whole image with a prompt, then paste only the masked area back onto the original. Not pixel-exact if the model shifts the geometry.",
+  "requires": ["openrouter", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 60, "title": "Original image", "params": { "asset": null } },
+      { "id": "n2", "type": "input.image", "typeVersion": 1, "x": 80, "y": 440, "title": "Mask (white = change)", "params": { "asset": null } },
+      { "id": "n3", "type": "input.text", "typeVersion": 1, "x": 500, "y": 460, "title": "Edit instruction", "params": { "text": "Replace the object in the highlighted area with a bunch of fresh flowers, keep everything else unchanged" } },
+      { "id": "n4", "type": "image.edit", "typeVersion": 1, "x": 900, "y": 60, "title": "Edit whole image", "params": { "prompt": "", "aspect_ratio": "auto", "count": 1 } },
+      { "id": "n5", "type": "image.mask_apply", "typeVersion": 1, "x": 1300, "y": 120, "title": "Cut out masked area", "params": { "invert": false, "feather": 6 } },
+      { "id": "n6", "type": "image.composite", "typeVersion": 1, "x": 1700, "y": 100, "title": "Paste onto original", "params": { "x": 0, "y": 0, "unit": "px", "anchor": "top-left", "scale": 100, "opacity": 1, "blend": "normal" } },
+      { "id": "n7", "type": "output.result", "typeVersion": 1, "x": 2100, "y": 140, "params": { "label": "Edited image" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "image" }, "to": { "node": "n4", "port": "images" } },
+      { "id": "e2", "from": { "node": "n3", "port": "text" }, "to": { "node": "n4", "port": "prompt" } },
+      { "id": "e3", "from": { "node": "n4", "port": "image" }, "to": { "node": "n5", "port": "image" } },
+      { "id": "e4", "from": { "node": "n2", "port": "image" }, "to": { "node": "n5", "port": "mask" } },
+      { "id": "e5", "from": { "node": "n1", "port": "image" }, "to": { "node": "n6", "port": "background" } },
+      { "id": "e6", "from": { "node": "n5", "port": "image" }, "to": { "node": "n6", "port": "layer" } },
+      { "id": "e7", "from": { "node": "n6", "port": "image" }, "to": { "node": "n7", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 900, "y": 460, "w": 340, "h": 150, "text": "The mask needs the same size as the original: white areas are taken from the edited image, black areas stay as in the original. The feather softens the transition." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Masked image edit",
+    "description": "Upload an image and a mask of the same size (white = change) and describe the edit. Only the masked area is replaced.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Original image" },
+      { "node": "n2", "param": "asset", "label": "Mask (white = change)" },
+      { "node": "n3", "param": "text", "label": "Edit instruction" }
+    ],
+    "outputs": [
+      { "node": "n7", "label": "Edited image" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Maskierte Bearbeitung (angenähertes Inpainting)",
+      "description": "Bearbeite das ganze Bild mit einem Prompt und setze nur den maskierten Bereich zurück auf das Original. Nicht pixelgenau, wenn das Modell die Geometrie verschiebt.",
+      "node.n1": "Originalbild",
+      "node.n2": "Maske (weiss = ändern)",
+      "node.n3": "Bearbeitungsanweisung",
+      "node.n4": "Ganzes Bild bearbeiten",
+      "node.n5": "Maskierten Bereich ausschneiden",
+      "node.n6": "Auf Original einsetzen",
+      "note.t1": "Die Maske braucht dieselbe Grösse wie das Original: Weisse Bereiche stammen aus dem bearbeiteten Bild, schwarze bleiben wie im Original. Die weiche Kante glättet den Übergang.",
+      "param.n3.text": "Ersetze das Objekt im markierten Bereich durch einen Strauss frischer Blumen und lasse alles andere unverändert",
+      "app.title": "Maskierte Bildbearbeitung",
+      "app.description": "Lade ein Bild und eine gleich grosse Maske hoch (weiss = ändern) und beschreibe die Änderung. Nur der maskierte Bereich wird ersetzt.",
+      "app.input.n1.asset": "Originalbild",
+      "app.input.n2.asset": "Maske (weiss = ändern)",
+      "app.input.n3.text": "Bearbeitungsanweisung",
+      "app.output.n7": "Bearbeitetes Bild"
+    },
+    "es": {
+      "name": "Edición con máscara (inpainting aproximado)",
+      "description": "Edita toda la imagen con un prompt y pega solo la zona enmascarada sobre el original. No es exacto al píxel si el modelo desplaza la geometría.",
+      "node.n1": "Imagen original",
+      "node.n2": "Máscara (blanco = cambiar)",
+      "node.n3": "Instrucción de edición",
+      "node.n4": "Editar toda la imagen",
+      "node.n5": "Recortar zona enmascarada",
+      "node.n6": "Pegar sobre el original",
+      "note.t1": "La máscara debe tener el mismo tamaño que el original: las zonas blancas salen de la imagen editada, las negras quedan como en el original. El difuminado suaviza la transición.",
+      "param.n3.text": "Sustituye el objeto de la zona marcada por un ramo de flores frescas y deja todo lo demás sin cambios",
+      "app.title": "Edición de imagen con máscara",
+      "app.description": "Sube una imagen y una máscara del mismo tamaño (blanco = cambiar) y describe la edición. Solo se sustituye la zona enmascarada.",
+      "app.input.n1.asset": "Imagen original",
+      "app.input.n2.asset": "Máscara (blanco = cambiar)",
+      "app.input.n3.text": "Instrucción de edición",
+      "app.output.n7": "Imagen editada"
+    }
+  }
+}
