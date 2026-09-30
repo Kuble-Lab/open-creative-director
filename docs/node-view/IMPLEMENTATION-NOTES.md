@@ -350,7 +350,7 @@ There is no browser test in the repo. Focus and `inert`, the first fit and the l
 
 ## 5. Decisions (as of 2026-09-29)
 
-- **Workflows are team-visible**, like chats. No per-user filtering; `createdBy` / `updatedBy`, run users and cost users come from `req.kubleUser` (`lokal` without an auth proxy).
+- **Workflows follow the chat rules of the user management** (README). Without `AUTH_WHOAMI_URL` they are open to everybody and nothing is filtered; with it, new workflows are private and can be shared, and workflows without an owner stay open. `createdBy` / `updatedBy`, run users and cost users come from `req.kubleUser` (`lokal` without an auth proxy). The node view shows owner, share badge and share dialog through `public/access-client.js`.
 - **Higgsfield edit nodes are experimental and untested against the live API.** They need Higgsfield connected (and ffmpeg for the ones that probe a source). Without `PUBLIC_BASE_URL` the sources are uploaded with `media_upload` since phase 2c (§2.6). One live verification (job id, result format, upload flow) is still needed and costs credits.
 - **Phase 2 starts with Higgsfield lip sync / voice change / motion transfer (decided 2026-09-29).** Built as the experimental nodes `hf.dubbing`, `hf.voice_change`, `hf.motion_control` and `hf.speech`, the `media_upload` path, an audio input for `video.higgsfield` and the template «Clip in drei Landessprachen» (§2.6). The Director `run_workflow` tool and the mask painter follow after the live verification.
 - **No mask for OpenRouter images.** Inpainting stays approximate (template "Masked edit": `image.edit` → `image.mask_apply` → `image.composite`). Whether the endpoint accepts a mask or a transparent background is unverified.

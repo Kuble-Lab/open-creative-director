@@ -2840,3 +2840,422 @@ code {
   border-radius: 6px;
   white-space: nowrap;
 }
+
+/* ---------- user management (only visible with AUTH_WHOAMI_URL) ---------- */
+
+/* Admin-only parts of the interface disappear for everybody else. */
+body.no-admin .admin-only {
+  display: none !important;
+}
+
+.session-owner {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.owner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: rgba(130, 151, 163, 0.16);
+  color: #9fb2bf;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.owner-chip.mine {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.owner-chip-star {
+  color: #e8b64c;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.session-item-owner {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(130, 151, 163, 0.16);
+  color: #9fb2bf;
+  font-size: 10px;
+  font-weight: 600;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.session-shared-flag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.btn-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 5px 12px;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-share:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.btn-share-active {
+  color: var(--accent);
+  border-color: rgba(216, 162, 95, 0.5);
+}
+
+/* Account menu (top right) */
+.account-menu {
+  position: relative;
+}
+
+.account-chip {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.account-chip:hover,
+.account-chip[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: min(340px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.account-dropdown-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 4px;
+}
+
+.account-dropdown-email {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-role {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.account-role.admin {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.account-dropdown-note {
+  padding: 6px 10px 8px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.account-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.account-dropdown-item:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.account-dropdown-item strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Sharing form (chat dialog and node view dialog) */
+.sharing-panel {
+  max-width: 460px;
+}
+
+.share-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.share-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.share-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.share-legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.share-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  cursor: pointer;
+}
+
+.share-mode:has(input:checked) {
+  border-color: rgba(216, 162, 95, 0.55);
+  background: var(--accent-soft);
+}
+
+.share-mode input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.share-mode-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.share-mode-name {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.share-mode-hint {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.share-people {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.share-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.share-person:hover {
+  background: var(--bg-raised);
+}
+
+.share-person input {
+  accent-color: var(--accent);
+}
+
+.share-person-mail {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-person-role {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.share-empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.share-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.share-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 6px 16px;
+}
+
+.share-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.share-btn.primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.share-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Settings: team list */
+.user-row-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.user-row-meta {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.settings-users {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.settings-monitoring-link {
+  margin-top: 6px;
+}
+
+/* Project profile as read-only view for non-admins */
+.folder-profile-readonly {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.profile-readonly #folderProfileSave,
+.profile-readonly #folderProfileFileUploadBtn,
+.profile-readonly #folderProfileBrandingSelect,
+.profile-readonly #folderProfileBrainSearch,
+.profile-readonly #folderProfileBrainResults,
+.profile-readonly #folderProfileBrainLimit,
+.profile-readonly #folderProfileFileHint,
+.profile-readonly #folderProfileBrandingHint,
+.profile-readonly #folderProfileMemory button,
+.profile-readonly #folderProfileAttachedBrains button,
+.profile-readonly #folderProfileFiles button,
+.profile-readonly #folderProfileBrandings button,
+.profile-readonly #folderProfileCast button {
+  display: none !important;
+}
+
+@media (max-width: 820px) {
+  .session-owner {
+    display: none;
+  }
+  .btn-share span:last-child {
+    display: none;
+  }
+}

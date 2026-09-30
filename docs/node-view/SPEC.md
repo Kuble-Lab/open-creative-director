@@ -727,7 +727,7 @@ JSON files in `lib/nodes/templates/<id>.json` (same format as export plus `id`, 
 
 ## 16. Auth and scoping
 
-- Workflows are team-visible like chats (no per-user filtering exists in the codebase today). `createdBy`, `updatedBy`, run `user` and cost journal `user` come from `req.kubleUser` (`lokal` without `AUTH_WHOAMI_URL`).
+- With user management (`AUTH_WHOAMI_URL` set, see the README) workflows follow the same rules as chats: new workflows are private to their owner and can be shared with the team or selected people (`owner`, `shareMode`, `sharedWith` in `workflow.json`, kept in step on the backing session); workflows without an owner stay open to everybody; a workflow somebody may not use answers 404 on every route, its files and its event stream. Without `AUTH_WHOAMI_URL` (local mode) nothing is filtered. `createdBy`, `updatedBy`, run `user` and cost journal `user` come from `req.kubleUser` (`lokal` without `AUTH_WHOAMI_URL`).
 - No admin requirement for building or running (same as chat). Settings (keys, nodes, Higgsfield) stay admin-only as today.
 - Input validation: all IDs via `store.isValidId`; uploads: extension whitelist, 500 MB cap, temp file inside the session asset dir; import: 2 MB, schema validation; HTML for motion graphics is only sent to render nodes, never rendered in the app DOM; LLM text is rendered with `textContent`.
 - `PUBLIC_BASE_URL` requirements are surfaced as node validation warnings, not as runtime surprises.
@@ -853,7 +853,7 @@ Tests: `node scripts/test-nodes-templates.js`, `node scripts/test-nodes-app.js`,
 
 ## 21. Open questions
 
-1. Should workflows stay team-visible like chats, or be private per user when `AUTH_WHOAMI_URL` is set? — **Decided (2026-09-29): team-visible**, like chats; `createdBy` / `updatedBy` are recorded.
+1. Should workflows stay team-visible like chats, or be private per user when `AUTH_WHOAMI_URL` is set? — Decided (2026-09-29): team-visible. **Superseded (2026-09-30): with `AUTH_WHOAMI_URL` new chats and workflows start private and can be shared (team or selected people); existing ones without an owner stay visible to all.** `createdBy` / `updatedBy` are still recorded.
 2. Higgsfield edit tools (`remove_background`, `upscale_*`, `outpaint_image`, `reframe`): one live verification of the response/job format is needed (costs credits). Should local users get a `media_upload` (presigned PUT) path so references work without `PUBLIC_BASE_URL`? — **Decided (2026-09-29): shipped as experimental nodes, untested against the live API; no `media_upload` path** (they need Higgsfield and `PUBLIC_BASE_URL`). The live verification itself is **open** (costs credits). **Update (2026-09-29, phase 2c): the `media_upload` (presigned PUT) path now exists**; the Higgsfield nodes no longer need `PUBLIC_BASE_URL` (IMPLEMENTATION-NOTES §2.6).
 3. Does OpenRouter's `/images` endpoint accept a mask or `background: transparent` for GPT Image 2? If yes, true inpainting and transparent generation move from "later" to "now". — **Decided (2026-09-29): no mask for OpenRouter images** in v1; inpainting stays the approximation of the "Masked edit" template. Whether the endpoint accepts a mask or a transparent background remains **open** (unverified).
 4. Is "last actual cost" an acceptable pre-run estimate for GPT Image 2 and Seedance, or should a small price table be maintained in `config.json`? — **Decided (2026-09-29): last actual cost** (per node type in the workflow), otherwise "unknown"; no price table.

@@ -55,7 +55,7 @@ That's it. Everything else is optional and degrades gracefully.
 | ChatGPT subscription | Optional | Run the Director on GPT-5.6 models billed to your ChatGPT Plus/Pro plan instead of per-token | No key — log in to the [Codex CLI](https://github.com/openai/codex) with "Sign in with ChatGPT", then click **Import from Codex CLI login** in ⚙️ Settings. Unofficial route via the Codex backend (gray area in OpenAI's terms) — use at your own discretion |
 | `RENDER_NODE_URL` + `RENDER_NODE_TOKEN` | Optional | HTML/GSAP motion-graphics rendering | Run your own render node (see below); multiple nodes manageable in ⚙️ Settings |
 | `PUBLIC_BASE_URL` | Optional | Seedance audio/video references (they require publicly reachable HTTPS URLs); also the base of the Higgsfield login callback (`<PUBLIC_BASE_URL>/api/higgsfield/oauth/callback`) | Only needed when hosting publicly or behind a reverse proxy |
-| `AUTH_WHOAMI_URL` + `ADMIN_EMAILS` | Optional | Multi-user mode behind your own auth proxy | Only for team hosting — locally the app runs open |
+| `AUTH_WHOAMI_URL` + `ADMIN_EMAILS` | Optional | User management behind your own login: private chats/workflows, sharing, admins, team list (`SUPERADMIN_EMAILS`, `AUTH_LOGOUT_URL` optional) | Only for team hosting — locally the app runs open. See [User management](#user-management-optional) |
 | `GTS_API_TOKEN` + `GTS_BASE_URL` | Optional | Attach knowledge-base documents as chat context | Any compatible GTS endpoint; the example default points to `gts.kuble.com` |
 
 Keys can also be entered at runtime in **⚙️ Settings** (stored server-side in `data/settings.json`, chmod 600, never in the repo) — they override `.env` without a restart.
@@ -96,15 +96,43 @@ Besides the chat, **🧩 Nodes** in the sidebar opens a canvas for building reus
 - **Templates** — *New from template* offers eight ready flows: Product hero (4 variants), Still to vertical ad with voice-over, Consistent character series (batch), Continuous shots via last frame, Motion title over footage, Masked edit, Clip in three national languages (Higgsfield dubbing with lip sync) and Talking portrait (ElevenLabs voice plus H3 Max lip sync on fal.ai). Templates whose provider is not configured are shown as unavailable; their texts come in English, German and Spanish.
 - **Design App** — switch on *Design App* in the top bar, expose parameters of your nodes (the small toggle next to a field) and pick the result nodes. `#app=<workflow id>` then shows a clean form with a *Run* button, live status, a result gallery, downloads and *Send to chat*. The form values only apply to that run; the saved workflow is not changed.
 - **Chat bridge** — *Send to chat* copies results into a chat of your choice as a visible message with the media attached, so the Director can continue from there.
-- **Projects** — assign a workflow to a project (the same folders your chats use); the project name shows in the workflow list. Workflows are visible to the whole team; deleting one also deletes its media (the app asks for confirmation first).
+- **Projects** — assign a workflow to a project (the same folders your chats use); the project name shows in the workflow list. Who can see a workflow depends on the [user management](#user-management-optional) (open for everybody when it is off); deleting one also deletes its media (the app asks for confirmation first).
 
 ## Motion-graphics render node (optional)
 
 The `render_motion_graphics` tool sends HTML/GSAP compositions to a small render service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg) that can run on the same machine or any other computer — reachable directly or through an SSH tunnel. The service ships in this repo under [`render-node/`](render-node/README.md). Multiple nodes are load-balanced automatically (idle first, then shortest queue), and imported media stream to the node in chunks (up to 500 MB per render). Configure nodes in **⚙️ Settings → Render nodes**.
 
-## Team mode (optional)
+## User management (optional)
 
-Out of the box the app is single-machine and open. There is no built-in admin account. To host it for a team, put it behind your own login (any auth proxy that can answer a whoami endpoint), set `AUTH_WHOAMI_URL`, and list admin emails in `ADMIN_EMAILS` — only those admins get the ⚙️ Settings (API keys, render nodes, admins, Higgsfield). Without `AUTH_WHOAMI_URL`, local access remains open. Costs are tracked per user.
+Out of the box the app is single-machine and open: everybody may do everything, nothing has an owner. **User management is active if and only if `AUTH_WHOAMI_URL` is set.** The login itself stays outside the app: put it behind your own login (any auth proxy that can answer a whoami endpoint `{ "logged_in": true, "email": "…" }` for the caller's cookie). The app never asks for a password.
+
+| Setting | Meaning |
+| --- | --- |
+| `AUTH_WHOAMI_URL` | Whoami endpoint of your login. Setting it turns user management on. Unset = the local mode, exactly as before |
+| `ADMIN_EMAILS` | Comma-separated admins (more can be added in ⚙️ Settings). No built-in default |
+| `SUPERADMIN_EMAILS` | Comma-separated superadmins, any domain. Environment only, never editable in the app. They are admins as well and may open the monitoring page |
+| `AUTH_LOGOUT_URL` | Optional sign-out link for the account menu (`https://…` or an absolute path). Without it there is no sign-out entry |
+
+Rules in the active mode:
+
+- **Who is who.** The caller is the e-mail address the whoami endpoint returns. A request without a valid address (whoami failed, direct access to the app's port) is anonymous: it sees and uses only what has no owner, and what it creates gets no owner either.
+- **New chats and node workflows start private** (owner and admins). The owner can share them with the whole team or with selected people from the team list. People a chat is shared with can open it, keep chatting, edit and run a workflow, use its Design App and download its files; only the owner and admins can rename, move, delete or re-share it.
+- **Existing data stays open.** Chats and workflows without an owner (created before user management was switched on) remain visible and usable for everybody, including renaming and deleting, exactly as before. Only admins change their sharing; the admin who does becomes the owner.
+- **Foreign private entries do not exist for you.** Every route answers 404 (not 403) for a chat or workflow you may not see, and the same holds for its files (`/assets/…`), downloads (ZIP), exports, event streams and runs. Taking a share back ends open event streams.
+- **Projects** (folders) show only entries you may see; a project with only other people's private entries is hidden. Renaming or deleting a project that holds other people's entries, or one with a production profile, context files, memory or cast, needs an admin. Project names are unique across the app: a name taken by a project you cannot see is answered with a neutral "not available".
+- **The Director's memory follows the chat.** Notes saved with `save_memory` belong to the person who was chatting and only reach that person's chats (notes from before user management stay global). Notes saved with `save_project_memory` are only shown, and only reach the prompt, for people who may use the chat they came from (sharing the chat shares them; admins see all). Chat tools that change brandings (`create_branding`, `update_branding`, `add_branding_asset`) are admin-only like branding import/delete. Known limit: the cast tools (`create_cast_member`, `update_cast_member`) stay available to everybody who may use the project, because they are the only way to fill the cast; only deleting a member is admin-only.
+- **Admin-only** (the rest is open to everybody who is logged in): ⚙️ Settings and API keys, admin and user management, render nodes, Higgsfield and ChatGPT connections, roles, custom prompt presets, branding import/delete, project profiles (guidelines, context files, memory, cast).
+- **Team list.** The people you can share with: admins, people an admin added in ⚙️ Settings (`data/users.json`) and everybody who has used the app once (recorded automatically with *first/last seen* in `data/team-seen.json`). It is not an access list — access stays with your login. Admins can remove entries; a removed person is not recorded again until an admin adds them back.
+- **Costs** are recorded per person; admins see all costs, everybody else only their own.
+- **Monitoring** (superadmins only, everybody else gets a 404): `/monitoring.html` and `GET /api/admin/monitoring` (`?days=7|30|90|all&user=…&provider=…`, CSV: `/api/admin/monitoring/export`) show usage and costs per person, provider and day, runs, jobs and failed requests.
+
+What people see in the interface (nothing of this appears in the local mode):
+
+- **Account menu** (top right of the chat view): initials chip, e-mail address, role (person, admin, superadmin), the person's own costs of the month, a link to the monitoring page for superadmins and a *Sign out* entry if `AUTH_LOGOUT_URL` is set. A person who is not identified sees a note that only entries without an owner are available.
+- **Sidebar and header.** Somebody else's chat shows its owner next to the date (full address as tooltip) and a *Team* or *n people* badge when it is shared. The open chat or workflow shows its owner in the header; owners who are admins carry a gold star. Chats and workflows that existed before user management show neither a badge nor an owner.
+- **Share button** (chats in the header and sidebar menu, workflows in the node view header and list menu; only for the owner and admins): private, whole team or selected people from the team list. For an entry without an owner the dialog says so; saving makes the admin the owner. If the owner takes the sharing back while somebody has the entry open, it closes with a short message (also for open event streams).
+- **Design App links.** Copying the app link of a private workflow reminds you that others can only open it after it has been shared.
+- **Admin-only parts** (custom prompt presets, new roles, branding import/delete, project profile editing) are hidden for everybody else; the project profile opens read-only. ⚙️ Settings show a *Team list* with first/last seen (add or remove people) and, for superadmins, a link to the monitoring page.
 
 ## License
 

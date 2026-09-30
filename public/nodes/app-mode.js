@@ -112,7 +112,11 @@
       if (!s) return;
       const url = new URL(`#app=${enc(s.id)}`, `${global.location.origin}${global.location.pathname}`).href;
       const ok = await OCD.preview.copyText(url);
-      ui.toast(ok ? T('nodes.app.linkCopied') : T('nodes.preview.copyFailed'), { kind: ok ? undefined : 'warn' });
+      // A private workflow: the link only works for others after it has been shared.
+      const wf = s.workflow;
+      const isPrivate = Boolean(global.OCAccess && global.OCAccess.isActive() && wf && wf.unowned === false && wf.shareMode === 'private');
+      if (ok && isPrivate) ui.toast(T('nodes.app.linkCopiedPrivate'), { kind: 'warn', timeout: 8000 });
+      else ui.toast(ok ? T('nodes.app.linkCopied') : T('nodes.preview.copyFailed'), { kind: ok ? undefined : 'warn' });
     }
 
     /* ---------- lifecycle ---------- */
@@ -205,6 +209,7 @@
         },
         onError: () => {
           if (s) s.sseBroken = true;
+          checkAccess();
         },
         onOpen: () => {
           if (s && s.sseBroken) {
@@ -213,6 +218,20 @@
           }
         }
       });
+    }
+
+    // The owner can take the sharing back at any time: the app then answers 404 and the stream must not linger.
+    async function checkAccess() {
+      if (!s || !global.OCAccess || !global.OCAccess.isActive()) return;
+      const id = s.id;
+      try {
+        await api.getWorkflow(id);
+      } catch (error) {
+        if (error.status === 404 && s && s.id === id) {
+          close();
+          message('error', T('nodes.access.lost'), [{ label: T('nodes.topbar.backTitle'), onClick: () => cb.onBack && cb.onBack() }]);
+        }
+      }
     }
 
     async function reconcile() {

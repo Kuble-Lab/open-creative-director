@@ -338,7 +338,9 @@
     if (!state.workflow) return;
     const url = new URL(`#app=${encodeURIComponent(state.workflow.id)}`, `${global.location.origin}${global.location.pathname}`).href;
     const ok = OCD.preview ? await OCD.preview.copyText(url) : false;
-    ui.toast(ok ? ui.T('nodes.app.linkCopied') : ui.T('nodes.preview.copyFailed'), { kind: ok ? undefined : 'warn' });
+    // A private workflow: the link only works for others after it has been shared.
+    if (ok && isPrivateOwned(state.workflow)) ui.toast(ui.T('nodes.app.linkCopiedPrivate'), { kind: 'warn', timeout: 8000 });
+    else ui.toast(ok ? ui.T('nodes.app.linkCopied') : ui.T('nodes.preview.copyFailed'), { kind: ok ? undefined : 'warn' });
   }
 
   function appButtonMenu() {
@@ -483,6 +485,8 @@
           state.dirtyViewport = true;
           if (error.status === 409 || error.code === 'REV_CONFLICT') {
             enterConflict('save', error.rev);
+          } else if (error.status === 404 && global.OCAccess && global.OCAccess.isActive()) {
+            handleAccessLost();
           } else if (error.status === 400 || error.status === 404) {
             state.dirtyContent = false;
             state.dirtyViewport = false;
@@ -560,6 +564,15 @@
   }
 
   /* ---------- workflow list ---------- */
+
+  // User management fields (owner, shareMode, canManage ...) a workflow answer carries in the active mode.
+  const SHARING_KEYS = ['owner', 'ownerIsAdmin', 'unowned', 'mine', 'shareMode', 'sharedCount', 'sharedWith', 'canManage', 'canShare'];
+
+  function sharingFields(workflow) {
+    const out = {};
+    if (workflow) for (const key of SHARING_KEYS) if (key in workflow) out[key] = workflow[key];
+    return out;
+  }
 
   function updateListEntry(id, patch) {
     const entry = state.workflows.find((workflow) => workflow.id === id);
@@ -829,7 +842,7 @@
     lsSet(LS_LAST, id);
     if (state.listLoaded && !state.workflows.some((item) => item.id === id)) {
       const wf = payload.workflow;
-      state.workflows.unshift({ id: wf.id, name: wf.name, folder: wf.folder || null, updatedAt: wf.updatedAt, updatedBy: wf.updatedBy || null, nodeCount: graph.nodes.length, app: { enabled: Boolean(wf.app && wf.app.enabled) } });
+      state.workflows.unshift({ id: wf.id, name: wf.name, folder: wf.folder || null, updatedAt: wf.updatedAt, updatedBy: wf.updatedBy || null, nodeCount: graph.nodes.length, app: { enabled: Boolean(wf.app && wf.app.enabled) }, ...sharingFields(wf) });
       workflowList.setData({ workflows: state.workflows });
     }
     workflowList.setData({ activeId: id });
@@ -882,6 +895,7 @@
       },
       onError: () => {
         state.sseBroken = true;
+        checkStillAccessible();
       },
       onOpen: () => {
         if (state.sseBroken) {
@@ -934,12 +948,35 @@
     dom.toolbar.classList.toggle('hidden', !has);
     dom.minimap.classList.toggle('hidden', !has);
     dom.menuBtn.classList.toggle('hidden', !has);
+    updateAccessChrome();
     updateAppButton();
     dom.inspectorToggle.classList.toggle('hidden', !has);
     dom.stage.classList.toggle('is-empty', !has);
     dom.body.classList.toggle('no-workflow', !has);
     if (!has) dom.name.value = '';
     updateZoomLabel();
+  }
+
+  // User management (only with AUTH_WHOAMI_URL): owner in the header, share button, read-only name for others.
+  function updateAccessChrome() {
+    if (!dom) return;
+    const access = global.OCAccess;
+    const workflow = state.workflow;
+    const active = Boolean(access && access.isActive() && workflow);
+    dom.owner.textContent = '';
+    const chip = active ? access.ownerChip(workflow) : null;
+    if (chip) dom.owner.append(chip);
+    dom.owner.classList.toggle('hidden', !chip);
+    const canShare = active && workflow.canShare === true;
+    dom.shareBtn.classList.toggle('hidden', !canShare);
+    if (canShare) {
+      const shared = !workflow.unowned && workflow.shareMode !== 'private';
+      dom.shareBtn.classList.toggle('is-shared', shared);
+      const label = `${ui.T('nodes.share.buttonTitle')} · ${access.stateText(workflow)}`;
+      dom.shareBtn.title = label;
+      dom.shareBtn.setAttribute('aria-label', label);
+    }
+    dom.name.readOnly = Boolean(active && workflow.canManage === false);
   }
 
   function updateZoomLabel() {
@@ -1319,7 +1356,7 @@
       let name = base;
       for (let n = 2; names.has(name); n += 1) name = `${base} ${n}`;
       const payload = await api.createWorkflow({ name });
-      state.workflows.unshift({ id: payload.workflow.id, name: payload.workflow.name, folder: payload.workflow.folder || null, updatedAt: payload.workflow.updatedAt, updatedBy: payload.workflow.updatedBy, nodeCount: 0, app: { enabled: false } });
+      state.workflows.unshift({ id: payload.workflow.id, name: payload.workflow.name, folder: payload.workflow.folder || null, updatedAt: payload.workflow.updatedAt, updatedBy: payload.workflow.updatedBy, nodeCount: 0, app: { enabled: false }, ...sharingFields(payload.workflow) });
       workflowList.setData({ workflows: state.workflows });
       navigate(payload.workflow.id);
       setTimeout(() => {
@@ -1518,7 +1555,8 @@
         updatedAt: payload.workflow.updatedAt,
         updatedBy: payload.workflow.updatedBy,
         nodeCount: payload.workflow.graph.nodes.length,
-        app: { enabled: Boolean(payload.workflow.app && payload.workflow.app.enabled) }
+        app: { enabled: Boolean(payload.workflow.app && payload.workflow.app.enabled) },
+        ...sharingFields(payload.workflow)
       });
       workflowList.setData({ workflows: state.workflows });
       navigate(payload.workflow.id);
@@ -1528,6 +1566,112 @@
   }
 
   // Assigns a workflow to a project (chat folder) or removes the assignment.
+  /* ---------- user management: sharing and lost access ---------- */
+
+  // Private and owned: other people cannot open the workflow (or its Design App link) before it is shared.
+  function isPrivateOwned(workflow) {
+    const access = global.OCAccess;
+    return Boolean(access && access.isActive() && workflow && workflow.unowned === false && workflow.shareMode === 'private');
+  }
+
+  async function openShareDialog(target) {
+    const access = global.OCAccess;
+    const workflow = target && typeof target.id === 'string' ? target : state.workflow;
+    if (!workflow || !access || !access.isActive()) return;
+    // The open workflow carries fresher fields than its list entry.
+    const entry = state.workflow && state.workflow.id === workflow.id ? state.workflow : workflow;
+    let members;
+    try {
+      members = await access.loadTeam({ refresh: true });
+    } catch (error) {
+      ui.toast(global.t('sharing.loadFailed', { error: error.message }), { kind: 'error' });
+      return;
+    }
+    const form = access.shareForm({ entry, members });
+    const feedback = el('div', { class: 'share-feedback hidden', role: 'alert' });
+    const body = el('div', { class: 'nv-share' }, el('p', { class: 'nv-dialog-message', text: global.t('sharing.hint') }), form.element, feedback);
+    let saving = false;
+    const save = async (finish) => {
+      if (saving) return;
+      saving = true;
+      feedback.classList.add('hidden');
+      try {
+        finish({ fields: await access.saveSharing('workflow', workflow.id, form.read()) });
+      } catch (error) {
+        if (error.gone) {
+          finish({ gone: true });
+          return;
+        }
+        feedback.textContent = error.userMessage || error.message;
+        feedback.classList.remove('hidden');
+        if (error.reloadTeam) access.loadTeam({ refresh: true }).catch(() => {});
+      } finally {
+        saving = false;
+      }
+    };
+    const result = await ui.dialog({
+      title: global.t('sharing.titleWorkflow'),
+      body,
+      width: 460,
+      buttons: [
+        { label: ui.T('nodes.common.cancel'), value: null, cancel: true },
+        {
+          label: global.t('sharing.save'),
+          value: null,
+          primary: true,
+          onClick: (finish) => {
+            save(finish);
+            return false;
+          }
+        }
+      ],
+      onOpen: () => form.focus()
+    });
+    if (!result) return;
+    if (result.gone) {
+      ui.toast(global.t('sharing.gone'), { kind: 'warn' });
+      if (state.workflow && state.workflow.id === workflow.id) await handleAccessLost();
+      else loadList();
+      return;
+    }
+    updateListEntry(workflow.id, result.fields);
+    if (state.workflow && state.workflow.id === workflow.id) {
+      Object.assign(state.workflow, result.fields);
+      updateChrome();
+    }
+    ui.toast(global.t('sharing.saved'));
+  }
+
+  // The owner can take the sharing back at any time: the open workflow then answers 404. Leave it quietly.
+  async function handleAccessLost() {
+    if (!state.workflow) return;
+    ui.toast(ui.T('nodes.access.lost'), { kind: 'warn', timeout: 7000 });
+    // Nothing can be saved any more, so there is nothing to keep.
+    state.dirtyContent = false;
+    state.dirtyViewport = false;
+    await closeWorkflow();
+    lsSet(LS_LAST, null);
+    navigate('');
+    loadList();
+  }
+
+  let accessCheckAt = 0;
+
+  // After a stream error (or when the window comes back) a plain read tells whether the workflow is still ours.
+  async function checkStillAccessible() {
+    const access = global.OCAccess;
+    if (!access || !access.isActive() || !state.workflow || !state.active) return;
+    const now = Date.now();
+    if (now - accessCheckAt < 3000) return;
+    accessCheckAt = now;
+    const id = state.workflow.id;
+    try {
+      await api.getWorkflow(id);
+    } catch (error) {
+      if (error.status === 404 && state.workflow && state.workflow.id === id) handleAccessLost();
+    }
+  }
+
   async function assignProject(workflow) {
     const folders = await loadFolders();
     const select = projectSelect(folders, workflow.folder || '');
@@ -1657,17 +1801,19 @@
     if (!state.workflow) return;
     const rect = dom.menuBtn.getBoundingClientRect();
     const workflow = state.workflow;
+    const manage = workflow.canManage !== false;
     ui.menu(rect.right - 200, rect.bottom + 6, [
-      { label: ui.T('nodes.list.rename'), icon: 'edit', onClick: () => renameWorkflow(workflow) },
+      manage && { label: ui.T('nodes.list.rename'), icon: 'edit', onClick: () => renameWorkflow(workflow) },
       { label: ui.T('nodes.list.duplicate'), icon: 'duplicate', onClick: () => duplicateWorkflow(workflow) },
       { label: ui.T('nodes.list.export'), icon: 'download', onClick: () => exportWorkflow(workflow) },
       { label: ui.T('nodes.list.import'), icon: 'upload', onClick: openImportPicker },
-      { label: ui.T('nodes.project.assign'), icon: 'folder', onClick: () => assignProject(workflow) },
+      manage && { label: ui.T('nodes.project.assign'), icon: 'folder', onClick: () => assignProject(workflow) },
+      workflow.canShare === true && { label: ui.T('nodes.share.menu'), icon: 'users', onClick: () => openShareDialog(workflow) },
       { label: ui.T('nodes.template.new'), icon: 'template', onClick: openTemplateDialog },
       ...extensions.workflowMenu.flatMap((extra) => extra({ workflow }) || []),
-      { separator: true },
-      { label: ui.T('nodes.list.delete'), icon: 'trash', danger: true, onClick: () => deleteWorkflow(workflow) }
-    ]);
+      manage && { separator: true },
+      manage && { label: ui.T('nodes.list.delete'), icon: 'trash', danger: true, onClick: () => deleteWorkflow(workflow) }
+    ].filter(Boolean));
   }
 
   /* ---------- keyboard ---------- */
@@ -1810,6 +1956,9 @@
       }
     });
     const saveStateEl = el('span', { class: 'nv-save-state hidden', role: 'status', dataset: { state: 'saved' } });
+    const ownerEl = el('span', { class: 'nv-owner hidden' });
+    const shareBtn = tbtn('users', 'nodes.share.buttonTitle', { className: 'nv-btn nv-share-btn hidden', text: 'nodes.share.button' });
+    shareBtn.addEventListener('click', openShareDialog);
     const runSlot = el('div', { class: 'nv-run-slot', dataset: { slot: 'run' } });
     const appBtn = tbtn('app', 'nodes.app.button', { className: 'nv-icon-btn nv-app-btn hidden' });
     appBtn.append(el('i', { class: 'nv-app-dot' }));
@@ -1829,9 +1978,10 @@
       { class: 'nv-topbar' },
       back,
       drawerToggle,
-      el('div', { class: 'nv-topbar-title' }, name, saveStateEl),
+      el('div', { class: 'nv-topbar-title' }, name, saveStateEl, ownerEl),
       el('div', { class: 'nv-topbar-spacer' }),
       runSlot,
+      shareBtn,
       appBtn,
       addNode,
       el('div', { class: 'nv-btn-group' }, undoBtn, redoBtn),
@@ -1896,6 +2046,8 @@
       overlays,
       name,
       saveState: saveStateEl,
+      owner: ownerEl,
+      shareBtn,
       addNode,
       undo: undoBtn,
       redo: redoBtn,
@@ -2068,7 +2220,8 @@
         onReload: loadList,
         onTemplate: openTemplateDialog,
         onOpenApp: openWorkflowApp,
-        onProject: assignProject
+        onProject: assignProject,
+        onShare: openShareDialog
       }
     });
 
@@ -2133,6 +2286,7 @@
     }
 
     installHashGuard();
+    global.addEventListener('focus', checkStillAccessible);
     if (parseHash()) route();
   }
 

@@ -1062,7 +1062,13 @@
     ['nodes.portdesc.video.seedance.video', 'Das erzeugte Video (Seedance).', 'The generated video (Seedance).', 'El vídeo generado (Seedance).'],
     ['nodes.portdesc.fal.h3_video.video', 'Das erzeugte Video. Mit dem Modell «turbo» geht es schneller und kostet weniger.', 'The generated video. With the model “turbo” it is faster and costs less.', 'El vídeo generado. Con el modelo «turbo» es más rápido y cuesta menos.'],
     ['nodes.portdesc.fal.h3_reference.video', 'Das erzeugte Video, gebaut aus dem Prompt und den Referenzen.', 'The generated video, built from the prompt and the references.', 'El vídeo generado, construido a partir del prompt y las referencias.'],
-    ['nodes.portdesc.fal.h3_style.video', 'Das erzeugte Video im gewählten Stil.', 'The generated video in the chosen style.', 'El vídeo generado en el estilo elegido.']
+    ['nodes.portdesc.fal.h3_style.video', 'Das erzeugte Video im gewählten Stil.', 'The generated video in the chosen style.', 'El vídeo generado en el estilo elegido.'],
+    /* user management (sharing dialogs and badges use the shared sharing.* texts of public/i18n.js) */
+    ['nodes.share.button', 'Teilen', 'Share', 'Compartir'],
+    ['nodes.share.buttonTitle', 'Freigabe ändern', 'Change who can access this workflow', 'Cambiar quién tiene acceso a este workflow'],
+    ['nodes.share.menu', 'Teilen …', 'Share…', 'Compartir…'],
+    ['nodes.access.lost', 'Dieser Workflow ist nicht mehr für dich freigegeben.', 'This workflow is no longer shared with you.', 'Este workflow ya no está compartido contigo.'],
+    ['nodes.app.linkCopiedPrivate', 'App-Link kopiert. Der Workflow ist privat: Andere können ihn erst nach dem Teilen öffnen.', 'App link copied. The workflow is private: others can only open it after you have shared it.', 'Enlace de la app copiado. El workflow es privado: los demás solo podrán abrirlo después de que lo compartas.'],
   ];
 
   const dictionaries = global.I18N || {};

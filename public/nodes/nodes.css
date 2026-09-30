@@ -5086,3 +5086,65 @@
 .nv-ap-search {
   flex: none;
 }
+
+/* ---------- user management (only with AUTH_WHOAMI_URL) ---------- */
+
+.nv-badge.is-shared {
+  color: var(--accent);
+  border-color: rgba(216, 162, 95, 0.4);
+  background: var(--accent-soft);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.nv-wf-owner {
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(130, 151, 163, 0.16);
+  color: #9fb2bf;
+  font-size: 10.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-owner {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.nv-share-btn.is-shared {
+  color: var(--accent);
+  border-color: rgba(216, 162, 95, 0.5);
+}
+
+.nv-name-input[readonly] {
+  cursor: default;
+}
+
+.nv-name-input[readonly]:hover,
+.nv-name-input[readonly]:focus {
+  border-color: transparent;
+  background: transparent;
+}
+
+.nv-share .share-form {
+  margin-top: 10px;
+}
+
+.share-feedback {
+  margin-top: 10px;
+  color: #f0c1bc;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .nv-owner {
+    display: none;
+  }
+}

@@ -52,14 +52,35 @@
           <div class="topbar-left">
             <h1>Open Creative Director</h1>
             <span id="sessionTitle" class="session-title"></span>
+            <span id="sessionOwner" class="session-owner hidden"></span>
           </div>
           <div class="topbar-right">
+            <button id="shareBtn" class="btn-share hidden" type="button" title="Freigabe ändern" aria-label="Freigabe ändern" data-i18n-title="sharing.buttonTitle" data-i18n-aria-label="sharing.buttonTitle">
+              <span aria-hidden="true">👥</span>
+              <span id="shareBtnLabel" data-i18n="sharing.button">Teilen</span>
+            </button>
             <button id="costsBtn" class="btn-costs" title="Kostenübersicht öffnen" data-i18n-title="topbar.costsTitle">$ 0.00</button>
             <button id="contextBtn" class="btn-context hidden" title="Kontext und Brandings verwalten" data-i18n-title="topbar.contextTitle">
               <span data-i18n="topbar.context">📎 Kontext</span>
               <span id="contextBadge" class="context-badge hidden">0</span>
               <span id="brandingContextBadge" class="branding-context-badge hidden">🎨 0</span>
             </button>
+            <div id="accountMenu" class="account-menu hidden">
+              <button id="accountBtn" class="account-chip" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="accountDropdown" title="Konto" aria-label="Konto" data-i18n-title="account.menu" data-i18n-aria-label="account.menu"></button>
+              <div id="accountDropdown" class="account-dropdown hidden" role="menu">
+                <div class="account-dropdown-head">
+                  <div id="accountEmail" class="account-dropdown-email"></div>
+                  <span id="accountRole" class="account-role"></span>
+                </div>
+                <div id="accountNote" class="account-dropdown-note hidden" data-i18n="account.anonymousHint">Du siehst und nutzt nur Einträge ohne Besitzerperson.</div>
+                <button id="accountCosts" class="account-dropdown-item" type="button" role="menuitem" title="Kostenübersicht öffnen" data-i18n-title="account.costsOpen">
+                  <span data-i18n="account.costsMonth">Meine Kosten diesen Monat</span>
+                  <strong id="accountCostsAmount">$ 0.00</strong>
+                </button>
+                <a id="accountMonitoring" class="account-dropdown-item hidden" href="monitoring.html" role="menuitem" data-i18n="account.monitoring">Nutzung und Monitoring</a>
+                <a id="accountLogout" class="account-dropdown-item hidden" href="#" role="menuitem" data-i18n="account.logout">Abmelden</a>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -180,6 +201,20 @@
               </label>
               <button id="adminAdd" class="branding-manager-action" type="submit" data-i18n="admins.add">Hinzufuegen</button>
             </form>
+          </section>
+          <section id="usersSection" class="settings-users hidden" aria-labelledby="usersTitle">
+            <h3 id="usersTitle" class="settings-section-title" data-i18n="users.title">Team-Liste</h3>
+            <p class="settings-hint" data-i18n="users.hint">Diese Personen kannst du beim Teilen auswählen. Das ist keine Zugangsliste: Wer sich anmelden darf, bestimmt weiterhin der Login. Wer sich anmeldet, wird automatisch erfasst.</p>
+            <div id="usersList" class="admins-list"></div>
+            <form id="userForm" class="admin-form">
+              <label class="render-node-field" for="userEmail">
+                <span data-i18n="users.email">E-Mail-Adresse</span>
+                <input id="userEmail" class="settings-input" type="email" maxlength="254" required autocomplete="off" placeholder="name@firma.ch" data-i18n-placeholder="users.emailPlaceholder" />
+              </label>
+              <button id="userAdd" class="branding-manager-action" type="submit" data-i18n="users.add">Hinzufügen</button>
+            </form>
+            <p class="settings-hint" data-i18n="users.removeHint">Wer entfernt wird, wird erst wieder erfasst, wenn ein Admin die Person hinzufügt.</p>
+            <a id="settingsMonitoringLink" class="branding-manager-action settings-monitoring-link hidden" href="monitoring.html" data-i18n="users.monitoringLink">Nutzung und Monitoring öffnen</a>
           </section>
           <section class="settings-render-nodes" aria-labelledby="renderNodesTitle">
             <h3 id="renderNodesTitle" class="settings-section-title" data-i18n="renderNodes.title">Render-Nodes</h3>
@@ -358,7 +393,7 @@
     </div>
 
     <div id="folderProfileModal" class="modal hidden">
-      <div class="modal-panel" role="dialog" aria-labelledby="folderProfileTitle">
+      <div id="folderProfilePanel" class="modal-panel" role="dialog" aria-labelledby="folderProfileTitle">
         <div class="modal-head">
           <h2 id="folderProfileTitle" class="folder-profile-title">
             <span data-i18n="profile.title">Produktions-Profil:</span>
@@ -371,6 +406,7 @@
           <button id="folderProfileClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
         </div>
         <div class="modal-body">
+          <div id="folderProfileReadOnly" class="folder-profile-readonly hidden" data-i18n="profile.readOnly">Nur Admins können das Projektprofil ändern.</div>
           <div class="modal-section">
             <label class="modal-label" for="folderProfileGuidelines" data-i18n="profile.guidelines">Richtlinien (Brand, Stil, Charaktere)</label>
             <textarea id="folderProfileGuidelines" maxlength="30000" rows="10" placeholder="Brand-Regeln, Bildsprache, wiederkehrende Charaktere …" data-i18n-placeholder="profile.guidelinesPlaceholder"></textarea>
@@ -430,7 +466,7 @@
           <button id="brandingsClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
         </div>
         <div class="modal-body">
-          <section class="branding-import" aria-labelledby="brandingImportTitle">
+          <section class="branding-import admin-only" aria-labelledby="brandingImportTitle">
             <div class="branding-import-copy">
               <h3 id="brandingImportTitle" data-i18n="branding.importTitle">Claude Design-System importieren</h3>
               <p data-i18n="branding.importHint">ZIP mit Tokens, Schriften, Logos, Bildwelt und Guidelines auswählen.</p>
@@ -457,6 +493,7 @@
     </div>
 
     <script src="i18n.js"></script>
+    <script src="access-client.js"></script>
     <script src="app.js"></script>
     <script src="nodes/i18n-nodes.js"></script>
     <script src="nodes/motion-html.js"></script>

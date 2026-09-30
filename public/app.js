@@ -38,6 +38,27 @@ const el = {
   renderNodeStatus: document.getElementById('renderNodeStatus'),
   renderNodeText: document.getElementById('renderNodeText'),
   sessionTitle: document.getElementById('sessionTitle'),
+  sessionOwner: document.getElementById('sessionOwner'),
+  shareBtn: document.getElementById('shareBtn'),
+  shareBtnLabel: document.getElementById('shareBtnLabel'),
+  accountMenu: document.getElementById('accountMenu'),
+  accountBtn: document.getElementById('accountBtn'),
+  accountDropdown: document.getElementById('accountDropdown'),
+  accountEmail: document.getElementById('accountEmail'),
+  accountRole: document.getElementById('accountRole'),
+  accountNote: document.getElementById('accountNote'),
+  accountCosts: document.getElementById('accountCosts'),
+  accountCostsAmount: document.getElementById('accountCostsAmount'),
+  accountMonitoring: document.getElementById('accountMonitoring'),
+  accountLogout: document.getElementById('accountLogout'),
+  usersSection: document.getElementById('usersSection'),
+  usersList: document.getElementById('usersList'),
+  userForm: document.getElementById('userForm'),
+  userEmail: document.getElementById('userEmail'),
+  userAdd: document.getElementById('userAdd'),
+  settingsMonitoringLink: document.getElementById('settingsMonitoringLink'),
+  folderProfilePanel: document.getElementById('folderProfilePanel'),
+  folderProfileReadOnly: document.getElementById('folderProfileReadOnly'),
   keyBanner: document.getElementById('keyBanner'),
   main: document.querySelector('.main'),
   messages: document.getElementById('messages'),
@@ -233,6 +254,9 @@ const state = {
   admins: [],
   pendingAdminDeleteEmail: null,
   adminDeleteTimer: null,
+  users: [],
+  pendingUserDeleteEmail: null,
+  userDeleteTimer: null,
   renderNodes: [],
   pendingRenderNodeDeleteId: null,
   renderNodeDeleteTimer: null,
@@ -368,7 +392,8 @@ function promptMenuOption(preset) {
   option.addEventListener('click', () => insertPromptPreset(preset.prompt));
   row.appendChild(option);
 
-  if (preset.custom === true) {
+  // Custom presets are shared with everybody; with user management only admins change them.
+  if (preset.custom === true && OCAccess.canAdminister()) {
     const actions = document.createElement('span');
     actions.className = 'prompt-menu-item-actions';
     const edit = document.createElement('button');
@@ -434,6 +459,7 @@ function renderPromptMenu() {
     el.promptMenu.appendChild(section);
     groupIndex += 1;
   }
+  if (!OCAccess.canAdminister()) return;
   const add = document.createElement('button');
   add.type = 'button';
   add.className = 'prompt-menu-add';
@@ -618,15 +644,17 @@ function renderToolsMenu() {
       onClick: () => selectRole(role.id)
     }));
   }
-  el.toolsMenu.appendChild(toolsMenuOption({
-    name: t('tools.newRole'),
-    icon: '✨',
-    role: 'menuitem',
-    onClick: () => {
-      setToolsMenuOpen(false);
-      openRoleModal();
-    }
-  }));
+  if (OCAccess.canAdminister()) {
+    el.toolsMenu.appendChild(toolsMenuOption({
+      name: t('tools.newRole'),
+      icon: '✨',
+      role: 'menuitem',
+      onClick: () => {
+        setToolsMenuOpen(false);
+        openRoleModal();
+      }
+    }));
+  }
 
   el.toolsMenu.appendChild(toolsMenuHeading(t('tools.actions')));
   if (state.renderNodeAvailable) {
@@ -639,14 +667,17 @@ function renderToolsMenu() {
       onClick: () => setRenderMode(!state.renderMode)
     }));
   }
-  el.toolsMenu.appendChild(toolsMenuOption({
-    name: t('tools.brandingInterview'),
-    icon: '🎨',
-    active: state.brandingWizard,
-    role: 'menuitemcheckbox',
-    disabled: state.streaming,
-    onClick: () => setBrandingWizard(!state.brandingWizard)
-  }));
+  // Creating and changing brandings is admin-only in the user management (the tools refuse everybody else).
+  if (OCAccess.canAdminister()) {
+    el.toolsMenu.appendChild(toolsMenuOption({
+      name: t('tools.brandingInterview'),
+      icon: '🎨',
+      active: state.brandingWizard,
+      role: 'menuitemcheckbox',
+      disabled: state.streaming,
+      onClick: () => setBrandingWizard(!state.brandingWizard)
+    }));
+  }
   updateToolsButton();
 }
 
@@ -1265,7 +1296,15 @@ function renderCosts(summary) {
     bySession: []
   };
   el.costsBtn.textContent = formatSummaryCost(data.currentMonth);
+  el.accountCostsAmount.textContent = formatSummaryCost(data.mine ? data.mine.currentMonth : data.currentMonth);
   el.costsBody.replaceChildren();
+
+  if (data.scope) {
+    const scope = document.createElement('p');
+    scope.className = 'settings-hint costs-scope';
+    scope.textContent = t(data.scope === 'own' ? 'costs.scopeOwn' : 'costs.scopeAll');
+    el.costsBody.appendChild(scope);
+  }
 
   const overview = document.createElement('div');
   overview.className = 'cost-overview';
@@ -1881,6 +1920,7 @@ async function loadSettingsAccess() {
     el.settingsBtn.classList.remove('hidden');
     renderSettings();
     renderAdmins();
+    loadUsers();
     renderRenderNodes();
     renderHiggsfieldStatus();
     renderChatGPTStatus();
@@ -1900,6 +1940,7 @@ async function loadSettingsAccess() {
 async function openSettingsModal() {
   resetSettingsDelete();
   resetAdminDelete();
+  resetUserDelete();
   resetRenderNodeDelete();
   resetHiggsfieldDisconnect();
   resetChatGPTDisconnect();
@@ -1917,11 +1958,245 @@ async function openSettingsModal() {
 function closeSettingsModal() {
   resetSettingsDelete();
   resetAdminDelete();
+  resetUserDelete();
   resetRenderNodeDelete();
   resetHiggsfieldDisconnect();
   resetChatGPTDisconnect();
   showSettingsFeedback('');
   el.settingsModal.classList.add('hidden');
+}
+
+/* ---------- user management (only with AUTH_WHOAMI_URL; see public/access-client.js) ---------- */
+
+const SHARING_FIELDS = ['owner', 'ownerIsAdmin', 'unowned', 'mine', 'shareMode', 'sharedCount', 'sharedWith', 'canManage', 'canShare'];
+
+function sessionMetaFromDetail(session) {
+  const meta = {
+    id: session.id,
+    title: session.title,
+    folder: session.folder || null,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt
+  };
+  for (const key of SHARING_FIELDS) if (key in session) meta[key] = session[key];
+  return meta;
+}
+
+// Title, owner (with the star for admins) and share button of the open chat.
+function renderSessionHeader() {
+  const session = state.currentId ? state.detail?.session : null;
+  el.sessionTitle.textContent = session?.title || '';
+  const chip = session ? OCAccess.ownerChip(session) : null;
+  el.sessionOwner.replaceChildren();
+  if (chip) el.sessionOwner.appendChild(chip);
+  el.sessionOwner.classList.toggle('hidden', !chip);
+  updateShareButton();
+}
+
+function updateShareButton() {
+  const session = state.currentId ? state.detail?.session : null;
+  const show = OCAccess.isActive() && session?.canShare === true;
+  el.shareBtn.classList.toggle('hidden', !show);
+  if (!show) return;
+  const shared = !session.unowned && session.shareMode !== 'private';
+  el.shareBtn.classList.toggle('btn-share-active', shared);
+  el.shareBtnLabel.textContent = t(shared ? 'sharing.buttonShared' : 'sharing.button');
+  el.shareBtn.title = `${t('sharing.buttonTitle')} · ${OCAccess.stateText(session)}`;
+}
+
+function applySessionSharing(id, fields) {
+  const meta = state.sessions.find((session) => session.id === id);
+  if (meta) Object.assign(meta, fields);
+  if (state.currentId === id && state.detail?.session) Object.assign(state.detail.session, fields);
+  renderSessions();
+  renderSessionHeader();
+  setStatusI18n('sharing.saved');
+}
+
+async function openShareForSession(entry) {
+  try {
+    await OCAccess.openShareModal({
+      kind: 'session',
+      id: entry.id,
+      entry,
+      onSaved: (fields) => applySessionSharing(entry.id, fields),
+      onGone: () => handleSessionGone(entry.id)
+    });
+  } catch (err) {
+    setStatus(err.userMessage || err.message);
+  }
+}
+
+// A chat the person may no longer open (the owner took the sharing back, or it is gone): leave it quietly.
+async function handleSessionGone(id) {
+  const wasOpen = state.currentId === id;
+  if (wasOpen) {
+    state.currentId = null;
+    state.detail = null;
+    setSessionHash(null);
+    scheduleJobPolling();
+  }
+  await loadSessions().catch(() => {});
+  if (wasOpen) {
+    try {
+      if (state.sessions.length) await openSession(state.sessions[0].id);
+      else await createSession();
+    } catch (err) {
+      setStatus(err.message);
+    }
+  }
+  setStatusI18n('sessions.lostAccess');
+}
+
+// The sharing can be taken back at any time; a cheap read when the window comes back tells whether the open chat is still ours.
+async function verifyCurrentSession() {
+  if (!OCAccess.isActive() || !state.currentId || state.streaming) return;
+  const id = state.currentId;
+  try {
+    await api(`/api/sessions/${id}/jobs`);
+  } catch (err) {
+    if (err.status === 404 && state.currentId === id) await handleSessionGone(id);
+  }
+}
+
+function accountRoleLabel(me) {
+  if (me.role === 'superadmin') return t('account.roleSuperadmin');
+  if (me.role === 'admin') return t('account.roleAdmin');
+  if (me.role === 'user') return t('account.roleUser');
+  return t('account.roleAnonymous');
+}
+
+function setAccountMenuOpen(open) {
+  const isOpen = Boolean(open) && OCAccess.isActive();
+  el.accountDropdown.classList.toggle('hidden', !isOpen);
+  el.accountBtn.setAttribute('aria-expanded', String(isOpen));
+}
+
+// Account chip, role, logout and the parts of the interface that depend on the role.
+function renderAccount() {
+  const me = OCAccess.me();
+  document.body.classList.toggle('user-management', me.active);
+  document.body.classList.toggle('no-admin', me.active && !me.isAdmin);
+  el.accountMenu.classList.toggle('hidden', !me.active);
+  // With user management the cost button moves into the account menu (it shows the person's own costs).
+  el.costsBtn.classList.toggle('hidden', me.active);
+  el.usersSection.classList.toggle('hidden', !(me.active && me.isAdmin));
+  el.settingsMonitoringLink.classList.toggle('hidden', !me.isSuperAdmin);
+  if (!me.active) {
+    setAccountMenuOpen(false);
+    return;
+  }
+  el.accountBtn.textContent = me.email ? OCAccess.initialsOf(me.email) : '?';
+  const label = me.email ? t('account.signedInAs', { email: me.email }) : t('account.roleAnonymous');
+  el.accountBtn.title = label;
+  el.accountBtn.setAttribute('aria-label', label);
+  el.accountEmail.textContent = me.email || t('account.roleAnonymous');
+  el.accountRole.textContent = accountRoleLabel(me);
+  el.accountRole.classList.toggle('admin', me.isAdmin);
+  el.accountNote.classList.toggle('hidden', me.identified);
+  el.accountMonitoring.classList.toggle('hidden', !me.isSuperAdmin);
+  el.accountLogout.classList.toggle('hidden', !me.logoutUrl);
+  if (me.logoutUrl) el.accountLogout.setAttribute('href', me.logoutUrl);
+}
+
+// The team list in the settings: automatic entries with first and last seen, entries added by admins removable.
+function resetUserDelete() {
+  if (state.userDeleteTimer) clearTimeout(state.userDeleteTimer);
+  state.userDeleteTimer = null;
+  state.pendingUserDeleteEmail = null;
+  for (const button of el.usersList.querySelectorAll('[data-user-delete]')) button.textContent = t('common.delete');
+}
+
+function renderUsers() {
+  el.usersList.replaceChildren();
+  if (!state.users.length) {
+    const empty = document.createElement('div');
+    empty.className = 'context-empty';
+    empty.textContent = t('users.empty');
+    el.usersList.appendChild(empty);
+    return;
+  }
+  for (const user of state.users) {
+    const row = document.createElement('div');
+    row.className = 'admin-row user-row';
+    const copy = document.createElement('div');
+    copy.className = 'user-row-copy';
+    const email = document.createElement('span');
+    email.className = 'admin-email';
+    email.textContent = user.email;
+    email.title = user.email;
+    const meta = document.createElement('span');
+    meta.className = 'user-row-meta';
+    meta.textContent = user.lastSeen
+      ? [user.firstSeen ? t('users.firstSeen', { date: formatDate(user.firstSeen) }) : '', t('users.lastSeen', { date: formatDate(user.lastSeen) })].filter(Boolean).join(' · ')
+      : t('users.neverSeen');
+    copy.append(email, meta);
+    row.appendChild(copy);
+
+    const sources = Array.isArray(user.sources) ? user.sources : [];
+    const badge = document.createElement('span');
+    badge.className = 'admin-source-badge';
+    if (user.role === 'admin') badge.textContent = sources.includes('superadmin') ? t('account.roleSuperadmin') : t('sharing.admin');
+    else badge.textContent = sources.includes('settings') ? t('users.sourceSettings') : t('users.sourceSeen');
+    row.appendChild(badge);
+    if (user.removable) {
+      const remove = managerAction(t('common.delete'), () => deleteUser(user.email, remove), { danger: true });
+      remove.dataset.userDelete = user.email;
+      row.appendChild(remove);
+    }
+    el.usersList.appendChild(row);
+  }
+}
+
+async function loadUsers() {
+  if (!OCAccess.isActive() || !OCAccess.me().isAdmin) return;
+  try {
+    const data = await api('/api/users');
+    state.users = Array.isArray(data.users) ? data.users : [];
+    renderUsers();
+  } catch (err) {
+    showSettingsFeedback(t('users.loadFailed', { error: err.message }), { error: true });
+  }
+}
+
+async function addUser() {
+  el.userAdd.disabled = true;
+  showSettingsFeedback('');
+  try {
+    const data = await api('/api/users', { method: 'POST', body: JSON.stringify({ email: el.userEmail.value }) });
+    state.users = Array.isArray(data.users) ? data.users : [];
+    el.userForm.reset();
+    resetUserDelete();
+    renderUsers();
+    showSettingsFeedback(t('users.added'));
+    el.userEmail.focus();
+  } catch (err) {
+    showSettingsFeedback(t('users.addFailed', { error: err.message }), { error: true });
+  } finally {
+    el.userAdd.disabled = false;
+  }
+}
+
+async function deleteUser(email, button) {
+  if (state.pendingUserDeleteEmail !== email) {
+    resetUserDelete();
+    state.pendingUserDeleteEmail = email;
+    button.textContent = t('common.reallyDelete');
+    state.userDeleteTimer = setTimeout(resetUserDelete, 3000);
+    return;
+  }
+  button.disabled = true;
+  showSettingsFeedback('');
+  try {
+    const data = await api(`/api/users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+    state.users = Array.isArray(data.users) ? data.users : [];
+    resetUserDelete();
+    renderUsers();
+    showSettingsFeedback(t('users.deleted'));
+  } catch (err) {
+    button.disabled = false;
+    showSettingsFeedback(t('users.deleteFailed', { error: err.message }), { error: true });
+  }
 }
 
 /* ---------- sessions ---------- */
@@ -1975,7 +2250,7 @@ async function patchSessionMeta(meta, changes) {
   Object.assign(meta, data.session);
   if (state.currentId === meta.id && state.detail?.session) {
     Object.assign(state.detail.session, data.session);
-    el.sessionTitle.textContent = state.detail.session.title || '';
+    renderSessionHeader();
     if (Object.prototype.hasOwnProperty.call(changes, 'folder')) {
       await loadCurrentFolderProfile().catch((err) => setStatus(err.message));
     }
@@ -2145,6 +2420,23 @@ function createSessionItem(meta) {
   const date = document.createElement('div');
   date.className = 'session-item-date';
   date.textContent = formatDate(meta.updatedAt);
+  // User management: somebody else's chat shows the owner (full address in the tooltip), a shared chat its badge.
+  const foreignOwner = OCAccess.ownerName(meta);
+  if (foreignOwner) {
+    const owner = document.createElement('span');
+    owner.className = 'session-item-owner';
+    owner.textContent = foreignOwner.text;
+    owner.title = foreignOwner.title;
+    date.appendChild(owner);
+  }
+  const sharedBadge = OCAccess.badge(meta);
+  if (sharedBadge) {
+    const flag = document.createElement('span');
+    flag.className = 'session-shared-flag';
+    flag.textContent = sharedBadge.label;
+    flag.title = sharedBadge.title;
+    date.appendChild(flag);
+  }
   body.appendChild(date);
   item.appendChild(body);
 
@@ -2163,25 +2455,41 @@ function createSessionItem(meta) {
   menu.className = 'session-menu';
   menu.setAttribute('role', 'menu');
 
-  const rename = document.createElement('button');
-  rename.type = 'button';
-  rename.className = 'session-menu-action';
-  rename.textContent = t('sessions.renameAction');
-  rename.addEventListener('click', (event) => {
-    event.stopPropagation();
-    startSessionRename(meta, item, title);
-  });
-  menu.appendChild(rename);
+  const canManage = meta.canManage !== false;
+  const canShare = OCAccess.isActive() && meta.canShare === true;
+  if (canManage) {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'session-menu-action';
+    rename.textContent = t('sessions.renameAction');
+    rename.addEventListener('click', (event) => {
+      event.stopPropagation();
+      startSessionRename(meta, item, title);
+    });
+    menu.appendChild(rename);
 
-  const move = document.createElement('button');
-  move.type = 'button';
-  move.className = 'session-menu-action';
-  move.textContent = t('sessions.moveAction');
-  move.addEventListener('click', (event) => {
-    event.stopPropagation();
-    openFolderPopover(meta, actions, menu);
-  });
-  menu.appendChild(move);
+    const move = document.createElement('button');
+    move.type = 'button';
+    move.className = 'session-menu-action';
+    move.textContent = t('sessions.moveAction');
+    move.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openFolderPopover(meta, actions, menu);
+    });
+    menu.appendChild(move);
+  }
+  if (canShare) {
+    const share = document.createElement('button');
+    share.type = 'button';
+    share.className = 'session-menu-action';
+    share.textContent = t('sharing.buttonTitle');
+    share.addEventListener('click', (event) => {
+      event.stopPropagation();
+      closeSessionMenus();
+      openShareForSession(meta);
+    });
+    menu.appendChild(share);
+  }
 
   menuButton.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -2194,28 +2502,30 @@ function createSessionItem(meta) {
   });
   actions.appendChild(menuButton);
   actions.appendChild(menu);
-  item.appendChild(actions);
+  if (menu.children.length) item.appendChild(actions);
 
-  const del = document.createElement('button');
-  del.className = 'session-del';
-  del.textContent = '×';
-  del.title = t('sessions.delete');
-  del.setAttribute('aria-label', t('sessions.delete'));
-  del.addEventListener('click', async (event) => {
-    event.stopPropagation();
-    if (state.streaming) return;
-    if (!window.confirm(t('sessions.deleteConfirm'))) return;
-    await api(`/api/sessions/${meta.id}`, { method: 'DELETE' });
-    await loadSessions();
-    if (state.currentId === meta.id) {
-      state.currentId = null;
-      state.detail = null;
-      setSessionHash(null);
-      if (state.sessions.length) await openSession(state.sessions[0].id);
-      else await createSession();
-    }
-  });
-  item.appendChild(del);
+  if (canManage) {
+    const del = document.createElement('button');
+    del.className = 'session-del';
+    del.textContent = '×';
+    del.title = t('sessions.delete');
+    del.setAttribute('aria-label', t('sessions.delete'));
+    del.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (state.streaming) return;
+      if (!window.confirm(t('sessions.deleteConfirm'))) return;
+      await api(`/api/sessions/${meta.id}`, { method: 'DELETE' });
+      await loadSessions();
+      if (state.currentId === meta.id) {
+        state.currentId = null;
+        state.detail = null;
+        setSessionHash(null);
+        if (state.sessions.length) await openSession(state.sessions[0].id);
+        else await createSession();
+      }
+    });
+    item.appendChild(del);
+  }
 
   item.addEventListener('click', () => {
     if (state.streaming || meta.id === state.currentId) return;
@@ -2438,16 +2748,10 @@ async function openSession(id) {
   state.contextFiles = Array.isArray(detail.session.contextFiles) ? detail.session.contextFiles : [];
   state.currentFolderProfile = null;
   if (!state.sessions.some((session) => session.id === id)) {
-    state.sessions.unshift({
-      id,
-      title: detail.session.title,
-      folder: detail.session.folder || null,
-      createdAt: detail.session.createdAt,
-      updatedAt: detail.session.updatedAt
-    });
+    state.sessions.unshift(sessionMetaFromDetail(detail.session));
   }
   setSessionHash(id);
-  el.sessionTitle.textContent = state.detail.session.title || '';
+  renderSessionHeader();
   renderSessions();
   renderDetail();
   renderToolsMenu();
@@ -2464,7 +2768,7 @@ async function refreshDetail() {
   if (!state.currentId) return;
   state.detail = await api(`/api/sessions/${state.currentId}`);
   state.contextFiles = Array.isArray(state.detail.session.contextFiles) ? state.detail.session.contextFiles : [];
-  el.sessionTitle.textContent = state.detail.session.title || '';
+  renderSessionHeader();
   renderDetail();
   renderContextBadge();
   renderToolsMenu();
@@ -2977,16 +3281,18 @@ function renderBrandingsManager() {
     );
 
     const confirming = state.pendingBrandingDeleteId === branding.id;
-    actions.appendChild(
-      managerAction(confirming ? t('common.reallyDelete') : t('common.delete'), () => {
-        if (!confirming) {
-          state.pendingBrandingDeleteId = branding.id;
-          renderBrandingsManager();
-          return;
-        }
-        deleteBranding(branding.id).catch((err) => setStatus(err.message));
-      }, { danger: true })
-    );
+    if (OCAccess.canAdminister()) {
+      actions.appendChild(
+        managerAction(confirming ? t('common.reallyDelete') : t('common.delete'), () => {
+          if (!confirming) {
+            state.pendingBrandingDeleteId = branding.id;
+            renderBrandingsManager();
+            return;
+          }
+          deleteBranding(branding.id).catch((err) => setStatus(err.message));
+        }, { danger: true })
+      );
+    }
     card.appendChild(actions);
     el.brandingsList.appendChild(card);
   }
@@ -3834,8 +4140,13 @@ async function openFolderProfileModal(folder) {
   el.folderProfileDelete.title = sessionCount > 0 ? t('profile.moveChatsFirst') : t('profile.deleteNamed', { name: folder });
   el.folderProfileDeleteHint.classList.toggle('hidden', sessionCount === 0);
   updateProfileCounter();
+  // The project profile is admin territory with user management: everybody else reads it.
+  const profileReadOnly = !OCAccess.canAdminister();
+  el.folderProfilePanel.classList.toggle('profile-readonly', profileReadOnly);
+  el.folderProfileReadOnly.classList.toggle('hidden', !profileReadOnly);
+  el.folderProfileGuidelines.readOnly = profileReadOnly;
   el.folderProfileModal.classList.remove('hidden');
-  el.folderProfileGuidelines.focus();
+  if (!profileReadOnly) el.folderProfileGuidelines.focus();
   renderSessions();
 }
 
@@ -4073,8 +4384,9 @@ function scheduleJobPolling() {
         clearInterval(state.jobTimer);
         state.jobTimer = null;
       }
-    } catch (_) {
-      /* transient */
+    } catch (err) {
+      // With user management the chat can vanish for this person; anything else is transient.
+      if (err.status === 404 && OCAccess.isActive()) handleSessionGone(state.currentId);
     }
   }, JOB_POLL_MS);
 }
@@ -4471,6 +4783,33 @@ el.adminForm.addEventListener('submit', (event) => {
   event.preventDefault();
   addAdmin();
 });
+el.userForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  addUser();
+});
+el.shareBtn.addEventListener('click', () => {
+  if (state.detail?.session) openShareForSession(state.detail.session);
+});
+el.accountBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setAccountMenuOpen(el.accountDropdown.classList.contains('hidden'));
+});
+el.accountDropdown.addEventListener('click', (event) => event.stopPropagation());
+el.accountCosts.addEventListener('click', () => {
+  setAccountMenuOpen(false);
+  openCostsModal();
+});
+document.addEventListener('click', () => setAccountMenuOpen(false));
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !el.accountDropdown.classList.contains('hidden')) {
+    setAccountMenuOpen(false);
+    el.accountBtn.focus();
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) verifyCurrentSession();
+});
+window.addEventListener('focus', () => verifyCurrentSession());
 el.renderNodeForm.addEventListener('submit', (event) => {
   event.preventDefault();
   addRenderNode();
@@ -4704,6 +5043,9 @@ window.onLangChange = () => {
   renderSessions();
   if (!state.streaming) renderDetail();
   renderCosts(state.costs);
+  renderAccount();
+  renderSessionHeader();
+  renderUsers();
   renderModelInfo();
   renderAttachments();
   renderJobStatusBar();
@@ -4714,6 +5056,7 @@ window.onLangChange = () => {
   }
   resetSettingsDelete();
   resetAdminDelete();
+  resetUserDelete();
   resetRenderNodeDelete();
   resetHiggsfieldDisconnect();
   resetChatGPTDisconnect();
@@ -4765,6 +5108,10 @@ async function init() {
     return;
   }
 
+  await OCAccess.ready;
+  renderAccount();
+  renderPromptMenu();
+  renderToolsMenu();
   await loadSettingsAccess();
 
   el.keyBanner.classList.toggle('hidden', Boolean(state.config.hasKey));

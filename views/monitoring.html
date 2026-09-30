@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Usage and monitoring</title>
+  <!-- Served by server.js only to superadmins (SUPERADMIN_EMAILS); everybody else gets a 404 for /monitoring.html.
+       The data comes from GET /api/admin/monitoring (CSV: /api/admin/monitoring/export). monitoring.js and
+       monitoring.css in public/ render it; the texts (monitor.*) live in public/i18n.js. Relative URLs keep it
+       working when the app runs under a sub-path. -->
+  <link rel="stylesheet" href="monitoring.css">
+</head>
+<body>
+  <main id="monitoring-root" class="monitoring-shell">
+    <header class="mon-head">
+      <div class="mon-head-copy">
+        <a class="mon-back" href="./" data-i18n="monitor.back">Zur App</a>
+        <h1 data-i18n="monitor.title">Nutzung und Monitoring</h1>
+        <p id="updated" class="mon-muted" aria-live="polite"></p>
+      </div>
+      <div id="langSwitch" class="lang-switch" role="group" data-i18n-aria-label="lang.selector" aria-label="Sprache">
+        <button type="button" data-lang="de" aria-label="Deutsch">DE</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="en" aria-label="English">EN</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="es" aria-label="Español">ES</button>
+      </div>
+    </header>
+
+    <form id="filters" class="mon-filters">
+      <label class="mon-field"><span data-i18n="monitor.period">Zeitraum</span>
+        <select id="days">
+          <option value="7" data-i18n="monitor.days7">Letzte 7 Tage</option>
+          <option value="30" selected data-i18n="monitor.days30">Letzte 30 Tage</option>
+          <option value="90" data-i18n="monitor.days90">Letzte 90 Tage</option>
+          <option value="all" data-i18n="monitor.daysall">Alles</option>
+        </select>
+      </label>
+      <label class="mon-field"><span data-i18n="monitor.user">Person</span>
+        <select id="user"></select>
+      </label>
+      <label class="mon-field"><span data-i18n="monitor.provider">Anbieter</span>
+        <select id="provider"></select>
+      </label>
+      <div class="mon-actions">
+        <button id="refresh" type="submit" data-i18n="monitor.refresh">Aktualisieren</button>
+        <button id="export" type="button" data-i18n="monitor.export" disabled>CSV exportieren</button>
+        <label class="mon-check"><input id="auto" type="checkbox"> <span data-i18n="monitor.auto">Jede Minute aktualisieren</span></label>
+      </div>
+    </form>
+
+    <div id="status" class="mon-status" role="status" aria-live="polite"></div>
+
+    <div id="report" hidden>
+      <dl id="metrics" class="mon-metrics"></dl>
+      <p id="coverage" class="mon-muted"></p>
+      <div id="breakdowns" class="mon-grid"></div>
+      <section id="operations"></section>
+      <section id="errors"></section>
+      <section>
+        <h2 data-i18n="monitor.runtime">Betrieb</h2>
+        <dl id="runtime" class="mon-metrics small"></dl>
+      </section>
+      <p class="mon-muted" data-i18n="monitor.limits"></p>
+    </div>
+    <noscript>This page needs JavaScript.</noscript>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="monitoring.js"></script>
+</body>
+</html>

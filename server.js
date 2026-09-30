@@ -33,6 +33,9 @@ const higgsfield = require('./lib/higgsfield');
 const chatgpt = require('./lib/chatgpt');
 const promptPresets = require('./lib/prompt-presets');
 const admins = require('./lib/admins');
+const access = require('./lib/access');
+const users = require('./lib/users');
+const adminMonitoring = require('./lib/admin-monitoring');
 const nodeWorkflows = require('./lib/nodes/workflows-store');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
 const { registerNodeRoutes } = require('./lib/nodes/routes');
@@ -58,6 +61,21 @@ let higgsfieldPollInFlight = false;
 let higgsfieldBalanceCache = null;
 
 app.use(createWhoamiMiddleware());
+// User management (only with AUTH_WHOAMI_URL): every identified person is recorded for the team list, and failed
+// API requests go to the small monitoring journal.
+const apiMonitor = adminMonitoring.createMonitor();
+app.use((req, res, next) => {
+  if (!access.isActive()) return next();
+  const email = access.normalizeEmail(req.kubleUser);
+  if (email) {
+    try {
+      users.touch(email);
+    } catch (err) {
+      console.warn('[users]', err.message);
+    }
+  }
+  return apiMonitor.middleware(req, res, next);
+});
 app.use(compression({
   filter: (req, res) => {
     const type = String(res.getHeader('Content-Type') || '');
@@ -66,8 +84,57 @@ app.use(compression({
   }
 }));
 app.use(express.json({ limit: '60mb' }));
+// Usage and cost monitoring page: superadmins only, everybody else gets a plain 404.
+app.use((req, res, next) => {
+  let page;
+  try {
+    page = path.posix.normalize(decodeURIComponent(req.path)).toLowerCase();
+  } catch (_) {
+    return next();
+  }
+  if (page !== '/monitoring.html') return next();
+  res.set('Cache-Control', 'no-store');
+  if (!isSuperAdmin(req)) return res.sendStatus(404);
+  return res.sendFile(path.join(PATHS.root, 'views', 'monitoring.html'));
+});
 app.use(express.static(PATHS.publicDir));
-app.use('/assets', express.static(PATHS.assetsDir, { maxAge: '30d', immutable: true }));
+
+// Session assets. With user management the session behind /assets/<sessionId>/... decides: somebody who may not
+// see the chat or workflow gets a 404, exactly like for an unknown id.
+const assetStatic = express.static(PATHS.assetsDir, { maxAge: '30d', immutable: true });
+const assetStaticPrivate = express.static(PATHS.assetsDir, {
+  maxAge: '30d',
+  immutable: true,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'private, max-age=2592000, immutable')
+});
+app.use('/assets', async (req, res, next) => {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active) return assetStatic(req, res, next);
+  // The static handler decodes the path itself and would follow ".." inside the assets folder into another
+  // session, so the decoded path must be a plain /<sessionId>/<file...> without dot segments or a second layer of escapes.
+  let decodedPath = '';
+  try {
+    decodedPath = decodeURIComponent(String(req.path || ''));
+  } catch (_) {
+    return res.sendStatus(404);
+  }
+  const segments = decodedPath.split('/').slice(1);
+  if (
+    decodedPath.includes('%') ||
+    segments.length < 2 ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.includes('\\') || segment.includes('\0'))
+  ) {
+    return res.sendStatus(404);
+  }
+  const sessionId = segments[0];
+  if (!store.isValidId(sessionId)) return res.sendStatus(404);
+  try {
+    if (!access.canUse(await store.readSessionAccess(sessionId), viewer)) return res.sendStatus(404);
+  } catch (_) {
+    return res.sendStatus(404);
+  }
+  return assetStaticPrivate(req, res, next);
+});
 
 const PUBLIC_REF_MIME = {
   '.png': 'image/png',
@@ -115,16 +182,109 @@ function brandingZipBody(req, res, next) {
   });
 }
 
+// Local mode (no AUTH_WHOAMI_URL): everybody. Otherwise admins (ADMIN_EMAILS, stored admins, superadmins).
 function isAdmin(req) {
-  if (!String(process.env.AUTH_WHOAMI_URL || '').trim()) return true;
-  const email = String(req.kubleUser || '').trim().toLowerCase();
-  if (!email) return false;
-  if (admins.envAdminEmails().includes(email)) return true;
+  return access.viewerOf(req).admin;
+}
+
+// SUPERADMIN_EMAILS only; never true in the local mode.
+function isSuperAdmin(req) {
+  return access.viewerOf(req).superadmin;
+}
+
+function requireAdmin(req, res) {
+  if (isAdmin(req)) return true;
+  fail(res, 403, 'Zugriff verweigert.');
+  return false;
+}
+
+function failWithCode(res, status, code, message) {
+  res.status(status).json({ error: message, code });
+}
+
+// Access to a chat for the request: 'use' (see, chat, edit settings), 'manage' (rename, move, delete) or 'share'.
+// Answers 404 for a session the caller may not see and 403 for missing rights on one they can see.
+// No-op (and no file read) in the local mode.
+async function guardSession(req, res, id, level = 'use') {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active) return true;
+  let sharing;
   try {
-    return admins.listStoredAdmins().includes(email);
-  } catch (_) {
+    sharing = await store.readSessionAccess(id);
+  } catch (err) {
+    if (err.code === 'ENOENT') fail(res, 404, 'Session nicht gefunden');
+    else fail(res, 500, err.message);
     return false;
   }
+  if (!access.canUse(sharing, viewer)) {
+    fail(res, 404, 'Session nicht gefunden');
+    return false;
+  }
+  if (level === 'manage' && !access.canManage(sharing, viewer)) {
+    failWithCode(res, 403, 'FORBIDDEN', 'Nur Besitzer oder Admins duerfen das aendern.');
+    return false;
+  }
+  if (level === 'share' && !access.canShare(sharing, viewer)) {
+    failWithCode(res, 403, 'FORBIDDEN', sharing.owner
+      ? 'Nur Besitzer oder Admins duerfen die Freigabe aendern.'
+      : 'Die Freigabe bestehender Eintraege aendern nur Admins.');
+    return false;
+  }
+  return true;
+}
+
+// Project folders. A folder has no owner: what is in it decides. Somebody sees a folder if it is empty or holds at
+// least one chat or workflow they may use; a folder that only holds other people's private entries does not exist
+// for them. Renaming or deleting a folder needs admin rights or that every entry in it is the caller's (or has no owner).
+async function folderEntries() {
+  const { sessions } = await store.listSessions({ limit: Number.MAX_SAFE_INTEGER, includeHidden: true, includeSharing: true });
+  const byFolder = new Map();
+  for (const entry of sessions) {
+    if (!entry.folder) continue;
+    if (!byFolder.has(entry.folder)) byFolder.set(entry.folder, []);
+    byFolder.get(entry.folder).push(entry);
+  }
+  return byFolder;
+}
+
+async function canUseFolder(req, name) {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active || viewer.admin) return true;
+  const entries = (await folderEntries()).get(name) || [];
+  return entries.length === 0 || entries.some((entry) => access.canUse(entry, viewer));
+}
+
+async function canManageFolder(req, name) {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active || viewer.admin) return true;
+  const entries = (await folderEntries()).get(name) || [];
+  return entries.every((entry) => access.canManage(entry, viewer));
+}
+
+// Why the caller may not rename or delete a project (null = may). Besides other people's entries there is admin-maintained
+// data: the production profile (guidelines, context files, memory) and the cast belong to the admin-only routes, and
+// deleting or renaming the project would remove or move exactly that data.
+async function folderManageDenial(req, name, verb) {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active || viewer.admin) return null;
+  if (!(await canManageFolder(req, name))) {
+    return `Nur Admins duerfen ein Projekt mit Eintraegen anderer Personen ${verb}.`;
+  }
+  const hasAdminData = Boolean(await store.readFolderProfile(name)) || (await cast.listMembers(name)).length > 0;
+  return hasAdminData
+    ? `Nur Admins duerfen ein Projekt mit Produktions-Profil, Kontextdateien oder Cast ${verb}.`
+    : null;
+}
+
+// 409 for a name that is taken, but neutral when the taken project is one the caller cannot see (404 elsewhere):
+// otherwise POST/PATCH would reveal the names of other people's private projects.
+async function failFolderExists(req, res, name, err) {
+  const viewer = access.viewerOf(req);
+  if (viewer.active && !viewer.admin) {
+    const existing = (await store.listFolders()).find((entry) => store.sameFolderName(entry, name));
+    if (existing && !(await canUseFolder(req, existing))) return fail(res, 400, 'Dieser Projektname ist nicht verfuegbar.');
+  }
+  return fail(res, 409, err.message);
 }
 
 function promptPresetsErrorStatus(err) {
@@ -347,6 +507,8 @@ function startHiggsfieldConnectPolling(expiresIn) {
   higgsfieldConnectTimer.unref?.();
 }
 
+const readMonitoringJobs = adminMonitoring.createJobsReader();
+
 const HIGGSFIELD_CALLBACK_PATH = '/api/higgsfield/oauth/callback';
 
 // Redirect URI of the OAuth login: PUBLIC_BASE_URL (without trailing slash) when set, otherwise derived from the
@@ -449,6 +611,7 @@ app.get('/api/prompt-presets', (_req, res) => {
 });
 
 app.post('/api/prompt-presets/custom', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   try {
     const preset = promptPresets.createCustomPreset(req.body);
     res.status(201).json({ preset, presets: promptPresets.listPresets() });
@@ -458,6 +621,7 @@ app.post('/api/prompt-presets/custom', (req, res) => {
 });
 
 app.put('/api/prompt-presets/custom/:id', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   try {
     const preset = promptPresets.updateCustomPreset(req.params.id, req.body);
     res.json({ preset, presets: promptPresets.listPresets() });
@@ -467,6 +631,7 @@ app.put('/api/prompt-presets/custom/:id', (req, res) => {
 });
 
 app.delete('/api/prompt-presets/custom/:id', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   try {
     promptPresets.deleteCustomPreset(req.params.id);
     res.json({ presets: promptPresets.listPresets() });
@@ -528,6 +693,82 @@ app.delete('/api/admins/:email', (req, res) => {
     res.json({ admins: admins.listAdmins() });
   } catch (err) {
     fail(res, adminsErrorStatus(err), err.message);
+  }
+});
+
+/* ---------- user management ---------- */
+
+// AUTH_LOGOUT_URL (optional): where the account menu sends people to sign out. Only http(s) URLs or absolute
+// paths are handed to the browser.
+function logoutUrl() {
+  const value = String(process.env.AUTH_LOGOUT_URL || '').trim();
+  if (!value) return null;
+  return /^https?:\/\/[^\s]+$/i.test(value) || (/^\/(?!\/)\S*$/.test(value)) ? value : null;
+}
+
+// Who am I: mode, identity and role. Always answers (also in the local mode) so the UI can decide what to show.
+app.get('/api/me', (req, res) => {
+  const viewer = access.viewerOf(req);
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    active: viewer.active,
+    identified: viewer.identified,
+    email: viewer.email,
+    role: access.roleOf(viewer),
+    isAdmin: viewer.admin,
+    isSuperAdmin: viewer.superadmin,
+    logoutUrl: viewer.active ? logoutUrl() : null
+  });
+});
+
+// The people a chat or workflow can be shared with (admins, people added in the settings, people seen before).
+// Not an access list. Any identified person may read it; it is empty and inactive in the local mode.
+app.get('/api/team', (req, res) => {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active) return res.json({ active: false, members: [] });
+  if (!viewer.identified) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      active: true,
+      members: users.listMembers().map((member) => ({ email: member.email, role: member.role, me: member.email === viewer.email }))
+    });
+  } catch (err) {
+    fail(res, 500, err.message);
+  }
+});
+
+function usersPayload() {
+  return users.listMembers().map((member) => ({ ...member, removable: member.role !== 'admin' }));
+}
+
+app.get('/api/users', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    res.json({ users: usersPayload() });
+  } catch (err) {
+    fail(res, 500, err.message);
+  }
+});
+
+app.post('/api/users', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const email = users.addUser(req.body?.email);
+    res.status(201).json({ email, users: usersPayload() });
+  } catch (err) {
+    fail(res, err instanceof users.UserValidationError || err instanceof admins.AdminValidationError ? 400 : 500, err.message);
+  }
+});
+
+app.delete('/api/users/:email', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const email = users.deleteUser(req.params.email);
+    res.json({ email, users: usersPayload() });
+  } catch (err) {
+    const status = err instanceof users.UserNotFoundError ? 404 : err instanceof users.UserValidationError || err instanceof admins.AdminValidationError ? 400 : 500;
+    fail(res, status, err.message);
   }
 });
 
@@ -669,25 +910,53 @@ app.post('/api/chatgpt/disconnect', async (req, res) => {
   }
 });
 
-app.get('/api/costs/summary', async (_req, res) => {
+// With user management admins see all costs, everybody else only their own (and only titles of chats they may see).
+// `mine` always holds the caller's own totals for the account menu.
+app.get('/api/costs/summary', async (req, res) => {
   try {
-    const entries = await costs.readCosts();
+    const viewer = access.viewerOf(req);
+    let entries = await costs.readCosts();
+    const ownEntries = viewer.active ? entries.filter((entry) => viewer.email && entry.user.toLowerCase() === viewer.email) : [];
+    if (viewer.active && !viewer.admin) entries = ownEntries;
     const sessionIds = [...new Set(entries.map((entry) => entry.sessionId))];
     const sessionTitles = {};
     await Promise.all(
       sessionIds.map(async (sessionId) => {
         try {
           const session = await store.readSession(sessionId);
+          if (viewer.active && !access.canUse(session, viewer)) return;
           if (session.title) sessionTitles[sessionId] = session.title;
         } catch (_) {
           /* Geloeschte Sessions bleiben ohne Titel in der Statistik. */
         }
       })
     );
-    res.json(costs.summariseCosts(entries, { sessionTitles }));
+    const summary = costs.summariseCosts(entries, { sessionTitles });
+    if (!viewer.active) return res.json(summary);
+    const own = costs.summariseCosts(ownEntries);
+    return res.json({
+      ...summary,
+      scope: viewer.admin ? 'all' : 'own',
+      mine: { total: own.total, currentMonth: own.currentMonth, currentWeek: own.currentWeek }
+    });
   } catch (err) {
     fail(res, 500, err.message);
   }
+});
+
+adminMonitoring.registerRoutes(app, {
+  isSuperAdmin,
+  monitor: apiMonitor,
+  readData: async () => {
+    const [costRows, runRows, jobRows, errorRows] = await Promise.all([
+      costs.readCosts(),
+      nodeWorkflows.defaultStore.listAllRuns(),
+      readMonitoringJobs(),
+      apiMonitor.readErrors().catch(() => [])
+    ]);
+    return { costRows, runRows, jobRows, errorRows };
+  },
+  getRuntime: () => ({ imageModel: runtime.imageModel, videoModel: runtime.videoModel, brainModel: runtime.defaultBrain })
 });
 
 app.get('/api/gts/search', async (req, res) => {
@@ -710,6 +979,7 @@ app.get('/api/brandings', async (_req, res) => {
 });
 
 app.post('/api/brandings/import', brandingZipBody, async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const rawFilename = String(req.get('x-file-name') || '').trim();
   let filename = rawFilename;
   try {
@@ -750,6 +1020,7 @@ app.get('/api/roles/default', async (_req, res) => {
 });
 
 app.post('/api/roles', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   try {
     const role = await roles.createRole(req.body);
     res.status(201).json({ role });
@@ -759,6 +1030,7 @@ app.post('/api/roles', async (req, res) => {
 });
 
 app.put('/api/roles/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const id = requireRoleId(req, res);
   if (!id) return;
   try {
@@ -771,6 +1043,7 @@ app.put('/api/roles/:id', async (req, res) => {
 });
 
 app.delete('/api/roles/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const id = requireRoleId(req, res);
   if (!id) return;
   try {
@@ -782,6 +1055,7 @@ app.delete('/api/roles/:id', async (req, res) => {
 });
 
 app.post('/api/roles/generate', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const name = truncateCharacters(req.body?.name, 60);
   const brief = truncateCharacters(req.body?.brief, 6000);
   if (!name) return fail(res, 400, 'Name darf nicht leer sein');
@@ -893,6 +1167,7 @@ app.get('/api/brandings/:id', async (req, res) => {
 });
 
 app.delete('/api/brandings/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const id = requireBrandingId(req, res);
   if (!id) return;
   try {
@@ -903,12 +1178,21 @@ app.delete('/api/brandings/:id', async (req, res) => {
   }
 });
 
-app.get('/api/folders', async (_req, res) => {
+app.get('/api/folders', async (req, res) => {
   try {
-    const [folders, sessionResult] = await Promise.all([
+    const viewer = access.viewerOf(req);
+    const [allFolders, sessionResult] = await Promise.all([
       store.listFolders(),
-      store.listSessions({ limit: Number.MAX_SAFE_INTEGER })
+      store.listSessions({ limit: Number.MAX_SAFE_INTEGER, viewer })
     ]);
+    let folders = allFolders;
+    if (viewer.active && !viewer.admin) {
+      const byFolder = await folderEntries();
+      folders = allFolders.filter((name) => {
+        const entries = byFolder.get(name) || [];
+        return entries.length === 0 || entries.some((entry) => access.canUse(entry, viewer));
+      });
+    }
     const sessionCounts = new Map();
     for (const session of sessionResult.sessions) {
       if (!session.folder) continue;
@@ -937,7 +1221,7 @@ app.post('/api/folders', async (req, res) => {
     const created = await store.createFolder(name);
     res.status(201).json({ folder: { name: created, hasProfile: false, sessionCount: 0 } });
   } catch (err) {
-    if (err.code === 'FOLDER_EXISTS') return fail(res, 409, err.message);
+    if (err.code === 'FOLDER_EXISTS') return failFolderExists(req, res, name, err).catch((inner) => fail(res, 500, inner.message));
     fail(res, 500, err.message);
   }
 });
@@ -951,10 +1235,13 @@ app.patch('/api/folders/:name', async (req, res) => {
   if (!newName) return fail(res, 400, 'Projektname darf nicht leer sein');
   if ([...newName].length > 60) return fail(res, 400, 'Projektname darf maximal 60 Zeichen lang sein');
   try {
+    if (!(await canUseFolder(req, oldName))) return fail(res, 404, 'Projekt nicht gefunden');
+    const denial = await folderManageDenial(req, oldName, 'umbenennen');
+    if (denial) return failWithCode(res, 403, 'FORBIDDEN', denial);
     const renamed = await store.renameFolder(oldName, newName);
     res.json({ ok: true, oldName, name: renamed });
   } catch (err) {
-    if (err.code === 'FOLDER_EXISTS') return fail(res, 409, err.message);
+    if (err.code === 'FOLDER_EXISTS') return failFolderExists(req, res, newName, err).catch((inner) => fail(res, 500, inner.message));
     if (err.code === 'FOLDER_NOT_FOUND') return fail(res, 404, err.message);
     fail(res, 500, err.message);
   }
@@ -964,6 +1251,9 @@ app.delete('/api/folders/:name', async (req, res) => {
   const name = requireFolderName(req, res);
   if (!name) return;
   try {
+    if (!(await canUseFolder(req, name))) return fail(res, 404, 'Projekt nicht gefunden');
+    const denial = await folderManageDenial(req, name, 'loeschen');
+    if (denial) return failWithCode(res, 403, 'FORBIDDEN', denial);
     const members = await cast.listMembers(name);
     await store.deleteFolder(name);
     await Promise.all(members.map((member) => cast.removeMember(member.id).catch((err) => {
@@ -980,7 +1270,9 @@ app.get('/api/folders/:name/cast', async (req, res) => {
   const name = requireFolderName(req, res);
   if (!name) return;
   try {
-    if (!(await store.listFolders()).includes(name)) return fail(res, 404, 'Projekt nicht gefunden');
+    if (!(await store.listFolders()).includes(name) || !(await canUseFolder(req, name))) {
+      return fail(res, 404, 'Projekt nicht gefunden');
+    }
     res.json({ members: await cast.listMembers(name) });
   } catch (err) {
     fail(res, 500, err.message);
@@ -988,6 +1280,7 @@ app.get('/api/folders/:name/cast', async (req, res) => {
 });
 
 app.delete('/api/cast/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const id = req.params.id;
   if (!store.isValidId(id)) return fail(res, 400, 'Ungueltige Cast-ID');
   try {
@@ -1002,13 +1295,15 @@ app.get('/api/folders/:name/profile', async (req, res) => {
   const name = requireFolderName(req, res);
   if (!name) return;
   try {
-    res.json({ profile: await store.readFolderProfile(name) });
+    if (!(await canUseFolder(req, name))) return fail(res, 404, 'Projekt nicht gefunden');
+    res.json({ profile: await store.visibleFolderProfile(await store.readFolderProfile(name), access.viewerOf(req)) });
   } catch (err) {
     fail(res, 500, err.message);
   }
 });
 
 app.put('/api/folders/:name/profile', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const name = requireFolderName(req, res);
   if (!name) return;
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
@@ -1037,6 +1332,7 @@ app.put('/api/folders/:name/profile', async (req, res) => {
 });
 
 app.post('/api/folders/:name/profile/context-files', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const name = requireFolderName(req, res);
   if (!name) return;
   try {
@@ -1050,6 +1346,7 @@ app.post('/api/folders/:name/profile/context-files', async (req, res) => {
 });
 
 app.delete('/api/folders/:name/profile/context-files/:fileId', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const name = requireFolderName(req, res);
   if (!name) return;
   try {
@@ -1064,6 +1361,7 @@ app.delete('/api/folders/:name/profile/context-files/:fileId', async (req, res) 
 });
 
 app.delete('/api/folders/:name/profile/memory/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const name = requireFolderName(req, res);
   if (!name) return;
   try {
@@ -1080,7 +1378,7 @@ app.get('/api/sessions', async (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q : '';
     const limit = clampNumber(req.query.limit, 20, 1, 100);
     const offset = clampNumber(req.query.offset, 0, 0, Number.MAX_SAFE_INTEGER);
-    const { sessions, total } = await store.listSessions({ q, limit, offset });
+    const { sessions, total } = await store.listSessions({ q, limit, offset, viewer: access.viewerOf(req) });
     res.json({ sessions, total, offset, hasMore: offset + sessions.length < total });
   } catch (err) {
     fail(res, 500, err.message);
@@ -1104,15 +1402,28 @@ app.post('/api/sessions', async (req, res) => {
     return fail(res, 400, 'Ungueltige Rollen-ID');
   }
   try {
+    const viewer = access.viewerOf(req);
+    if (viewer.active && hasFolder && typeof body.folder === 'string' && !(await canUseFolder(req, body.folder.trim()))) {
+      return fail(res, 404, 'Projekt nicht gefunden');
+    }
     if (hasRole && body.role !== null && !(await roles.getRole(body.role.trim()))) {
       return fail(res, 400, 'Rolle nicht gefunden');
     }
+    // A new chat starts private: it belongs to the person who creates it (none when anonymous / local).
     const session = await store.createSession({
       folder: hasFolder ? body.folder : null,
-      role: hasRole ? body.role : null
+      role: hasRole ? body.role : null,
+      owner: access.ownerForNew(viewer)
     });
     res.status(201).json({
-      session: { id: session.id, title: session.title, folder: session.folder || null, role: session.role || null, updatedAt: session.updatedAt }
+      session: {
+        id: session.id,
+        title: session.title,
+        folder: session.folder || null,
+        role: session.role || null,
+        updatedAt: session.updatedAt,
+        ...(viewer.active ? access.describe(session, viewer) : {})
+      }
     });
   } catch (err) {
     fail(res, 500, err.message);
@@ -1145,6 +1456,11 @@ app.patch('/api/sessions/:id', async (req, res) => {
   }
 
   try {
+    // Title and project belong to the owner; brandings and role are settings of the chat itself (everybody who may use it).
+    if (!(await guardSession(req, res, id, hasTitle || hasFolder ? 'manage' : 'use'))) return;
+    if (access.viewerOf(req).active && hasFolder && typeof changes.folder === 'string' && !(await canUseFolder(req, changes.folder.trim()))) {
+      return fail(res, 404, 'Projekt nicht gefunden');
+    }
     const validatedBrandings = hasBrandings ? await validateExistingBrandingIds(changes.brandings) : null;
     if (hasRole && changes.role !== null && !(await roles.getRole(changes.role.trim()))) {
       return fail(res, 400, 'Rolle nicht gefunden');
@@ -1165,12 +1481,41 @@ app.patch('/api/sessions/:id', async (req, res) => {
   }
 });
 
+// Sharing of a chat. Body: { shareMode: 'private' | 'team' | 'specific', sharedWith: [emails from the team list] }.
+// Owner or admin; a chat without an owner (existing data) only admins, who then become its owner.
+app.patch('/api/sessions/:id/share', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  const viewer = access.viewerOf(req);
+  if (!viewer.active) return failWithCode(res, 400, 'USER_MANAGEMENT_INACTIVE', 'Die Benutzerverwaltung ist nicht aktiv.');
+  try {
+    if (!(await guardSession(req, res, id, 'share'))) return;
+    const session = await store.readSession(id);
+    if (session.kind === 'workflow') {
+      return failWithCode(res, 400, 'INVALID_SHARING', 'Die Freigabe eines Workflows wird am Workflow geaendert.');
+    }
+    let sharing;
+    try {
+      sharing = access.buildSharing(req.body, session, (email) => users.isMember(email));
+    } catch (err) {
+      if (err instanceof access.AccessValidationError) return failWithCode(res, 400, err.code, err.message);
+      throw err;
+    }
+    const updated = await store.updateSessionSharing(id, { ...sharing, ...(session.owner ? {} : { owner: viewer.email }) });
+    res.json({ session: { id, ...access.describe(updated, viewer) } });
+  } catch (err) {
+    fail(res, err.code === 'ENOENT' ? 404 : 500, err.message);
+  }
+});
+
 app.get('/api/sessions/:id', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   try {
+    if (!(await guardSession(req, res, id))) return;
     const session = await store.readSession(id);
     const ledger = await store.readLedger(id);
+    const viewer = access.viewerOf(req);
     res.json({
       session: {
         id: session.id,
@@ -1181,7 +1526,8 @@ app.get('/api/sessions/:id', async (req, res) => {
         messages: session.messages.filter((message) => !message.hidden).map((message) => ({ ...message })),
         brandings: session.brandings,
         contextFiles: session.contextFiles,
-        role: session.role || null
+        role: session.role || null,
+        ...(viewer.active ? access.describe(session, viewer) : {})
       },
       assets: ledger.map((entry) => ({ ...entry, url: store.assetUrl(id, entry.file) })),
       jobs: jobsWithUrls(session)
@@ -1196,6 +1542,7 @@ app.get('/api/sessions/:id/jobs', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   try {
+    if (!(await guardSession(req, res, id))) return;
     const session = await store.readSession(id);
     res.json({ jobs: jobsWithUrls(session) });
   } catch (err) {
@@ -1208,6 +1555,7 @@ app.get('/api/sessions/:id/context', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   try {
+    if (!(await guardSession(req, res, id))) return;
     const session = await store.readSession(id);
     res.json({ contextBrains: session.contextBrains });
   } catch (err) {
@@ -1219,6 +1567,7 @@ app.get('/api/sessions/:id/context', async (req, res) => {
 app.post('/api/sessions/:id/context', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
   if (!gts.hasToken()) {
     return fail(res, 503, 'GTS ist nicht konfiguriert. Bitte GTS_API_TOKEN unter ⚙️ Einstellungen hinterlegen.');
   }
@@ -1251,6 +1600,7 @@ app.delete('/api/sessions/:id/context/:brainId', async (req, res) => {
   if (!id) return;
   const brainId = String(req.params.brainId || '');
   try {
+    if (!(await guardSession(req, res, id))) return;
     const contextBrains = await store.mutateSession(id, (session) => {
       session.contextBrains = session.contextBrains.filter((b) => b.id !== brainId);
       return session.contextBrains.slice();
@@ -1266,6 +1616,7 @@ app.post('/api/sessions/:id/context-files', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   try {
+    if (!(await guardSession(req, res, id))) return;
     const file = await store.addContextFile(id, req.body?.name, req.body?.text);
     const session = await store.readSession(id);
     res.status(201).json({ file, contextFiles: session.contextFiles });
@@ -1279,6 +1630,7 @@ app.delete('/api/sessions/:id/context-files/:fileId', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   try {
+    if (!(await guardSession(req, res, id))) return;
     const removed = await store.removeContextFile(id, req.params.fileId);
     if (!removed) return fail(res, 404, 'Kontextdatei nicht gefunden');
     const session = await store.readSession(id);
@@ -1293,6 +1645,7 @@ app.delete('/api/sessions/:id', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   try {
+    if (!(await guardSession(req, res, id, 'manage'))) return;
     await store.deleteSession(id);
     res.json({ ok: true });
   } catch (err) {
@@ -1303,6 +1656,7 @@ app.delete('/api/sessions/:id', async (req, res) => {
 app.post('/api/sessions/:id/message', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
 
   try {
     await store.readSession(id);
@@ -1375,7 +1729,13 @@ app.post('/api/sessions/:id/message', async (req, res) => {
 
 // Node view API (registry, workflows, uploads, runs, SSE); must stay before the catch-all below.
 const nodeEngine = createNodeEngine({ store: nodeWorkflows.defaultStore, getConfig: () => runtime });
-registerNodeRoutes(app, { runtime, publicRuntimeConfig, engine: nodeEngine, higgsfieldCatalog: nodeHiggsfieldCatalog });
+registerNodeRoutes(app, {
+  runtime,
+  publicRuntimeConfig,
+  engine: nodeEngine,
+  higgsfieldCatalog: nodeHiggsfieldCatalog,
+  canUseFolder: (req, folder) => canUseFolder(req, folder)
+});
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(PATHS.publicDir, 'index.html'));
@@ -1432,4 +1792,4 @@ function startServer() {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, renderNodeStatus, isAdmin, publicRuntimeConfig };
+module.exports = { app, startServer, renderNodeStatus, isAdmin, isSuperAdmin, publicRuntimeConfig };

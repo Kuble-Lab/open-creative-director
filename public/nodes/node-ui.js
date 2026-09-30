@@ -139,7 +139,8 @@
     arrowUp: 'M12 19V5m0 0l-5 5m5-5l5 5',
     arrowDown: 'M12 5v14m0 0l-5-5m5 5l5-5',
     external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
-    extract: 'M9 6H5v12h4M9 12h11m0 0l-4-4m4 4l-4 4'
+    extract: 'M9 6H5v12h4M9 12h11m0 0l-4-4m4 4l-4 4',
+    users: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 6.6M18 14a6 6 0 013.5 6'
   };
 
   function icon(name, size = 16, className = '') {
