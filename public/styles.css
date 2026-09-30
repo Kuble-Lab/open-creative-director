@@ -8,6 +8,7 @@
   --text: #e7e9ec;
   --text-dim: #9aa1ab;
   --text-faint: #656c76;
+  --text-status: #8a919b; /* 6:1 on the dark ground, for status lines */
   --accent: #d8a25f;
   --accent-soft: rgba(216, 162, 95, 0.14);
   --danger: #e0685f;
@@ -484,9 +485,8 @@ code {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin: -2px 0 8px;
-  color: var(--text-faint);
-  font-size: 10.5px;
+  color: var(--text-dim);
+  font-size: 11.5px;
 }
 
 .lang-switch button {
@@ -593,49 +593,13 @@ code {
   letter-spacing: 0.01em;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 28px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.topbar-left {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  min-width: 0;
-}
-
-.topbar h1 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-.session-title {
-  font-size: 13px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+/* ---------- app header: brand · place · actions, one 60 px row (rules further down) ---------- */
 
 .btn-costs {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 999px;
-  color: var(--text-faint);
+  color: var(--text-status);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   padding: 5px 10px;
@@ -2639,7 +2603,7 @@ code {
   min-height: 16px;
   padding: 6px 4px 0;
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-status);
   display: flex;
   align-items: center;
   gap: 0;
@@ -2677,7 +2641,7 @@ code {
 }
 
 .status-text {
-  color: var(--text-faint);
+  color: var(--text-status);
   opacity: 1;
   transform: translateY(0);
   transition: opacity 0.11s ease, transform 0.11s ease;
@@ -2690,7 +2654,7 @@ code {
 
 .status-line.busy .status-text {
   color: transparent;
-  background: linear-gradient(100deg, var(--text-faint) 18%, #9a7951 42%, #d9ad76 50%, #9a7951 58%, var(--text-faint) 82%);
+  background: linear-gradient(100deg, var(--text-status) 18%, #b98f5c 42%, #e6bd86 50%, #b98f5c 58%, var(--text-status) 82%);
   background-size: 230% 100%;
   background-position: 120% 0;
   background-clip: text;
@@ -2753,24 +2717,10 @@ code {
   .app {
     grid-template-columns: 1fr;
   }
-  .sidebar {
-    display: none;
-  }
-  .topbar,
   .messages,
   .composer {
     padding-left: 16px;
     padding-right: 16px;
-  }
-  .session-title {
-    display: none;
-  }
-  .topbar {
-    align-items: flex-start;
-  }
-  .topbar-right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
   }
   .cost-overview {
     grid-template-columns: 1fr;
@@ -2848,36 +2798,6 @@ body.no-admin .admin-only {
   display: none !important;
 }
 
-.session-owner {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-}
-
-.owner-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 9px;
-  border-radius: 999px;
-  background: rgba(130, 151, 163, 0.16);
-  color: #9fb2bf;
-  font-size: 11.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.owner-chip.mine {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.owner-chip-star {
-  color: #e8b64c;
-  font-size: 11px;
-  line-height: 1;
-}
-
 .session-item-owner {
   display: inline-block;
   margin-left: 6px;
@@ -2903,30 +2823,6 @@ body.no-admin .admin-only {
   color: var(--accent);
   font-size: 10px;
   font-weight: 600;
-}
-
-.btn-share {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-dim);
-  font-size: 13px;
-  padding: 5px 12px;
-  white-space: nowrap;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.btn-share:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.btn-share-active {
-  color: var(--accent);
-  border-color: rgba(216, 162, 95, 0.5);
 }
 
 /* Account menu (top right) */
@@ -3251,11 +3147,1098 @@ body.no-admin .admin-only {
   display: none !important;
 }
 
+
+/* ---------- app header ----------
+   Three zones (brand · place · actions) in one 60 px row. The place is a breadcrumb whose chat title shortens with
+   "…" instead of pushing the actions away. The owner chip only appears in somebody else's chat. No emojis. */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 60px;
+  flex: none;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.topbar button,
+.topbar .owner-chip {
+  white-space: nowrap;
+}
+
+.topbar-left {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.header-label-short {
+  display: none;
+}
+
+.current-location {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 120px;
+  overflow: hidden;
+  font-size: 13.5px;
+}
+
+.location-project {
+  flex: 0 1 auto;
+  max-width: 40%;
+  padding: 2px 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.location-project.muted {
+  color: var(--text-status);
+}
+
+.location-project:hover,
+.location-project:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.current-location-separator {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.session-title {
+  flex: 0 1 auto;
+  min-width: 40px;
+  padding: 2px 4px;
+  overflow: hidden;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-title.renamable {
+  cursor: text;
+}
+
+.session-title.renamable:hover,
+.session-title.renamable:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.location-rename-input {
+  flex: 1 1 auto;
+  min-width: 80px;
+  max-width: 420px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text);
+  font: 600 13.5px/1 var(--font);
+}
+
+.session-owner {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.owner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 999px;
+  background: rgba(130, 151, 163, 0.16);
+  color: #b4c3cd;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.owner-chip-avatar {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #201603;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.owner-chip-admin {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.topbar-right {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: var(--line);
+}
+
+/* Chat | Nodes: the one place to switch between the two views (also at the left of the node view). */
+.mode-switch {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+}
+
+.mode-switch-button {
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.mode-switch-button:hover:not(.active) {
+  color: var(--text);
+}
+
+.mode-switch-button.active {
+  background: var(--accent);
+  color: #201603;
+  cursor: default;
+}
+
+.mode-switch-button:focus-visible,
+.btn-context:focus-visible,
+.btn-share:focus-visible,
+.btn-costs:focus-visible,
+.account-chip:focus-visible,
+.mobile-menu-button:focus-visible,
+.session-item:focus-visible,
+.settings-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.btn-context:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.header-icon {
+  flex: none;
+}
+
+.context-badge {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.btn-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-share:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.btn-share-active {
+  color: var(--text);
+}
+
+/* Whoever cannot manage the sharing sees the status, not a button. */
+.btn-share:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.share-dot {
+  display: none;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #4cc38a;
+}
+
+.btn-share-active .share-dot {
+  display: block;
+}
+
+.btn-costs {
+  height: 34px;
+}
+
+.account-menu-host {
+  display: flex;
+  flex: none;
+}
+
+.account-chip {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.account-chip.is-local {
+  border-color: var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+}
+
+.account-chip:hover,
+.account-chip[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.account-dropdown-item {
+  cursor: pointer;
+}
+
+.account-dropdown-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.account-dropdown-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--line-soft);
+}
+
+.account-dropdown-lang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px 4px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.account-dropdown-lang .lang-switch button {
+  padding: 3px 5px;
+  border-radius: 5px;
+}
+
+/* Under 1040 px / 820 px of header width (ResizeObserver in app.js): the owner chip goes first, then labels become icons. */
+.topbar.is-narrow .owner-chip {
+  display: none;
+}
+
+.topbar.is-compact .header-label-long {
+  display: none;
+}
+
+.topbar.is-compact .header-label-short {
+  display: inline;
+}
+
+.topbar.is-compact .btn-context .header-label {
+  display: none;
+}
+
+.topbar.is-compact .btn-context {
+  padding: 0 10px;
+}
+
+.topbar.is-compact .btn-share:not(.btn-share-active) .header-label {
+  display: inline;
+}
+
+/* ---------- side menu as a drawer (under 820 px) ---------- */
+
+.mobile-menu-button {
+  display: none;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+.session-item:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ---------- settings: three groups ---------- */
+
+.settings-tabs {
+  position: sticky;
+  top: -14px; /* the padding of .modal-body: stick to the very top of the scroll area */
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  margin: -14px -18px 14px;
+  padding: 10px 18px 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-panel);
+}
+
+.settings-tab {
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.active {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.settings-slot:empty {
+  display: none;
+}
+
+/* The teams come first in the group "people". */
+.settings-group > .settings-slot:first-child .settings-teams {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 @media (max-width: 820px) {
-  .session-owner {
+  .topbar {
+    display: grid;
+    height: 58px;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px;
+    padding: 0 16px;
+  }
+
+  .topbar-left,
+  .current-location,
+  .topbar-divider,
+  .topbar #contextBtn,
+  .topbar #shareBtn,
+  .topbar #costsBtn {
+    display: none !important;
+  }
+
+  .topbar-right {
+    display: contents;
+  }
+
+  .topbar .mode-switch {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .topbar .account-menu-host {
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  .mobile-menu-button {
+    position: relative;
+    z-index: 56;
+    display: inline-grid;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-panel);
+    color: var(--text);
+  }
+
+  .mobile-menu-button.hidden {
     display: none;
   }
-  .btn-share span:last-child {
+
+  .mobile-menu-icon {
+    display: grid;
+    width: 18px;
+    gap: 4px;
+  }
+
+  .mobile-menu-icon span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    transition: transform 200ms ease, opacity 200ms ease;
+  }
+
+  .mobile-menu-button.is-open .mobile-menu-icon span:first-child {
+    transform: translateY(6px) rotate(45deg);
+  }
+
+  .mobile-menu-button.is-open .mobile-menu-icon span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .mobile-menu-button.is-open .mobile-menu-icon span:last-child {
+    transform: translateY(-6px) rotate(-45deg);
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 55;
+    width: min(300px, 85vw);
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.55);
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  /* The burger button (a close button while the drawer is open) floats above the top left corner of the drawer:
+     the title starts to its right instead of running underneath it. */
+  .sidebar-head {
+    min-height: 58px;
+    padding: 0 16px 0 70px;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 54;
+    display: block;
+    background: rgba(5, 6, 7, 0.6);
+  }
+
+  .sidebar-backdrop.hidden {
     display: none;
+  }
+
+  body.sidebar-drawer-open {
+    overflow: hidden;
+  }
+
+  .settings-tabs {
+    overflow-x: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .mobile-menu-icon span {
+    transition: none;
+  }
+}
+
+/* The node view covers the chat; its burger must not float above it. */
+html.nv-active .mobile-menu-button {
+  display: none;
+}
+
+/* ---------- Budget of participants (menu block, banner) ---------- */
+
+.account-budget {
+  margin: 2px 4px 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+
+.account-budget-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.account-budget-row strong {
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-budget-bar {
+  height: 5px;
+  margin: 7px 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.account-budget-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #8fc9a0;
+}
+
+.account-budget.is-low .account-budget-bar span {
+  background: var(--accent);
+}
+
+.account-budget.is-exhausted .account-budget-bar span {
+  background: var(--danger);
+}
+
+.account-budget.is-low .account-budget-row strong {
+  color: var(--accent);
+}
+
+.account-budget.is-exhausted .account-budget-row strong {
+  color: #f0a8a1;
+}
+
+.account-budget-note,
+.account-budget-teams {
+  color: var(--text-status);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.account-budget-note.strong {
+  margin-top: 4px;
+  color: #f0c1bc;
+}
+
+.account-budget-teams {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.budget-banner {
+  margin-top: 10px;
+}
+
+.budget-banner.is-low {
+  border-color: rgba(216, 162, 95, 0.4);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* The login could not be confirmed (public/access-client.js): one floating notice for the chat and the node view. */
+.login-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(224, 104, 95, 0.6);
+  background: #1d1211;
+  color: #f1c9c5;
+  font-size: 13.5px;
+  line-height: 1.4;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+}
+
+.login-banner-text {
+  min-width: 0;
+}
+
+.login-banner-btn {
+  flex: none;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #1a1206;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.login-banner-btn:hover {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 560px) {
+  .login-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: calc(100vw - 24px);
+  }
+}
+
+/* ---------- Sharing with teams ---------- */
+
+.share-teams .share-person-role {
+  white-space: nowrap;
+}
+
+/* ---------- Teams in the settings ---------- */
+
+.settings-teams {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.teams-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.teams-notice {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.teams-notice.is-warning {
+  border-color: rgba(224, 104, 95, 0.4);
+  background: rgba(224, 104, 95, 0.09);
+  color: #f0c1bc;
+}
+
+.team-card {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+
+.team-card.is-open {
+  border-color: var(--line);
+}
+
+.team-card.is-archived .team-name {
+  color: var(--text-dim);
+}
+
+.team-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.team-head:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.team-head:focus-visible,
+.team-table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.team-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+}
+
+.team-card.is-open .team-chevron {
+  transform: rotate(90deg);
+}
+
+.team-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.team-meta {
+  color: var(--text-status);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 12px 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.team-edit,
+.team-create {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.team-create {
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.team-create .render-node-form-heading {
+  grid-column: 1 / -1;
+}
+
+.team-edit-wide,
+.team-edit-actions {
+  grid-column: 1 / -1;
+}
+
+.team-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.branding-manager-action.primary {
+  border-color: rgba(216, 162, 95, 0.6);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.branding-manager-action.is-confirming {
+  border-color: var(--danger);
+  color: #f0a8a1;
+}
+
+.team-members-title {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.team-search {
+  max-width: 260px;
+  margin-bottom: 8px;
+}
+
+.team-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+
+.team-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.team-table th,
+.team-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.team-table th {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.team-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.team-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.team-email {
+  overflow-wrap: anywhere;
+}
+
+.team-table .admin-source-badge {
+  margin-left: 8px;
+}
+
+.team-left.is-low {
+  color: var(--accent);
+}
+
+.team-left.is-exhausted {
+  color: #f0a8a1;
+  font-weight: 600;
+}
+
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-override {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-override-input {
+  width: 120px;
+}
+
+.team-override-row td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* The paste box (team members, team list) */
+.paste-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.paste-input {
+  min-height: 84px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.paste-hint {
+  margin: 0;
+}
+
+.paste-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.paste-count.is-fresh {
+  color: #8fc9a0;
+  font-weight: 600;
+}
+
+.paste-count.is-invalid {
+  color: #f0c1bc;
+  cursor: pointer;
+}
+
+.paste-sep,
+.paste-muted {
+  color: var(--text-faint);
+}
+
+.paste-invalid {
+  display: inline-block;
+}
+
+.paste-invalid ul {
+  max-height: 140px;
+  margin: 6px 0 0;
+  padding: 6px 8px 6px 24px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.paste-warn {
+  flex-basis: 100%;
+  color: #f0c1bc;
+}
+
+.paste-actions {
+  display: flex;
+}
+
+.paste-result {
+  margin-top: 0;
+}
+
+.paste-details {
+  margin-top: 12px;
+}
+
+.paste-summary {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.paste-details[open] .paste-summary {
+  margin-bottom: 10px;
+}
+
+@media (max-width: 720px) {
+  .team-edit,
+  .team-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .team-table,
+  .team-table tbody,
+  .team-table tr,
+  .team-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .team-table tr {
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .team-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .team-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    border: 0;
+    text-align: right;
+  }
+
+  .team-table td::before {
+    flex: none;
+    color: var(--text-faint);
+    font-size: 11px;
+    content: attr(data-label);
+    text-align: left;
+  }
+
+  .team-table td.team-actions {
+    justify-content: flex-start;
+  }
+
+  .team-table td.team-actions::before,
+  .team-override-row td::before {
+    display: none;
+  }
+
+  .team-override-row td {
+    display: block;
+    padding: 0 8px 8px;
+  }
+
+  .team-override-input {
+    width: 100%;
   }
 }

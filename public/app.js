@@ -1,16 +1,20 @@
 'use strict';
 
 const el = {
+  sidebar: document.querySelector('.sidebar'),
+  sidebarBackdrop: document.getElementById('sidebarBackdrop'),
+  mobileMenuBtn: document.getElementById('mobileMenuBtn'),
+  topbar: document.querySelector('.topbar'),
+  currentProjectName: document.getElementById('currentProjectName'),
   sessionList: document.getElementById('sessionList'),
   sessionSearch: document.getElementById('sessionSearch'),
   newSession: document.getElementById('newSession'),
   sidebarCreate: document.getElementById('sidebarCreate'),
   newFolder: document.getElementById('newFolder'),
   newFolderInput: document.getElementById('newFolderInput'),
-  langSwitch: document.getElementById('langSwitch'),
   modelInfo: document.getElementById('modelInfo'),
   brandingsBtn: document.getElementById('brandingsBtn'),
-  settingsBtn: document.getElementById('settingsBtn'),
+  settingsTabs: document.querySelector('.settings-tabs'),
   settingsModal: document.getElementById('settingsModal'),
   settingsClose: document.getElementById('settingsClose'),
   settingsList: document.getElementById('settingsList'),
@@ -41,16 +45,7 @@ const el = {
   sessionOwner: document.getElementById('sessionOwner'),
   shareBtn: document.getElementById('shareBtn'),
   shareBtnLabel: document.getElementById('shareBtnLabel'),
-  accountMenu: document.getElementById('accountMenu'),
-  accountBtn: document.getElementById('accountBtn'),
-  accountDropdown: document.getElementById('accountDropdown'),
-  accountEmail: document.getElementById('accountEmail'),
-  accountRole: document.getElementById('accountRole'),
-  accountNote: document.getElementById('accountNote'),
-  accountCosts: document.getElementById('accountCosts'),
-  accountCostsAmount: document.getElementById('accountCostsAmount'),
-  accountMonitoring: document.getElementById('accountMonitoring'),
-  accountLogout: document.getElementById('accountLogout'),
+  accountHost: document.getElementById('accountMenu'),
   usersSection: document.getElementById('usersSection'),
   usersList: document.getElementById('usersList'),
   userForm: document.getElementById('userForm'),
@@ -60,6 +55,8 @@ const el = {
   folderProfilePanel: document.getElementById('folderProfilePanel'),
   folderProfileReadOnly: document.getElementById('folderProfileReadOnly'),
   keyBanner: document.getElementById('keyBanner'),
+  budgetBanner: document.getElementById('budgetBanner'),
+  usersPasteSlot: document.getElementById('usersPasteSlot'),
   main: document.querySelector('.main'),
   messages: document.getElementById('messages'),
   dropOverlay: document.getElementById('dropOverlay'),
@@ -95,7 +92,6 @@ const el = {
   costsBody: document.getElementById('costsBody'),
   contextBtn: document.getElementById('contextBtn'),
   contextBadge: document.getElementById('contextBadge'),
-  brandingContextBadge: document.getElementById('brandingContextBadge'),
   contextModal: document.getElementById('contextModal'),
   contextClose: document.getElementById('contextClose'),
   contextSearch: document.getElementById('contextSearch'),
@@ -208,7 +204,11 @@ const state = {
   sessionTotal: 0,
   sessionLoadedCount: 0,
   sessionHasMore: false,
+  folderSessionsRequested: new Set(),
   collapsedFolders: loadCollapsedFolders(),
+  mobileSidebarOpen: false,
+  settingsAvailable: false,
+  costsAmountText: '$0.00',
   searchTimer: null,
   currentId: null,
   detail: null,
@@ -281,6 +281,9 @@ const SEARCH_DEBOUNCE_MS = 300;
 const RENDER_NODE_IDLE_POLL_MS = 30000;
 const RENDER_NODE_ACTIVE_POLL_MS = 10000;
 const JOB_POLL_MS = 5000;
+const sidebarDrawerMedia = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(max-width: 820px)')
+  : { matches: false, addEventListener() {} };
 
 /* ---------- helpers ---------- */
 
@@ -620,7 +623,7 @@ function updateToolsButton() {
 function renderToolsMenu() {
   el.toolsMenu.innerHTML = '';
   el.toolsMenu.appendChild(toolsMenuHeading(t('tools.model')));
-  for (const model of state.config?.brainModels || []) {
+  for (const model of offeredBrainModels()) {
     const label = brainLabel(model);
     el.toolsMenu.appendChild(toolsMenuOption({
       name: label.shortName,
@@ -682,7 +685,7 @@ function renderToolsMenu() {
 }
 
 function selectBrain(model, { remember = true } = {}) {
-  if (!(state.config?.brainModels || []).includes(model)) return;
+  if (!offeredBrainModels().includes(model)) return;
   state.brainModel = model;
   if (remember) {
     try {
@@ -716,21 +719,38 @@ async function selectRole(roleId) {
   }
 }
 
+// A dropped connection reads as a sentence, not as the browser's "Failed to fetch".
+function networkError() {
+  const error = new Error(t('common.networkError'));
+  error.code = 'NETWORK';
+  return error;
+}
+
 async function api(path, options) {
-  const res = await fetch(rel(path), {
-    headers: { 'Content-Type': 'application/json' },
-    ...(options || {})
-  });
+  let res;
+  try {
+    res = await fetch(rel(path), {
+      headers: { 'Content-Type': 'application/json' },
+      ...(options || {})
+    });
+  } catch (_) {
+    throw networkError();
+  }
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
+    let payload = null;
     try {
-      const body = await res.json();
-      if (body.error) message = body.error;
+      payload = await res.json();
+      if (payload.error) message = payload.error;
     } catch (_) {
       /* ignore */
     }
     const error = new Error(message);
     error.status = res.status;
+    if (payload && typeof payload === 'object') {
+      error.code = payload.code;
+      error.body = payload;
+    }
     throw error;
   }
   return res.status === 204 ? null : res.json();
@@ -814,9 +834,9 @@ function formatCost(cost) {
 
 function formatSummaryCost(cost) {
   const value = typeof cost === 'number' && Number.isFinite(cost) ? cost : 0;
-  if (value === 0) return '$ 0.00';
+  if (value === 0) return '$0.00';
   if (value < 0.01) return '< $0.01';
-  return `$ ${value.toFixed(2)}`;
+  return `$${value.toFixed(2)}`;
 }
 
 function formatDate(iso) {
@@ -1296,7 +1316,8 @@ function renderCosts(summary) {
     bySession: []
   };
   el.costsBtn.textContent = formatSummaryCost(data.currentMonth);
-  el.accountCostsAmount.textContent = formatSummaryCost(data.mine ? data.mine.currentMonth : data.currentMonth);
+  state.costsAmountText = formatSummaryCost(data.mine ? data.mine.currentMonth : data.currentMonth);
+  OCShell.refresh();
   el.costsBody.replaceChildren();
 
   if (data.scope) {
@@ -1339,10 +1360,13 @@ async function refreshCosts() {
   const summary = await api('/api/costs/summary');
   state.costs = summary;
   renderCosts(summary);
+  // Every paid action changes what a participant has left: the menu and the banner follow.
+  if (OCAccess.me().restricted) OCAccess.refreshMe().catch(() => {});
 }
 
 function openCostsModal() {
   el.costsModal.classList.remove('hidden');
+  el.costsClose.focus();
   renderCosts(state.costs);
   refreshCosts().catch((err) => setStatusI18n('costs.loadError', { error: err.message }));
 }
@@ -1574,7 +1598,7 @@ function setSettingsBusy(row, busy) {
 async function refreshRuntimeConfigStatus() {
   const config = await api('/api/config');
   state.config = { ...state.config, ...config };
-  if (!(state.config.brainModels || []).includes(state.brainModel)) {
+  if (!offeredBrainModels().includes(state.brainModel)) {
     selectBrain(state.config.defaultBrain, { remember: false });
   } else {
     renderToolsMenu();
@@ -1917,10 +1941,13 @@ async function loadSettingsAccess() {
     state.renderNodes = Array.isArray(renderNodesData.nodes) ? renderNodesData.nodes : [];
     state.higgsfield = higgsfieldData;
     state.chatgpt = chatgptData;
-    el.settingsBtn.classList.remove('hidden');
+    state.settingsAvailable = true;
+    OCShell.refresh();
     renderSettings();
     renderAdmins();
     loadUsers();
+    // Teams (trainings with a budget): only with user management, only for admins.
+    if (OCAccess.isActive() && OCAccess.me().isAdmin) OCTeams.mount(document.getElementById('settingsTeamsSlot'));
     renderRenderNodes();
     renderHiggsfieldStatus();
     renderChatGPTStatus();
@@ -1931,13 +1958,14 @@ async function loadSettingsAccess() {
     state.renderNodes = [];
     state.higgsfield = { connected: false, refreshExpiresAt: null, pending: false };
     state.chatgpt = { connected: false, plan: null, expiresAt: null, models: [] };
-    el.settingsBtn.classList.add('hidden');
+    state.settingsAvailable = false;
+    OCShell.refresh();
     el.settingsModal.classList.add('hidden');
     return false;
   }
 }
 
-async function openSettingsModal() {
+async function openSettingsModal(tab) {
   resetSettingsDelete();
   resetAdminDelete();
   resetUserDelete();
@@ -1951,8 +1979,41 @@ async function openSettingsModal() {
   renderHiggsfieldStatus();
   renderChatGPTStatus();
   el.settingsModal.classList.remove('hidden');
+  selectSettingsTab(typeof tab === 'string' ? tab : currentSettingsTab());
+  el.settingsClose.focus();
   const available = await loadSettingsAccess();
-  if (available) el.settingsList.querySelector('input')?.focus();
+  if (available) {
+    selectSettingsTab(typeof tab === 'string' ? tab : currentSettingsTab());
+    OCTeams.load();
+  }
+}
+
+// The settings are three groups (services, people, rendering). A group without a visible section has no tab.
+function settingsGroups() {
+  return [...el.settingsModal.querySelectorAll('[data-settings-group]')];
+}
+
+function settingsGroupHasContent(group) {
+  return [...group.children].some((child) => !child.classList.contains('hidden') && !(child.classList.contains('settings-slot') && !child.children.length));
+}
+
+function currentSettingsTab() {
+  return el.settingsModal.querySelector('.settings-tab.active')?.dataset.settingsTab || 'services';
+}
+
+function selectSettingsTab(name) {
+  const tabs = [...el.settingsModal.querySelectorAll('[data-settings-tab]')];
+  const available = new Set(settingsGroups().filter(settingsGroupHasContent).map((group) => group.dataset.settingsGroup));
+  const target = available.has(name) ? name : [...available][0] || 'services';
+  for (const tab of tabs) {
+    const on = tab.dataset.settingsTab === target;
+    tab.classList.toggle('hidden', !available.has(tab.dataset.settingsTab));
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  }
+  for (const group of settingsGroups()) group.classList.toggle('hidden', group.dataset.settingsGroup !== target);
+  el.settingsTabs.classList.toggle('hidden', available.size < 2);
 }
 
 function closeSettingsModal() {
@@ -1982,10 +2043,10 @@ function sessionMetaFromDetail(session) {
   return meta;
 }
 
-// Title, owner (with the star for admins) and share button of the open chat.
+// Breadcrumb "Project / chat title", owner chip (somebody else's chat only) and share status of the open chat.
 function renderSessionHeader() {
   const session = state.currentId ? state.detail?.session : null;
-  el.sessionTitle.textContent = session?.title || '';
+  updateCurrentLocation();
   const chip = session ? OCAccess.ownerChip(session) : null;
   el.sessionOwner.replaceChildren();
   if (chip) el.sessionOwner.appendChild(chip);
@@ -1993,15 +2054,98 @@ function renderSessionHeader() {
   updateShareButton();
 }
 
+function updateCurrentLocation() {
+  const session = state.currentId ? state.detail?.session || null : null;
+  el.currentProjectName.textContent = session?.folder || t('location.noProject');
+  el.currentProjectName.classList.toggle('muted', !session?.folder);
+  if (el.sessionTitle.isConnected) el.sessionTitle.textContent = session ? session.title || t('sessions.new') : t('location.noChat');
+  // A click on the title renames the chat, for whoever may manage it.
+  const canRename = Boolean(session) && session.canManage !== false;
+  el.sessionTitle.classList.toggle('renamable', canRename);
+  if (canRename) el.sessionTitle.setAttribute('tabindex', '0');
+  else el.sessionTitle.removeAttribute('tabindex');
+  el.sessionTitle.setAttribute('role', canRename ? 'button' : 'text');
+  const owner = session?.mine === false && session.owner ? t('sharing.ownedBy', { name: session.owner }) : '';
+  el.sessionTitle.title = [canRename ? t('sessions.rename') : '', owner].filter(Boolean).join(' · ');
+}
+
+// Same inline rename as in the side menu, on the title in the header.
+function startHeaderRename() {
+  const session = state.detail?.session;
+  if (!session || session.canManage === false || !el.sessionTitle.isConnected || state.streaming) return;
+  const current = session.title || t('sessions.new');
+  const input = document.createElement('input');
+  input.className = 'location-rename-input';
+  input.type = 'text';
+  input.maxLength = 120;
+  input.value = current;
+  input.setAttribute('aria-label', t('sessions.rename'));
+  el.sessionTitle.replaceWith(input);
+  input.focus();
+  input.select();
+  let finished = false;
+  const finish = async (save) => {
+    if (finished) return;
+    finished = true;
+    const nextTitle = input.value.trim();
+    input.replaceWith(el.sessionTitle);
+    if (save && nextTitle && nextTitle !== current) {
+      const meta = state.sessions.find((item) => item.id === session.id) || { id: session.id, title: session.title };
+      try {
+        await patchSessionMeta(meta, { title: nextTitle });
+      } catch (err) {
+        setStatusI18n('sessions.renameFailed', { error: err.message });
+      }
+    } else if (save && !nextTitle) {
+      setStatusI18n('sessions.titleEmpty');
+    }
+    updateCurrentLocation();
+    el.sessionTitle.focus({ preventScroll: true });
+  };
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+// The project in the breadcrumb leads to it in the side menu.
+function revealCurrentProject() {
+  const folder = state.detail?.session?.folder || '';
+  if (folder && state.collapsedFolders.delete(folder)) {
+    saveCollapsedFolders();
+    renderSessions();
+  }
+  if (sidebarDrawerMedia.matches) setMobileSidebarOpen(true);
+  requestAnimationFrame(() => {
+    const target = folder
+      ? [...el.sessionList.querySelectorAll('.session-folder-name')].find((node) => node.textContent === folder)
+      : el.sessionList.querySelector('.session-item.active');
+    if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'center' });
+  });
+}
+
+// "Geteilt" is a status with a green dot; in somebody else's chat it reads "Geteilt mit dir". Whoever may not
+// manage the sharing sees the status without a button.
 function updateShareButton() {
   const session = state.currentId ? state.detail?.session : null;
-  const show = OCAccess.isActive() && session?.canShare === true;
-  el.shareBtn.classList.toggle('hidden', !show);
-  if (!show) return;
-  const shared = !session.unowned && session.shareMode !== 'private';
+  const active = OCAccess.isActive() && Boolean(session);
+  const canShare = active && session.canShare === true;
+  const shared = active && !session.unowned && session.shareMode !== 'private';
+  el.shareBtn.classList.toggle('hidden', !(canShare || shared));
+  if (!(canShare || shared)) return;
+  const label = !shared ? t('sharing.button') : session.mine === false && !canShare ? t('sharing.buttonSharedWithYou') : t('sharing.buttonShared');
   el.shareBtn.classList.toggle('btn-share-active', shared);
-  el.shareBtnLabel.textContent = t(shared ? 'sharing.buttonShared' : 'sharing.button');
-  el.shareBtn.title = `${t('sharing.buttonTitle')} · ${OCAccess.stateText(session)}`;
+  el.shareBtn.disabled = !canShare;
+  el.shareBtnLabel.textContent = label;
+  el.shareBtn.setAttribute('aria-label', label);
+  el.shareBtn.title = canShare ? `${t('sharing.buttonTitle')} · ${OCAccess.stateText(session)}` : `${label} · ${OCAccess.stateText(session)}`;
+  OCShell.refresh();
 }
 
 function applySessionSharing(id, fields) {
@@ -2059,44 +2203,61 @@ async function verifyCurrentSession() {
   }
 }
 
-function accountRoleLabel(me) {
-  if (me.role === 'superadmin') return t('account.roleSuperadmin');
-  if (me.role === 'admin') return t('account.roleAdmin');
-  if (me.role === 'user') return t('account.roleUser');
-  return t('account.roleAnonymous');
-}
-
-function setAccountMenuOpen(open) {
-  const isOpen = Boolean(open) && OCAccess.isActive();
-  el.accountDropdown.classList.toggle('hidden', !isOpen);
-  el.accountBtn.setAttribute('aria-expanded', String(isOpen));
-}
-
-// Account chip, role, logout and the parts of the interface that depend on the role.
+// Role dependent parts of the interface. The menu itself (avatar, costs, settings, help, language, sign-out) is
+// public/shell.js, shared with the node view.
 function renderAccount() {
   const me = OCAccess.me();
   document.body.classList.toggle('user-management', me.active);
   document.body.classList.toggle('no-admin', me.active && !me.isAdmin);
-  el.accountMenu.classList.toggle('hidden', !me.active);
-  // With user management the cost button moves into the account menu (it shows the person's own costs).
+  // With user management the cost button moves into the menu (it shows the person's own costs).
   el.costsBtn.classList.toggle('hidden', me.active);
   el.usersSection.classList.toggle('hidden', !(me.active && me.isAdmin));
   el.settingsMonitoringLink.classList.toggle('hidden', !me.isSuperAdmin);
-  if (!me.active) {
-    setAccountMenuOpen(false);
-    return;
+  renderRestrictedView(me);
+  renderBudgetBanner();
+  OCAccess.renderLoginBanner();
+  OCShell.refresh();
+}
+
+// Participants and guests: no entry into what the server refuses them (brandings, GTS, ChatGPT subscription models,
+// custom templates). The server still enforces it; this only keeps them out of dead ends. Admins and internal
+// people see everything as before.
+function renderRestrictedView(me) {
+  const restricted = Boolean(me.active && me.restricted);
+  document.body.classList.toggle('restricted-view', restricted);
+  el.brandingsBtn.classList.toggle('hidden', restricted);
+  for (const list of [el.contextBrandings, el.folderProfileBrandings]) list.closest('.modal-section')?.classList.toggle('hidden', restricted);
+  const contextTitle = el.contextModal.querySelector('.modal-head h2');
+  if (contextTitle) {
+    const key = restricted ? 'context.titleRestricted' : 'context.title';
+    contextTitle.setAttribute('data-i18n', key);
+    contextTitle.textContent = t(key);
   }
-  el.accountBtn.textContent = me.email ? OCAccess.initialsOf(me.email) : '?';
-  const label = me.email ? t('account.signedInAs', { email: me.email }) : t('account.roleAnonymous');
-  el.accountBtn.title = label;
-  el.accountBtn.setAttribute('aria-label', label);
-  el.accountEmail.textContent = me.email || t('account.roleAnonymous');
-  el.accountRole.textContent = accountRoleLabel(me);
-  el.accountRole.classList.toggle('admin', me.isAdmin);
-  el.accountNote.classList.toggle('hidden', me.identified);
-  el.accountMonitoring.classList.toggle('hidden', !me.isSuperAdmin);
-  el.accountLogout.classList.toggle('hidden', !me.logoutUrl);
-  if (me.logoutUrl) el.accountLogout.setAttribute('href', me.logoutUrl);
+  el.contextGtsSection.classList.toggle('hidden', !gtsEnabled());
+  el.folderProfileGtsSection.classList.toggle('hidden', !gtsEnabled());
+}
+
+// The models the chat may offer: no ChatGPT subscription models for participants and guests (the server filters
+// /api/config as well).
+function offeredBrainModels() {
+  const restricted = Boolean(OCAccess.me().active && OCAccess.me().restricted);
+  return (state.config?.brainModels || []).filter((model) => !(restricted && String(model).startsWith('chatgpt/')));
+}
+
+// Participants and guests: a line above the chat says when the budget is used up or running low. Chats and results
+// stay readable; only paid actions are locked (the server enforces it, this only explains).
+function renderBudgetBanner() {
+  const me = OCAccess.me();
+  const lines = me.restricted && me.budget ? OCAccess.budgetLines(me.budget) : null;
+  let message = '';
+  if (lines) {
+    if (me.role === 'guest') message = t('budget.bannerGuest');
+    else if (lines.exhausted) message = t('budget.banner');
+    else if (lines.low) message = t('budget.bannerLow', { remaining: OCAccess.formatUsd(lines.remaining) });
+  }
+  el.budgetBanner.textContent = message;
+  el.budgetBanner.classList.toggle('hidden', !message);
+  el.budgetBanner.classList.toggle('is-low', Boolean(lines && !lines.exhausted && me.role !== 'guest'));
 }
 
 // The team list in the settings: automatic entries with first and last seen, entries added by admins removable.
@@ -2148,11 +2309,28 @@ function renderUsers() {
   }
 }
 
+// Several addresses at once (Excel column, mail recipients ...): the same paste box as for the teams.
+function mountUsersPaste() {
+  if (state.usersPaste) return;
+  state.usersPaste = OCTeams.userPaste({
+    existing: () => state.users.map((user) => user.email),
+    add: (emails) => api('/api/users', { method: 'POST', body: JSON.stringify({ emails }) }),
+    onResult: (answer) => {
+      if (!answer || !Array.isArray(answer.users)) return;
+      state.users = answer.users;
+      resetUserDelete();
+      renderUsers();
+    }
+  });
+  el.usersPasteSlot.replaceChildren(state.usersPaste.element);
+}
+
 async function loadUsers() {
   if (!OCAccess.isActive() || !OCAccess.me().isAdmin) return;
   try {
     const data = await api('/api/users');
     state.users = Array.isArray(data.users) ? data.users : [];
+    mountUsersPaste();
     renderUsers();
   } catch (err) {
     showSettingsFeedback(t('users.loadFailed', { error: err.message }), { error: true });
@@ -2223,10 +2401,28 @@ function sessionFolder(meta) {
   return typeof meta.folder === 'string' && meta.folder.trim() ? meta.folder.trim() : null;
 }
 
+// Projects are ordered like chats: whatever was worked on last comes first. A project without chats has no date and
+// waits at the end, alphabetically, until its first chat lifts it up. (Exposed for the test of the ordering.)
+function folderActivity(name) {
+  const fromFolder = String(folderInfo(name)?.lastActivity || '');
+  const fromLoaded = state.sessions
+    .filter((session) => sessionFolder(session) === name)
+    .reduce((latest, session) => {
+      const changed = String(session.updatedAt || session.createdAt || '');
+      return changed > latest ? changed : latest;
+    }, '');
+  return fromLoaded > fromFolder ? fromLoaded : fromFolder;
+}
+
 function existingFolders() {
-  return [...new Set([...state.folders.map((folder) => folder.name), ...state.sessions.map(sessionFolder).filter(Boolean)])].sort((a, b) =>
-    a.localeCompare(b, 'de-CH', { sensitivity: 'base' })
-  );
+  const names = [...new Set([...state.folders.map((folder) => folder.name), ...state.sessions.map(sessionFolder).filter(Boolean)])];
+  return names.sort((a, b) => {
+    const left = folderActivity(a);
+    const right = folderActivity(b);
+    if (left && right && left !== right) return right.localeCompare(left);
+    if (left !== right) return left ? -1 : 1;
+    return a.localeCompare(b, 'de-CH', { sensitivity: 'base' });
+  });
 }
 
 function folderInfo(name) {
@@ -2527,9 +2723,21 @@ function createSessionItem(meta) {
     item.appendChild(del);
   }
 
-  item.addEventListener('click', () => {
-    if (state.streaming || meta.id === state.currentId) return;
+  const open = () => {
+    if (state.streaming) return;
+    closeMobileSidebar();
+    if (meta.id === state.currentId) return;
     openSession(meta.id);
+  };
+  item.addEventListener('click', open);
+  // Without this a chat could only be opened with the mouse while its delete button was reachable by keyboard.
+  item.tabIndex = 0;
+  item.setAttribute('role', 'button');
+  item.addEventListener('keydown', (event) => {
+    if (event.target !== item) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    open();
   });
   return item;
 }
@@ -2574,9 +2782,17 @@ function appendFolderGroup(folder, sessions) {
   profile.setAttribute('aria-label', t('sessions.editProfileFor', { name: folder }));
   profile.addEventListener('click', (event) => {
     event.stopPropagation();
+    closeMobileSidebar();
     openFolderProfileModal(folder).catch((err) => setStatus(err.message));
   });
   header.appendChild(profile);
+
+  // The list pages through the 20 most recent chats while the badge counts all of them: an open project fetches the
+  // chats the pages have not reached yet, so "1 Chat" never sits above an empty list.
+  const chatCount = folderInfo(folder)?.sessionCount ?? sessions.length;
+  if (!collapsed && !state.sessionQuery && sessions.length < chatCount) {
+    loadFolderSessions(folder).catch((err) => setStatus(err.message));
+  }
 
   const toggleFolder = () => {
     if (collapsed) state.collapsedFolders.delete(folder);
@@ -2658,10 +2874,22 @@ function sessionsPath(offset) {
 
 async function loadSessions() {
   const [data] = await Promise.all([api(sessionsPath(0)), loadFolders()]);
+  state.folderSessionsRequested.clear();
   state.sessions = data.sessions || [];
   state.sessionTotal = data.total || 0;
   state.sessionLoadedCount = state.sessions.length;
   state.sessionHasMore = Boolean(data.hasMore);
+  renderSessions();
+}
+
+async function loadFolderSessions(folder) {
+  if (state.folderSessionsRequested.has(folder)) return;
+  state.folderSessionsRequested.add(folder);
+  const data = await api(`/api/sessions?limit=100&offset=0&folder=${encodeURIComponent(folder)}`);
+  const knownIds = new Set(state.sessions.map((session) => session.id));
+  const missing = (data.sessions || []).filter((session) => !knownIds.has(session.id));
+  if (!missing.length) return;
+  state.sessions = state.sessions.concat(missing).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   renderSessions();
 }
 
@@ -2676,6 +2904,7 @@ async function loadMoreSessions() {
 }
 
 async function createSession(folder = null) {
+  closeMobileSidebar();
   const role = state.pendingRoleId;
   const body = {};
   if (folder) body.folder = folder;
@@ -3327,6 +3556,7 @@ async function openBrandingsModal() {
   setBrandingImporting(false);
   showBrandingImportFeedback('');
   el.brandingsModal.classList.remove('hidden');
+  el.brandingsClose.focus();
   el.brandingsList.innerHTML = '';
   el.brandingsList.appendChild(textNode('div', 'branding-manager-empty', t('branding.loading')));
   try {
@@ -3597,17 +3827,24 @@ async function saveRole({ asNew = false } = {}) {
 /* ---------- GTS-Kontext ---------- */
 
 function gtsEnabled() {
-  return Boolean(state.config?.gts?.enabled);
+  return Boolean(state.config?.gts?.enabled) && !(OCAccess.me().active && OCAccess.me().restricted);
 }
 
 function renderContextBadge() {
   const contextCount = state.contextBrains.length + state.contextFiles.length;
   const brandingCount = effectiveBrandingIds().length;
+  // One counter for everything in the context; the tooltip says what it is made of.
+  const total = contextCount + brandingCount;
   el.contextBtn.classList.toggle('hidden', !state.currentId);
-  el.contextBadge.classList.toggle('hidden', contextCount === 0);
-  el.contextBadge.textContent = String(contextCount);
-  el.brandingContextBadge.classList.toggle('hidden', brandingCount === 0);
-  el.brandingContextBadge.textContent = `🎨 ${brandingCount}`;
+  el.contextBadge.classList.toggle('hidden', total === 0);
+  el.contextBadge.textContent = String(total);
+  const parts = [
+    contextCount ? t(contextCount === 1 ? 'topbar.contextSourcesOne' : 'topbar.contextSourcesMany', { count: contextCount }) : '',
+    brandingCount ? t(brandingCount === 1 ? 'topbar.contextBrandingsOne' : 'topbar.contextBrandingsMany', { count: brandingCount }) : ''
+  ].filter(Boolean);
+  el.contextBtn.title = total === 0 ? t('topbar.contextTitle') : `${t('topbar.context')}: ${parts.join(', ')}`;
+  el.contextBtn.setAttribute('aria-label', el.contextBtn.title);
+  OCShell.refresh();
 }
 
 function renderContextFileList({ files, container, uploadButton, hint, emptyText, normalHint, fullHint, canUpload, onRemove }) {
@@ -3721,12 +3958,15 @@ function readTextFile(file) {
   });
 }
 
-async function uploadContextFile(name, text) {
-  if (!state.currentId) await createSession();
-  const data = await api(`/api/sessions/${state.currentId}/context-files`, {
+async function uploadContextFile(name, text, targetId = null) {
+  if (!state.currentId && !targetId) await createSession();
+  // The chat can change while a file is on its way: the file belongs to the chat it was picked in.
+  const id = targetId || state.currentId;
+  const data = await api(`/api/sessions/${id}/context-files`, {
     method: 'POST',
     body: JSON.stringify({ name, text })
   });
+  if (state.currentId !== id) return data.file;
   state.contextFiles = data.contextFiles || [];
   if (state.detail?.session) state.detail.session.contextFiles = state.contextFiles.slice();
   renderContextFiles();
@@ -3753,7 +3993,9 @@ async function uploadTextContextFileList(files, currentFiles, uploadOne, scopeKe
 }
 
 async function uploadContextFileList(files) {
-  await uploadTextContextFileList(files, state.contextFiles, uploadContextFile, 'context.scopeChat');
+  if (!state.currentId) await createSession();
+  const id = state.currentId;
+  await uploadTextContextFileList(files, state.contextFiles, (name, text) => uploadContextFile(name, text, id), 'context.scopeChat');
 }
 
 async function uploadFolderContextFile(name, text) {
@@ -4147,6 +4389,7 @@ async function openFolderProfileModal(folder) {
   el.folderProfileGuidelines.readOnly = profileReadOnly;
   el.folderProfileModal.classList.remove('hidden');
   if (!profileReadOnly) el.folderProfileGuidelines.focus();
+  else el.folderProfileClose.focus();
   renderSessions();
 }
 
@@ -4600,11 +4843,15 @@ function handleEvent(event) {
     finishChips();
     live.textEl = null;
     if (event.fatal !== false) state.fatal = true;
+    // Budget and role rules arrive with a code: say it in the interface language.
+    const rule = event.code ? OCAccess.accountRuleMessage(event) : null;
+    if (rule) OCAccess.refreshMe().catch(() => {});
+    const message = rule || event.message;
     const node = document.createElement('div');
     node.className = 'msg tool';
-    node.appendChild(chip(event.message || t('common.error'), false, true));
+    node.appendChild(chip(message || t('common.error'), false, true));
     appendLiveNode(node);
-    if (event.message) setStatus(event.message);
+    if (message) setStatus(message);
     else setStatusI18n('common.error');
   }
 }
@@ -4671,13 +4918,18 @@ async function send() {
     });
     if (!res.ok || !res.body) {
       let message = `HTTP ${res.status}`;
+      let payload = null;
       try {
-        const body = await res.json();
-        if (body.error) message = body.error;
+        payload = await res.json();
+        if (payload.error) message = payload.error;
       } catch (_) {
         /* ignore */
       }
-      throw new Error(message);
+      const failure = new Error(message);
+      failure.status = res.status;
+      failure.code = payload && payload.code;
+      failure.body = payload;
+      throw failure;
     }
 
     const reader = res.body.getReader();
@@ -4711,7 +4963,10 @@ async function send() {
       }
     }
   } catch (err) {
-    handleEvent({ type: 'error', message: err.message || t('send.connectionFailed') });
+    // A locked paid action (budget used up, feature not available) reads as a sentence in the interface language.
+    const rule = OCAccess.accountRuleMessage(err);
+    if (rule) OCAccess.refreshMe().catch(() => {});
+    handleEvent({ type: 'error', message: rule || (err instanceof TypeError ? t('common.networkError') : err.message || t('send.connectionFailed')) });
   } finally {
     finishChips();
     state.streaming = false;
@@ -4767,7 +5022,10 @@ el.sessionSearch.addEventListener('input', () => {
 
 el.contextBtn.addEventListener('click', () => openContextModal());
 el.contextClose.addEventListener('click', () => closeContextModal());
-el.brandingsBtn.addEventListener('click', () => openBrandingsModal());
+el.brandingsBtn.addEventListener('click', () => {
+  closeMobileSidebar();
+  openBrandingsModal();
+});
 el.brandingsClose.addEventListener('click', () => closeBrandingsModal());
 el.brandingImportButton.addEventListener('click', () => {
   if (!state.brandingImporting) el.brandingImportFile.click();
@@ -4777,7 +5035,20 @@ el.brandingImportFile.addEventListener('change', () => {
   el.brandingImportFile.value = '';
   importBrandingFile(file);
 });
-el.settingsBtn.addEventListener('click', () => openSettingsModal());
+el.settingsTabs.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-settings-tab]');
+  if (tab) selectSettingsTab(tab.dataset.settingsTab);
+});
+el.settingsTabs.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  const tabs = [...el.settingsTabs.querySelectorAll('[data-settings-tab]')].filter((tab) => !tab.classList.contains('hidden'));
+  const index = tabs.indexOf(document.activeElement);
+  if (index < 0) return;
+  event.preventDefault();
+  const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+  selectSettingsTab(next.dataset.settingsTab);
+  next.focus();
+});
 el.settingsClose.addEventListener('click', () => closeSettingsModal());
 el.adminForm.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -4788,24 +5059,26 @@ el.userForm.addEventListener('submit', (event) => {
   addUser();
 });
 el.shareBtn.addEventListener('click', () => {
-  if (state.detail?.session) openShareForSession(state.detail.session);
+  if (state.detail?.session && !el.shareBtn.disabled) openShareForSession(state.detail.session);
 });
-el.accountBtn.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setAccountMenuOpen(el.accountDropdown.classList.contains('hidden'));
-});
-el.accountDropdown.addEventListener('click', (event) => event.stopPropagation());
-el.accountCosts.addEventListener('click', () => {
-  setAccountMenuOpen(false);
-  openCostsModal();
-});
-document.addEventListener('click', () => setAccountMenuOpen(false));
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !el.accountDropdown.classList.contains('hidden')) {
-    setAccountMenuOpen(false);
-    el.accountBtn.focus();
+el.currentProjectName.addEventListener('click', revealCurrentProject);
+el.sessionTitle.addEventListener('click', startHeaderRename);
+el.sessionTitle.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    startHeaderRename();
   }
 });
+// The header adapts to its own width, not the window's: fewer labels first, then icons only.
+if (typeof ResizeObserver === 'function' && el.topbar) {
+  new ResizeObserver(([entry]) => {
+    const width = entry.contentRect.width;
+    el.topbar.classList.toggle('is-narrow', width < 1040);
+    el.topbar.classList.toggle('is-compact', width < 820);
+  }).observe(el.topbar);
+}
+el.mobileMenuBtn.addEventListener('click', () => setMobileSidebarOpen(!state.mobileSidebarOpen));
+el.sidebarBackdrop.addEventListener('click', () => closeMobileSidebar());
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) verifyCurrentSession();
 });
@@ -4987,6 +5260,11 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.mobileSidebarOpen) {
+    event.preventDefault();
+    closeMobileSidebar();
+  }
+  if (event.key === 'Escape') closeEscapableModals();
   if (event.key === 'Escape' && !el.toolsMenu.classList.contains('hidden')) {
     event.preventDefault();
     setToolsMenuOpen(false);
@@ -5025,10 +5303,6 @@ el.input.addEventListener('input', autosizeInput);
 
 el.sendBtn.addEventListener('click', () => send());
 
-el.langSwitch.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-lang]');
-  if (button) setLang(button.dataset.lang);
-});
 
 function renderModelInfo() {
   if (!state.config) return;
@@ -5045,7 +5319,12 @@ window.onLangChange = () => {
   renderCosts(state.costs);
   renderAccount();
   renderSessionHeader();
+  renderContextBadge();
+  renderMobileSidebarState();
+  selectSettingsTab(currentSettingsTab());
   renderUsers();
+  if (state.usersPaste) state.usersPaste.retranslate();
+  OCTeams.rerender();
   renderModelInfo();
   renderAttachments();
   renderJobStatusBar();
@@ -5097,6 +5376,88 @@ window.onLangChange = () => {
   }
 };
 
+/* ---------- side menu as a drawer, shared menu ---------- */
+
+function mobileSidebarFocusTarget() {
+  return [el.newSession, el.newFolder, el.sessionSearch].find((node) => node && !node.disabled && node.offsetParent !== null) || el.sidebar;
+}
+
+// Under 820 px the side menu is a drawer: hamburger, backdrop, Escape, focus guidance, closes after navigation.
+function renderMobileSidebarState() {
+  const mobile = Boolean(sidebarDrawerMedia.matches);
+  const open = mobile && state.mobileSidebarOpen;
+  el.mobileMenuBtn.classList.toggle('hidden', !mobile);
+  el.mobileMenuBtn.classList.toggle('is-open', open);
+  el.mobileMenuBtn.setAttribute('aria-expanded', String(open));
+  el.mobileMenuBtn.setAttribute('aria-label', t(open ? 'topbar.menuClose' : 'topbar.menuOpen'));
+  el.sidebar.classList.toggle('is-open', open);
+  el.sidebarBackdrop.classList.toggle('hidden', !open);
+  document.body.classList.toggle('sidebar-drawer-open', open);
+  el.sidebar.inert = mobile && !open;
+  if (mobile) el.sidebar.setAttribute('aria-hidden', String(!open));
+  else el.sidebar.removeAttribute('aria-hidden');
+}
+
+function setMobileSidebarOpen(open, { restoreFocus = true } = {}) {
+  const wasOpen = state.mobileSidebarOpen;
+  state.mobileSidebarOpen = Boolean(open && sidebarDrawerMedia.matches);
+  if (state.mobileSidebarOpen) OCShell.closeAll();
+  renderMobileSidebarState();
+  if (state.mobileSidebarOpen) {
+    requestAnimationFrame(() => mobileSidebarFocusTarget().focus({ preventScroll: true }));
+  } else if (wasOpen && restoreFocus && sidebarDrawerMedia.matches) {
+    el.mobileMenuBtn.focus({ preventScroll: true });
+  }
+}
+
+function closeMobileSidebar(options) {
+  if (state.mobileSidebarOpen) setMobileSidebarOpen(false, options);
+}
+
+function syncMobileSidebarViewport() {
+  if (!sidebarDrawerMedia.matches) state.mobileSidebarOpen = false;
+  renderMobileSidebarState();
+  OCShell.refresh();
+}
+
+// Escape closes the open dialog (the sharing dialog handles its own).
+function closeEscapableModals(event) {
+  if (event && event.defaultPrevented) return;
+  const pairs = [
+    [el.costsModal, closeCostsModal],
+    [el.settingsModal, closeSettingsModal],
+    [el.contextModal, closeContextModal],
+    [el.brandingsModal, closeBrandingsModal],
+    [el.folderProfileModal, closeFolderProfileModal]
+  ];
+  for (const [modal, close] of pairs) if (!modal.classList.contains('hidden')) close();
+}
+
+if (typeof sidebarDrawerMedia.addEventListener === 'function') sidebarDrawerMedia.addEventListener('change', syncMobileSidebarViewport);
+
+// The menu behind the avatar is shared with the node view (public/shell.js). Under 820 px the header keeps burger,
+// mode switch and avatar; context and sharing move into the menu.
+const accountMenuView = OCShell.accountMenu({ variant: 'chat' });
+el.accountHost.replaceChildren(accountMenuView.element);
+OCShell.register({
+  openCosts: () => openCostsModal(),
+  openSettings: () => openSettingsModal(),
+  settingsAvailable: () => state.settingsAvailable,
+  costsText: () => state.costsAmountText
+});
+OCTeams.attach({ openSettingsTab: (tab) => openSettingsModal(tab), settingsAvailable: () => state.settingsAvailable });
+OCAccess.onChange(() => renderBudgetBanner());
+OCShell.addSection('workspace', () => {
+  if (!sidebarDrawerMedia.matches || !state.currentId) return [];
+  const session = state.detail?.session;
+  const total = state.contextBrains.length + state.contextFiles.length + effectiveBrandingIds().length;
+  const items = [{ id: 'context', label: t('topbar.context'), value: total ? String(total) : '', onSelect: () => openContextModal() }];
+  const canShare = OCAccess.isActive() && session?.canShare === true;
+  if (canShare) items.push({ id: 'share', label: el.shareBtnLabel.textContent || t('sharing.button'), onSelect: () => openShareForSession(session) });
+  return items;
+});
+syncMobileSidebarViewport();
+
 /* ---------- init ---------- */
 
 async function init() {
@@ -5110,6 +5471,9 @@ async function init() {
 
   await OCAccess.ready;
   renderAccount();
+  // The login could not be confirmed: the banner explains it and offers a reload (public/access-client.js, which
+  // reloads by itself once the login is confirmed). Nothing else is loaded, so no request fails on top of it.
+  if (OCAccess.me().loginUnconfirmed) return;
   renderPromptMenu();
   renderToolsMenu();
   await loadSettingsAccess();
@@ -5121,7 +5485,7 @@ async function init() {
   } catch (_) {
     /* Standardmodell verwenden. */
   }
-  const brainModels = state.config.brainModels || [];
+  const brainModels = offeredBrainModels();
   const initialBrain = brainModels.includes(savedBrain) ? savedBrain : state.config.defaultBrain;
   selectBrain(initialBrain, { remember: false });
   renderModelInfo();

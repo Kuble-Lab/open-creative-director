@@ -92,7 +92,10 @@
     editBtn.addEventListener('click', () => s && cb.onEdit && cb.onEdit(s.id));
     const copyBtn = el('button', { type: 'button', class: 'nv-btn' }, icon('link', 14), el('span', { class: 'nv-btn-text' }));
     copyBtn.addEventListener('click', copyLink);
+    // The same menu as in the other headers (costs, settings, help, language, sign-out).
+    const accountMenu = global.OCShell ? global.OCShell.accountMenu({ variant: 'nodes' }) : null;
     bar.append(backBtn, crumb, el('div', { class: 'nv-topbar-spacer' }), copyBtn, editBtn);
+    if (accountMenu) bar.append(accountMenu.element);
     const scroll = el('div', { class: 'nv-appscroll' });
     const wrap = el('div', { class: 'nv-appwrap' });
     scroll.append(wrap);
@@ -519,6 +522,12 @@
         hint.append(icon('check', 13), el('span', { text: T('nodes.app.upToDate') }));
         return;
       }
+      const gate = runLib.gateOf(info);
+      if (gate) {
+        hint.classList.add('is-warn');
+        hint.append(icon('warning', 13), el('span', { text: gateText(gate) }));
+        return;
+      }
       if (!info.needsConfirm) {
         hint.append(icon('check', 13), el('span', { text: info.willRun ? T('nodes.app.hintFree', { count: info.willRun }) : T('nodes.app.upToDate') }));
         return;
@@ -554,6 +563,35 @@
       });
     }
 
+    // Dollar amounts of the budget (participants) as the account menu shows them.
+    const money = (value) => (global.OCAccess && global.OCAccess.formatUsd ? global.OCAccess.formatUsd(value) : `$${Number(value || 0).toFixed(2)}`);
+    const accountRuleText = (error) => (global.OCAccess && global.OCAccess.accountRuleMessage ? global.OCAccess.accountRuleMessage(error) : null);
+    const refreshBudget = () => {
+      if (global.OCAccess && global.OCAccess.me().restricted) global.OCAccess.refreshMe().catch(() => {});
+    };
+
+    // The words for a participant's run that cannot start (budget used up or too small, nodes of a blocked feature).
+    function gateText(gate) {
+      if (gate.kind === 'blocked') return T('nodes.run.blocked.body');
+      if (gate.kind === 'exhausted') return T('nodes.run.budget.exhausted');
+      return T('nodes.run.budget.insufficient', { estimate: money(gate.budget.estimateUsd), remaining: money(Math.max(0, gate.budget.remainingUsd)) });
+    }
+
+    async function showGate(gate) {
+      const body = el('div', { class: 'nv-confirm' });
+      if (gate.kind === 'blocked') {
+        const list = el('ul', { class: 'nv-confirm-list is-issues' });
+        for (const nodeId of gate.nodeIds) list.append(el('li', {}, el('span', { text: titleOf(nodeId) })));
+        body.append(list);
+      }
+      await ui.dialog({
+        title: T(gate.kind === 'blocked' ? 'nodes.run.blocked.title' : 'nodes.run.budget.title'),
+        message: gateText(gate),
+        body,
+        buttons: [{ label: T('nodes.common.close'), value: true, primary: true, cancel: true }]
+      });
+    }
+
     async function confirmPaid(info) {
       const body = el('div', { class: 'nv-confirm' });
       body.append(el('p', { class: 'nv-confirm-intro', text: T('nodes.run.confirm.intro') }));
@@ -576,6 +614,8 @@
       body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.estimateNote') }));
       if (totals.credits > 0) body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.creditsNote') }));
       body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.noRefund') }));
+      const budgetText = runLib.budgetLine(info, T, money);
+      if (budgetText) body.append(el('p', { class: 'nv-confirm-budget', text: budgetText }));
       return ui.dialog({
         title: T('nodes.run.confirm.title', { count: info.paid.length }),
         body,
@@ -618,6 +658,11 @@
           await showIssues(issueMessages(planned.issues));
           return;
         }
+        const gate = runLib.gateOf(info);
+        if (gate) {
+          await showGate(gate);
+          return;
+        }
         if (info.needsConfirm) {
           s.asking = true;
           renderRunButton();
@@ -634,7 +679,10 @@
         } catch (error) {
           if (error.status === 409 && error.code === 'RUN_ACTIVE') ui.toast(T('nodes.run.alreadyRunning'), { kind: 'warn' });
           else if (error.status === 429) ui.toast(T('nodes.run.limit'), { kind: 'warn' });
-          else if (error.issues) await showIssues(issueMessages(error.issues));
+          else if (accountRuleText(error)) {
+            ui.toast(accountRuleText(error), { kind: 'warn' });
+            refreshBudget();
+          } else if (error.issues) await showIssues(issueMessages(error.issues));
           else ui.toast(T('nodes.run.startFailed', { error: error.message }), { kind: 'error' });
         }
       } finally {
@@ -693,7 +741,10 @@
         clearTimeout(resultsTimer);
         resultsTimer = setTimeout(refreshResults, event.type === 'run_finished' ? 0 : 250);
       }
-      if (event.type === 'run_finished' || (wasActive && !s.run.active)) refreshPlan(0);
+      if (event.type === 'run_finished' || (wasActive && !s.run.active)) {
+        refreshPlan(0);
+        refreshBudget();
+      }
     }
 
     async function refreshResults() {

@@ -15,6 +15,7 @@ const access = require('../lib/access');
 const admins = require('../lib/admins');
 const monitoring = require('../lib/admin-monitoring');
 const { createUsersStore, UserValidationError, UserNotFoundError } = require('../lib/users');
+const { createTeamsStore } = require('../lib/teams');
 
 const ACTIVE_ENV = { AUTH_WHOAMI_URL: 'https://whoami.invalid/me', ADMIN_EMAILS: 'admin@example.com', SUPERADMIN_EMAILS: ' Boss@Example.ORG ,not-an-address,' };
 const LOCAL_ENV = {};
@@ -404,16 +405,78 @@ async function testErrorJournalFlood() {
   }
 }
 
+// Roles of the teams (participant / internal / guest) with an injected teams store: the same table as in
+// scripts/test-teams.js in short, plus the bulk add of users. The full matrix lives in test-teams.js / test-teams-api.js.
+async function testTeamRoles() {
+  const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-access-teams-'));
+  const store = createTeamsStore({ file: path.join(directory, 'teams.json') });
+  access.useTeamsStore(store);
+  const env = { ...ACTIVE_ENV, INTERNAL_EMAIL_DOMAINS: 'staff.example.com' };
+  try {
+    const kurs = store.createTeam({ name: 'Kurs', budgetUsd: 5 });
+    store.addMembers(kurs.id, ['p@gmail.example']);
+    const viewer = (email, environment = env) => access.viewerOf({ kubleUser: email }, environment);
+    assert.equal(viewer('p@gmail.example').kind, 'participant');
+    assert.equal(viewer('t@staff.example.com').kind, 'internal');
+    assert.equal(viewer('g@gmail.example').kind, 'guest');
+    assert.equal(viewer('admin@example.com').kind, 'admin');
+    assert.equal(viewer('g@gmail.example', ACTIVE_ENV).kind, 'internal', 'without INTERNAL_EMAIL_DOMAINS everybody identified is internal, as before');
+    assert.equal(viewer('lokal').kind, undefined);
+    assert.equal(access.viewerOf({ kubleUser: 'p@gmail.example' }, LOCAL_ENV).kind, undefined, 'the local mode has no roles');
+
+    const owned = { owner: 'p@gmail.example', shareMode: 'private' };
+    const legacy = {};
+    const teamShared = { owner: 't@staff.example.com', shareMode: 'teams', sharedTeams: [kurs.id] };
+    const internalShared = { owner: 't@staff.example.com', shareMode: 'team' };
+    const participant = viewer('p@gmail.example');
+    const guest = viewer('g@gmail.example');
+    const internal = viewer('t@staff.example.com');
+    assert.deepEqual([owned, legacy, teamShared, internalShared].map((entry) => access.canUse(entry, participant)), [true, false, true, false]);
+    assert.deepEqual([owned, legacy, teamShared, internalShared].map((entry) => access.canUse(entry, guest)), [false, false, false, false]);
+    assert.deepEqual([owned, legacy, teamShared, internalShared].map((entry) => access.canUse(entry, internal)), [false, true, true, true], 'internal: the trainer owns the last two');
+    assert.equal(access.canUse({ ...teamShared, owner: 'other@staff.example.com' }, internal), false, 'a chat shared with a team is not for internal people outside it');
+
+    assert.deepEqual(access.sharingPolicy(participant).allowedModes, ['private', 'teams', 'specific']);
+    assert.deepEqual(access.sharingPolicy(guest).allowedModes, ['private']);
+    assert.deepEqual(access.sharingPolicy(internal).allowedModes, ['private', 'team', 'teams', 'specific']);
+    const policy = access.sharingPolicy(participant, { isKnownMember: () => true });
+    assert.deepEqual(access.buildSharing({ shareMode: 'teams', sharedTeams: [kurs.id] }, {}, policy.isKnownMember, policy), { shareMode: 'teams', sharedWith: [], sharedTeams: [kurs.id] });
+    assert.throws(() => access.buildSharing({ shareMode: 'team' }, {}, policy.isKnownMember, policy), (error) => error.code === 'SHARE_MODE_FORBIDDEN');
+    assert.throws(() => access.buildSharing({ shareMode: 'teams', sharedTeams: ['tm-000000000000'] }, {}, policy.isKnownMember, policy), (error) => error.code === 'UNKNOWN_TEAMS');
+    // callers without a policy (the old signature) keep their behaviour and cannot pick teams that do not exist
+    assert.deepEqual(access.buildSharing({ shareMode: 'team' }, {}, () => true), { shareMode: 'team', sharedWith: [] });
+    assert.equal(access.modelAllowed(participant, 'chatgpt/gpt-5.6-sol'), false);
+    assert.equal(access.modelAllowed(internal, 'chatgpt/gpt-5.6-sol'), true);
+    assert.ok(new access.RoleRestrictedError('gts', 'x', 'y').code === 'FORBIDDEN_FOR_ROLE');
+
+    // bulk add of users: one paste, invalid pieces reported, nothing lost
+    const usersStore = createUsersStore({ usersFile: path.join(directory, 'users.json'), seenFile: path.join(directory, 'seen.json'), env });
+    const result = usersStore.addUsers(['Anna <anna@example.com>\nben@example.org; ANNA@example.com\nkaputt@\nadmin@example.com']);
+    assert.deepEqual(result.added, ['anna@example.com', 'ben@example.org']);
+    assert.deepEqual(result.already, ['admin@example.com']);
+    assert.deepEqual(result.invalid, ['kaputt@']);
+    assert.equal(result.duplicates, 1);
+    assert.deepEqual(usersStore.addUsers(['anna@example.com']).added, []);
+    assert.throws(() => usersStore.addUsers([]), UserValidationError);
+    assert.throws(() => usersStore.addUsers(Array.from({ length: 501 }, (_, i) => `u${i}@example.com`)), UserValidationError);
+    assert.equal(usersStore.readUsers().length, 2, 'a refused list writes nothing');
+  } finally {
+    access.useTeamsStore(null);
+    await fsp.rm(directory, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   testMode();
   testIdentity();
   testRules();
   testBuildSharing();
   await testUsersStore();
+  await testTeamRoles();
   testMonitoringAggregation();
   await testErrorJournal();
   await testErrorJournalFlood();
-  console.log('Access: Modus, Identitaet, Rollen, Zugriffsregeln (Bestand, anonym, Admin, team/specific), Team-Liste mit Auto-Erfassung und Monitoring-Aggregation sind korrekt.');
+  console.log('Access: Modus, Identitaet, Rollen, Zugriffsregeln (Bestand, anonym, Admin, team/specific), Team-Liste mit Auto-Erfassung, Teilnehmer-/Gast-Rollen und Monitoring-Aggregation sind korrekt.');
 }
 
 main().catch((error) => {

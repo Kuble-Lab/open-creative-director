@@ -79,6 +79,15 @@
     control.value = selected;
   }
 
+  // Teams: the filter (id -> name) is shown only when teams exist.
+  function fillTeamSelect(teams) {
+    const control = el('team');
+    const selected = control.value;
+    el('teamField').hidden = !teams.length && !selected;
+    control.replaceChildren(new Option(T('allTeams'), ''), ...teams.map((team) => new Option(team.archived ? `${team.name} (${T('teamArchived')})` : team.name, team.id)));
+    control.value = teams.some((team) => team.id === selected) ? selected : '';
+  }
+
   const costOf = (row) => {
     if (row.count && row.subscriptionCount === row.count) return T('subscription');
     if (row.count && row.unknownCost === row.count) return T('unknown');
@@ -101,6 +110,7 @@
     const totals = data.totals;
     fillSelect('user', data.options.users, T('allUsers'));
     fillSelect('provider', data.options.providers, T('allProviders'));
+    fillTeamSelect((data.options && data.options.teams) || []);
 
     el('metrics').replaceChildren(
       metric(T('knownCost'), usd(totals.costUsd)),
@@ -116,6 +126,33 @@
       unknown: number(totals.unknownCost),
       abo: number(totals.subscriptionCount)
     });
+
+    // Teams and budget: per team and person what the budget is, what is spent and what is left (the whole training).
+    const teamBlock = node('div', '');
+    const teams = Array.isArray(data.teams) ? data.teams : [];
+    if (teams.length) {
+      teamBlock.append(node('h2', T('teamsTitle')), node('p', T('teamsHint'), 'mon-muted'));
+      for (const team of teams) {
+        teamBlock.append(
+          table(
+            T('teamHeading', { name: team.archived ? `${team.name} (${T('teamArchived')})` : team.name, members: number(team.memberCount), budget: usd(team.budgetUsd), spent: usd(team.spentUsd) }),
+            [T('colUser'), T('colLimit'), T('colSpent'), T('colRemaining'), T('colReserved'), T('colPeriod'), T('colUnknownJobs'), T('colSince')],
+            team.members.map((member) => [
+              member.budgetOverrideUsd === null || member.budgetOverrideUsd === undefined ? member.email : `${member.email} (${T('override')})`,
+              usd(member.limitUsd),
+              usd(member.spentUsd),
+              usd(member.remainingUsd),
+              usd(member.reservedUsd),
+              usd(member.periodCostUsd),
+              number(member.unknownCostJobs || 0),
+              stamp(member.budgetStart)
+            ]),
+            [1, 2, 3, 4, 5, 6]
+          )
+        );
+      }
+    }
+    el('teams').replaceChildren(teamBlock);
 
     el('breakdowns').replaceChildren(
       breakdown(T('byUser'), T('colUser'), data.byUser, (key) => key || T('unknown')),
@@ -188,7 +225,9 @@
   }
 
   function query() {
-    return new URLSearchParams({ days: el('days').value, user: el('user').value, provider: el('provider').value }).toString();
+    const params = { days: el('days').value, user: el('user').value, provider: el('provider').value };
+    if (el('team').value) params.team = el('team').value;
+    return new URLSearchParams(params).toString();
   }
 
   async function load() {
@@ -226,7 +265,7 @@
     event.preventDefault();
     load();
   });
-  for (const id of ['days', 'user', 'provider']) el(id).addEventListener('change', load);
+  for (const id of ['days', 'user', 'provider', 'team']) el(id).addEventListener('change', load);
 
   el('export').addEventListener('click', async () => {
     el('export').disabled = true;

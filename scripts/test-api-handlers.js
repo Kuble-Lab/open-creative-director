@@ -82,7 +82,8 @@ async function main() {
     });
     assert.equal(createFolderResponse.status, 201);
     assert.deepEqual(createFolderResponse.body, {
-      folder: { name: registryFolder, hasProfile: false, sessionCount: 0 }
+      // A fresh project has no chat yet, so no activity date: the side menu puts it last.
+      folder: { name: registryFolder, hasProfile: false, sessionCount: 0, lastActivity: null }
     });
 
     const duplicateFolderResponse = await invoke('/api/folders', {
@@ -111,7 +112,7 @@ async function main() {
     assert.equal(listedFoldersResponse.status, 200);
     assert.ok(
       listedFoldersResponse.body.folders.some(
-        (entry) => entry.name === registryFolder && entry.hasProfile === false && entry.sessionCount === 0
+        (entry) => entry.name === registryFolder && entry.hasProfile === false && entry.sessionCount === 0 && entry.lastActivity === null
       )
     );
 
@@ -119,9 +120,15 @@ async function main() {
     const occupiedListResponse = await invoke('/api/folders');
     assert.ok(
       occupiedListResponse.body.folders.some(
-        (entry) => entry.name === registryFolder && entry.hasProfile === false && entry.sessionCount === 1
+        (entry) => entry.name === registryFolder && entry.hasProfile === false && entry.sessionCount === 1 && typeof entry.lastActivity === 'string'
       )
     );
+    // The folder filter of /api/sessions: an open project asks for its own chats only.
+    const folderFilterResponse = await invoke('/api/sessions', { query: { folder: ` ${registryFolder} `, limit: '100' } });
+    assert.equal(folderFilterResponse.status, 200);
+    assert.deepEqual(folderFilterResponse.body.sessions.map((entry) => entry.id), [session.id]);
+    const otherFolderResponse = await invoke('/api/sessions', { query: { folder: `${registryFolder}-gibt-es-nicht` } });
+    assert.equal(otherFolderResponse.body.total, 0);
     const occupiedDeleteResponse = await invoke('/api/folders/:name', {
       method: 'delete',
       params: { name: registryFolder }

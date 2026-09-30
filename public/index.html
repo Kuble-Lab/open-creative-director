@@ -9,10 +9,9 @@
   </head>
   <body>
     <div class="app">
-      <aside class="sidebar">
+      <aside id="sidebarDrawer" class="sidebar" tabindex="-1" aria-label="Projekte und Chats" data-i18n-aria-label="sidebar.projects">
         <div class="sidebar-head">
           <div class="brand">
-            <span class="brand-mark"></span>
             <span class="brand-text" data-i18n="sidebar.projects">Projekte</span>
           </div>
         </div>
@@ -26,16 +25,7 @@
         </div>
         <div id="sessionList" class="session-list"></div>
         <div class="sidebar-foot">
-          <button id="nodesBtn" class="sidebar-brandings" type="button" title="Node-Ansicht öffnen" data-i18n="sidebar.nodes" data-i18n-title="sidebar.nodesTitle">🧩 Nodes</button>
           <button id="brandingsBtn" class="sidebar-brandings" type="button" title="Brandings verwalten" data-i18n="sidebar.brandings" data-i18n-title="sidebar.brandingsTitle">🎨 Brandings</button>
-          <button id="settingsBtn" class="sidebar-brandings hidden" type="button" title="API-Keys verwalten" data-i18n="sidebar.settings" data-i18n-title="sidebar.settingsTitle">⚙️ Einstellungen</button>
-          <div id="langSwitch" class="lang-switch" aria-label="Sprache" data-i18n-aria-label="lang.selector">
-            <button type="button" data-lang="de" data-i18n-title="lang.de" data-i18n-aria-label="lang.de" aria-label="Deutsch">DE</button>
-            <span aria-hidden="true">|</span>
-            <button type="button" data-lang="en" data-i18n-title="lang.en" data-i18n-aria-label="lang.en" aria-label="English">EN</button>
-            <span aria-hidden="true">|</span>
-            <button type="button" data-lang="es" data-i18n-title="lang.es" data-i18n-aria-label="lang.es" aria-label="Español">ES</button>
-          </div>
           <div id="modelInfo" class="muted-xs"></div>
           <div id="renderNodeStatus" class="render-node-status hidden" aria-live="polite">
             <span class="render-node-dot" aria-hidden="true"></span>
@@ -43,44 +33,43 @@
           </div>
         </div>
       </aside>
+      <div id="sidebarBackdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
 
       <main class="main">
         <div id="dropOverlay" class="drop-overlay hidden" aria-hidden="true">
           <div class="drop-overlay-label" data-i18n="drop.files">Dateien hier ablegen</div>
         </div>
         <header class="topbar">
+          <button id="mobileMenuBtn" class="mobile-menu-button hidden" type="button" aria-label="Seitenmenü öffnen" aria-expanded="false" aria-controls="sidebarDrawer" data-i18n-aria-label="topbar.menuOpen">
+            <span class="mobile-menu-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+          </button>
           <div class="topbar-left">
-            <h1>Open Creative Director</h1>
-            <span id="sessionTitle" class="session-title"></span>
-            <span id="sessionOwner" class="session-owner hidden"></span>
+            <span class="brand-mark" aria-hidden="true"></span>
+            <h1><span class="header-label-long">Open Creative Director</span><span class="header-label-short" data-i18n="topbar.brandShort">OCD</span></h1>
           </div>
+          <nav id="currentLocation" class="current-location" aria-label="Projekt und Chat" data-i18n-aria-label="location.aria">
+            <button id="currentProjectName" class="location-project" type="button" title="Im Seitenmenü zeigen" data-i18n-title="location.openProject">Ohne Projekt</button>
+            <span class="current-location-separator" aria-hidden="true">/</span>
+            <strong id="sessionTitle" class="session-title"></strong>
+            <span id="sessionOwner" class="session-owner hidden"></span>
+          </nav>
           <div class="topbar-right">
-            <button id="shareBtn" class="btn-share hidden" type="button" title="Freigabe ändern" aria-label="Freigabe ändern" data-i18n-title="sharing.buttonTitle" data-i18n-aria-label="sharing.buttonTitle">
-              <span aria-hidden="true">👥</span>
-              <span id="shareBtnLabel" data-i18n="sharing.button">Teilen</span>
-            </button>
-            <button id="costsBtn" class="btn-costs" title="Kostenübersicht öffnen" data-i18n-title="topbar.costsTitle">$ 0.00</button>
-            <button id="contextBtn" class="btn-context hidden" title="Kontext und Brandings verwalten" data-i18n-title="topbar.contextTitle">
-              <span data-i18n="topbar.context">📎 Kontext</span>
-              <span id="contextBadge" class="context-badge hidden">0</span>
-              <span id="brandingContextBadge" class="branding-context-badge hidden">🎨 0</span>
-            </button>
-            <div id="accountMenu" class="account-menu hidden">
-              <button id="accountBtn" class="account-chip" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="accountDropdown" title="Konto" aria-label="Konto" data-i18n-title="account.menu" data-i18n-aria-label="account.menu"></button>
-              <div id="accountDropdown" class="account-dropdown hidden" role="menu">
-                <div class="account-dropdown-head">
-                  <div id="accountEmail" class="account-dropdown-email"></div>
-                  <span id="accountRole" class="account-role"></span>
-                </div>
-                <div id="accountNote" class="account-dropdown-note hidden" data-i18n="account.anonymousHint">Du siehst und nutzt nur Einträge ohne Besitzerperson.</div>
-                <button id="accountCosts" class="account-dropdown-item" type="button" role="menuitem" title="Kostenübersicht öffnen" data-i18n-title="account.costsOpen">
-                  <span data-i18n="account.costsMonth">Meine Kosten diesen Monat</span>
-                  <strong id="accountCostsAmount">$ 0.00</strong>
-                </button>
-                <a id="accountMonitoring" class="account-dropdown-item hidden" href="monitoring.html" role="menuitem" data-i18n="account.monitoring">Nutzung und Monitoring</a>
-                <a id="accountLogout" class="account-dropdown-item hidden" href="#" role="menuitem" data-i18n="account.logout">Abmelden</a>
-              </div>
+            <div class="mode-switch" role="group" aria-label="Ansicht" data-i18n-aria-label="mode.selector">
+              <button id="chatModeBtn" class="mode-switch-button active" type="button" aria-current="page" title="Zum Chat wechseln" data-i18n="mode.chat" data-i18n-title="mode.chatTitle">Chat</button>
+              <button id="nodesBtn" class="mode-switch-button" type="button" title="Zur Node-Ansicht wechseln" data-i18n="mode.nodes" data-i18n-title="mode.nodesTitle">Nodes</button>
             </div>
+            <span class="topbar-divider" aria-hidden="true"></span>
+            <button id="contextBtn" class="btn-context hidden" type="button" title="Kontext und Brandings verwalten" data-i18n-title="topbar.contextTitle">
+              <svg class="header-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5.5 2v12M10.5 2v12M2 5.5h12M2 10.5h12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+              <span class="header-label" data-i18n="topbar.context">Kontext</span>
+              <span id="contextBadge" class="context-badge hidden">0</span>
+            </button>
+            <button id="shareBtn" class="btn-share hidden" type="button" title="Freigabe ändern" aria-label="Freigabe ändern" data-i18n-title="sharing.buttonTitle" data-i18n-aria-label="sharing.buttonTitle">
+              <span class="share-dot" aria-hidden="true"></span>
+              <span id="shareBtnLabel" class="header-label" data-i18n="sharing.button">Teilen</span>
+            </button>
+            <button id="costsBtn" class="btn-costs" type="button" title="Kostenübersicht öffnen" data-i18n-title="topbar.costsTitle">$0.00</button>
+            <div id="accountMenu" class="account-menu-host"></div>
           </div>
         </header>
 
@@ -88,9 +77,11 @@
           Kein OpenRouter-API-Key gefunden. Eine Admin-Person kann ihn unter ⚙️ Einstellungen hinterlegen.
         </div>
 
+        <div id="budgetBanner" class="banner budget-banner hidden" role="status" aria-live="polite"></div>
+
         <div id="messages" class="messages">
           <div class="empty-state">
-            <h2 data-i18n="empty.title">Was moechtest du fuer ein Video machen?</h2>
+            <h2 data-i18n="empty.title">Was möchtest du für ein Video machen?</h2>
             <p data-i18n="empty.body">
               Beschreibe deine Idee in einem Satz oder lade ein Bild hoch. Der Creative Director entwickelt die Richtung
               mit dir, erzeugt Bilder und produziert daraus das Video.
@@ -104,7 +95,7 @@
           </div>
           <div id="attachStrip" class="attach-strip hidden"></div>
           <div class="composer-row">
-            <button id="attachBtn" class="btn-icon" title="Datei anhaengen" aria-label="Datei anhaengen" data-i18n-title="composer.attach" data-i18n-aria-label="composer.attach">
+            <button id="attachBtn" class="btn-icon" title="Datei anhängen" aria-label="Datei anhängen" data-i18n-title="composer.attach" data-i18n-aria-label="composer.attach">
               <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                 <path
                   d="M8.5 13.5l6-6a2.5 2.5 0 013.5 3.5l-8 8a4 4 0 01-5.7-5.7l8-8"
@@ -187,56 +178,17 @@
           <button id="settingsClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
         </div>
         <div class="modal-body">
-          <p class="settings-hint" data-i18n="settings.hint">Keys werden serverseitig in data/settings.json gespeichert (nur fuer Admins zugaenglich) und uebersteuern die .env. Aenderungen wirken sofort, ohne Neustart.</p>
+          <div class="settings-tabs" role="tablist" aria-label="Bereiche der Einstellungen" data-i18n-aria-label="settings.sections">
+            <button id="settingsTab-services" class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settingsGroup-services" data-settings-tab="services" data-i18n="settings.tabServices">Dienste</button>
+            <button id="settingsTab-people" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsGroup-people" data-settings-tab="people" data-i18n="settings.tabPeople">Personen</button>
+            <button id="settingsTab-rendering" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsGroup-rendering" data-settings-tab="rendering" data-i18n="settings.tabRendering">Rendering</button>
+          </div>
+          <!-- Structure of the settings: three groups. Services (keys and connections), people (the slot for the teams
+               first, then admins and the team list) and rendering. A new section goes into its group as a <section>. -->
+          <div id="settingsGroup-services" class="settings-group" role="tabpanel" aria-labelledby="settingsTab-services" data-settings-group="services">
+          <p class="settings-hint" data-i18n="settings.hint">Keys werden serverseitig in data/settings.json gespeichert (nur für Admins zugänglich) und übersteuern die .env. Änderungen wirken sofort, ohne Neustart.</p>
           <h3 class="settings-section-title" data-i18n="settings.apiKeys">API-Keys</h3>
           <div id="settingsList" class="settings-list"></div>
-          <section class="settings-admins" aria-labelledby="adminsTitle">
-            <h3 id="adminsTitle" class="settings-section-title" data-i18n="admins.title">Admins</h3>
-            <p class="settings-hint" data-i18n="admins.hint">Admins aus .env bleiben immer erhalten. Zusaetzliche Admins wirken sofort, ohne Neustart.</p>
-            <div id="adminsList" class="admins-list"></div>
-            <form id="adminForm" class="admin-form">
-              <label class="render-node-field" for="adminEmail">
-                <span data-i18n="admins.email">E-Mail-Adresse</span>
-                <input id="adminEmail" class="settings-input" type="email" maxlength="254" required autocomplete="email" placeholder="name@firma.ch" data-i18n-placeholder="admins.emailPlaceholder" />
-              </label>
-              <button id="adminAdd" class="branding-manager-action" type="submit" data-i18n="admins.add">Hinzufuegen</button>
-            </form>
-          </section>
-          <section id="usersSection" class="settings-users hidden" aria-labelledby="usersTitle">
-            <h3 id="usersTitle" class="settings-section-title" data-i18n="users.title">Team-Liste</h3>
-            <p class="settings-hint" data-i18n="users.hint">Diese Personen kannst du beim Teilen auswählen. Das ist keine Zugangsliste: Wer sich anmelden darf, bestimmt weiterhin der Login. Wer sich anmeldet, wird automatisch erfasst.</p>
-            <div id="usersList" class="admins-list"></div>
-            <form id="userForm" class="admin-form">
-              <label class="render-node-field" for="userEmail">
-                <span data-i18n="users.email">E-Mail-Adresse</span>
-                <input id="userEmail" class="settings-input" type="email" maxlength="254" required autocomplete="off" placeholder="name@firma.ch" data-i18n-placeholder="users.emailPlaceholder" />
-              </label>
-              <button id="userAdd" class="branding-manager-action" type="submit" data-i18n="users.add">Hinzufügen</button>
-            </form>
-            <p class="settings-hint" data-i18n="users.removeHint">Wer entfernt wird, wird erst wieder erfasst, wenn ein Admin die Person hinzufügt.</p>
-            <a id="settingsMonitoringLink" class="branding-manager-action settings-monitoring-link hidden" href="monitoring.html" data-i18n="users.monitoringLink">Nutzung und Monitoring öffnen</a>
-          </section>
-          <section class="settings-render-nodes" aria-labelledby="renderNodesTitle">
-            <h3 id="renderNodesTitle" class="settings-section-title" data-i18n="renderNodes.title">Render-Nodes</h3>
-            <p class="settings-hint" data-i18n="renderNodes.hint">Der Standard-Node aus .env gilt nur, solange die Liste leer ist.</p>
-            <div id="renderNodesList" class="render-nodes-list"></div>
-            <form id="renderNodeForm" class="render-node-form">
-              <div class="render-node-form-heading" data-i18n="renderNodes.add">Node hinzufuegen</div>
-              <label class="render-node-field" for="renderNodeName">
-                <span data-i18n="renderNodes.name">Name</span>
-                <input id="renderNodeName" class="settings-input" type="text" maxlength="40" required autocomplete="off" placeholder="Render-Node Zuerich" data-i18n-placeholder="renderNodes.namePlaceholder" />
-              </label>
-              <label class="render-node-field" for="renderNodeUrl">
-                <span data-i18n="renderNodes.url">URL</span>
-                <input id="renderNodeUrl" class="settings-input" type="url" maxlength="2000" required autocomplete="url" placeholder="https://render.example.com" data-i18n-placeholder="renderNodes.urlPlaceholder" />
-              </label>
-              <label class="render-node-field" for="renderNodeToken">
-                <span data-i18n="renderNodes.token">Token</span>
-                <input id="renderNodeToken" class="settings-input" type="password" maxlength="500" required autocomplete="new-password" placeholder="Token" data-i18n-placeholder="renderNodes.tokenPlaceholder" />
-              </label>
-              <button id="renderNodeAdd" class="branding-manager-action" type="submit" data-i18n="renderNodes.addButton">Hinzufuegen</button>
-            </form>
-          </section>
           <section class="settings-higgsfield" aria-labelledby="higgsfieldTitle">
             <h3 id="higgsfieldTitle" class="settings-section-title" data-i18n="higgsfield.title">Higgsfield</h3>
             <p class="settings-hint" data-i18n="higgsfield.hint">Verbindet den Director mit deinem Higgsfield-Plan. Tokens bleiben ausschliesslich auf dem Server.</p>
@@ -257,18 +209,72 @@
           </section>
           <section class="settings-chatgpt" aria-labelledby="chatgptTitle">
             <h3 id="chatgptTitle" class="settings-section-title" data-i18n="chatgpt.title">ChatGPT</h3>
-            <p class="settings-hint" data-i18n="chatgpt.hint">Inoffizieller Weg ueber die Codex-CLI-Infrastruktur. Dieser Weg kann in einer Grauzone der OpenAI-Nutzungsbedingungen liegen. Er gilt nur fuer GPT-Brain-Modelle; Bilder, Videos und Tools werden weiterhin separat abgerechnet. Brain-Aufrufe laufen ueber das ChatGPT-Abo.</p>
+            <p class="settings-hint" data-i18n="chatgpt.hint">Inoffizieller Weg über die Codex-CLI-Infrastruktur. Dieser Weg kann in einer Grauzone der OpenAI-Nutzungsbedingungen liegen. Er gilt nur für GPT-Brain-Modelle; Bilder, Videos und Tools werden weiterhin separat abgerechnet. Brain-Aufrufe laufen über das ChatGPT-Abo.</p>
             <div class="chatgpt-connection-row">
               <span id="chatgptStatusDot" class="chatgpt-status-dot" aria-hidden="true"></span>
               <div class="chatgpt-connection-copy">
                 <div id="chatgptStatusText" class="chatgpt-status-text" data-i18n="chatgpt.disconnected">Nicht verbunden</div>
               </div>
               <div class="settings-actions">
-                <button id="chatgptImport" class="branding-manager-action" type="button" data-i18n="chatgpt.import">Aus Codex-CLI-Login uebernehmen</button>
+                <button id="chatgptImport" class="branding-manager-action" type="button" data-i18n="chatgpt.import">Aus Codex-CLI-Login übernehmen</button>
                 <button id="chatgptDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="chatgpt.disconnect">Trennen</button>
               </div>
             </div>
           </section>
+          </div>
+          <div id="settingsGroup-people" class="settings-group hidden" role="tabpanel" aria-labelledby="settingsTab-people" data-settings-group="people">
+            <div id="settingsTeamsSlot" class="settings-slot" data-slot="teams"></div>
+          <section class="settings-admins" aria-labelledby="adminsTitle">
+            <h3 id="adminsTitle" class="settings-section-title" data-i18n="admins.title">Admins</h3>
+            <p class="settings-hint" data-i18n="admins.hint">Admins aus .env bleiben immer erhalten. Zusätzliche Admins wirken sofort, ohne Neustart.</p>
+            <div id="adminsList" class="admins-list"></div>
+            <form id="adminForm" class="admin-form">
+              <label class="render-node-field" for="adminEmail">
+                <span data-i18n="admins.email">E-Mail-Adresse</span>
+                <input id="adminEmail" class="settings-input" type="email" maxlength="254" required autocomplete="email" placeholder="name@firma.ch" data-i18n-placeholder="admins.emailPlaceholder" />
+              </label>
+              <button id="adminAdd" class="branding-manager-action" type="submit" data-i18n="admins.add">Hinzufügen</button>
+            </form>
+          </section>
+          <section id="usersSection" class="settings-users hidden" aria-labelledby="usersTitle">
+            <h3 id="usersTitle" class="settings-section-title" data-i18n="users.title">Team-Liste</h3>
+            <p class="settings-hint" data-i18n="users.hint">Diese Personen kannst du beim Teilen auswählen. Das ist keine Zugangsliste: Wer sich anmelden darf, bestimmt weiterhin der Login. Wer sich anmeldet, wird automatisch erfasst.</p>
+            <div id="usersList" class="admins-list"></div>
+            <form id="userForm" class="admin-form">
+              <label class="render-node-field" for="userEmail">
+                <span data-i18n="users.email">E-Mail-Adresse</span>
+                <input id="userEmail" class="settings-input" type="email" maxlength="254" required autocomplete="off" placeholder="name@firma.ch" data-i18n-placeholder="users.emailPlaceholder" />
+              </label>
+              <button id="userAdd" class="branding-manager-action" type="submit" data-i18n="users.add">Hinzufügen</button>
+            </form>
+            <div id="usersPasteSlot" class="users-paste-slot"></div>
+            <p class="settings-hint" data-i18n="users.removeHint">Wer entfernt wird, wird erst wieder erfasst, wenn ein Admin die Person hinzufügt.</p>
+            <a id="settingsMonitoringLink" class="branding-manager-action settings-monitoring-link hidden" href="monitoring.html" data-i18n="users.monitoringLink">Nutzung und Monitoring öffnen</a>
+          </section>
+          </div>
+          <div id="settingsGroup-rendering" class="settings-group hidden" role="tabpanel" aria-labelledby="settingsTab-rendering" data-settings-group="rendering">
+          <section class="settings-render-nodes" aria-labelledby="renderNodesTitle">
+            <h3 id="renderNodesTitle" class="settings-section-title" data-i18n="renderNodes.title">Render-Nodes</h3>
+            <p class="settings-hint" data-i18n="renderNodes.hint">Der Standard-Node aus .env gilt nur, solange die Liste leer ist.</p>
+            <div id="renderNodesList" class="render-nodes-list"></div>
+            <form id="renderNodeForm" class="render-node-form">
+              <div class="render-node-form-heading" data-i18n="renderNodes.add">Node hinzufügen</div>
+              <label class="render-node-field" for="renderNodeName">
+                <span data-i18n="renderNodes.name">Name</span>
+                <input id="renderNodeName" class="settings-input" type="text" maxlength="40" required autocomplete="off" placeholder="Render-Node Zürich" data-i18n-placeholder="renderNodes.namePlaceholder" />
+              </label>
+              <label class="render-node-field" for="renderNodeUrl">
+                <span data-i18n="renderNodes.url">URL</span>
+                <input id="renderNodeUrl" class="settings-input" type="url" maxlength="2000" required autocomplete="url" placeholder="https://render.example.com" data-i18n-placeholder="renderNodes.urlPlaceholder" />
+              </label>
+              <label class="render-node-field" for="renderNodeToken">
+                <span data-i18n="renderNodes.token">Token</span>
+                <input id="renderNodeToken" class="settings-input" type="password" maxlength="500" required autocomplete="new-password" placeholder="Token" data-i18n-placeholder="renderNodes.tokenPlaceholder" />
+              </label>
+              <button id="renderNodeAdd" class="branding-manager-action" type="submit" data-i18n="renderNodes.addButton">Hinzufügen</button>
+            </form>
+          </section>
+          </div>
           <div id="settingsFeedback" class="settings-feedback hidden" aria-live="polite"></div>
         </div>
       </div>
@@ -287,18 +293,18 @@
           </label>
           <label class="prompt-preset-field" for="promptPresetGroup">
             <span data-i18n="prompt.customGroup">Gruppe</span>
-            <input id="promptPresetGroup" class="settings-input" type="text" maxlength="40" required autocomplete="off" list="promptPresetGroups" data-i18n-placeholder="prompt.customGroupPlaceholder" placeholder="Gruppe waehlen oder eingeben" />
+            <input id="promptPresetGroup" class="settings-input" type="text" maxlength="40" required autocomplete="off" list="promptPresetGroups" data-i18n-placeholder="prompt.customGroupPlaceholder" placeholder="Gruppe wählen oder eingeben" />
             <datalist id="promptPresetGroups"></datalist>
           </label>
           <label class="prompt-preset-field" for="promptPresetDescription">
             <span data-i18n="prompt.customDescription">Beschreibung (optional)</span>
-            <input id="promptPresetDescription" class="settings-input" type="text" maxlength="120" autocomplete="off" data-i18n-placeholder="prompt.customDescriptionPlaceholder" placeholder="Kurzer Hinweis im Menue" />
+            <input id="promptPresetDescription" class="settings-input" type="text" maxlength="120" autocomplete="off" data-i18n-placeholder="prompt.customDescriptionPlaceholder" placeholder="Kurzer Hinweis im Menü" />
           </label>
           <label class="prompt-preset-field" for="promptPresetText">
             <span data-i18n="prompt.customPrompt">Prompt-Text</span>
             <textarea id="promptPresetText" class="settings-input prompt-preset-textarea" maxlength="4000" required data-i18n-placeholder="prompt.customPromptPlaceholder" placeholder="Formuliere den produktionsreifen Prompt …"></textarea>
           </label>
-          <p class="settings-hint prompt-preset-syntax" data-i18n="prompt.customSyntax">Nutze [Platzhalter] fuer Werte, die beim Einsetzen ausgewaehlt werden sollen.</p>
+          <p class="settings-hint prompt-preset-syntax" data-i18n="prompt.customSyntax">Nutze [Platzhalter] für Werte, die beim Einsetzen ausgewählt werden sollen.</p>
           <div id="promptPresetFeedback" class="settings-feedback hidden" aria-live="polite"></div>
           <div class="prompt-preset-actions">
             <button id="promptPresetCancel" class="branding-manager-action" type="button" data-i18n="common.cancel">Abbrechen</button>
@@ -318,8 +324,8 @@
           <div class="modal-section">
             <div class="modal-label" data-i18n="context.brandings">Brandings</div>
             <div id="contextBrandings" class="branding-attachment-list"></div>
-            <select id="contextBrandingSelect" class="branding-select" aria-label="Branding anhaengen" data-i18n-aria-label="context.attachBranding">
-              <option value="" data-i18n="context.attachBranding">Branding anhaengen…</option>
+            <select id="contextBrandingSelect" class="branding-select" aria-label="Branding anhängen" data-i18n-aria-label="context.attachBranding">
+              <option value="" data-i18n="context.attachBranding">Branding anhängen…</option>
             </select>
             <div id="contextBrandingHint" class="context-empty"></div>
           </div>
@@ -333,7 +339,7 @@
           <div id="contextGtsSection" class="context-gts-group">
             <div class="modal-label" data-i18n="context.brains">GTS-Brains</div>
             <div class="modal-section">
-              <div class="modal-label" data-i18n="context.attached">Angehaengt</div>
+              <div class="modal-label" data-i18n="context.attached">Angehängt</div>
               <div id="contextAttached" class="context-list"></div>
             </div>
             <div class="modal-section">
@@ -364,7 +370,7 @@
             <label for="roleName" data-i18n="roles.name">Name</label>
             <input id="roleName" type="text" maxlength="60" placeholder="Zum Beispiel Social-Ad-Stratege" data-i18n-placeholder="roles.namePlaceholder" autocomplete="off" />
             <label for="roleBrief" data-i18n="roles.briefLabel">Was soll die Rolle tun?</label>
-            <textarea id="roleBrief" rows="4" maxlength="2000" placeholder="Aufgabe, Tonalitaet, Arbeitsweise und gewuenschte Ergebnisse beschreiben" data-i18n-placeholder="roles.briefPlaceholder"></textarea>
+            <textarea id="roleBrief" rows="4" maxlength="2000" placeholder="Aufgabe, Tonalität, Arbeitsweise und gewünschte Ergebnisse beschreiben" data-i18n-placeholder="roles.briefPlaceholder"></textarea>
             <div class="role-generate-row">
               <button id="roleGenerate" class="role-secondary-button" type="button" data-i18n="roles.generate">✨ Mit KI generieren</button>
               <span data-i18n="roles.generateCost">Die Generierung kostet einen kleinen Betrag (Modell-Call).</span>
@@ -378,7 +384,7 @@
               <label for="roleEmoji" data-i18n="roles.emoji">Emoji</label>
               <input id="roleEmoji" type="text" maxlength="4" placeholder="🎬" />
               <label for="roleDescription" data-i18n="roles.description">Kurzbeschreibung</label>
-              <input id="roleDescription" type="text" maxlength="200" placeholder="Kurzer Hinweis fuer die Auswahl" data-i18n-placeholder="roles.descriptionPlaceholder" />
+              <input id="roleDescription" type="text" maxlength="200" placeholder="Kurzer Hinweis für die Auswahl" data-i18n-placeholder="roles.descriptionPlaceholder" />
               <label for="rolePrompt" data-i18n="roles.prompt">Rollen-Prompt</label>
               <textarea id="rolePrompt" rows="10" maxlength="20000" placeholder="Du bist …" data-i18n-placeholder="roles.promptPlaceholder"></textarea>
             </div>
@@ -419,14 +425,14 @@
           <div id="folderProfileGtsSection" class="modal-section">
             <div class="modal-label" data-i18n="context.brains">GTS-Brains</div>
             <div class="modal-section">
-              <div class="modal-label" data-i18n="context.attached">Angehaengt</div>
+              <div class="modal-label" data-i18n="context.attached">Angehängt</div>
               <div id="folderProfileAttachedBrains" class="context-list"></div>
             </div>
             <div class="modal-section">
               <label class="modal-label" for="folderProfileBrainSearch" data-i18n="context.search">Suche</label>
               <input id="folderProfileBrainSearch" type="search" placeholder="GTS durchsuchen…" data-i18n-placeholder="context.searchPlaceholder" autocomplete="off" />
               <div id="folderProfileBrainResults" class="context-list"></div>
-              <div id="folderProfileBrainLimit" class="context-empty hidden" data-i18n="context.brainLimit">Maximal 5 GTS-Brains angehaengt. Entferne zuerst einen Eintrag, um einen anderen anzuhaengen.</div>
+              <div id="folderProfileBrainLimit" class="context-empty hidden" data-i18n="context.brainLimit">Maximal 5 GTS-Brains angehängt. Entferne zuerst einen Eintrag, um einen anderen anzuhängen.</div>
             </div>
           </div>
           <div class="modal-section">
@@ -434,13 +440,13 @@
             <div id="folderProfileFiles" class="context-list"></div>
             <button id="folderProfileFileUploadBtn" class="context-file-upload" type="button" data-i18n="context.uploadFile">Datei hochladen…</button>
             <input id="folderProfileFileInput" type="file" accept=".md,.txt,.markdown" multiple hidden />
-            <div id="folderProfileFileHint" class="context-empty" data-i18n="context.projectFileHint">Maximal 5 Dateien pro Projekt, je maximal 60'000 Zeichen. Gilt fuer alle Chats im Projekt.</div>
+            <div id="folderProfileFileHint" class="context-empty" data-i18n="context.projectFileHint">Maximal 5 Dateien pro Projekt, je maximal 60'000 Zeichen. Gilt für alle Chats im Projekt.</div>
           </div>
           <div class="modal-section">
             <div class="modal-label" data-i18n="context.brandings">Brandings</div>
             <div id="folderProfileBrandings" class="branding-attachment-list"></div>
-            <select id="folderProfileBrandingSelect" class="branding-select" aria-label="Branding zum Projekt hinzufuegen" data-i18n-aria-label="profile.addBranding">
-              <option value="" data-i18n="context.attachBranding">Branding anhaengen…</option>
+            <select id="folderProfileBrandingSelect" class="branding-select" aria-label="Branding zum Projekt hinzufügen" data-i18n-aria-label="profile.addBranding">
+              <option value="" data-i18n="context.attachBranding">Branding anhängen…</option>
             </select>
             <div id="folderProfileBrandingHint" class="context-empty"></div>
           </div>
@@ -450,9 +456,9 @@
             <div class="context-empty" data-i18n="profile.castingHint">Casting erstellst und pflegst du im Chat mit dem Director.</div>
           </div>
           <div id="folderProfileError" class="folder-profile-error hidden"></div>
-          <div id="folderProfileDeleteHint" class="folder-profile-delete-hint hidden" data-i18n="profile.moveChatsFirst">Zuerst Chats verschieben oder loeschen</div>
+          <div id="folderProfileDeleteHint" class="folder-profile-delete-hint hidden" data-i18n="profile.moveChatsFirst">Zuerst Chats verschieben oder löschen</div>
           <div class="folder-profile-actions">
-            <button id="folderProfileDelete" class="btn-profile-delete" type="button" data-i18n="profile.deleteProject">Projekt loeschen</button>
+            <button id="folderProfileDelete" class="btn-profile-delete" type="button" data-i18n="profile.deleteProject">Projekt löschen</button>
             <button id="folderProfileSave" class="btn-profile-save" type="button" data-i18n="common.save">Speichern</button>
           </div>
         </div>
@@ -493,7 +499,10 @@
     </div>
 
     <script src="i18n.js"></script>
+    <script src="email-list.js"></script>
+    <script src="teams-ui.js"></script>
     <script src="access-client.js"></script>
+    <script src="shell.js"></script>
     <script src="app.js"></script>
     <script src="nodes/i18n-nodes.js"></script>
     <script src="nodes/motion-html.js"></script>

@@ -304,6 +304,28 @@ function testDescribePlan() {
   assert.equal(bad.valid, false);
   assert.equal(bad.errors.length, 1);
   assert.equal(run.describePlan(null).needsConfirm, false);
+
+  // Participants: the plan carries the budget and the nodes blocked for the account.
+  assert.equal(info.budget, null, 'no budget for everybody else');
+  assert.deepEqual(info.blocked, []);
+  assert.equal(run.gateOf(info), null, 'nothing in the way without a budget');
+  const paidPlan = { valid: true, issues: [], nodes: { p1: { status: 'stale', paid: true, estimate: { usd: 1.5 }, executions: 1 } }, totals: { paidNodes: 1, usd: 1.5, credits: 0, unknownNodes: 0 } };
+  const enough = run.describePlan({ ...paidPlan, budget: { remainingUsd: 4, estimateUsd: 1.5, enough: true } });
+  assert.equal(enough.budget.remainingUsd, 4);
+  assert.equal(run.gateOf(enough), null, 'enough budget: the normal confirmation follows');
+  const exhausted = run.describePlan({ ...paidPlan, budget: { remainingUsd: 0, estimateUsd: 1.5, enough: false, code: 'BUDGET_EXHAUSTED' } });
+  assert.equal(run.gateOf(exhausted).kind, 'exhausted');
+  const insufficient = run.describePlan({ ...paidPlan, budget: { remainingUsd: 1, estimateUsd: 1.5, enough: false, code: 'BUDGET_INSUFFICIENT' } });
+  assert.equal(run.gateOf(insufficient).kind, 'insufficient');
+  assert.equal(run.gateOf(insufficient).budget.remainingUsd, 1);
+  const blocked = run.describePlan({ ...paidPlan, blocked: [{ nodeId: 'h1', feature: 'higgsfield' }], budget: { remainingUsd: 0, enough: false, code: 'BUDGET_EXHAUSTED' } });
+  assert.equal(run.gateOf(blocked).kind, 'blocked', 'blocked nodes come first');
+  assert.deepEqual([...run.gateOf(blocked).nodeIds], ['h1']);
+  const T = (key, vars) => `${key} ${JSON.stringify(vars || {})}`;
+  const money = (value) => `$${value.toFixed(2)}`;
+  assert.match(run.budgetLine(enough, T, money), /confirm\.budget .*"remaining":"\$4\.00".*"estimate":"\$1\.50"/, 'the confirmation names what is left and the estimate');
+  assert.match(run.budgetLine(run.describePlan({ ...paidPlan, budget: { remainingUsd: 4, estimateUsd: 0, enough: true } }), T, money), /confirm\.budgetUnknown/, 'no estimate: only what is left');
+  assert.equal(run.budgetLine(info, T, money), null, 'no line without a budget');
 }
 
 function testDisplayStatus() {

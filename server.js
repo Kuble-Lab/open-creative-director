@@ -35,6 +35,9 @@ const promptPresets = require('./lib/prompt-presets');
 const admins = require('./lib/admins');
 const access = require('./lib/access');
 const users = require('./lib/users');
+const teams = require('./lib/teams');
+const budget = require('./lib/budget');
+const accessSync = require('./lib/access-sync');
 const adminMonitoring = require('./lib/admin-monitoring');
 const nodeWorkflows = require('./lib/nodes/workflows-store');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
@@ -61,6 +64,10 @@ let higgsfieldPollInFlight = false;
 let higgsfieldBalanceCache = null;
 
 app.use(createWhoamiMiddleware());
+// While a restriction is active (teams in use or INTERNAL_EMAIL_DOMAINS, see lib/access.js restrictionActive) an anonymous
+// caller may be a participant whose login could not be confirmed: every /api route except the public ones answers 401
+// LOGIN_UNCONFIRMED. Mounted before everything else so it also covers the SSE streams.
+app.use(access.createUnconfirmedGuard());
 // User management (only with AUTH_WHOAMI_URL): every identified person is recorded for the team list, and failed
 // API requests go to the small monitoring journal.
 const apiMonitor = adminMonitoring.createMonitor();
@@ -202,6 +209,36 @@ function failWithCode(res, status, code, message) {
   res.status(status).json({ error: message, code });
 }
 
+// Participants and guests (lib/access.js): no internal resources, no existing data.
+function isRestricted(req) {
+  return access.isRestricted(access.viewerOf(req));
+}
+
+// Answers the errors of the account rules: 402 for the budget, 403 for something the account may not use.
+// Returns true when it answered.
+function failAccountRule(res, err) {
+  if (err instanceof budget.BudgetError) {
+    res.status(err.status).json({ error: err.messageDe, code: err.code, budget: err.budget, estimateUsd: err.estimateUsd, remainingUsd: err.remainingUsd });
+    return true;
+  }
+  if (err instanceof access.RoleRestrictedError) {
+    res.status(err.status).json({ error: err.messageDe, code: err.code, feature: err.feature });
+    return true;
+  }
+  if (err instanceof access.LoginUnconfirmedError) {
+    res.status(err.status).json({ error: err.messageDe, code: err.code, messages: err.messages });
+    return true;
+  }
+  return false;
+}
+
+// 403 for participants and guests, with the feature named so the client can explain it.
+function requireUnrestricted(req, res, feature, messageDe) {
+  if (!isRestricted(req)) return true;
+  failAccountRule(res, new access.RoleRestrictedError(feature, `${feature} is not available for your account`, messageDe));
+  return false;
+}
+
 // Access to a chat for the request: 'use' (see, chat, edit settings), 'manage' (rename, move, delete) or 'share'.
 // Answers 404 for a session the caller may not see and 403 for missing rights on one they can see.
 // No-op (and no file read) in the local mode.
@@ -247,11 +284,27 @@ async function folderEntries() {
   return byFolder;
 }
 
+// Participants and guests see a project when it holds something they may use or when they created it themselves;
+// an empty project of somebody else (an internal one) does not exist for them.
 async function canUseFolder(req, name) {
   const viewer = access.viewerOf(req);
   if (!viewer.active || viewer.admin) return true;
   const entries = (await folderEntries()).get(name) || [];
+  if (access.isRestricted(viewer)) {
+    if (entries.some((entry) => access.canUse(entry, viewer))) return true;
+    const owner = await store.folderOwner(name);
+    if (owner) return Boolean(viewer.email) && owner === viewer.email;
+    // A project without a creator on record is existing data: only a name that does not exist yet is free to use.
+    return !(await store.listFolders()).some((existing) => store.sameFolderName(existing, name));
+  }
   return entries.length === 0 || entries.some((entry) => access.canUse(entry, viewer));
+}
+
+// The project was created by the caller (only then a participant sees its production profile and cast).
+async function ownsFolder(req, name) {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active || viewer.admin) return true;
+  return Boolean(viewer.email) && (await store.folderOwner(name)) === viewer.email;
 }
 
 async function canManageFolder(req, name) {
@@ -587,24 +640,29 @@ async function higgsfieldStatusPayload() {
   return payload;
 }
 
-function publicRuntimeConfig() {
-  const brainModels = availableBrainModels(runtime.brainModels, chatgpt.status().connected);
+// `viewer` (lib/access.js): participants and guests get no ChatGPT subscription models and no GTS.
+function publicRuntimeConfig(viewer = null) {
+  // An unconfirmed caller gets what a guest gets.
+  const restricted = access.isRestricted(viewer) || access.isUnconfirmed(viewer);
+  const brainModels = availableBrainModels(runtime.brainModels, chatgpt.status().connected && !restricted);
   return {
     hasKey: or.hasKey(),
     brainModels,
     defaultBrain: availableDefaultBrain(runtime.defaultBrain, brainModels),
     imageModel: runtime.imageModel,
     videoModel: runtime.videoModel,
-    gts: { enabled: gts.hasToken() },
+    gts: { enabled: gts.hasToken() && !restricted },
     fal: { enabled: fal.hasKey() }
   };
 }
 
 /* ---------- API ---------- */
 
-app.get('/api/prompt-presets', (_req, res) => {
+app.get('/api/prompt-presets', (req, res) => {
   try {
-    res.json(promptPresets.listPresets());
+    const presets = promptPresets.listPresets();
+    // The custom templates are maintained by admins for the team: internal.
+    res.json(isRestricted(req) ? presets.filter((preset) => !preset.custom) : presets);
   } catch (err) {
     fail(res, 500, err.message);
   }
@@ -641,7 +699,7 @@ app.delete('/api/prompt-presets/custom/:id', (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-  res.json(publicRuntimeConfig());
+  res.json(publicRuntimeConfig(access.viewerOf(req)));
 });
 
 app.get('/api/settings', (req, res) => {
@@ -707,10 +765,15 @@ function logoutUrl() {
 }
 
 // Who am I: mode, identity and role. Always answers (also in the local mode) so the UI can decide what to show.
-app.get('/api/me', (req, res) => {
+// Participants (people in an active team) and guests also get their teams and budget:
+//   participant  true for a participant, false for a guest
+//   teams        [{ id, name }] the active teams of the person
+//   budget       { limitUsd, spentUsd, reservedUsd, remainingUsd, since } (limit 0 for a guest)
+// Everybody else gets the fields they always had.
+app.get('/api/me', async (req, res) => {
   const viewer = access.viewerOf(req);
   res.set('Cache-Control', 'no-store');
-  res.json({
+  const payload = {
     active: viewer.active,
     identified: viewer.identified,
     email: viewer.email,
@@ -718,7 +781,19 @@ app.get('/api/me', (req, res) => {
     isAdmin: viewer.admin,
     isSuperAdmin: viewer.superadmin,
     logoutUrl: viewer.active ? logoutUrl() : null
-  });
+  };
+  // Only present when true: a restriction is active and the login could not be confirmed (see lib/access.js).
+  if (access.isUnconfirmed(viewer)) payload.loginUnconfirmed = true;
+  try {
+    if (access.isRestricted(viewer)) {
+      payload.participant = access.isParticipant(viewer);
+      payload.teams = teams.membershipsOf(viewer.email).map((entry) => ({ id: entry.teamId, name: entry.name }));
+      payload.budget = await budget.status(viewer);
+    }
+    res.json(payload);
+  } catch (err) {
+    fail(res, 500, err.message);
+  }
 });
 
 // The people a chat or workflow can be shared with (admins, people added in the settings, people seen before).
@@ -729,6 +804,11 @@ app.get('/api/team', (req, res) => {
   if (!viewer.identified) return fail(res, 403, 'Zugriff verweigert.');
   try {
     res.set('Cache-Control', 'no-store');
+    // Participants only see the members of their own teams; guests see nobody. The internal team list stays internal.
+    if (access.isRestricted(viewer)) {
+      const mates = access.isParticipant(viewer) ? teams.teammatesOf(viewer.email) : [];
+      return res.json({ active: true, members: mates.map((email) => ({ email, role: 'user', me: email === viewer.email })) });
+    }
     res.json({
       active: true,
       members: users.listMembers().map((member) => ({ email: member.email, role: member.role, me: member.email === viewer.email }))
@@ -751,10 +831,18 @@ app.get('/api/users', (req, res) => {
   }
 });
 
+// One address ({ email }) or several at once ({ emails: [...] } or { text } with a pasted block; read with the shared
+// parser public/email-list.js). Several: { added, already, invalid, duplicates, users }; nothing is written if the
+// list would not fit.
 app.post('/api/users', (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
-    const email = users.addUser(req.body?.email);
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    if (body.emails !== undefined || body.text !== undefined) {
+      const result = users.addUsers(body.emails !== undefined ? body.emails : body.text);
+      return res.status(result.added.length ? 201 : 200).json({ ...result, users: usersPayload() });
+    }
+    const email = users.addUser(body.email);
     res.status(201).json({ email, users: usersPayload() });
   } catch (err) {
     fail(res, err instanceof users.UserValidationError || err instanceof admins.AdminValidationError ? 400 : 500, err.message);
@@ -772,8 +860,213 @@ app.delete('/api/users/:email', (req, res) => {
   }
 });
 
-app.get('/api/rendernode/status', async (_req, res) => {
-  res.json(await renderNodeStatus());
+/* ---------- teams (trainings with a USD budget per person) ---------- */
+
+// Admin API. A team's members are participants: access through the team, a restricted view, a budget (see
+// lib/teams.js, lib/access.js and lib/budget.js). Every change is followed by the optional allowlist sync
+// (lib/access-sync.js); its state is part of the answers so the UI can show a warning.
+teams.onChange(() => {
+  void accessSync.sync();
+});
+
+function requireTeamAdmin(req, res) {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active) {
+    failWithCode(res, 400, 'USER_MANAGEMENT_INACTIVE', 'Die Benutzerverwaltung ist nicht aktiv.');
+    return false;
+  }
+  return requireAdmin(req, res);
+}
+
+function failTeams(res, err) {
+  if (err instanceof teams.TeamNotFoundError || err instanceof teams.MemberNotFoundError) return failWithCode(res, 404, err.code, err.message);
+  if (err instanceof teams.TeamValidationError) return failWithCode(res, 400, err.code, err.message);
+  return fail(res, 500, err.message);
+}
+
+function teamSummary(team) {
+  return {
+    id: team.id,
+    name: team.name,
+    description: team.description,
+    budgetUsd: team.budgetUsd,
+    createdAt: team.createdAt,
+    createdBy: team.createdBy,
+    archived: team.archived,
+    memberCount: team.members.length
+  };
+}
+
+// The team with its members: budget of the membership, what the person has spent and has left (the person's
+// overall figures: the highest limit and the latest start of all their teams count), and when they were last seen.
+// `shared` ({ seen, statuses }) lets a list of teams read the cost journal and the user list once for all of them.
+async function teamDetail(team, shared = null) {
+  const seen = shared ? shared.seen : new Map(users.listMembers().map((member) => [member.email, member]));
+  const statuses = shared ? shared.statuses : await budget.statusOfEmails(team.members.map((member) => member.email));
+  const members = [];
+  let spentUsd = 0;
+  for (const member of team.members) {
+    const status = statuses.get(member.email) || (await budget.statusOfEmail(member.email));
+    spentUsd += status.spentUsd;
+    members.push({
+      email: member.email,
+      addedAt: member.addedAt,
+      budgetStart: member.budgetStart,
+      budgetOverrideUsd: member.budgetOverrideUsd,
+      teamLimitUsd: member.budgetOverrideUsd ?? team.budgetUsd,
+      limitUsd: status.limitUsd,
+      spentUsd: status.spentUsd,
+      reservedUsd: status.reservedUsd,
+      remainingUsd: status.remainingUsd,
+      firstSeen: seen.get(member.email)?.firstSeen || null,
+      lastSeen: seen.get(member.email)?.lastSeen || null
+    });
+  }
+  members.sort((a, b) => a.email.localeCompare(b.email));
+  return { ...teamSummary(team), spentUsd: Math.round(spentUsd * 1e6) / 1e6, members };
+}
+
+async function afterTeamChange() {
+  await accessSync.settled();
+  return accessSync.status();
+}
+
+// The teams the caller may share with: participants their own, internal people and admins every active team.
+app.get('/api/teams/mine', (req, res) => {
+  const viewer = access.viewerOf(req);
+  if (!viewer.active) return res.json({ active: false, teams: [] });
+  if (!viewer.identified) return fail(res, 403, 'Zugriff verweigert.');
+  res.set('Cache-Control', 'no-store');
+  const active = teams.activeTeams();
+  let list = active;
+  if (access.isGuest(viewer)) list = [];
+  else if (access.isParticipant(viewer)) list = active.filter((team) => viewer.teamIds.includes(team.id));
+  res.json({ active: true, teams: list.map((team) => ({ id: team.id, name: team.name, memberCount: team.memberCount })) });
+});
+
+app.get('/api/teams', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    res.set('Cache-Control', 'no-store');
+    const list = [];
+    const all = teams.listTeams();
+    const shared = {
+      seen: new Map(users.listMembers().map((member) => [member.email, member])),
+      statuses: await budget.statusOfEmails(all.flatMap((team) => team.members.map((member) => member.email)))
+    };
+    for (const team of all) {
+      const detail = await teamDetail(team, shared);
+      const { members, ...summary } = detail;
+      list.push(summary);
+    }
+    res.json({
+      teams: list,
+      sync: accessSync.status(),
+      limits: teams.LIMITS,
+      problem: teams.problem(),
+      // Without INTERNAL_EMAIL_DOMAINS the app cannot tell colleagues from former participants (lib/access.js).
+      internalDomainsMissing: access.isActive() && access.internalDomains().length === 0
+    });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+app.post('/api/teams', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const team = teams.createTeam({
+      name: body.name,
+      description: body.description,
+      budgetUsd: body.budgetUsd,
+      createdBy: access.viewerOf(req).email
+    });
+    const sync = await afterTeamChange();
+    res.status(201).json({ team: await teamDetail(team), sync });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+app.get('/api/teams/:id', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ team: await teamDetail(teams.getTeam(req.params.id)), sync: accessSync.status() });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+app.patch('/api/teams/:id', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const team = teams.updateTeam(req.params.id, body);
+    const sync = await afterTeamChange();
+    res.json({ team: await teamDetail(team), sync });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+app.delete('/api/teams/:id', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    const id = teams.deleteTeam(req.params.id);
+    res.json({ ok: true, id, sync: await afterTeamChange() });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+// Body: { emails: [...] } (up to 500; each entry an address or a pasted block) or { text }. Answers with what happened
+// to every address: added, already (in the team), invalid (pieces that are no address).
+app.post('/api/teams/:id/members', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const result = teams.addMembers(req.params.id, body.emails !== undefined ? body.emails : body.text);
+    const sync = await afterTeamChange();
+    res.status(result.added.length ? 201 : 200).json({ ...result, team: await teamDetail(teams.getTeam(req.params.id)), sync });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+// Body: { budgetOverrideUsd: number | null } sets or clears the amount of one person; { resetBudget: true } starts
+// counting again from now.
+app.patch('/api/teams/:id/members/:email', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    teams.updateMember(req.params.id, req.params.email, body);
+    res.json({ team: await teamDetail(teams.getTeam(req.params.id)), sync: await afterTeamChange() });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+app.delete('/api/teams/:id/members/:email', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    const email = teams.removeMember(req.params.id, req.params.email);
+    const sync = await afterTeamChange();
+    res.json({ ok: true, email, team: await teamDetail(teams.getTeam(req.params.id)), sync });
+  } catch (err) {
+    failTeams(res, err);
+  }
+});
+
+app.get('/api/rendernode/status', async (req, res) => {
+  const status = await renderNodeStatus();
+  // The names of the render nodes are infrastructure: participants only get the totals.
+  if (isRestricted(req)) {
+    const { nodes, ...totals } = status;
+    return res.json(totals);
+  }
+  res.json(status);
 });
 
 app.get('/api/rendernodes', async (req, res) => {
@@ -954,12 +1247,25 @@ adminMonitoring.registerRoutes(app, {
       readMonitoringJobs(),
       apiMonitor.readErrors().catch(() => [])
     ]);
-    return { costRows, runRows, jobRows, errorRows };
+    // Teams with the budget picture of every member (monitoring: filter and table per team).
+    const teamRows = [];
+    const allTeams = teams.listTeams();
+    const statuses = await budget.statusOfEmails(allTeams.flatMap((team) => team.members.map((member) => member.email)));
+    for (const team of allTeams) {
+      const members = [];
+      for (const member of team.members) {
+        const status = statuses.get(member.email);
+        members.push({ email: member.email, addedAt: member.addedAt, budgetStart: member.budgetStart, budgetOverrideUsd: member.budgetOverrideUsd, ...status });
+      }
+      teamRows.push({ id: team.id, name: team.name, archived: team.archived, budgetUsd: team.budgetUsd, members });
+    }
+    return { costRows, runRows, jobRows, errorRows, teamRows };
   },
   getRuntime: () => ({ imageModel: runtime.imageModel, videoModel: runtime.videoModel, brainModel: runtime.defaultBrain })
 });
 
 app.get('/api/gts/search', async (req, res) => {
+  if (!requireUnrestricted(req, res, 'gts', 'Die Wissensdatenbank (GTS) ist für dein Konto nicht verfügbar.')) return;
   if (!gts.hasToken()) {
     return fail(res, 503, 'GTS ist nicht konfiguriert. Bitte GTS_API_TOKEN unter ⚙️ Einstellungen hinterlegen.');
   }
@@ -970,9 +1276,9 @@ app.get('/api/gts/search', async (req, res) => {
   }
 });
 
-app.get('/api/brandings', async (_req, res) => {
+app.get('/api/brandings', async (req, res) => {
   try {
-    res.json({ brandings: await brandings.listBrandings() });
+    res.json({ brandings: isRestricted(req) ? [] : await brandings.listBrandings() });
   } catch (err) {
     fail(res, 500, err.message);
   }
@@ -1000,9 +1306,11 @@ app.post('/api/brandings/import', brandingZipBody, async (req, res) => {
   }
 });
 
-app.get('/api/roles', async (_req, res) => {
+app.get('/api/roles', async (req, res) => {
   try {
-    res.json({ roles: await roles.listRoles() });
+    // Roles are prompts written by admins for the team and may hold internal instructions: participants only get the
+    // standard role (GET /api/roles/default).
+    res.json({ roles: isRestricted(req) ? [] : await roles.listRoles() });
   } catch (err) {
     fail(res, 500, err.message);
   }
@@ -1113,6 +1421,7 @@ app.post('/api/roles/generate', async (req, res) => {
 app.get('/api/brandings/:id/export', async (req, res) => {
   const id = requireBrandingId(req, res);
   if (!id) return;
+  if (isRestricted(req)) return fail(res, 404, 'Branding nicht gefunden');
   try {
     const [branding, summary] = await Promise.all([
       brandings.readBranding(id),
@@ -1146,6 +1455,7 @@ app.get('/api/brandings/:id/export', async (req, res) => {
 app.get('/api/brandings/:id/assets/:filename', async (req, res) => {
   const id = requireBrandingId(req, res);
   if (!id) return;
+  if (isRestricted(req)) return fail(res, 404, 'Branding nicht gefunden');
   try {
     const buffer = await brandings.readBrandingAsset(id, req.params.filename);
     const mime = BRANDING_ASSET_MIME[path.extname(req.params.filename).toLowerCase()] || 'application/octet-stream';
@@ -1159,6 +1469,7 @@ app.get('/api/brandings/:id/assets/:filename', async (req, res) => {
 app.get('/api/brandings/:id', async (req, res) => {
   const id = requireBrandingId(req, res);
   if (!id) return;
+  if (isRestricted(req)) return fail(res, 404, 'Branding nicht gefunden');
   try {
     res.json(await brandings.readBranding(id));
   } catch (err) {
@@ -1188,21 +1499,32 @@ app.get('/api/folders', async (req, res) => {
     let folders = allFolders;
     if (viewer.active && !viewer.admin) {
       const byFolder = await folderEntries();
+      const restricted = access.isRestricted(viewer);
+      const owners = restricted ? await store.readFolderOwners() : null;
       folders = allFolders.filter((name) => {
         const entries = byFolder.get(name) || [];
+        if (restricted) {
+          return entries.some((entry) => access.canUse(entry, viewer)) || Boolean(viewer.email && owners[name] === viewer.email);
+        }
         return entries.length === 0 || entries.some((entry) => access.canUse(entry, viewer));
       });
     }
     const sessionCounts = new Map();
+    // When the newest chat of a project changed: the side menu sorts projects by it, the way chats are sorted.
+    // A project without chats has no date. Renaming a chat does not touch updatedAt, so it never reshuffles projects.
+    const lastActivity = new Map();
     for (const session of sessionResult.sessions) {
       if (!session.folder) continue;
       sessionCounts.set(session.folder, (sessionCounts.get(session.folder) || 0) + 1);
+      const changed = String(session.updatedAt || session.createdAt || '');
+      if (changed > (lastActivity.get(session.folder) || '')) lastActivity.set(session.folder, changed);
     }
     const details = await Promise.all(
       folders.map(async (name) => ({
         name,
-        hasProfile: Boolean(await store.readFolderProfile(name)),
-        sessionCount: sessionCounts.get(name) || 0
+        hasProfile: Boolean(await store.readFolderProfile(name)) && (!access.isRestricted(viewer) || (await ownsFolder(req, name))),
+        sessionCount: sessionCounts.get(name) || 0,
+        lastActivity: lastActivity.get(name) || null
       }))
     );
     res.json({ folders: details });
@@ -1219,7 +1541,9 @@ app.post('/api/folders', async (req, res) => {
   if ([...name].length > 60) return fail(res, 400, 'Projektname darf maximal 60 Zeichen lang sein');
   try {
     const created = await store.createFolder(name);
-    res.status(201).json({ folder: { name: created, hasProfile: false, sessionCount: 0 } });
+    const creator = access.viewerOf(req);
+    if (creator.active && creator.email) await store.claimFolder(created, creator.email);
+    res.status(201).json({ folder: { name: created, hasProfile: false, sessionCount: 0, lastActivity: null } });
   } catch (err) {
     if (err.code === 'FOLDER_EXISTS') return failFolderExists(req, res, name, err).catch((inner) => fail(res, 500, inner.message));
     fail(res, 500, err.message);
@@ -1273,6 +1597,8 @@ app.get('/api/folders/:name/cast', async (req, res) => {
     if (!(await store.listFolders()).includes(name) || !(await canUseFolder(req, name))) {
       return fail(res, 404, 'Projekt nicht gefunden');
     }
+    // The cast of a project belongs to whoever created the project; participants only see their own.
+    if (isRestricted(req) && !(await ownsFolder(req, name))) return res.json({ members: [] });
     res.json({ members: await cast.listMembers(name) });
   } catch (err) {
     fail(res, 500, err.message);
@@ -1296,7 +1622,9 @@ app.get('/api/folders/:name/profile', async (req, res) => {
   if (!name) return;
   try {
     if (!(await canUseFolder(req, name))) return fail(res, 404, 'Projekt nicht gefunden');
-    res.json({ profile: await store.visibleFolderProfile(await store.readFolderProfile(name), access.viewerOf(req)) });
+    res.json({
+      profile: await store.visibleFolderProfile(await store.readFolderProfile(name), access.viewerOf(req), { ownsFolder: await ownsFolder(req, name) })
+    });
   } catch (err) {
     fail(res, 500, err.message);
   }
@@ -1378,7 +1706,8 @@ app.get('/api/sessions', async (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q : '';
     const limit = clampNumber(req.query.limit, 20, 1, 100);
     const offset = clampNumber(req.query.offset, 0, 0, Number.MAX_SAFE_INTEGER);
-    const { sessions, total } = await store.listSessions({ q, limit, offset, viewer: access.viewerOf(req) });
+    const folder = typeof req.query.folder === 'string' ? req.query.folder : '';
+    const { sessions, total } = await store.listSessions({ q, folder, limit, offset, viewer: access.viewerOf(req) });
     res.json({ sessions, total, offset, hasMore: offset + sessions.length < total });
   } catch (err) {
     fail(res, 500, err.message);
@@ -1406,15 +1735,21 @@ app.post('/api/sessions', async (req, res) => {
     if (viewer.active && hasFolder && typeof body.folder === 'string' && !(await canUseFolder(req, body.folder.trim()))) {
       return fail(res, 404, 'Projekt nicht gefunden');
     }
+    if (hasRole && body.role !== null && !requireUnrestricted(req, res, 'roles', 'Eigene Rollen sind für dein Konto nicht verfügbar.')) return;
     if (hasRole && body.role !== null && !(await roles.getRole(body.role.trim()))) {
       return fail(res, 400, 'Rolle nicht gefunden');
     }
+    const newFolderName = viewer.active && viewer.email && hasFolder && typeof body.folder === 'string' ? body.folder.trim() : '';
+    const folderExisted = newFolderName
+      ? (await store.listFolders()).some((existing) => store.sameFolderName(existing, newFolderName))
+      : true;
     // A new chat starts private: it belongs to the person who creates it (none when anonymous / local).
     const session = await store.createSession({
       folder: hasFolder ? body.folder : null,
       role: hasRole ? body.role : null,
       owner: access.ownerForNew(viewer)
     });
+    if (newFolderName && !folderExisted) await store.claimFolder(newFolderName, viewer.email);
     res.status(201).json({
       session: {
         id: session.id,
@@ -1461,16 +1796,25 @@ app.patch('/api/sessions/:id', async (req, res) => {
     if (access.viewerOf(req).active && hasFolder && typeof changes.folder === 'string' && !(await canUseFolder(req, changes.folder.trim()))) {
       return fail(res, 404, 'Projekt nicht gefunden');
     }
+    // Brandings and custom roles are internal resources: participants and guests may only clear them.
+    if (hasBrandings && Array.isArray(changes.brandings) && changes.brandings.length && !requireUnrestricted(req, res, 'brandings', 'Brandings sind für dein Konto nicht verfügbar.')) return;
+    if (hasRole && changes.role !== null && !requireUnrestricted(req, res, 'roles', 'Eigene Rollen sind für dein Konto nicht verfügbar.')) return;
     const validatedBrandings = hasBrandings ? await validateExistingBrandingIds(changes.brandings) : null;
     if (hasRole && changes.role !== null && !(await roles.getRole(changes.role.trim()))) {
       return fail(res, 400, 'Rolle nicht gefunden');
     }
+    const patchViewer = access.viewerOf(req);
+    const patchFolder = patchViewer.active && patchViewer.email && hasFolder && typeof changes.folder === 'string' ? changes.folder.trim() : '';
+    const patchFolderExisted = patchFolder
+      ? (await store.listFolders()).some((existing) => store.sameFolderName(existing, patchFolder))
+      : true;
     const session = await store.updateSessionMeta(id, {
       ...(hasTitle ? { title: changes.title } : {}),
       ...(hasFolder ? { folder: changes.folder } : {}),
       ...(hasBrandings ? { brandings: validatedBrandings } : {}),
       ...(hasRole ? { role: changes.role } : {})
     });
+    if (patchFolder && !patchFolderExisted) await store.claimFolder(patchFolder, patchViewer.email);
     res.json({ ok: true, session });
   } catch (err) {
     if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
@@ -1496,7 +1840,8 @@ app.patch('/api/sessions/:id/share', async (req, res) => {
     }
     let sharing;
     try {
-      sharing = access.buildSharing(req.body, session, (email) => users.isMember(email));
+      const policy = access.sharingPolicy(viewer, { isKnownMember: (email) => users.isMember(email) });
+      sharing = access.buildSharing(req.body, session, policy.isKnownMember, policy);
     } catch (err) {
       if (err instanceof access.AccessValidationError) return failWithCode(res, 400, err.code, err.message);
       throw err;
@@ -1524,9 +1869,9 @@ app.get('/api/sessions/:id', async (req, res) => {
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
         messages: session.messages.filter((message) => !message.hidden).map((message) => ({ ...message })),
-        brandings: session.brandings,
+        brandings: viewer.active && access.isRestricted(viewer) ? [] : session.brandings,
         contextFiles: session.contextFiles,
-        role: session.role || null,
+        role: viewer.active && access.isRestricted(viewer) ? null : session.role || null,
         ...(viewer.active ? access.describe(session, viewer) : {})
       },
       assets: ledger.map((entry) => ({ ...entry, url: store.assetUrl(id, entry.file) })),
@@ -1557,7 +1902,8 @@ app.get('/api/sessions/:id/context', async (req, res) => {
   try {
     if (!(await guardSession(req, res, id))) return;
     const session = await store.readSession(id);
-    res.json({ contextBrains: session.contextBrains });
+    // The GTS knowledge attached to a chat is internal: participants get no titles and the prompt no content.
+    res.json({ contextBrains: isRestricted(req) ? [] : session.contextBrains });
   } catch (err) {
     if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
     fail(res, 500, err.message);
@@ -1568,6 +1914,7 @@ app.post('/api/sessions/:id/context', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
   if (!(await guardSession(req, res, id))) return;
+  if (!requireUnrestricted(req, res, 'gts', 'Die Wissensdatenbank (GTS) ist für dein Konto nicht verfügbar.')) return;
   if (!gts.hasToken()) {
     return fail(res, 503, 'GTS ist nicht konfiguriert. Bitte GTS_API_TOKEN unter ⚙️ Einstellungen hinterlegen.');
   }
@@ -1664,6 +2011,20 @@ app.post('/api/sessions/:id/message', async (req, res) => {
     return fail(res, 404, 'Session nicht gefunden');
   }
 
+  // Participants: no ChatGPT subscription, and a chat turn needs budget left (HTTP 402 before the stream starts).
+  const askingViewer = access.viewerOf(req);
+  if (access.isRestricted(askingViewer)) {
+    try {
+      if (!access.modelAllowed(askingViewer, req.body?.brainModel)) {
+        throw new access.RoleRestrictedError('chatgpt', 'The ChatGPT subscription is not available for your account', 'Das ChatGPT-Abo ist für dein Konto nicht verfügbar.');
+      }
+      await budget.begin(askingViewer, { label: 'chat' });
+    } catch (err) {
+      if (failAccountRule(res, err)) return;
+      return fail(res, 500, err.message);
+    }
+  }
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -1696,7 +2057,7 @@ app.post('/api/sessions/:id/message', async (req, res) => {
   }, 15000);
 
   const { text, brainModel, attachments, renderMode, brandingWizard } = req.body || {};
-  const configPayload = publicRuntimeConfig();
+  const configPayload = publicRuntimeConfig(askingViewer);
   const requestedChatGPTModel = chatgpt.BRAIN_MODELS.includes(brainModel);
   const model = configPayload.brainModels.includes(brainModel) ? brainModel : configPayload.defaultBrain;
 
@@ -1718,8 +2079,14 @@ app.post('/api/sessions/:id/message', async (req, res) => {
     });
     emit({ type: 'done' });
   } catch (err) {
-    console.error('[chat]', err);
-    emit({ type: 'error', message: err.message || 'Unbekannter Fehler', fatal: true });
+    const accountRule = err instanceof budget.BudgetError || err instanceof access.RoleRestrictedError || err instanceof access.LoginUnconfirmedError;
+    if (!accountRule) console.error('[chat]', err);
+    emit({
+      type: 'error',
+      message: (accountRule && err.messageDe) || err.message || 'Unbekannter Fehler',
+      ...(accountRule ? { code: err.code } : {}),
+      fatal: true
+    });
     emit({ type: 'done' });
   } finally {
     clearInterval(keepAlive);
@@ -1788,6 +2155,14 @@ function startServer() {
     })
     .catch((err) => console.warn('[discovery]', err.message));
   poller.start();
+  if (access.isActive() && access.internalDomains().length === 0) {
+    console.warn(
+      '[access] WARNUNG: INTERNAL_EMAIL_DOMAINS ist leer. Ohne Domainliste gilt jede Person ohne Team als intern; ' +
+        'Adressen, die in einem Team standen, werden als Gast behandelt. Setze INTERNAL_EMAIL_DOMAINS (z. B. example.com).'
+    );
+  }
+  // Team members reach the allowlist of the login (only with ACCESS_ALLOWLIST_FILE and ACCESS_ALLOWLIST_ROUTE).
+  if (accessSync.enabled()) void accessSync.sync();
 }
 
 if (require.main === module) startServer();

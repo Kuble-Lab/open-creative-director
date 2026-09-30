@@ -3721,6 +3721,17 @@
   color: var(--text-faint);
 }
 
+.nv-confirm-budget {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(216, 162, 95, 0.4);
+  border-radius: 8px;
+  background: var(--accent-soft, rgba(216, 162, 95, 0.14));
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .nv-confirm-sub {
   margin: 14px 0 6px;
   font-size: 10.5px;
@@ -5145,6 +5156,70 @@
 
 @media (max-width: 900px) {
   .nv-owner {
+    display: none;
+  }
+}
+
+/* ---------- shared frame: view switch and menu (same as the chat header) ---------- */
+
+.nv-mode-switch {
+  flex: none;
+}
+
+.nv-mode-switch .mode-switch-button {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.nv-topbar-divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--line);
+}
+
+.nv-topbar .account-menu,
+.nv-appbar .account-menu {
+  flex: none;
+}
+
+.nv-topbar .account-chip,
+.nv-appbar .account-chip {
+  width: 32px;
+  height: 32px;
+}
+
+@media (max-width: 700px) {
+  .nv-topbar {
+    gap: 4px;
+    padding: 0 8px;
+  }
+
+  .nv-topbar .nv-btn-text,
+  .nv-topbar .nv-btn-group,
+  .nv-topbar-divider,
+  .nv-save-state {
+    display: none;
+  }
+
+  .nv-topbar .nv-btn-primary,
+  .nv-topbar .nv-share-btn {
+    padding: 8px 10px;
+  }
+
+  .nv-name-input {
+    width: 120px;
+    max-width: 26vw;
+  }
+}
+
+@media (max-width: 520px) {
+  .nv-topbar-title,
+  .nv-topbar .nv-app-btn,
+  .nv-topbar .nv-share-btn,
+  .nv-topbar .nv-run-slot .nv-btn:not(.nv-btn-primary) {
     display: none;
   }
 }

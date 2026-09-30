@@ -43,6 +43,9 @@
       <label class="mon-field"><span data-i18n="monitor.provider">Anbieter</span>
         <select id="provider"></select>
       </label>
+      <label class="mon-field" id="teamField" hidden><span data-i18n="monitor.team">Team</span>
+        <select id="team"></select>
+      </label>
       <div class="mon-actions">
         <button id="refresh" type="submit" data-i18n="monitor.refresh">Aktualisieren</button>
         <button id="export" type="button" data-i18n="monitor.export" disabled>CSV exportieren</button>
@@ -55,6 +58,7 @@
     <div id="report" hidden>
       <dl id="metrics" class="mon-metrics"></dl>
       <p id="coverage" class="mon-muted"></p>
+      <section id="teams"></section>
       <div id="breakdowns" class="mon-grid"></div>
       <section id="operations"></section>
       <section id="errors"></section>

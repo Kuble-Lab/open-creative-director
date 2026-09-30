@@ -276,3 +276,7 @@ tr:last-child td {
     flex-direction: column;
   }
 }
+
+.mon-field[hidden] {
+  display: none;
+}

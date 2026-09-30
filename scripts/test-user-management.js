@@ -737,6 +737,14 @@ const ADMIN_ONLY_ROUTES = [
   ['GET', '/api/users'],
   ['POST', '/api/users', { email: 'x@example.com' }],
   ['DELETE', '/api/users/x%40example.com'],
+  ['GET', '/api/teams'],
+  ['POST', '/api/teams', { name: 'x', budgetUsd: 1 }],
+  ['GET', '/api/teams/abc'],
+  ['PATCH', '/api/teams/abc', { name: 'y' }],
+  ['DELETE', '/api/teams/abc'],
+  ['POST', '/api/teams/abc/members', { emails: ['x@example.com'] }],
+  ['PATCH', '/api/teams/abc/members/x%40example.com', { resetBudget: true }],
+  ['DELETE', '/api/teams/abc/members/x%40example.com'],
   ['GET', '/api/rendernodes'],
   ['POST', '/api/rendernodes', { name: 'x', url: 'https://example.com', token: 'x' }],
   ['PATCH', '/api/rendernodes/abc', { name: 'x' }],
@@ -984,114 +992,7 @@ async function testAnonymous({ api, store, wfStore }) {
 
 /* ---------- route inventory ---------- */
 
-// Every route of the app with its protection rule. The test fails when a route is added, removed or renamed
-// without deciding here how it is protected, so a new route can never be forgotten.
-//   public      answers the same for everybody, no data of a person (also without a login)
-//   open        any caller of the app; the answer is filtered by what the caller may see, or holds nothing private
-//   admin       admins (superadmins included); 403 for everybody else
-//   superadmin  superadmins only; 404 for everybody else
-//   identified  any identified person (403 for anonymous callers)
-//   session     access rule of the chat: 404 unless usable; 403 if managing / sharing rights are missing
-//   workflow    access rule of the workflow (same)
-//   folder      the project folder: visible only with an entry the caller may see (404), rename / delete need
-//               admin rights or that every entry is the caller's
-const ROUTE_RULES = {
-  'GET /refs/:file': 'public', // Seedance needs a public URL; the file name is an unguessable token
-  'GET /api/prompt-presets': 'open',
-  'POST /api/prompt-presets/custom': 'admin',
-  'PUT /api/prompt-presets/custom/:id': 'admin',
-  'DELETE /api/prompt-presets/custom/:id': 'admin',
-  'GET /api/config': 'open',
-  'GET /api/settings': 'admin',
-  'PUT /api/settings': 'admin',
-  'GET /api/admins': 'admin',
-  'POST /api/admins': 'admin',
-  'DELETE /api/admins/:email': 'admin',
-  'GET /api/me': 'public',
-  'GET /api/team': 'identified',
-  'GET /api/users': 'admin',
-  'POST /api/users': 'admin',
-  'DELETE /api/users/:email': 'admin',
-  'GET /api/rendernode/status': 'open',
-  'GET /api/rendernodes': 'admin',
-  'POST /api/rendernodes': 'admin',
-  'PATCH /api/rendernodes/:id': 'admin',
-  'DELETE /api/rendernodes/:id': 'admin',
-  'GET /api/higgsfield/status': 'admin',
-  'POST /api/higgsfield/connect': 'admin',
-  'GET /api/higgsfield/oauth/callback': 'admin', // browser callback of the admin's own login
-  'DELETE /api/higgsfield/auth': 'admin',
-  'GET /api/chatgpt/status': 'admin',
-  'POST /api/chatgpt/import': 'admin',
-  'POST /api/chatgpt/disconnect': 'admin',
-  'GET /api/costs/summary': 'open', // admins: everything; everybody else: only their own costs
-  'GET /api/admin/monitoring': 'superadmin',
-  'GET /api/admin/monitoring/export': 'superadmin',
-  'GET /api/gts/search': 'open',
-  'GET /api/brandings': 'open',
-  'POST /api/brandings/import': 'admin',
-  'GET /api/roles': 'open',
-  'GET /api/roles/default': 'open',
-  'POST /api/roles': 'admin',
-  'PUT /api/roles/:id': 'admin',
-  'DELETE /api/roles/:id': 'admin',
-  'POST /api/roles/generate': 'admin',
-  'GET /api/brandings/:id/export': 'open',
-  'GET /api/brandings/:id/assets/:filename': 'open',
-  'GET /api/brandings/:id': 'open',
-  'DELETE /api/brandings/:id': 'admin',
-  'GET /api/folders': 'folder',
-  'POST /api/folders': 'open', // an empty project holds nothing private
-  'PATCH /api/folders/:name': 'folder',
-  'DELETE /api/folders/:name': 'folder',
-  'GET /api/folders/:name/cast': 'folder',
-  'DELETE /api/cast/:id': 'admin',
-  'GET /api/folders/:name/profile': 'folder',
-  'PUT /api/folders/:name/profile': 'admin',
-  'POST /api/folders/:name/profile/context-files': 'admin',
-  'DELETE /api/folders/:name/profile/context-files/:fileId': 'admin',
-  'DELETE /api/folders/:name/profile/memory/:id': 'admin',
-  'GET /api/sessions': 'session', // filtered list
-  'POST /api/sessions': 'session', // creates a private chat
-  'PATCH /api/sessions/:id': 'session',
-  'PATCH /api/sessions/:id/share': 'session',
-  'GET /api/sessions/:id': 'session',
-  'GET /api/sessions/:id/jobs': 'session',
-  'GET /api/sessions/:id/context': 'session',
-  'POST /api/sessions/:id/context': 'session',
-  'DELETE /api/sessions/:id/context/:brainId': 'session',
-  'POST /api/sessions/:id/context-files': 'session',
-  'DELETE /api/sessions/:id/context-files/:fileId': 'session',
-  'DELETE /api/sessions/:id': 'session',
-  'POST /api/sessions/:id/message': 'session',
-  'GET /api/nodes/registry': 'public',
-  'GET /api/nodes/options/:source': 'open',
-  'GET /api/nodes/higgsfield-models/:modelId': 'open',
-  'GET /api/workflow-templates': 'public',
-  'GET /api/workflows': 'workflow', // filtered list
-  'POST /api/workflows': 'workflow', // creates a private workflow
-  'POST /api/workflows/import': 'workflow',
-  'GET /api/workflows/:id': 'workflow',
-  'PUT /api/workflows/:id': 'workflow',
-  'PATCH /api/workflows/:id': 'workflow',
-  'DELETE /api/workflows/:id': 'workflow',
-  'POST /api/workflows/:id/duplicate': 'workflow',
-  'GET /api/workflows/:id/export': 'workflow',
-  'PATCH /api/workflows/:id/share': 'workflow',
-  'POST /api/workflows/:id/uploads': 'workflow',
-  'POST /api/workflows/:id/import-asset': 'workflow',
-  'GET /api/workflows/:id/assets': 'workflow',
-  'POST /api/workflows/:id/send-to-chat': 'workflow',
-  'POST /api/workflows/:id/runs/plan': 'workflow',
-  'POST /api/workflows/:id/runs': 'workflow',
-  'GET /api/workflows/:id/runs': 'workflow',
-  'GET /api/workflows/:id/outputs.zip': 'workflow',
-  'GET /api/workflows/:id/runs/:runId': 'workflow',
-  'POST /api/workflows/:id/runs/:runId/cancel': 'workflow',
-  'PATCH /api/workflows/:id/results/:nodeId': 'workflow',
-  'GET /api/workflows/:id/events': 'workflow',
-  'GET *': 'public' // the single page app shell
-};
+const { ROUTE_RULES } = require('./support/route-rules');
 
 function registeredRoutes(app) {
   const routes = [];

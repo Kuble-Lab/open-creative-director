@@ -312,8 +312,34 @@
       errors: issues.filter((issue) => issue.level === 'error'),
       warnings: issues.filter((issue) => issue.level !== 'error'),
       valid: plan ? plan.valid !== false : true,
-      needsConfirm: paid.length > 0
+      needsConfirm: paid.length > 0,
+      // Participants: what is left of the budget ({ remainingUsd, estimateUsd, enough, code? }) and the nodes that
+      // are not available for the account ([{ nodeId, feature }]). Both are absent for everybody else.
+      budget: plan && plan.budget && typeof plan.budget === 'object' ? plan.budget : null,
+      blocked: plan && Array.isArray(plan.blocked) ? plan.blocked : []
     };
+  }
+
+  // What stops a participant's run before it starts: nodes of the account's blocked features, a budget that is used up
+  // or too small for the estimate. null = nothing in the way (the server checks again when the run starts).
+  function gateOf(info) {
+    if (!info) return null;
+    if (info.blocked && info.blocked.length) return { kind: 'blocked', nodeIds: info.blocked.map((item) => item.nodeId) };
+    const budget = info.budget;
+    if (budget && budget.enough === false) {
+      return { kind: budget.code === 'BUDGET_EXHAUSTED' ? 'exhausted' : 'insufficient', budget };
+    }
+    return null;
+  }
+
+  // The line in the confirmation dialog of a paid run: what is left and what this run is estimated at.
+  function budgetLine(info, T, money) {
+    const budget = info && info.budget;
+    if (!budget) return null;
+    const remaining = money(Math.max(0, Number(budget.remainingUsd) || 0));
+    return Number(budget.estimateUsd) > 0
+      ? T('nodes.run.confirm.budget', { remaining, estimate: money(Number(budget.estimateUsd)) })
+      : T('nodes.run.confirm.budgetUnknown', { remaining });
   }
 
   // The status a card shows, combining the live run state with the (stale-marking) plan.
@@ -375,6 +401,8 @@
     previewItems,
     flattenValues,
     describePlan,
+    gateOf,
+    budgetLine,
     displayStatus,
     buildRunRequest
   };
@@ -698,6 +726,7 @@
     }
 
     async function onRunEnded(event) {
+      refreshBudget();
       await refreshResults();
       schedulePlan(0);
       loadRecentRuns();
@@ -799,6 +828,36 @@
       });
     }
 
+    // Dollar amounts of the budget (participants) as the account menu shows them.
+    const money = (value) => (window.OCAccess && window.OCAccess.formatUsd ? window.OCAccess.formatUsd(value) : `$${Number(value || 0).toFixed(2)}`);
+    const accountRuleText = (error) => (window.OCAccess && window.OCAccess.accountRuleMessage ? window.OCAccess.accountRuleMessage(error) : null);
+    const refreshBudget = () => {
+      if (window.OCAccess && window.OCAccess.me().restricted) window.OCAccess.refreshMe().catch(() => {});
+    };
+
+    // A participant's run that cannot start: the budget is used up or too small, or nodes need a feature the account
+    // does not have. Nothing is started and nothing is asked.
+    async function showGate(gate) {
+      const body = el('div', { class: 'nv-confirm' });
+      let message;
+      if (gate.kind === 'blocked') {
+        message = T('nodes.run.blocked.body');
+        const list = el('ul', { class: 'nv-confirm-list is-issues' });
+        for (const nodeId of gate.nodeIds) list.append(el('li', {}, el('span', { text: titleOf(nodeId) })));
+        body.append(list);
+      } else if (gate.kind === 'exhausted') {
+        message = T('nodes.run.budget.exhausted');
+      } else {
+        message = T('nodes.run.budget.insufficient', { estimate: money(gate.budget.estimateUsd), remaining: money(Math.max(0, gate.budget.remainingUsd)) });
+      }
+      await ui.dialog({
+        title: T(gate.kind === 'blocked' ? 'nodes.run.blocked.title' : 'nodes.run.budget.title'),
+        message,
+        body,
+        buttons: [{ label: T('nodes.common.close'), value: true, primary: true, cancel: true }]
+      });
+    }
+
     async function confirmPaid(info) {
       const body = el('div', { class: 'nv-confirm' });
       body.append(el('p', { class: 'nv-confirm-intro', text: T('nodes.run.confirm.intro') }));
@@ -821,6 +880,8 @@
       body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.estimateNote') }));
       if (totals.credits > 0) body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.creditsNote') }));
       body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.noRefund') }));
+      const budgetText = budgetLine(info, T, money);
+      if (budgetText) body.append(el('p', { class: 'nv-confirm-budget', text: budgetText }));
       if (info.warnings.length) {
         body.append(el('h3', { class: 'nv-confirm-sub', text: T('nodes.run.confirm.warnings') }), issueList(info.warnings));
       }
@@ -878,6 +939,11 @@
           await showIssues(info.errors);
           return;
         }
+        const gate = gateOf(info);
+        if (gate) {
+          await showGate(gate);
+          return;
+        }
         if (info.needsConfirm) {
           const confirmed = await confirmPaid(info);
           if (!confirmed) return;
@@ -893,6 +959,9 @@
             ui.toast(T('nodes.run.conflict'), { kind: 'warn' });
           } else if (error.status === 429) {
             ui.toast(T('nodes.run.limit'), { kind: 'warn' });
+          } else if (accountRuleText(error)) {
+            ui.toast(accountRuleText(error), { kind: 'warn' });
+            refreshBudget();
           } else if (error.issues) {
             await showIssues(error.issues);
           } else {

@@ -244,7 +244,8 @@ function testPortDescriptions() {
 
 function testHtmlWiring() {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
-  assert.ok(html.includes('id="nodesBtn"'), 'sidebar button missing');
+  assert.ok(html.includes('id="nodesBtn"'), 'view switch button missing in the header');
+  assert.ok(html.indexOf('id="nodesBtn"') < html.indexOf('</header>'), 'the view switch sits in the header');
   assert.ok(html.includes('id="nodeApp"'), 'node view container missing');
   assert.ok(html.includes('nodes/nodes.css'), 'stylesheet missing');
   const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
@@ -255,7 +256,7 @@ function testHtmlWiring() {
     last = index;
   }
   for (const lang of languages) {
-    assert.ok(window.I18N[lang]['sidebar.nodes'] && window.I18N[lang]['sidebar.nodesTitle'], `${lang} sidebar keys`);
+    assert.ok(window.I18N[lang]['mode.nodes'] && window.I18N[lang]['mode.nodesTitle'] && window.I18N[lang]['mode.chat'], `${lang} view switch keys`);
   }
   const appSource = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
   assert.ok(!/OCDNodes|nodeApp|nodesBtn/.test(appSource), 'app.js must stay unchanged and independent of the node view');

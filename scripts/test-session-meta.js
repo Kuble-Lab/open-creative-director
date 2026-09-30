@@ -30,6 +30,20 @@ async function main() {
     const listed = await store.listSessions({ q: 'Kampagnenfilm Sommer', limit: 100 });
     assert.equal(listed.sessions.find((entry) => entry.id === session.id)?.folder, folder);
 
+    // An open project asks for its own chats: only that project comes back,
+    // however many newer chats sit in front of it in the paged list.
+    const ofProject = await store.listSessions({ folder: ` ${folder} `, limit: 100 });
+    assert.deepEqual(ofProject.sessions.map((entry) => entry.id), [session.id]);
+    assert.equal(ofProject.total, 1);
+    const ofOtherProject = await store.listSessions({ folder: `${folder}-gibt-es-nicht`, limit: 100 });
+    assert.equal(ofOtherProject.total, 0);
+
+    // Renaming is not work on the chat: updatedAt stays, so the side menu does
+    // not reshuffle its projects because somebody fixed a typo in a title.
+    const beforeRename = (await store.readSession(session.id)).updatedAt;
+    await store.updateSessionMeta(session.id, { title: 'Anderer Titel' });
+    assert.equal((await store.readSession(session.id)).updatedAt, beforeRename);
+
     await store.mutateSession(
       session.id,
       (savedSession) => {

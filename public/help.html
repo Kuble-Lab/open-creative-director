@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hilfe – Open Creative Director</title>
+  <!-- Served next to the app, behind the same login. Three complete language blocks (de, en, es) with the same sections;
+       the choice is shared with the app through localStorage "vcd-lang". Keep every block in step when a function changes. -->
+  <style>
+    :root {
+      --bg: #0a0b0d; --panel: #101216; --raised: #16191e; --line: #22262d;
+      --text: #e7e9ec; --dim: #a7aeb8; --accent: #d8a25f; --accent-soft: rgba(216, 162, 95, 0.14);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); }
+    .help-shell { max-width: 860px; margin: 0 auto; padding: 28px 20px 80px; }
+    .help-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 26px; }
+    .help-back { display: inline-flex; align-items: center; gap: 7px; padding: 7px 15px; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .help-back:hover, .help-back:focus-visible { border-color: var(--accent); outline: none; }
+    .lang-switch { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); font-size: 12px; }
+    .lang-switch button { padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; letter-spacing: 0.06em; cursor: pointer; }
+    .lang-switch button:hover, .lang-switch button.active { color: var(--accent); }
+    .lang-switch button.active { font-weight: 700; }
+    .lang-switch button:focus-visible { outline: 2px solid var(--accent); }
+    .eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
+    h1 { margin: 6px 0 8px; font-size: 32px; line-height: 1.2; }
+    .intro { color: var(--dim); max-width: 640px; }
+    .toc { margin: 22px 0 30px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--dim); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; font-size: 13.5px; }
+    .toc a { text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    section.card { margin-bottom: 18px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); scroll-margin-top: 16px; }
+    h2 { margin: 0 0 10px; font-size: 20px; }
+    h3 { margin: 16px 0 6px; color: var(--accent); font-size: 14px; }
+    p { margin: 0 0 10px; }
+    ul { margin: 0 0 10px; padding-left: 20px; }
+    li { margin-bottom: 5px; }
+    .lang { display: none; }
+    .lang.active { display: block; }
+    code { padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; }
+    .pill { display: inline-block; padding: 1px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--accent); font-size: 0.85em; font-weight: 600; white-space: nowrap; }
+    @media (max-width: 640px) { .toc ol { columns: 1; } h1 { font-size: 26px; } }
+  </style>
+</head>
+<body>
+  <div class="help-shell">
+    <div class="help-top">
+      <a class="help-back" href="./" id="helpBack">←</a>
+      <div class="lang-switch" id="langSwitch" role="group" aria-label="Sprache">
+        <button type="button" data-lang="de" aria-label="Deutsch">DE</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="en" aria-label="English">EN</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="es" aria-label="Español">ES</button>
+      </div>
+    </div>
+
+    <!-- ================= DE ================= -->
+    <div class="lang" data-lang="de">
+      <span class="eyebrow">Open Creative Director</span>
+      <h1>Hilfe</h1>
+      <p class="intro">So funktioniert der Open Creative Director: alle Funktionen des Chats und der Node-Ansicht, von der ersten Idee bis zum fertigen Video.</p>
+      <nav class="toc" aria-label="Inhalt"><strong>Inhalt</strong><ol>
+        <li><a href="#de-start">Erste Schritte</a></li>
+        <li><a href="#de-chat">Chat und Director</a></li>
+        <li><a href="#de-projects">Projekte und Chats</a></li>
+        <li><a href="#de-context">Kontext, Brandings und Rollen</a></li>
+        <li><a href="#de-sharing">Teilen und Zusammenarbeit</a></li>
+        <li><a href="#de-teams">Teams und Schulungen (Admins)</a></li>
+        <li><a href="#de-budget">Budget und Teilnahme</a></li>
+        <li><a href="#de-account">Menü, Konto und Kosten</a></li>
+        <li><a href="#de-nodes">Node-Ansicht</a></li>
+        <li><a href="#de-presets">Prompt-Vorlagen</a></li>
+        <li><a href="#de-languages">Sprachen</a></li>
+        <li><a href="#de-keys">Bedienung und Tastatur</a></li>
+        <li><a href="#de-settings">Einstellungen (Admins)</a></li>
+        <li><a href="#de-monitoring">Nutzung und Monitoring (Superadmins)</a></li>
+      </ol></nav>
+      <section class="card" id="de-start" data-section="start"><h2>Erste Schritte</h2><p>Du beschreibst in einem Satz, was du produzieren willst. Der Creative Director stellt die richtigen Rückfragen, plant die Produktion und erzeugt mit echten Werkzeugen Bilder, Videos, Sprache und Motion Graphics. Die Ergebnisse erscheinen direkt im Chat.</p>
+<h3>Die Kopfzeile</h3>
+<ul>
+<li><strong>Links</strong> die Marke.</li>
+<li><strong>In der Mitte</strong> der Ort als Pfad «Projekt / Chattitel». Ein Klick auf das Projekt zeigt es im Seitenmenü, ein Klick auf den Titel benennt den Chat um (wenn du ihn verwalten darfst). Lange Titel werden mit «…» gekürzt. In einem fremden Chat steht zusätzlich «von <em>Name</em>» mit dem Besitzer, Admins tragen das Kennzeichen <span class="pill">ADMIN</span>.</li>
+<li><strong>Rechts</strong> der Umschalter <span class="pill">Chat | Nodes</span>, «Kontext» mit einem Zähler, der Freigabestatus (nur mit Anmeldung) und das Menü.</li>
+<li>Das <strong>Menü</strong> (Initialen oder drei Punkte) enthält Kosten, Einstellungen, Hilfe, Sprache und Abmelden. Es ist in der Chat- und in der Node-Ansicht dasselbe.</li>
+</ul>
+<h3>Schmale Fenster</h3>
+<p>Unter etwa 1000 Pixeln Breite blendet die Kopfzeile zuerst den Besitzer-Chip aus, dann werden die Beschriftungen zu Symbolen. Unter 820 Pixeln wird das Seitenmenü zur Schublade (Symbol links oben, schliesst mit Esc oder einem Klick daneben und nach jeder Auswahl); «Kontext» und «Teilen» stehen dann im Menü rechts oben.</p></section>
+      <section class="card" id="de-chat" data-section="chat"><h2>Chat und Director</h2><ul>
+<li><strong>Nachricht senden:</strong> Enter sendet, Umschalt+Enter macht einen Zeilenumbruch.</li>
+<li><strong>Dateien anhängen:</strong> Büroklammer, Einfügen aus der Zwischenablage oder Ablegen ins Fenster. Möglich sind Bilder, Audio, Video, Schriften und Textdateien (<code>.md</code>, <code>.txt</code>). Nicht unterstützte Dateien werden übersprungen und gemeldet.</li>
+<li><strong>Live-Status:</strong> laufende Video-Jobs erscheinen in einer Statusleiste mit Laufzeit. Der Director meldet Ergebnisse und Fehler selbst im Chat. Die Statuszeile unter dem Eingabefeld zeigt, was gerade passiert.</li>
+<li><strong>Kosten:</strong> jede Generierung zeigt ihre Kosten. Die Übersicht öffnest du im Menü unter «Kosten».</li>
+<li><strong>Werkzeuge:</strong> der Director erzeugt und bearbeitet Bilder, startet Videos (Seedance), spricht Texte (ElevenLabs), setzt Clips zusammen und rendert Motion Graphics auf einem Render-Node. Mit verbundenem Higgsfield-Konto stehen über 30 weitere Modelle bereit.</li>
+<li><strong>Verbindungsabbruch:</strong> reisst die Verbindung ab, steht ein verständlicher Satz da; prüfe das Netz und sende nochmals.</li>
+</ul>
+<h3>Werkzeuge-Menü (Schieberegler links im Eingabefeld)</h3>
+<ul>
+<li><strong>Modell:</strong> welches Sprachmodell den Director antreibt.</li>
+<li><strong>Rolle:</strong> ein eigener System-Prompt für diesen Chat. Neue Rollen legen Admins an, auf Wunsch mit KI-Hilfe.</li>
+<li><strong>Aktionen:</strong> «HyperFrames für nächste Nachricht» (nur mit Render-Node) und, für Admins, das Branding-Interview.</li>
+</ul></section>
+      <section class="card" id="de-projects" data-section="projects"><h2>Projekte und Chats</h2><ul>
+<li><strong>Seitenmenü:</strong> «+ Chat» startet einen Chat, «+ Projekt» ein Projekt. Die Suche findet Chats nach Titel und Inhalt.</li>
+<li><strong>Reihenfolge:</strong> Chats stehen nach letzter Änderung, das zuletzt bearbeitete zuerst. Projekte sind gleich geordnet: nach dem neuesten Chat darin. Ein Projekt ohne Chats steht am Ende. Umbenennen verschiebt nichts.</li>
+<li><strong>Projekt öffnen:</strong> ein offenes Projekt lädt seine eigenen Chats nach, sodass die Zahl am Projekt und die Liste zusammenpassen.</li>
+<li><strong>Chat-Menü (Punkte):</strong> umbenennen, in ein Projekt verschieben, teilen. Das Kreuz löscht den Chat nach Bestätigung.</li>
+<li><strong>Tastatur:</strong> Chats und Projekte im Seitenmenü lassen sich mit Tab erreichen und mit Enter oder Leertaste öffnen.</li>
+<li><strong>Produktions-Profil</strong> (Zahnrad am Projekt): Richtlinien, Dateien, GTS-Brains, Brandings, Casting und das Projekt-Memory, das der Director selbst führt. Es gilt für alle Chats im Projekt. Das Profil ändern nur Admins.</li>
+</ul></section>
+      <section class="card" id="de-context" data-section="context"><h2>Kontext, Brandings und Rollen</h2><ul>
+<li><strong>Kontext</strong> (Kopfzeile): pro Chat bis zu 5 Textdateien (je höchstens 60 000 Zeichen), angehängte GTS-Brains (falls eingerichtet) und bis zu zwei Brandings. Der Zähler zählt alles zusammen, der Tooltip schlüsselt ihn auf.</li>
+<li><strong>Brandings</strong> (Seitenmenü unten): Farben, Typografie, Logos, Bildwelt und Ton. Admins importieren ein Design-System als ZIP oder lassen es im Branding-Interview mit dem Director entstehen und können es als ZIP exportieren.</li>
+<li><strong>Casting:</strong> wiederkehrende Figuren mit Referenzbildern und Stimme, damit Gesichter und Stimmen über Folgen hinweg stimmen. Du pflegst sie im Chat mit dem Director.</li>
+</ul></section>
+      <section class="card" id="de-sharing" data-section="sharing"><h2>Teilen und Zusammenarbeit</h2><p>Nur im Team-Betrieb mit Anmeldung. Lokal gibt es weder Besitzer noch Freigaben.</p>
+<ul>
+<li><strong>Neue Chats und Workflows sind privat</strong> (Besitzer und Admins). Der Besitzer teilt sie mit allen Internen, mit Teams oder mit ausgewählten Personen.</li>
+<li><strong>Status in der Kopfzeile:</strong> «Geteilt» mit grünem Punkt, in einem fremden Chat «Geteilt mit dir». Wer die Freigabe nicht verwalten darf, sieht nur den Status ohne Knopf.</li>
+<li><strong>Was Personen mit Zugriff dürfen:</strong> den Chat öffnen und weiterführen, einen Workflow bearbeiten und ausführen, seine Design App nutzen und Dateien laden. Umbenennen, verschieben, löschen und neu teilen dürfen nur Besitzer und Admins.</li>
+<li>Nimmt der Besitzer die Freigabe zurück, während du den Eintrag offen hast, schliesst er sich mit einer kurzen Meldung.</li>
+<li>Bestand aus der Zeit vor der Benutzerverwaltung hat keinen Besitzer und bleibt für alle sichtbar; nur Admins ändern seine Freigabe.</li>
+</ul>
+<h3>Freigabearten</h3>
+<ul>
+<li><strong>Privat:</strong> nur du und Admins.</li>
+<li><strong>Alle intern:</strong> alle internen Personen der Organisation, nicht die Teilnehmenden von Schulungen.</li>
+<li><strong>Teams:</strong> alle Personen der gewählten Teams (Schulungen). Wer aus dem Team entfernt wird oder wenn das Team archiviert wird, verliert den Zugriff sofort.</li>
+<li><strong>Bestimmte Personen:</strong> die Auswahl im Dialog.</li>
+<li><strong>Teilnehmende</strong> einer Schulung teilen nur mit ihren eigenen Teams oder mit Personen ihrer Teams, nie mit «Alle intern». Gäste (ohne Team) teilen nichts.</li>
+<li>Bei Teams zeigt der Status die Namen, etwa «Mit Team geteilt: Schulung Juni».</li>
+</ul></section>
+      <section class="card" id="de-teams" data-section="teams"><h2>Teams und Schulungen (Admins)</h2><p>Nur im Team-Betrieb mit Anmeldung. Ein Team ist eine Schulung: Alle Personen darin bekommen Zugang zur App, ein USD-Budget pro Person und eine bewusst schmale Sicht. Du verwaltest Teams im Menü unter «Teams verwalten» oder in den Einstellungen im Bereich «Personen».</p>
+<h3>Team anlegen</h3>
+<ul>
+<li>Unter «Neues Team» Namen und Budget pro Person in USD eintragen (0 bis 10 000; das Budget gilt für die ganze Schulung) und «Team anlegen» wählen.</li>
+<li>Namen und Budget ändern, ein Team archivieren oder löschen geht im aufgeklappten Team. Ein archiviertes Team entzieht Zugang, Budget und Freigaben; die Daten bleiben erhalten und das Team lässt sich wieder aktivieren.</li>
+</ul>
+<h3>Personen hinzufügen</h3>
+<ul>
+<li>Adressen einfach einfügen: eine pro Zeile, mit Komma oder Semikolon getrennt, eine aus Excel kopierte Spalte oder «Name &lt;mail@example.com&gt;» aus dem Mailprogramm.</li>
+<li>Die Vorschau zeigt «N neu · M schon im Team · K ungültig»; die ungültigen Stücke lassen sich aufklappen. Doppelte zählen einmal, alles wird klein geschrieben.</li>
+<li>Der Knopf «N Personen hinzufügen» erledigt alles in einem Schritt (höchstens 500 auf einmal). Dasselbe Einfügen gibt es bei der Team-Liste in den Einstellungen.</li>
+</ul>
+<h3>Mitglieder und Budget</h3>
+<ul>
+<li>Die Tabelle zeigt pro Person, wann sie zuletzt gesehen wurde, wie viel sie verbraucht hat, den Rest und ihr Budget.</li>
+<li><strong>Budget ändern</strong> setzt für eine Person einen eigenen Betrag (Kennzeichen «individuell»); «Team-Betrag» nimmt ihn zurück.</li>
+<li><strong>Zurücksetzen</strong> zählt den Verbrauch ab jetzt neu, das Budget ist wieder voll. Es braucht einen zweiten Klick zur Bestätigung.</li>
+<li><strong>Entfernen</strong> beendet Zugang und Budget der Person sofort.</li>
+<li>Wer in mehreren Teams ist, hat den höchsten Betrag und zählt ab dem jüngsten Beginn.</li>
+</ul>
+<h3>Abgleich mit dem Login</h3>
+<p>Ist der Abgleich mit der Freigabeliste des Logins eingerichtet, trägt die App die Mitglieder aktiver Teams dort ein. Klappt das nicht, steht über der Liste eine Warnung; das Team ist trotzdem gespeichert. Superadmins sehen Verbrauch und Rest pro Team und Person im Monitoring (Filter «Team»).</p></section>
+      <section class="card" id="de-budget" data-section="budget"><h2>Budget und Teilnahme</h2><p>Für Personen in einer Schulung (Team). Was du siehst und nutzen darfst, ist bewusst schmal gehalten.</p>
+<h3>Was du siehst</h3>
+<ul>
+<li>Deine eigenen Chats, Workflows und Projekte und alles, was mit deinem Team oder mit dir geteilt ist. Neue Einträge sind zuerst privat.</li>
+<li>Nicht verfügbar sind interne Inhalte und einzelne Dienste: die Wissensbasis, Brandings, Team-Rollen und eigene Vorlagen, die ChatGPT-Modelle und Higgsfield. Die Meldung sagt dir, was fehlt.</li>
+</ul>
+<h3>Dein Budget</h3>
+<ul>
+<li>Im Menü (Initialen oben rechts) steht «Budget übrig» mit Balken, Gesamtbetrag und Verbrauch. Über dem Chat erscheint ein Hinweis, wenn es knapp wird oder aufgebraucht ist.</li>
+<li>Jede bezahlte Aktion zählt zum Verbrauch: Chat-Antworten, Bilder, Videos, Sprache und bezahlte Node-Läufe. Vor einem bezahlten Node-Lauf zeigt der Dialog, wie viel Budget übrig ist und was der Lauf schätzungsweise kostet.</li>
+<li>Reicht das Restbudget nicht für die Schätzung, startet der Lauf nicht. Lass einzelne Nodes weg oder wähle eine günstigere Variante.</li>
+<li>Laufende Aufträge reservieren ihren Betrag, bis der Anbieter abgerechnet hat. Wo der Preis vorher nicht bekannt ist, etwa bei Bildern, können parallele Aufträge das Budget knapp überschreiten; danach ist es gesperrt.</li>
+</ul>
+<h3>Wenn das Budget aufgebraucht ist</h3>
+<ul>
+<li>Bezahlte Aktionen sind gesperrt. Chats, Ergebnisse und Downloads bleiben lesbar.</li>
+<li>Für mehr Budget wende dich an die Kursleitung: Sie kann dein Budget erhöhen oder zurücksetzen.</li>
+<li>Ohne Team (Gast) ist das Budget 0. Du siehst dann nur Eigenes und persönlich Geteiltes.</li>
+</ul></section>
+      <section class="card" id="de-account" data-section="account"><h2>Menü, Konto und Kosten</h2><ul>
+<li><strong>Mit Anmeldung:</strong> Initialen, E-Mail-Adresse und Rolle (Person, Admin, Superadmin), «Meine Kosten diesen Monat», Einstellungen (nur Admins), Hilfe, Monitoring (nur Superadmins), Sprache und Abmelden.</li>
+<li><strong>Lokal:</strong> kein Konto, das Menü zeigt Kosten, Einstellungen und Hilfe; die Kosten stehen zusätzlich als Summe in der Kopfzeile.</li>
+<li><strong>Kostenübersicht:</strong> Summen pro Monat, Woche, Typ und Chat. Jeder Aufruf wird mit seinen Kosten ins Journal geschrieben. Admins sehen die Kosten aller, alle anderen nur ihre eigenen.</li>
+<li>Ohne Preisangabe des Anbieters gelten Schätzwerte; Abo-Aufrufe (etwa über ChatGPT) haben keinen Einzelpreis.</li>
+<li><strong>Teilnehmende und Gäste:</strong> Das Menü zeigt zusätzlich das Budget mit Balken und dein Team. Siehe «Budget und Teilnahme».</li>
+</ul></section>
+      <section class="card" id="de-nodes" data-section="nodes"><h2>Node-Ansicht</h2><p>Mit dem Umschalter <span class="pill">Chat | Nodes</span> wechselst du in die Node-Ansicht und zurück. Sie bleibt in der Kopfzeile dieselbe: links der Umschalter, rechts das Menü mit Hilfe und Konto.</p>
+<ul>
+<li><strong>Workflows:</strong> links die Liste (neu, aus Vorlage, importieren), in der Mitte die Fläche. Jeder Workflow hat sein eigenes verborgenes Medienarchiv, dein Chat-Verzeichnis bleibt sauber.</li>
+<li><strong>Bauen:</strong> Nodes für Eingaben (Text, Bilder, Video, Audio), Sprachmodell-Schritte, Bild-, Video- und Audio-Erzeugung, ffmpeg-Bearbeitung und Ergebnisse werden verbunden. Ziehen auf die leere Fläche zeichnet einen Auswahlrahmen, V und H schalten Auswahl und Hand um, Leertaste plus Ziehen verschiebt, Strg/Cmd plus Mausrad zoomt.</li>
+<li><strong>Ausführen:</strong> einzelner Node, Auswahl oder ganzer Ablauf. Unveränderte Nodes werden übersprungen. Kostenpflichtige Nodes tragen ein <code>$</code> und fragen vor dem Lauf nach.</li>
+<li><strong>Stapel:</strong> eine Textliste oder Medienliste lässt den Ablauf pro Eintrag laufen (bis 50).</li>
+<li><strong>Vorlagen:</strong> «Aus Vorlage» bietet fertige Abläufe (Produkt-Hero, Hochformat-Anzeige mit Sprecher, Figurenserie, Motion-Titel, Lippensynchronisation und weitere).</li>
+<li><strong>Design App:</strong> ein Workflow lässt sich als schlichtes Formular mit «Ausführen»-Knopf veröffentlichen (<code>#app=…</code>). Die Werte gelten nur für den einen Lauf.</li>
+<li><strong>An den Chat senden:</strong> übernimmt Ergebnisse als Nachricht in einen Chat deiner Wahl, damit der Director damit weiterarbeitet.</li>
+<li><strong>Projekte und Teilen:</strong> ein Workflow kann einem Projekt zugeordnet und wie ein Chat geteilt werden.</li>
+</ul></section>
+      <section class="card" id="de-presets" data-section="presets"><h2>Prompt-Vorlagen</h2><p>Der Funken links im Eingabefeld öffnet eine gruppierte Auswahl produktionsreifer Prompts (Casting, Serie, Branding, Motion, Social Media, Marketing). Eine Vorlage setzt ihren Text ins Eingabefeld; Platzhalter in eckigen Klammern füllst du aus. Admins legen eigene Vorlagen für das Team an.</p></section>
+      <section class="card" id="de-languages" data-section="languages"><h2>Sprachen</h2><p>Die Oberfläche gibt es auf Deutsch, Englisch und Spanisch. Die Sprache wählst du im Menü unter «Sprache». Diese Hilfe teilt die Wahl mit der App und hat oben rechts denselben Umschalter. Die Wahl bleibt im Browser gespeichert.</p></section>
+      <section class="card" id="de-keys" data-section="keys"><h2>Bedienung und Tastatur</h2><ul>
+<li><strong>Esc</strong> schliesst Menüs, Dialoge und die Schublade des Seitenmenüs. Dialoge nehmen beim Öffnen den Fokus.</li>
+<li><strong>Enter</strong> sendet, <strong>Umschalt+Enter</strong> macht einen Zeilenumbruch.</li>
+<li>Im Menü wechseln die Pfeiltasten zwischen den Einträgen.</li>
+<li>Chats im Seitenmenü: <strong>Tab</strong> zum Eintrag, <strong>Enter</strong> oder <strong>Leertaste</strong> öffnet.</li>
+<li>Node-Ansicht: <strong>V</strong> Auswahl, <strong>H</strong> Hand, <strong>N</strong> Notiz, Pfeiltasten verschieben die Auswahl.</li>
+</ul></section>
+      <section class="card" id="de-settings" data-section="settings"><h2>Einstellungen (Admins)</h2><p>Menü, Eintrag «Einstellungen». Die Einstellungen sind in Bereiche gegliedert:</p>
+<ul>
+<li><strong>Dienste:</strong> API-Keys (OpenRouter, ElevenLabs, fal.ai …), Verbindung zu Higgsfield und ChatGPT. Keys liegen nur auf dem Server und wirken sofort.</li>
+<li><strong>Personen:</strong> zusätzliche Admins und, mit Anmeldung, die Team-Liste. Sie enthält die Personen, die du beim Teilen wählen kannst. Sie ist keine Zugangsliste: wer sich anmelden darf, bestimmt weiter der Login. Mehrere Adressen lassen sich auf einmal einfügen. Darunter stehen die <strong>Teams</strong> (Schulungen mit Budget pro Person), siehe «Teams und Schulungen».</li>
+<li><strong>Rendering:</strong> Render-Nodes für Motion Graphics; mehrere Nodes werden automatisch verteilt.</li>
+</ul></section>
+      <section class="card" id="de-monitoring" data-section="monitoring"><h2>Nutzung und Monitoring (Superadmins)</h2><p>Nur für Superadmins, im Menü unter «Nutzung und Monitoring». Die Seite zeigt Nutzung und Kosten pro Person, Anbieter und Tag, Läufe, Jobs und fehlgeschlagene Anfragen und lässt sich nach Zeitraum, Person und Anbieter filtern. Mit Teams gibt es zusätzlich den Filter «Team» und die Tabellen «Teams und Budget» mit Budget, Verbrauch und Rest pro Person. Alle Einträge gibt es als CSV.</p></section>
+    </div>
+
+    <!-- ================= EN ================= -->
+    <div class="lang" data-lang="en">
+      <span class="eyebrow">Open Creative Director</span>
+      <h1>Help</h1>
+      <p class="intro">How the Open Creative Director works: every function of the chat and the node view, from the first idea to the finished video.</p>
+      <nav class="toc" aria-label="Contents"><strong>Contents</strong><ol>
+        <li><a href="#en-start">Getting started</a></li>
+        <li><a href="#en-chat">Chat and Director</a></li>
+        <li><a href="#en-projects">Projects and chats</a></li>
+        <li><a href="#en-context">Context, brandings and roles</a></li>
+        <li><a href="#en-sharing">Sharing and collaboration</a></li>
+        <li><a href="#en-teams">Teams and trainings (admins)</a></li>
+        <li><a href="#en-budget">Budget and participation</a></li>
+        <li><a href="#en-account">Menu, account and costs</a></li>
+        <li><a href="#en-nodes">Node view</a></li>
+        <li><a href="#en-presets">Prompt presets</a></li>
+        <li><a href="#en-languages">Languages</a></li>
+        <li><a href="#en-keys">Keys and controls</a></li>
+        <li><a href="#en-settings">Settings (admins)</a></li>
+        <li><a href="#en-monitoring">Usage and monitoring (superadmins)</a></li>
+      </ol></nav>
+      <section class="card" id="en-start" data-section="start"><h2>Getting started</h2><p>You describe in one sentence what you want to produce. The Creative Director asks the right questions, plans the production and creates images, videos, speech and motion graphics with real tools. The results appear right in the chat.</p>
+<h3>The header</h3>
+<ul>
+<li><strong>Left</strong> the brand.</li>
+<li><strong>In the middle</strong> the place as a path “Project / chat title”. A click on the project shows it in the side menu, a click on the title renames the chat (if you may manage it). Long titles are cut with “…”. In somebody else's chat there is also “by <em>name</em>” for the owner; admins carry the <span class="pill">ADMIN</span> badge.</li>
+<li><strong>Right</strong> the switch <span class="pill">Chat | Nodes</span>, “Context” with a counter, the sharing status (with sign-in only) and the menu.</li>
+<li>The <strong>menu</strong> (initials or three dots) holds costs, settings, help, language and sign-out. It is the same in the chat and in the node view.</li>
+</ul>
+<h3>Narrow windows</h3>
+<p>Below about 1000 pixels the header hides the owner chip first, then labels turn into icons. Below 820 pixels the side menu becomes a drawer (icon at the top left; it closes with Esc, a click beside it and after every choice); “Context” and “Share” then live in the menu at the top right.</p></section>
+      <section class="card" id="en-chat" data-section="chat"><h2>Chat and Director</h2><ul>
+<li><strong>Sending:</strong> Enter sends, Shift+Enter starts a new line.</li>
+<li><strong>Attaching files:</strong> paperclip, paste from the clipboard or drop onto the window. Images, audio, video, fonts and text files (<code>.md</code>, <code>.txt</code>) work. Unsupported files are skipped and reported.</li>
+<li><strong>Live status:</strong> running video jobs show up in a status bar with elapsed time. The Director reports results and failures in the chat by itself. The status line under the input shows what is happening.</li>
+<li><strong>Costs:</strong> every generation shows its cost. Open the overview in the menu under “Costs”.</li>
+<li><strong>Tools:</strong> the Director creates and edits images, starts videos (Seedance), speaks text (ElevenLabs), joins clips and renders motion graphics on a render node. With a connected Higgsfield account over 30 more models are available.</li>
+<li><strong>Lost connection:</strong> if the connection drops you get a plain sentence; check your network and send again.</li>
+</ul>
+<h3>Tools menu (sliders icon left of the input)</h3>
+<ul>
+<li><strong>Model:</strong> which language model drives the Director.</li>
+<li><strong>Role:</strong> a custom system prompt for this chat. Admins create new roles, optionally with AI help.</li>
+<li><strong>Actions:</strong> “HyperFrames for next message” (with a render node only) and, for admins, the branding interview.</li>
+</ul></section>
+      <section class="card" id="en-projects" data-section="projects"><h2>Projects and chats</h2><ul>
+<li><strong>Side menu:</strong> “+ Chat” starts a chat, “+ Project” a project. Search finds chats by title and content.</li>
+<li><strong>Order:</strong> chats are ordered by last change, the most recent first. Projects follow the same rule: by the newest chat inside. A project without chats comes last. Renaming moves nothing.</li>
+<li><strong>Opening a project:</strong> an open project loads its own chats, so the number on the project and the list agree.</li>
+<li><strong>Chat menu (dots):</strong> rename, move to a project, share. The cross deletes the chat after confirmation.</li>
+<li><strong>Keyboard:</strong> chats and projects in the side menu can be reached with Tab and opened with Enter or Space.</li>
+<li><strong>Production profile</strong> (gear on the project): guidelines, files, GTS brains, brandings, casting and the project memory the Director keeps itself. It applies to every chat in the project. Only admins change the profile.</li>
+</ul></section>
+      <section class="card" id="en-context" data-section="context"><h2>Context, brandings and roles</h2><ul>
+<li><strong>Context</strong> (header): per chat up to 5 text files (60,000 characters each at most), attached GTS brains (if set up) and up to two brandings. The counter adds everything up, the tooltip breaks it down.</li>
+<li><strong>Brandings</strong> (bottom of the side menu): colours, typography, logos, imagery and tone. Admins import a design system as a ZIP or let it emerge in the branding interview with the Director, and can export it as a ZIP.</li>
+<li><strong>Casting:</strong> recurring characters with reference images and a voice so faces and voices stay consistent across episodes. You maintain them in the chat with the Director.</li>
+</ul></section>
+      <section class="card" id="en-sharing" data-section="sharing"><h2>Sharing and collaboration</h2><p>Team hosting with sign-in only. Locally there are no owners and no sharing.</p>
+<ul>
+<li><strong>New chats and workflows are private</strong> (owner and admins). The owner shares them with everyone internal, with teams or with selected people.</li>
+<li><strong>Status in the header:</strong> “Shared” with a green dot, in somebody else's chat “Shared with you”. Whoever may not manage the sharing sees the status only, without a button.</li>
+<li><strong>What people with access may do:</strong> open and continue the chat, edit and run a workflow, use its Design App and download files. Only the owner and admins rename, move, delete and re-share.</li>
+<li>If the owner takes the sharing back while you have the entry open, it closes with a short message.</li>
+<li>Data from before user management has no owner and stays visible to everybody; only admins change its sharing.</li>
+</ul>
+<h3>Ways of sharing</h3>
+<ul>
+<li><strong>Private:</strong> only you and admins.</li>
+<li><strong>Everyone internal:</strong> all internal people of the organisation, not the participants of trainings.</li>
+<li><strong>Teams:</strong> everybody in the selected teams (trainings). Whoever is removed from the team, or when the team is archived, loses access at once.</li>
+<li><strong>Specific people:</strong> the selection in the dialog.</li>
+<li><strong>Participants</strong> of a training share only with their own teams or with people of their teams, never with “Everyone internal”. Guests (without a team) share nothing.</li>
+<li>For teams the status shows the names, for example “Shared with team: June training”.</li>
+</ul></section>
+      <section class="card" id="en-teams" data-section="teams"><h2>Teams and trainings (admins)</h2><p>Team hosting with sign-in only. A team is a training: everybody in it gets access to the app, a USD budget per person and a deliberately narrow view. You manage teams in the menu under “Manage teams” or in the settings, section “People”.</p>
+<h3>Create a team</h3>
+<ul>
+<li>Under “New team” enter the name and the budget per person in USD (0 to 10,000; the budget covers the whole training) and choose “Create team”.</li>
+<li>Changing name and budget, archiving or deleting a team is done in the expanded team. An archived team loses access, budget and sharing; the data is kept and the team can be reactivated.</li>
+</ul>
+<h3>Add people</h3>
+<ul>
+<li>Simply paste addresses: one per line, separated by commas or semicolons, a column copied from Excel, or “Name &lt;mail@example.com&gt;” from your mail program.</li>
+<li>The preview shows “N new · M already in the team · K invalid”; the invalid pieces can be expanded. Duplicates count once, everything is lower-cased.</li>
+<li>The button “Add N people” does it all in one step (at most 500 at once). The same paste box exists for the team list in the settings.</li>
+</ul>
+<h3>Members and budget</h3>
+<ul>
+<li>The table shows for each person when they were last seen, how much they have spent, what is left and their budget.</li>
+<li><strong>Change budget</strong> sets an amount of their own for one person (marked “custom”); “Team amount” takes it back.</li>
+<li><strong>Reset</strong> counts spending from now on, so the budget is full again. It needs a second click to confirm.</li>
+<li><strong>Remove</strong> ends the person's access and budget at once.</li>
+<li>Somebody in several teams has the highest amount and counts from the latest start.</li>
+</ul>
+<h3>Login allowlist sync</h3>
+<p>If the sync with the allowlist of the login is set up, the app enters the members of active teams there. If that fails, a warning appears above the list; the team is saved anyway. Superadmins see spending and what is left per team and person in the monitoring (filter “Team”).</p></section>
+      <section class="card" id="en-budget" data-section="budget"><h2>Budget and participation</h2><p>For people in a training (team). What you see and may use is deliberately narrow.</p>
+<h3>What you see</h3>
+<ul>
+<li>Your own chats, workflows and projects and everything shared with your team or with you. New entries start private.</li>
+<li>Internal content and some services are not available: the knowledge base, brandings, team roles and custom presets, the ChatGPT models and Higgsfield. The message tells you what is missing.</li>
+</ul>
+<h3>Your budget</h3>
+<ul>
+<li>In the menu (initials at the top right) “Budget left” shows a bar, the total amount and what you have spent. A note appears above the chat when it runs low or is used up.</li>
+<li>Every paid action counts: chat replies, images, videos, speech and paid node runs. Before a paid node run the dialog shows how much budget is left and what the run is estimated at.</li>
+<li>If the remaining budget is not enough for the estimate, the run does not start. Leave out some nodes or choose a cheaper option.</li>
+<li>Running jobs reserve their amount until the provider has billed. Where the price is not known beforehand, for example for images, parallel jobs can overshoot the budget slightly; after that it is locked.</li>
+</ul>
+<h3>When the budget is used up</h3>
+<ul>
+<li>Paid actions are locked. Chats, results and downloads stay readable.</li>
+<li>For more budget ask your course leader: they can raise or reset your budget.</li>
+<li>Without a team (guest) the budget is 0. You then only see your own entries and what is shared with you personally.</li>
+</ul></section>
+      <section class="card" id="en-account" data-section="account"><h2>Menu, account and costs</h2><ul>
+<li><strong>Signed in:</strong> initials, e-mail address and role (person, admin, superadmin), “My costs this month”, settings (admins only), help, monitoring (superadmins only), language and sign-out.</li>
+<li><strong>Local:</strong> no account; the menu shows costs, settings and help, and the total also stays in the header.</li>
+<li><strong>Cost overview:</strong> totals per month, week, type and chat. Every call is written to the journal with its cost. Admins see everybody's costs, everyone else only their own.</li>
+<li>Where a provider reports no price, estimates apply; subscription calls (for example through ChatGPT) have no single price.</li>
+<li><strong>Participants and guests:</strong> the menu also shows the budget with a bar and your team. See “Budget and participation”.</li>
+</ul></section>
+      <section class="card" id="en-nodes" data-section="nodes"><h2>Node view</h2><p>The switch <span class="pill">Chat | Nodes</span> takes you to the node view and back. The header stays the same there: the switch on the left, the menu with help and account on the right.</p>
+<ul>
+<li><strong>Workflows:</strong> the list on the left (new, from template, import), the canvas in the middle. Every workflow has its own hidden media store, your chat list stays clean.</li>
+<li><strong>Building:</strong> nodes for inputs (text, images, video, audio), language-model steps, image, video and audio generation, ffmpeg editing and results are wired together. Dragging on the empty canvas draws a selection marquee, V and H switch between select and hand, Space plus drag pans, Ctrl/Cmd plus wheel zooms.</li>
+<li><strong>Running:</strong> a single node, the selection or the whole flow. Unchanged nodes are skipped. Paid nodes carry a <code>$</code> and ask before the run.</li>
+<li><strong>Batch:</strong> a text list or media list runs the flow once per item (up to 50).</li>
+<li><strong>Templates:</strong> “From template” offers ready flows (product hero, vertical ad with voice-over, character series, motion title, lip sync and more).</li>
+<li><strong>Design App:</strong> a workflow can be published as a plain form with a “Run” button (<code>#app=…</code>). The values only apply to that one run.</li>
+<li><strong>Send to chat:</strong> copies results into a chat of your choice as a message so the Director can continue from there.</li>
+<li><strong>Projects and sharing:</strong> a workflow can be assigned to a project and shared like a chat.</li>
+</ul></section>
+      <section class="card" id="en-presets" data-section="presets"><h2>Prompt presets</h2><p>The sparkle icon left of the input opens a grouped choice of production-ready prompts (casting, series, branding, motion, social media, marketing). A preset puts its text into the input; placeholders in square brackets are yours to fill. Admins add their own presets for the team.</p></section>
+      <section class="card" id="en-languages" data-section="languages"><h2>Languages</h2><p>The interface comes in German, English and Spanish. Pick the language in the menu under “Language”. This help shares the choice with the app and has the same switch at the top right. The choice is stored in your browser.</p></section>
+      <section class="card" id="en-keys" data-section="keys"><h2>Keys and controls</h2><ul>
+<li><strong>Esc</strong> closes menus, dialogs and the drawer of the side menu. Dialogs take the focus when they open.</li>
+<li><strong>Enter</strong> sends, <strong>Shift+Enter</strong> starts a new line.</li>
+<li>In the menu the arrow keys move between the entries.</li>
+<li>Chats in the side menu: <strong>Tab</strong> to the entry, <strong>Enter</strong> or <strong>Space</strong> opens it.</li>
+<li>Node view: <strong>V</strong> select, <strong>H</strong> hand, <strong>N</strong> note, arrow keys move the selection.</li>
+</ul></section>
+      <section class="card" id="en-settings" data-section="settings"><h2>Settings (admins)</h2><p>Menu, entry “Settings”. The settings are divided into sections:</p>
+<ul>
+<li><strong>Services:</strong> API keys (OpenRouter, ElevenLabs, fal.ai …), connection to Higgsfield and ChatGPT. Keys stay on the server and take effect at once.</li>
+<li><strong>People:</strong> additional admins and, with sign-in, the team list. It holds the people you can pick when sharing. It is not an access list: the login still decides who may sign in. Several addresses can be pasted at once. Below are the <strong>teams</strong> (trainings with a budget per person), see “Teams and trainings”.</li>
+<li><strong>Rendering:</strong> render nodes for motion graphics; several nodes are balanced automatically.</li>
+</ul></section>
+      <section class="card" id="en-monitoring" data-section="monitoring"><h2>Usage and monitoring (superadmins)</h2><p>For superadmins only, in the menu under “Usage and monitoring”. The page shows usage and costs per person, provider and day, runs, jobs and failed requests, and can be filtered by period, person and provider. With teams there is also a “Team” filter and the tables “Teams and budget” with budget, spending and what is left per person. All entries are available as CSV.</p></section>
+    </div>
+
+    <!-- ================= ES ================= -->
+    <div class="lang" data-lang="es">
+      <span class="eyebrow">Open Creative Director</span>
+      <h1>Ayuda</h1>
+      <p class="intro">Así funciona Open Creative Director: todas las funciones del chat y de la vista de nodos, desde la primera idea hasta el vídeo terminado.</p>
+      <nav class="toc" aria-label="Contenido"><strong>Contenido</strong><ol>
+        <li><a href="#es-start">Primeros pasos</a></li>
+        <li><a href="#es-chat">Chat y Director</a></li>
+        <li><a href="#es-projects">Proyectos y chats</a></li>
+        <li><a href="#es-context">Contexto, brandings y roles</a></li>
+        <li><a href="#es-sharing">Compartir y colaborar</a></li>
+        <li><a href="#es-teams">Equipos y formaciones (administradores)</a></li>
+        <li><a href="#es-budget">Presupuesto y participación</a></li>
+        <li><a href="#es-account">Menú, cuenta y costes</a></li>
+        <li><a href="#es-nodes">Vista de nodos</a></li>
+        <li><a href="#es-presets">Plantillas de prompt</a></li>
+        <li><a href="#es-languages">Idiomas</a></li>
+        <li><a href="#es-keys">Manejo y teclado</a></li>
+        <li><a href="#es-settings">Ajustes (administradores)</a></li>
+        <li><a href="#es-monitoring">Uso y monitorización (superadministradores)</a></li>
+      </ol></nav>
+      <section class="card" id="es-start" data-section="start"><h2>Primeros pasos</h2><p>Describes en una frase lo que quieres producir. El Creative Director hace las preguntas adecuadas, planifica la producción y crea imágenes, vídeos, voz y motion graphics con herramientas reales. Los resultados aparecen directamente en el chat.</p>
+<h3>La cabecera</h3>
+<ul>
+<li><strong>A la izquierda</strong> la marca.</li>
+<li><strong>En el centro</strong> el lugar como ruta «Proyecto / título del chat». Un clic en el proyecto lo muestra en el menú lateral, un clic en el título renombra el chat (si puedes gestionarlo). Los títulos largos se cortan con «…». En un chat ajeno aparece además «de <em>nombre</em>» con el propietario; los administradores llevan la insignia <span class="pill">ADMIN</span>.</li>
+<li><strong>A la derecha</strong> el selector <span class="pill">Chat | Nodos</span>, «Contexto» con un contador, el estado de compartición (solo con inicio de sesión) y el menú.</li>
+<li>El <strong>menú</strong> (iniciales o tres puntos) contiene costes, ajustes, ayuda, idioma y cerrar sesión. Es el mismo en el chat y en la vista de nodos.</li>
+</ul>
+<h3>Ventanas estrechas</h3>
+<p>Por debajo de unos 1000 píxeles la cabecera oculta primero el distintivo del propietario y después las etiquetas pasan a iconos. Por debajo de 820 píxeles el menú lateral es un cajón (icono arriba a la izquierda; se cierra con Esc, con un clic al lado y tras cada elección); «Contexto» y «Compartir» pasan entonces al menú de arriba a la derecha.</p></section>
+      <section class="card" id="es-chat" data-section="chat"><h2>Chat y Director</h2><ul>
+<li><strong>Enviar:</strong> Intro envía, Mayús+Intro hace un salto de línea.</li>
+<li><strong>Adjuntar archivos:</strong> clip, pegar desde el portapapeles o soltar en la ventana. Sirven imágenes, audio, vídeo, fuentes y archivos de texto (<code>.md</code>, <code>.txt</code>). Los archivos no admitidos se omiten y se avisa.</li>
+<li><strong>Estado en vivo:</strong> los trabajos de vídeo en curso aparecen en una barra de estado con el tiempo transcurrido. El Director informa por sí mismo de resultados y errores en el chat. La línea de estado bajo el campo de texto muestra lo que ocurre.</li>
+<li><strong>Costes:</strong> cada generación muestra su coste. El resumen se abre en el menú, en «Costes».</li>
+<li><strong>Herramientas:</strong> el Director crea y edita imágenes, inicia vídeos (Seedance), locuta textos (ElevenLabs), une clips y renderiza motion graphics en un nodo de render. Con una cuenta de Higgsfield conectada hay más de 30 modelos adicionales.</li>
+<li><strong>Conexión perdida:</strong> si se corta la conexión aparece una frase clara; comprueba la red y envía de nuevo.</li>
+</ul>
+<h3>Menú de herramientas (icono de controles a la izquierda del campo de texto)</h3>
+<ul>
+<li><strong>Modelo:</strong> qué modelo de lenguaje impulsa al Director.</li>
+<li><strong>Rol:</strong> un prompt de sistema propio para este chat. Los roles nuevos los crean los administradores, si quieren con ayuda de la IA.</li>
+<li><strong>Acciones:</strong> «HyperFrames para el próximo mensaje» (solo con nodo de render) y, para administradores, la entrevista de branding.</li>
+</ul></section>
+      <section class="card" id="es-projects" data-section="projects"><h2>Proyectos y chats</h2><ul>
+<li><strong>Menú lateral:</strong> «+ Chat» inicia un chat, «+ Proyecto» un proyecto. La búsqueda encuentra chats por título y contenido.</li>
+<li><strong>Orden:</strong> los chats se ordenan por el último cambio, el más reciente primero. Los proyectos siguen la misma regla: según el chat más nuevo que contienen. Un proyecto sin chats va al final. Renombrar no mueve nada.</li>
+<li><strong>Abrir un proyecto:</strong> un proyecto abierto carga sus propios chats, de modo que el número del proyecto y la lista coinciden.</li>
+<li><strong>Menú del chat (puntos):</strong> renombrar, mover a un proyecto, compartir. La cruz elimina el chat tras confirmar.</li>
+<li><strong>Teclado:</strong> a los chats y proyectos del menú lateral se llega con Tab y se abren con Intro o Espacio.</li>
+<li><strong>Perfil de producción</strong> (engranaje del proyecto): directrices, archivos, GTS brains, brandings, casting y la memoria del proyecto que el Director lleva por sí mismo. Vale para todos los chats del proyecto. Solo los administradores cambian el perfil.</li>
+</ul></section>
+      <section class="card" id="es-context" data-section="context"><h2>Contexto, brandings y roles</h2><ul>
+<li><strong>Contexto</strong> (cabecera): por chat hasta 5 archivos de texto (como máximo 60 000 caracteres cada uno), GTS brains adjuntos (si están configurados) y hasta dos brandings. El contador suma todo; la información emergente lo desglosa.</li>
+<li><strong>Brandings</strong> (abajo en el menú lateral): colores, tipografía, logotipos, imágenes y tono. Los administradores importan un sistema de diseño como ZIP o lo hacen surgir en la entrevista de branding con el Director, y pueden exportarlo como ZIP.</li>
+<li><strong>Casting:</strong> personajes recurrentes con imágenes de referencia y voz, para que rostros y voces sigan siendo coherentes entre episodios. Los mantienes en el chat con el Director.</li>
+</ul></section>
+      <section class="card" id="es-sharing" data-section="sharing"><h2>Compartir y colaborar</h2><p>Solo en el modo de equipo con inicio de sesión. En local no hay propietarios ni permisos.</p>
+<ul>
+<li><strong>Los chats y workflows nuevos son privados</strong> (propietario y administradores). El propietario los comparte con todo el personal interno, con equipos o con personas elegidas.</li>
+<li><strong>Estado en la cabecera:</strong> «Compartido» con un punto verde; en un chat ajeno, «Compartido contigo». Quien no puede gestionar la compartición ve solo el estado, sin botón.</li>
+<li><strong>Qué pueden hacer las personas con acceso:</strong> abrir y continuar el chat, editar y ejecutar un workflow, usar su Design App y descargar archivos. Solo el propietario y los administradores renombran, mueven, eliminan y vuelven a compartir.</li>
+<li>Si el propietario retira la compartición mientras tienes la entrada abierta, se cierra con un aviso breve.</li>
+<li>Los datos anteriores a la gestión de usuarios no tienen propietario y siguen visibles para todos; solo los administradores cambian su compartición.</li>
+</ul>
+<h3>Formas de compartir</h3>
+<ul>
+<li><strong>Privado:</strong> solo tú y los administradores.</li>
+<li><strong>Todo el personal interno:</strong> todas las personas internas de la organización, no los participantes de formaciones.</li>
+<li><strong>Equipos:</strong> todas las personas de los equipos elegidos (formaciones). Quien sea quitado del equipo, o si el equipo se archiva, pierde el acceso de inmediato.</li>
+<li><strong>Personas concretas:</strong> la selección del diálogo.</li>
+<li>Los <strong>participantes</strong> de una formación solo comparten con sus propios equipos o con personas de sus equipos, nunca con «Todo el personal interno». Los invitados (sin equipo) no comparten nada.</li>
+<li>Con equipos, el estado muestra los nombres, por ejemplo «Compartido con el equipo: Formación de junio».</li>
+</ul></section>
+      <section class="card" id="es-teams" data-section="teams"><h2>Equipos y formaciones (administradores)</h2><p>Solo en el modo de equipo con inicio de sesión. Un equipo es una formación: todas las personas que lo integran obtienen acceso a la app, un presupuesto en USD por persona y una vista deliberadamente reducida. Los equipos se gestionan en el menú, en «Gestionar equipos», o en los ajustes, en el apartado «Personas».</p>
+<h3>Crear un equipo</h3>
+<ul>
+<li>En «Nuevo equipo» escribe el nombre y el presupuesto por persona en USD (de 0 a 10 000; el presupuesto vale para toda la formación) y elige «Crear equipo».</li>
+<li>Cambiar el nombre y el presupuesto, archivar o eliminar un equipo se hace en el equipo desplegado. Un equipo archivado pierde el acceso, el presupuesto y lo compartido; los datos se conservan y el equipo se puede reactivar.</li>
+</ul>
+<h3>Añadir personas</h3>
+<ul>
+<li>Basta con pegar las direcciones: una por línea, separadas por comas o punto y coma, una columna copiada de Excel o «Nombre &lt;mail@example.com&gt;» del programa de correo.</li>
+<li>La vista previa muestra «N nuevas · M ya en el equipo · K no válidas»; las piezas no válidas se pueden desplegar. Los duplicados cuentan una vez y todo se pasa a minúsculas.</li>
+<li>El botón «Añadir N personas» lo hace todo de una vez (como máximo 500 a la vez). El mismo cuadro para pegar existe en la lista del equipo de los ajustes.</li>
+</ul>
+<h3>Miembros y presupuesto</h3>
+<ul>
+<li>La tabla muestra por persona cuándo se la vio por última vez, cuánto ha gastado, cuánto queda y su presupuesto.</li>
+<li><strong>Cambiar presupuesto</strong> fija un importe propio para una persona (marcado «personalizado»); «Importe del equipo» lo retira.</li>
+<li><strong>Reiniciar</strong> cuenta el gasto desde ahora, el presupuesto vuelve a estar completo. Requiere un segundo clic para confirmar.</li>
+<li><strong>Quitar</strong> termina el acceso y el presupuesto de la persona de inmediato.</li>
+<li>Quien está en varios equipos tiene el importe más alto y cuenta desde el inicio más reciente.</li>
+</ul>
+<h3>Sincronización con el inicio de sesión</h3>
+<p>Si está configurada la sincronización con la lista de acceso del inicio de sesión, la app anota allí a los miembros de los equipos activos. Si falla, aparece un aviso sobre la lista; el equipo se guarda igualmente. Los superadministradores ven el gasto y lo que queda por equipo y persona en la monitorización (filtro «Equipo»).</p></section>
+      <section class="card" id="es-budget" data-section="budget"><h2>Presupuesto y participación</h2><p>Para las personas de una formación (equipo). Lo que ves y puedes usar es deliberadamente limitado.</p>
+<h3>Qué ves</h3>
+<ul>
+<li>Tus propios chats, workflows y proyectos y todo lo compartido con tu equipo o contigo. Las entradas nuevas empiezan siendo privadas.</li>
+<li>No están disponibles el contenido interno ni algunos servicios: la base de conocimiento, los brandings, los roles del equipo y las plantillas propias, los modelos de ChatGPT y Higgsfield. El mensaje te dice qué falta.</li>
+</ul>
+<h3>Tu presupuesto</h3>
+<ul>
+<li>En el menú (iniciales arriba a la derecha) «Presupuesto restante» muestra una barra, el importe total y lo gastado. Sobre el chat aparece un aviso cuando queda poco o se ha agotado.</li>
+<li>Cada acción de pago cuenta: respuestas del chat, imágenes, vídeos, voz y ejecuciones de nodos de pago. Antes de una ejecución de nodos de pago, el diálogo muestra cuánto presupuesto queda y cuánto se estima que cuesta.</li>
+<li>Si el presupuesto restante no alcanza para la estimación, la ejecución no empieza. Deja fuera algunos nodos o elige una opción más barata.</li>
+<li>Los trabajos en curso reservan su importe hasta que el proveedor factura. Donde el precio no se conoce de antemano, por ejemplo en imágenes, los trabajos en paralelo pueden pasarse un poco del presupuesto; después queda bloqueado.</li>
+</ul>
+<h3>Cuando se agota el presupuesto</h3>
+<ul>
+<li>Las acciones de pago están bloqueadas. Los chats, los resultados y las descargas siguen disponibles.</li>
+<li>Para más presupuesto consulta a la dirección del curso: puede aumentar o reiniciar tu presupuesto.</li>
+<li>Sin equipo (invitado) el presupuesto es 0. Entonces solo ves lo tuyo y lo que se comparte contigo personalmente.</li>
+</ul></section>
+      <section class="card" id="es-account" data-section="account"><h2>Menú, cuenta y costes</h2><ul>
+<li><strong>Con sesión iniciada:</strong> iniciales, correo electrónico y rol (persona, administrador, superadministrador), «Mis costes este mes», ajustes (solo administradores), ayuda, monitorización (solo superadministradores), idioma y cerrar sesión.</li>
+<li><strong>En local:</strong> sin cuenta; el menú muestra costes, ajustes y ayuda, y el total sigue además en la cabecera.</li>
+<li><strong>Resumen de costes:</strong> totales por mes, semana, tipo y chat. Cada llamada se anota en el registro con su coste. Los administradores ven los costes de todos; el resto solo los suyos.</li>
+<li>Cuando un proveedor no indica precio se usan estimaciones; las llamadas de suscripción (por ejemplo vía ChatGPT) no tienen precio individual.</li>
+<li><strong>Participantes e invitados:</strong> el menú muestra además el presupuesto con una barra y tu equipo. Consulta «Presupuesto y participación».</li>
+</ul></section>
+      <section class="card" id="es-nodes" data-section="nodes"><h2>Vista de nodos</h2><p>El selector <span class="pill">Chat | Nodos</span> te lleva a la vista de nodos y de vuelta. La cabecera es allí la misma: el selector a la izquierda, el menú con ayuda y cuenta a la derecha.</p>
+<ul>
+<li><strong>Workflows:</strong> la lista a la izquierda (nuevo, desde plantilla, importar), el lienzo en el centro. Cada workflow tiene su propio almacén de medios oculto; tu lista de chats se mantiene limpia.</li>
+<li><strong>Construir:</strong> se conectan nodos de entrada (texto, imágenes, vídeo, audio), pasos de modelo de lenguaje, generación de imagen, vídeo y audio, edición con ffmpeg y resultados. Arrastrar sobre el lienzo vacío dibuja un marco de selección, V y H alternan selección y mano, Espacio más arrastrar desplaza, Ctrl/Cmd más rueda hace zoom.</li>
+<li><strong>Ejecutar:</strong> un nodo, la selección o todo el flujo. Los nodos sin cambios se omiten. Los nodos de pago llevan un <code>$</code> y preguntan antes de ejecutarse.</li>
+<li><strong>Lote:</strong> una lista de textos o de medios ejecuta el flujo una vez por elemento (hasta 50).</li>
+<li><strong>Plantillas:</strong> «Desde plantilla» ofrece flujos listos (hero de producto, anuncio vertical con locución, serie de personajes, título animado, sincronización labial y más).</li>
+<li><strong>Design App:</strong> un workflow se puede publicar como un formulario sencillo con el botón «Ejecutar» (<code>#app=…</code>). Los valores solo valen para esa ejecución.</li>
+<li><strong>Enviar al chat:</strong> copia los resultados como mensaje a un chat de tu elección para que el Director continúe desde allí.</li>
+<li><strong>Proyectos y compartir:</strong> un workflow se puede asignar a un proyecto y compartir como un chat.</li>
+</ul></section>
+      <section class="card" id="es-presets" data-section="presets"><h2>Plantillas de prompt</h2><p>El icono de destellos a la izquierda del campo de texto abre una selección agrupada de prompts listos para producir (casting, serie, branding, motion, redes sociales, marketing). Una plantilla pone su texto en el campo; los marcadores entre corchetes los rellenas tú. Los administradores añaden plantillas propias para el equipo.</p></section>
+      <section class="card" id="es-languages" data-section="languages"><h2>Idiomas</h2><p>La interfaz existe en alemán, inglés y español. El idioma se elige en el menú, en «Idioma». Esta ayuda comparte la elección con la app y tiene el mismo selector arriba a la derecha. La elección queda guardada en el navegador.</p></section>
+      <section class="card" id="es-keys" data-section="keys"><h2>Manejo y teclado</h2><ul>
+<li><strong>Esc</strong> cierra menús, diálogos y el cajón del menú lateral. Los diálogos toman el foco al abrirse.</li>
+<li><strong>Intro</strong> envía, <strong>Mayús+Intro</strong> hace un salto de línea.</li>
+<li>En el menú, las flechas cambian entre las entradas.</li>
+<li>Chats del menú lateral: <strong>Tab</strong> hasta la entrada, <strong>Intro</strong> o <strong>Espacio</strong> la abre.</li>
+<li>Vista de nodos: <strong>V</strong> selección, <strong>H</strong> mano, <strong>N</strong> nota, las flechas mueven la selección.</li>
+</ul></section>
+      <section class="card" id="es-settings" data-section="settings"><h2>Ajustes (administradores)</h2><p>Menú, entrada «Ajustes». Los ajustes se dividen en apartados:</p>
+<ul>
+<li><strong>Servicios:</strong> claves API (OpenRouter, ElevenLabs, fal.ai …), conexión con Higgsfield y ChatGPT. Las claves quedan solo en el servidor y surten efecto de inmediato.</li>
+<li><strong>Personas:</strong> administradores adicionales y, con inicio de sesión, la lista del equipo. Contiene a las personas que puedes elegir al compartir. No es una lista de acceso: el inicio de sesión sigue decidiendo quién puede entrar. Se pueden pegar varias direcciones a la vez. Debajo están los <strong>equipos</strong> (formaciones con presupuesto por persona), consulta «Equipos y formaciones».</li>
+<li><strong>Renderizado:</strong> nodos de render para motion graphics; varios nodos se reparten automáticamente.</li>
+</ul></section>
+      <section class="card" id="es-monitoring" data-section="monitoring"><h2>Uso y monitorización (superadministradores)</h2><p>Solo para superadministradores, en el menú, en «Uso y monitorización». La página muestra uso y costes por persona, proveedor y día, ejecuciones, trabajos y solicitudes fallidas, y se puede filtrar por periodo, persona y proveedor. Con equipos hay además el filtro «Equipo» y las tablas «Equipos y presupuesto» con presupuesto, gasto y restante por persona. Todas las entradas están disponibles como CSV.</p></section>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var LANGS = ['de', 'en', 'es'];
+      var BACK = { de: 'Zur App', en: 'Back to the app', es: 'Volver a la app' };
+      var TITLE = { de: 'Hilfe – Open Creative Director', en: 'Help – Open Creative Director', es: 'Ayuda – Open Creative Director' };
+      function stored() { try { return localStorage.getItem('vcd-lang'); } catch (e) { return null; } }
+      function detect() {
+        var value = stored();
+        if (LANGS.indexOf(value) >= 0) return value;
+        var nav = String((navigator.language || 'de')).slice(0, 2).toLowerCase();
+        return LANGS.indexOf(nav) >= 0 ? nav : 'de';
+      }
+      function setLang(code) {
+        if (LANGS.indexOf(code) < 0) code = 'de';
+        try { localStorage.setItem('vcd-lang', code); } catch (e) { /* the choice stays for this visit */ }
+        document.documentElement.lang = code;
+        document.title = TITLE[code];
+        document.getElementById('helpBack').textContent = '\u2190 ' + BACK[code];
+        Array.prototype.forEach.call(document.querySelectorAll('.lang'), function (node) { node.classList.toggle('active', node.getAttribute('data-lang') === code); });
+        Array.prototype.forEach.call(document.querySelectorAll('#langSwitch [data-lang]'), function (button) {
+          var on = button.getAttribute('data-lang') === code;
+          button.classList.toggle('active', on);
+          button.setAttribute('aria-pressed', String(on));
+        });
+      }
+      document.getElementById('langSwitch').addEventListener('click', function (event) {
+        var button = event.target.closest('[data-lang]');
+        if (button) setLang(button.getAttribute('data-lang'));
+      });
+      setLang(detect());
+      if (location.hash) {
+        var target = document.getElementById(location.hash.slice(1));
+        if (target) target.scrollIntoView();
+      }
+    })();
+  </script>
+</body>
+</html>

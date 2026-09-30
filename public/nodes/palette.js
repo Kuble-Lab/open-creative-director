@@ -40,6 +40,8 @@
       const reg = getReg();
       const entries = [];
       for (const def of reg.list) {
+        // Not available for this account (participants and guests, marked by the server): no way in, no dead end.
+        if (def.restricted === true) continue;
         entries.push({
           key: def.type,
           type: def.type,
@@ -53,7 +55,7 @@
       // One palette entry per Higgsfield model (fetched from the catalogue when connected).
       for (const spec of HIGGSFIELD_SOURCES) {
         const def = reg.types.get(spec.type);
-        if (!def) continue;
+        if (!def || def.restricted === true) continue;
         const source = ui.optionsFor({ optionsSource: spec.source });
         for (const option of source.options) {
           if (!option.value) continue;

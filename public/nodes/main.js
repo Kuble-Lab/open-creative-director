@@ -590,7 +590,8 @@
       state.listLoaded = true;
       state.listError = null;
     } catch (error) {
-      state.listError = error.message;
+      // An unconfirmed login has its own banner (public/access-client.js): no second message in the list.
+      state.listError = error.code === 'LOGIN_UNCONFIRMED' ? null : error.message;
     }
     workflowList.setData({ workflows: state.workflows, loading: false, error: state.listError, activeId: state.workflow ? state.workflow.id : null });
   }
@@ -804,6 +805,11 @@
     } catch (error) {
       if (token !== state.loadToken) return;
       dom.stage.classList.remove('is-loading');
+      if (error.code === 'LOGIN_UNCONFIRMED') {
+        // Not a missing workflow: the banner asks for a reload, the last opened workflow stays remembered.
+        state.workflow = null;
+        return;
+      }
       ui.toast(error.status === 404 ? ui.T('nodes.toast.notFound') : ui.T('nodes.toast.loadFailed', { error: error.message }), { kind: 'error' });
       lsSet(LS_LAST, null);
       state.workflow = null;
@@ -1931,8 +1937,15 @@
   function buildChrome(rootEl) {
     rootEl.textContent = '';
     rootEl.classList.add('nv-app');
-    const back = tbtn('back', 'nodes.topbar.backTitle', { className: 'nv-btn nv-back', text: 'nodes.topbar.back' });
-    back.addEventListener('click', leaveToChat);
+    // Chat | Nodes: the same switch as in the header of the chat view, so there is one place to change the view.
+    const modeChat = el('button', { type: 'button', class: 'mode-switch-button nv-back', dataset: { tKey: 'mode.chatTitle', tText: 'mode.chat' }, text: ui.T('mode.chat') });
+    modeChat.title = ui.T('mode.chatTitle');
+    modeChat.addEventListener('click', leaveToChat);
+    const modeNodes = el('button', { type: 'button', class: 'mode-switch-button active', 'aria-current': 'page', dataset: { tText: 'mode.nodes' }, text: ui.T('mode.nodes') });
+    const modeSwitch = el('div', { class: 'mode-switch nv-mode-switch', role: 'group', dataset: { tKey: 'mode.selector' } }, modeChat, modeNodes);
+    modeSwitch.setAttribute('aria-label', ui.T('mode.selector'));
+    // The menu behind the avatar (costs, settings, help, language, sign-out) is shared with the chat view (public/shell.js).
+    const accountMenu = global.OCShell ? global.OCShell.accountMenu({ variant: 'nodes' }) : null;
     const drawerToggle = tbtn('panel', 'nodes.topbar.toggleList');
     drawerToggle.addEventListener('click', () => setDrawer(!state.drawerOpen));
     const name = el('input', { class: 'nv-name-input', type: 'text', maxlength: 120, autocomplete: 'off', spellcheck: 'false' });
@@ -1976,7 +1989,7 @@
     const topbar = el(
       'header',
       { class: 'nv-topbar' },
-      back,
+      modeSwitch,
       drawerToggle,
       el('div', { class: 'nv-topbar-title' }, name, saveStateEl, ownerEl),
       el('div', { class: 'nv-topbar-spacer' }),
@@ -1986,7 +1999,9 @@
       addNode,
       el('div', { class: 'nv-btn-group' }, undoBtn, redoBtn),
       menuBtn,
-      inspectorToggle
+      inspectorToggle,
+      accountMenu ? el('span', { class: 'nv-topbar-divider', 'aria-hidden': 'true' }) : null,
+      accountMenu ? accountMenu.element : null
     );
 
     const drawer = el('aside', { class: 'nv-drawer', 'aria-label': ui.T('nodes.list.title') });
@@ -2069,6 +2084,7 @@
     for (const node of dom.root.querySelectorAll('[data-t-text]')) node.textContent = ui.T(node.dataset.tText);
     dom.name.placeholder = ui.T('nodes.workflow.name');
     dom.name.setAttribute('aria-label', ui.T('nodes.workflow.name'));
+    if (global.OCShell) global.OCShell.refresh();
     setSaveState(state.saveState);
     if (!state.workflow) showListViewText();
     else if (state.conflict) enterConflictText();
