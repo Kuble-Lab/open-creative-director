@@ -134,12 +134,120 @@ function testSourceKeys() {
   }
 }
 
+// Ports of every registered node type, both sides, including the ports of portVariants: { type, dir, port, base }.
+function allPorts(payload) {
+  const found = new Map();
+  const add = (def, dir, port) => {
+    const key = `${def.type}|${dir}|${port.id}`;
+    if (!found.has(key)) found.set(key, { type: def.type, category: def.category, dir, port: port.id, base: graphLib.parseType(port.type).base });
+  };
+  for (const def of payload.nodeTypes) {
+    const variants = def.portVariants ? Object.values(def.portVariants.values).map((v) => ({ inputs: v.inputs || def.inputs, outputs: v.outputs || def.outputs })) : [{ inputs: def.inputs, outputs: def.outputs }];
+    for (const variant of variants) {
+      for (const port of variant.inputs) add(def, 'in', port);
+      for (const port of variant.outputs) add(def, 'out', port);
+    }
+  }
+  return [...found.values()];
+}
+
+function testPortDescriptions() {
+  const payload = JSON.parse(JSON.stringify(registryModule.publicRegistry()));
+  const ports = allPorts(payload);
+  assert.ok(ports.length >= 190, `expected all ports of all node types, got ${ports.length}`);
+  const tiers = { specific: 0, generic: 0, type: 0 };
+  const languagesToCheck = ['de', 'en', 'es'];
+  for (const port of ports) {
+    const keys = graphLib.portDescriptionKeys(port.type, port.port, port.base, port.dir);
+    const chain = graphLib.portDescriptionChain(keys);
+    for (const lang of languagesToCheck) {
+      const hit = chain.find((key) => typeof window.I18N[lang][key] === 'string' && window.I18N[lang][key].trim());
+      assert.ok(hit, `${lang}: ${port.type} ${port.dir} port ${port.port} has no description`);
+      const text = window.I18N[lang][hit];
+      assert.ok(text.length >= 12 && text.length <= 360, `${lang}.${hit} has an odd length (${text.length})`);
+      assert.equal(text.includes('ß'), false, `${lang}.${hit} contains a sharp s`);
+      if (lang === 'de') tiers[chain.indexOf(hit) < 2 ? 'specific' : chain.indexOf(hit) < 4 ? 'generic' : 'type'] += 1;
+    }
+  }
+  // generation, LLM, Higgsfield and fal nodes never fall back to the port type
+  for (const port of ports.filter((p) => ['llm', 'image', 'video', 'audio', 'higgsfield', 'fal'].includes(p.category) || p.type.startsWith('hf.'))) {
+    const chain = graphLib.portDescriptionChain(graphLib.portDescriptionKeys(port.type, port.port, port.base, port.dir));
+    const hit = chain.find((key) => window.I18N.de[key]);
+    assert.ok(chain.indexOf(hit) < 4, `${port.type}.${port.port} only has the type-level text`);
+  }
+  // every H3 Max / fal / Higgsfield / LLM / generation node port has a text of its own
+  for (const port of ports.filter((p) => p.category === 'fal' || p.category === 'llm' || ['image.generate', 'image.edit', 'video.seedance', 'audio.tts', 'video.concat', 'video.motion_graphics'].includes(p.type))) {
+    const keys = graphLib.portDescriptionKeys(port.type, port.port, port.base, port.dir);
+    assert.ok(window.I18N.de[keys.key] || window.I18N.de[keys.dirKey], `${port.type}.${port.port} needs a specific text`);
+  }
+  assert.ok(tiers.specific > 100 && tiers.generic > 20, `unexpected tier split ${JSON.stringify(tiers)}`);
+
+  // a port id used on both sides of a node must not resolve to a side-less specific key (input text on the output)
+  for (const port of ports) {
+    if (!ports.some((other) => other.type === port.type && other.port === port.port && other.dir !== port.dir)) continue;
+    const keys = graphLib.portDescriptionKeys(port.type, port.port, port.base, port.dir);
+    for (const lang of languagesToCheck) {
+      assert.ok(!window.I18N[lang][keys.key] || window.I18N[lang][keys.dirKey], `${lang}: ${keys.key} is side-less but ${port.type}.${port.port} exists on both sides`);
+    }
+  }
+
+  // generic texts for all port ids, and the last-resort texts for all six base types on both sides
+  const ids = new Set(ports.map((p) => p.port));
+  assert.equal(ids.size, 43, 'the registry has 43 port ids');
+  for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
+  for (const base of ['text', 'number', 'image', 'video', 'audio', 'any']) {
+    for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);
+  }
+
+  // no orphaned nodes.portdesc keys: every key names a real type / port id / port type
+  const typeIds = new Set(payload.nodeTypes.map((def) => def.type));
+  const portsByType = new Map();
+  for (const port of ports) {
+    if (!portsByType.has(port.type)) portsByType.set(port.type, new Map());
+    portsByType.get(port.type).set(`${port.port}`, new Set([...(portsByType.get(port.type).get(port.port) || []), port.dir]));
+  }
+  const orphans = [];
+  for (const key of nodeKeys('de').filter((k) => k.startsWith('nodes.portdesc.'))) {
+    const rest = key.slice('nodes.portdesc.'.length);
+    let match = /^type\.(text|number|image|video|audio|any)\.(in|out)$/.exec(rest);
+    if (match) continue;
+    if (ids.has(rest)) continue; // generic
+    match = /^([a-z0-9_]+)\.(in|out)$/.exec(rest);
+    if (match && ids.has(match[1])) {
+      assert.ok(ports.some((p) => p.port === match[1] && p.dir === match[2]), `${key}: no port with this id on that side`);
+      continue;
+    }
+    // <nodeType>.<portId>[.<in|out>]
+    const sideMatch = /^(.*)\.(in|out)$/.exec(rest);
+    const candidates = [{ name: rest, side: null }];
+    if (sideMatch) candidates.push({ name: sideMatch[1], side: sideMatch[2] });
+    const ok = candidates.some(({ name, side }) => {
+      const cut = name.lastIndexOf('.');
+      const type = name.slice(0, cut);
+      const id = name.slice(cut + 1);
+      if (!typeIds.has(type) || !portsByType.get(type)?.has(id)) return false;
+      return !side || portsByType.get(type).get(id).has(side);
+    });
+    if (!ok) orphans.push(key);
+  }
+  assert.deepEqual(orphans, [], `orphaned portdesc keys: ${orphans.join(', ')}`);
+
+  // the facts and chrome keys the tooltip uses exist in all languages
+  for (const key of ['required', 'optional', 'output', 'connectedTo', 'notConnected', 'more', 'fact.multi', 'fact.multiUnlimited', 'fact.multiListMedia', 'fact.multiListMediaMax', 'fact.multiListMax', 'fact.orderShift', 'fact.multiList', 'fact.singleMap', 'fact.listIn', 'fact.param', 'fact.listOut']) {
+    for (const lang of languagesToCheck) assert.ok(window.I18N[lang][`nodes.porttip.${key}`], `${lang}: nodes.porttip.${key}`);
+  }
+  assert.ok(window.I18N.de['nodes.palette.filterMulti']);
+  // the multi-input wording keeps the numbers of the definition
+  assert.match(window.I18N.de['nodes.porttip.fact.multi'], /\{max\}.*\{count\}/);
+  return tiers;
+}
+
 function testHtmlWiring() {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   assert.ok(html.includes('id="nodesBtn"'), 'sidebar button missing');
   assert.ok(html.includes('id="nodeApp"'), 'node view container missing');
   assert.ok(html.includes('nodes/nodes.css'), 'stylesheet missing');
-  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
+  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
   let last = -1;
   for (const file of order) {
     const index = html.indexOf(`<script src="${file}"></script>`);
@@ -153,7 +261,7 @@ function testHtmlWiring() {
   assert.ok(!/OCDNodes|nodeApp|nodesBtn/.test(appSource), 'app.js must stay unchanged and independent of the node view');
 }
 
-const tests = [testParity, testSwissSpelling, testRegistryCoverage, testSourceKeys, testHtmlWiring];
+const tests = [testParity, testSwissSpelling, testRegistryCoverage, testSourceKeys, testPortDescriptions, testHtmlWiring];
 for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);

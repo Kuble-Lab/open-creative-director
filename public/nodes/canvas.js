@@ -74,6 +74,16 @@
     const marquee = el('div', { class: 'nv-marquee hidden' });
     container.append(world, marquee);
 
+    // Hover help for ports (port-tip.js): screen-space tooltip, hidden whenever the view or the graph changes.
+    const portTip = OCD.portTip
+      ? OCD.portTip.createPortTip({
+          container,
+          getReg: () => reg,
+          getGraph: () => graph,
+          isBusy: () => Boolean(drag)
+        })
+      : null;
+
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver((entries) => {
           for (const entry of entries) {
@@ -126,6 +136,7 @@
     /* ---------- viewport ---------- */
 
     function applyViewport() {
+      if (portTip) portTip.hide();
       world.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`;
       let step = 24;
       while (step * viewport.zoom < 14) step *= 2;
@@ -490,6 +501,7 @@
     /* ---------- render ---------- */
 
     function render(nextGraph, settings = {}) {
+      if (portTip) portTip.hide();
       graph = nextGraph;
       if (settings.selection) selection = { ...settings.selection, edge: settings.selection.edge || null };
       // drop selection entries that vanished
@@ -665,6 +677,7 @@
         edgeId,
         originalTo: edgeId ? { node: nodeId, port: portId } : null,
         portType: port.type,
+        portMultiple: anchor.dir === 'in' && port.multiple === true,
         blocked,
         baseGraph,
         started: false,
@@ -762,7 +775,7 @@
         return;
       }
       if (opts.onDropEmpty) {
-        opts.onDropEmpty({ anchor, portType: info.portType, world: clientToWorld(event.clientX, event.clientY), client: { x: event.clientX, y: event.clientY } });
+        opts.onDropEmpty({ anchor, portType: info.portType, portMultiple: info.portMultiple, world: clientToWorld(event.clientX, event.clientY), client: { x: event.clientX, y: event.clientY } });
       }
     }
 
@@ -1229,6 +1242,7 @@
 
     // Language switch: rebuild card texts, note / group labels.
     function relabel() {
+      if (portTip) portTip.hide();
       for (const state of cards.values()) {
         state.sig = null;
         state.node = null;
@@ -1246,6 +1260,7 @@
 
     function destroy() {
       destroyed = true;
+      if (portTip) portTip.destroy();
       if (resizeObserver) resizeObserver.disconnect();
       for (const state of cards.values()) ui.disposeWidgets(state);
     }

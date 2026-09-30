@@ -354,10 +354,58 @@ function testWiring() {
   }
 
   // texts from providers and users are never inserted as HTML
-  for (const file of ['run.js', 'preview.js']) {
+  for (const file of ['run.js', 'preview.js', 'port-tip.js', 'node-ui.js', 'canvas.js']) {
     const source = fs.readFileSync(path.join(root, 'public', 'nodes', file), 'utf8');
     assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML/.test(source), `${file} must not use innerHTML`);
   }
+}
+
+// Port hover help (public/nodes/port-tip.js): wiring and the placement maths, which do not need a DOM.
+function testPortTip() {
+  const vm = require('vm');
+  const read = (file) => fs.readFileSync(path.join(root, 'public', 'nodes', file), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+  assert.ok(html.indexOf('nodes/port-tip.js') > html.indexOf('nodes/node-ui.js') && html.indexOf('nodes/port-tip.js') < html.indexOf('nodes/canvas.js'), 'port-tip.js loads between node-ui.js and canvas.js');
+
+  // the canvas owns the tooltip and hides it whenever the view, the graph or the language changes
+  const canvas = read('canvas.js');
+  assert.ok(/OCD\.portTip\s*\?\s*OCD\.portTip\.createPortTip/.test(canvas), 'canvas.js creates the port tooltip');
+  for (const fn of ['applyViewport', 'render', 'relabel']) {
+    const at = canvas.indexOf(`function ${fn}(`);
+    assert.ok(at > 0 && canvas.slice(at, at + 160).includes('portTip.hide()'), `${fn} hides the tooltip`);
+  }
+  assert.ok(/isBusy:\s*\(\)\s*=>\s*Boolean\(drag\)/.test(canvas), 'no tooltip while a drag (edge, node, pan) is running');
+
+  // no native title on ports: the tooltip covers the whole row
+  const nodeUi = read('node-ui.js');
+  const dot = nodeUi.slice(nodeUi.indexOf('function portDot('), nodeUi.indexOf('function portCountText('));
+  assert.ok(dot.length > 100 && !/\btitle\b/.test(dot), 'the port dot has no native title');
+  assert.ok(/is-multi/.test(dot), 'multi-inputs get their own dot');
+  const buildPorts = nodeUi.slice(nodeUi.indexOf('function buildPorts('), nodeUi.indexOf('function countTextItems('));
+  assert.ok(!/title:/.test(buildPorts), 'no native titles in the port rows');
+
+  // placement: beside the dot, on the side facing away from the card, flipped and clamped inside the window
+  const window = { OCDNodes: { graph: require('../public/nodes/graph'), ui: { el: () => null, T: (key) => key, tr: (_key, fallback) => fallback } }, innerWidth: 1000, innerHeight: 600 };
+  vm.runInNewContext(read('port-tip.js'), { window, document: {}, setTimeout, clearTimeout });
+  const { place } = window.OCDNodes.portTip;
+  const tip = () => ({ offsetWidth: 300, offsetHeight: 180, style: {} });
+  const at = (left, top) => ({ left, right: left + 13, top, bottom: top + 13, width: 13, height: 13 });
+  let box = tip();
+  place(box, at(500, 300), 'in');
+  assert.equal(parseInt(box.style.left, 10), 500 - 10 - 300, 'an input tip sits left of the dot');
+  place((box = tip()), at(100, 300), 'in');
+  assert.equal(parseInt(box.style.left, 10), 100 + 13 + 10, 'no room on the left: flips to the right');
+  place((box = tip()), at(300, 300), 'out');
+  assert.equal(parseInt(box.style.left, 10), 300 + 13 + 10, 'an output tip sits right of the dot');
+  place((box = tip()), at(900, 300), 'out');
+  assert.equal(parseInt(box.style.left, 10), 900 - 10 - 300, 'no room on the right: flips to the left');
+  place((box = tip()), at(500, 590), 'in');
+  assert.equal(parseInt(box.style.top, 10), 600 - 180 - 8, 'kept inside the window at the bottom');
+  place((box = tip()), at(500, 2), 'in');
+  assert.equal(parseInt(box.style.top, 10), 8, 'kept inside the window at the top');
+  place((box = tip()), at(2, 300), 'in');
+  assert.ok(parseInt(box.style.left, 10) >= 8, 'never left of the window edge');
+  assert.equal(window.OCDNodes.portTip.SHOW_DELAY, 300);
 }
 
 const tests = [
@@ -373,7 +421,8 @@ const tests = [
   testDescribePlan,
   testDisplayStatus,
   testRunRequest,
-  testWiring
+  testWiring,
+  testPortTip
 ];
 for (const test of tests) {
   test();

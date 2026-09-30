@@ -23,6 +23,14 @@
   const PROMPT_NODE_WIDTH = 340;
   const PROMPT_NODE_GAP = 56;
   const PROMPT_BOOST = 10;
+  // Quick pick from an unconnected multi-input of a media type: the media list node and the single
+  // input node of that kind lead (the list first: it is the way to hand over several files at once).
+  const MEDIA_BASES = Object.freeze(['image', 'video', 'audio']);
+  const MEDIA_LIST_TYPE = 'input.media_list';
+  const MEDIA_LIST_BOOST = 12;
+  const MEDIA_SINGLE_BOOST = 11;
+  // The port tooltip lists at most this many connections; the rest is summarised as a count.
+  const PORT_TIP_MAX_CONNECTIONS = 5;
 
   /* ---------- basics ---------- */
 
@@ -842,24 +850,33 @@
 
   // Palette candidates for a dragged connection, best first. Same compatibility as compatibleTargets();
   // dragging from an unconnected TEXT input puts the Prompt node on top (it is the natural source).
-  function quickPickTargets(reg, dir, portType) {
+  // options.multiple: the drag starts on a multi-input; for a media type the Media list node and the matching
+  // single input node (Image / Video / Audio input) go on top, so handing over several references is one click.
+  function quickPickTargets(reg, dir, portType, options = {}) {
     const targets = compatibleTargets(reg, dir, portType);
     const source = parseType(portType);
     const boost = dir === 'in' && source && source.base === 'text' && reg.types.has(PROMPT_TYPE);
+    const mediaBoost = Boolean(dir === 'in' && options.multiple === true && source && MEDIA_BASES.includes(source.base));
+    const single = mediaBoost ? `input.${source.base}` : null;
     return targets
-      .map((target) => (boost && target.type === PROMPT_TYPE ? { ...target, rank: target.rank + PROMPT_BOOST } : target))
+      .map((target) => {
+        if (boost && target.type === PROMPT_TYPE) return { ...target, rank: target.rank + PROMPT_BOOST };
+        if (mediaBoost && target.type === MEDIA_LIST_TYPE) return { ...target, rank: target.rank + MEDIA_LIST_BOOST };
+        if (mediaBoost && target.type === single) return { ...target, rank: target.rank + MEDIA_SINGLE_BOOST };
+        return target;
+      })
       .sort((a, b) => b.rank - a.rank);
   }
 
   // Filters and orders palette entries (pure part of the command palette).
-  // entries: [{ type, category, label, search, model? }]. filter: { dir, type } from a dragged connection.
+  // entries: [{ type, category, label, search, model? }]. filter: { dir, type, multiple? } from a dragged connection.
   // Returns the entries (with `compat` = the matching port target or null), best match first.
   function rankPaletteEntries(reg, entries, options = {}) {
     const { query = '', category = 'all', filter = null, limit = 90 } = options;
     let list = entries;
     let compat = null;
     if (filter) {
-      compat = new Map(quickPickTargets(reg, filter.dir, filter.type).map((item) => [item.type, item]));
+      compat = new Map(quickPickTargets(reg, filter.dir, filter.type, { multiple: filter.multiple === true }).map((item) => [item.type, item]));
       list = list.filter((entry) => compat.has(entry.type));
     }
     if (category !== 'all') list = list.filter((entry) => entry.category === category);
@@ -931,6 +948,121 @@
     if (linked.error) return { graph, error: { reason: linked.error.code } };
     const cleared = setParams(linked.graph, nodeId, { [port.param]: '' });
     return { graph: cleared, node: added.node, edge: linked.edge };
+  }
+
+  /* ---------- port descriptions (hover help) ---------- */
+
+  // i18n keys of the description of a port. Lookup order (the caller uses the first key that has a text):
+  //   dirKey                                   nodes.portdesc.<nodeType>.<portId>.<in|out>  one side of a node
+  //   key                                      nodes.portdesc.<nodeType>.<portId>           this port of this node type
+  //   fallbackKeys[0]                          nodes.portdesc.<portId>.<in|out>             the port id in general, one side
+  //   fallbackKeys[1]                          nodes.portdesc.<portId>                      the port id in general
+  //   fallbackKeys[2]                          nodes.portdesc.type.<base>.<in|out>          the port type, last resort
+  // The side keys exist because many nodes use the same id on both sides (image in, image out).
+  function portDescriptionKeys(nodeType, portId, base, direction) {
+    const dir = direction === 'out' ? 'out' : 'in';
+    const key = `nodes.portdesc.${nodeType}.${portId}`;
+    return {
+      key,
+      dirKey: `${key}.${dir}`,
+      fallbackKeys: [`nodes.portdesc.${portId}.${dir}`, `nodes.portdesc.${portId}`, `nodes.portdesc.type.${base || 'any'}.${dir}`]
+    };
+  }
+
+  // All keys of a description in lookup order.
+  function portDescriptionChain(text) {
+    return [text.dirKey, text.key, ...text.fallbackKeys];
+  }
+
+  // Structured description of one port for the hover tooltip; no strings, no HTML: the UI resolves the keys.
+  //   { nodeId, nodeType, portId, direction, labelKey, label, base, typeKey, list, required (in: boolean, out: null),
+  //     multiple, max, count, text: { key, dirKey, fallbackKeys }, facts: [{ key, vars }],
+  //     connections: [{ order, edgeId, nodeId, nodeTitle, titled, nodeType, port, multiOutput }], moreConnections }
+  // Facts come from the definition alone (multi-input, list input / output, param fallback). The connections of an
+  // input are listed in graph.edges order, which is exactly the order resolveNodeInputs (lib/nodes/engine.js)
+  // collects them in: `order` is the position a prompt refers to ("Image 1", "Image 2" ...) as long as no list
+  // comes before it; a list counts with all of its items, so `order` is null behind the first list connection
+  // (`list` marks such a connection) and the fact orderShift explains why.
+  // Returns null for an unknown node or port.
+  function describePort(reg, graph, nodeId, direction, portId) {
+    const node = getNode(graph, nodeId);
+    if (!node) return null;
+    const dir = direction === 'out' ? 'out' : 'in';
+    const port = findPort(reg, node, dir, portId);
+    if (!port) return null;
+    const def = reg.types.get(node.type) || null;
+    const parsed = parseType(port.type) || { base: 'any', list: false };
+    const isInput = dir === 'in';
+    const multiple = isInput && port.multiple === true;
+    const max = multiple && Number.isFinite(port.max) ? port.max : null;
+    const incoming = isInput ? incomingEdges(graph, nodeId, portId) : [];
+    const count = incoming.length;
+    const media = MEDIA_BASES.includes(parsed.base);
+    const facts = [];
+    if (multiple) {
+      if (max !== null) facts.push({ key: 'nodes.porttip.fact.multi', vars: { max, count } });
+      else facts.push({ key: 'nodes.porttip.fact.multiUnlimited', vars: { count } });
+      const listKey = `nodes.porttip.fact.multiList${media ? 'Media' : ''}${max !== null ? 'Max' : ''}`;
+      facts.push({ key: listKey, vars: max !== null ? { max } : {} });
+    } else if (isInput && parsed.list) {
+      facts.push({ key: 'nodes.porttip.fact.listIn', vars: {} });
+    } else if (isInput) {
+      facts.push({ key: 'nodes.porttip.fact.singleMap', vars: {} });
+    }
+    if (isInput && port.param && def && (def.params || []).some((param) => param.id === port.param)) {
+      facts.push({ key: 'nodes.porttip.fact.param', vars: {} });
+    }
+    if (!isInput && parsed.list) facts.push({ key: 'nodes.porttip.fact.listOut', vars: {} });
+
+    // A list on a multi-input delivers all of its items, so its length decides every later position ("Image 4" ...);
+    // that is unknown here, hence the positions behind the first list connection are null.
+    let afterList = false;
+    let shifted = false;
+    const connections = incoming.slice(0, PORT_TIP_MAX_CONNECTIONS).map((edge, index) => {
+      const from = getNode(graph, edge.from.node);
+      const fromDef = from ? reg.types.get(from.type) || null : null;
+      const outputs = from ? portsFor(reg, from).outputs.filter((output) => !output.hidden) : [];
+      const fromPort = outputs.find((output) => output.id === edge.from.port);
+      const isList = Boolean(fromPort && (parseType(fromPort.type) || {}).list);
+      const order = multiple && afterList ? null : index + 1;
+      if (order === null) shifted = true;
+      if (isList) afterList = true;
+      const custom = from && typeof from.title === 'string' && from.title.trim() ? from.title.trim() : '';
+      return {
+        order,
+        list: isList,
+        edgeId: edge.id,
+        nodeId: edge.from.node,
+        nodeTitle: custom || (fromDef ? fromDef.label : from ? from.type : edge.from.node),
+        titled: Boolean(custom),
+        nodeType: from ? from.type : null,
+        port: edge.from.port,
+        multiOutput: outputs.length > 1
+      };
+    });
+
+    if (shifted || (afterList && count > connections.length)) facts.push({ key: 'nodes.porttip.fact.orderShift', vars: {} });
+
+    const keys = portDescriptionKeys(node.type, portId, parsed.base, dir);
+    return {
+      nodeId,
+      nodeType: node.type,
+      portId,
+      direction: dir,
+      labelKey: `nodes.port.${portId}`,
+      label: String(portId).replace(/[_-]+/g, ' ').replace(/^./, (char) => char.toUpperCase()),
+      base: parsed.base,
+      typeKey: `nodes.ptype.${parsed.base}`,
+      list: parsed.list,
+      required: isInput ? port.required === true : null,
+      multiple,
+      max,
+      count,
+      text: keys,
+      facts,
+      connections,
+      moreConnections: Math.max(0, count - connections.length)
+    };
   }
 
   // Conditional param visibility (registry showIf): { param, equals }, { port, connected } or { ports: [...], connected }
@@ -1027,6 +1159,10 @@
     extractTextParamIssue,
     canExtractTextParam,
     extractTextParamToNode,
+    portDescriptionKeys,
+    portDescriptionChain,
+    describePort,
+    PORT_TIP_MAX_CONNECTIONS,
     PROMPT_TYPE,
     firstCompatiblePort,
     isVisible

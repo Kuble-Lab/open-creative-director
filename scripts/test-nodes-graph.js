@@ -506,6 +506,197 @@ function testQuickPick() {
   assert.deepEqual(graphLib.quickPickTargets(reg, 'in', 'bogus'), []);
 }
 
+// Media values the way the engine hands them around: assetId names the producing node, so the order is checkable.
+function mediaValue(type, id) {
+  return { type, sessionId: 's1', assetId: id, file: `${id}.png` };
+}
+
+function testDescribePort() {
+  const engine = require('../lib/nodes/engine');
+  const b = build();
+  const ref = b.add('fal.h3_reference', 900, 0);
+  const images = ['input.image', 'input.image', 'input.image'].map((type, index) => b.add(type, 0, index * 100));
+  const prompt = b.add('input.prompt', 0, 400);
+  // Connect in an order that differs from the node order: n3, n1, n2
+  for (const id of [images[2], images[0], images[1]]) {
+    const out = graphLib.connect(reg, b.graph, { node: id, port: 'image' }, { node: ref, port: 'images' });
+    assert.ok(!out.error, 'connect');
+    b.graph = out.graph;
+  }
+  b.graph = graphLib.connect(reg, b.graph, { node: prompt, port: 'prompt' }, { node: ref, port: 'prompt' }).graph;
+
+  const d = graphLib.describePort(reg, b.graph, ref, 'in', 'images');
+  assert.equal(d.direction, 'in');
+  assert.equal(d.base, 'image');
+  assert.equal(d.list, false);
+  assert.equal(d.required, false, 'the reference images are optional');
+  assert.equal(d.multiple, true);
+  assert.equal(d.max, 9);
+  assert.equal(d.count, 3);
+  assert.equal(d.labelKey, 'nodes.port.images');
+  assert.equal(d.typeKey, 'nodes.ptype.image');
+  assert.deepEqual(d.text, graphLib.portDescriptionKeys('fal.h3_reference', 'images', 'image', 'in'));
+  assert.equal(d.text.key, 'nodes.portdesc.fal.h3_reference.images');
+  assert.deepEqual(graphLib.portDescriptionChain(d.text), [
+    'nodes.portdesc.fal.h3_reference.images.in',
+    'nodes.portdesc.fal.h3_reference.images',
+    'nodes.portdesc.images.in',
+    'nodes.portdesc.images',
+    'nodes.portdesc.type.image.in'
+  ]);
+  assert.deepEqual(d.facts.map((fact) => fact.key), ['nodes.porttip.fact.multi', 'nodes.porttip.fact.multiListMediaMax']);
+  assert.deepEqual(d.facts[0].vars, { max: 9, count: 3 });
+
+  // The connection order is the order resolveNodeInputs collects the items in (edge order of the graph).
+  assert.deepEqual(d.connections.map((c) => c.nodeId), [images[2], images[0], images[1]]);
+  assert.deepEqual(d.connections.map((c) => c.order), [1, 2, 3]);
+  const ports = graphLib.portsFor(reg, graphLib.getNode(b.graph, ref));
+  const outputsOf = (nodeId) => (images.includes(nodeId) ? { image: mediaValue('image', nodeId) } : { prompt: { type: 'text', value: 'x' } });
+  const resolved = engine.resolveNodeInputs({ node: { id: ref }, ports, params: {}, edges: b.graph.edges, outputsOf, maxListItems: 100 });
+  assert.deepEqual(resolved.inputs.images.items.map((item) => item.assetId), d.connections.map((c) => c.nodeId), 'tooltip order = engine order');
+  assert.equal(d.connections[0].titled, false);
+  assert.equal(d.connections[0].nodeTitle, 'Image input', 'registry label as long as the node has no title of its own');
+  b.graph = graphLib.setTitle(b.graph, images[2], 'Product shot');
+  const titled = graphLib.describePort(reg, b.graph, ref, 'in', 'images');
+  assert.equal(titled.connections[0].nodeTitle, 'Product shot');
+  assert.equal(titled.connections[0].titled, true);
+
+  // A media list on a multi-input counts as one connection (and delivers all its items at once, see the fact).
+  const list = b.add('input.media_list', 0, 600);
+  b.graph = graphLib.connect(reg, b.graph, { node: list, port: 'items' }, { node: ref, port: 'images' }).graph;
+  const withList = graphLib.describePort(reg, b.graph, ref, 'in', 'images');
+  assert.equal(withList.count, 4);
+  assert.equal(withList.connections[3].nodeType, 'input.media_list');
+  assert.equal(withList.connections[3].list, true);
+  assert.deepEqual(withList.connections.map((c) => c.order), [1, 2, 3, 4], 'nothing follows the list yet');
+  assert.ok(!withList.facts.some((fact) => fact.key === 'nodes.porttip.fact.orderShift'));
+  assert.deepEqual(withList.facts[1].vars, { max: 9 }, 'every list item counts toward the maximum');
+  // Behind a list the positions are unknown (it counts with all of its items): no numbers, plus the shift hint.
+  const extra = b.add('input.image', 0, 800);
+  b.graph = graphLib.connect(reg, b.graph, { node: extra, port: 'image' }, { node: ref, port: 'images' }).graph;
+  const behindList = graphLib.describePort(reg, b.graph, ref, 'in', 'images');
+  assert.deepEqual(behindList.connections.map((c) => c.order), [1, 2, 3, 4, null]);
+  assert.deepEqual(behindList.connections.map((c) => c.list), [false, false, false, true, false]);
+  assert.ok(behindList.facts.some((fact) => fact.key === 'nodes.porttip.fact.orderShift'));
+  b.graph = graphLib.disconnect(b.graph, behindList.connections[4].edgeId);
+
+  // Required / optional, param fallback, single inputs
+  const prompts = graphLib.describePort(reg, b.graph, ref, 'in', 'prompt');
+  assert.equal(prompts.required, true);
+  assert.equal(prompts.multiple, false);
+  assert.deepEqual(prompts.facts.map((fact) => fact.key), ['nodes.porttip.fact.singleMap', 'nodes.porttip.fact.param']);
+  assert.equal(prompts.connections.length, 1);
+  assert.equal(prompts.connections[0].nodeType, 'input.prompt');
+  const audios = graphLib.describePort(reg, b.graph, ref, 'in', 'audios');
+  assert.equal(audios.count, 0);
+  assert.deepEqual(audios.connections, []);
+  assert.equal(audios.max, 3);
+
+  // Outputs: no required flag, no connection list, list outputs explain the mapping
+  const out = graphLib.describePort(reg, b.graph, ref, 'out', 'expanded_prompt');
+  assert.equal(out.direction, 'out');
+  assert.equal(out.required, null);
+  assert.deepEqual(out.facts, []);
+  assert.deepEqual(out.connections, []);
+  assert.equal(out.text.key, 'nodes.portdesc.fal.h3_reference.expanded_prompt');
+  assert.equal(out.text.dirKey, 'nodes.portdesc.fal.h3_reference.expanded_prompt.out');
+  const listOut = graphLib.describePort(reg, b.graph, list, 'out', 'items');
+  assert.equal(listOut.list, true);
+  assert.equal(listOut.base, 'image');
+  assert.deepEqual(listOut.facts.map((fact) => fact.key), ['nodes.porttip.fact.listOut']);
+
+  // The "one run per item" hint belongs to single inputs of a scalar type only
+  const pick = b.add('util.pick', 300, 600);
+  assert.deepEqual(graphLib.describePort(reg, b.graph, pick, 'in', 'items').facts.map((fact) => fact.key), ['nodes.porttip.fact.listIn']);
+  const dur = b.add('image.to_video', 600, 600);
+  const durPort = graphLib.describePort(reg, b.graph, dur, 'in', 'duration');
+  assert.deepEqual(durPort.facts.map((fact) => fact.key), ['nodes.porttip.fact.singleMap', 'nodes.porttip.fact.param']);
+  for (const [type, port] of [['llm.chat', 'images'], ['audio.mix', 'tracks'], ['text.join', 'items'], ['util.router', 'inputs'], ['output.result', 'inputs']]) {
+    const id = b.add(type, 0, 0);
+    const info = graphLib.describePort(reg, b.graph, id, 'in', port);
+    assert.equal(info.multiple, true, `${type}.${port}`);
+    assert.ok(!info.facts.some((fact) => fact.key === 'nodes.porttip.fact.singleMap'), `${type}.${port} has no per-item hint`);
+  }
+  // no maximum: the unlimited wording, and a list fact without the media wording for non-media types
+  const router = b.add('util.router', 0, 0);
+  const routerInfo = graphLib.describePort(reg, b.graph, router, 'in', 'inputs');
+  assert.equal(routerInfo.max, null);
+  assert.deepEqual(routerInfo.facts.map((fact) => fact.key), ['nodes.porttip.fact.multiUnlimited', 'nodes.porttip.fact.multiList']);
+  assert.equal(routerInfo.required, true);
+  const join = b.add('text.join', 0, 0);
+  const joinInfo = graphLib.describePort(reg, b.graph, join, 'in', 'items');
+  assert.equal(joinInfo.facts[1].key, 'nodes.porttip.fact.multiList', 'text is not a media type');
+  // an input without a param has no fallback fact
+  const relight = b.add('image.relight', 0, 0);
+  assert.ok(!graphLib.describePort(reg, b.graph, relight, 'in', 'image').facts.some((fact) => fact.key === 'nodes.porttip.fact.param'));
+
+  // unknown things
+  assert.equal(graphLib.describePort(reg, b.graph, 'nope', 'in', 'images'), null);
+  assert.equal(graphLib.describePort(reg, b.graph, ref, 'in', 'nope'), null);
+  assert.equal(graphLib.describePort(reg, b.graph, ref, 'out', 'images'), null, 'images is an input');
+}
+
+function testDescribePortTruncationAndVariants() {
+  const b = build();
+  const edit = b.add('image.edit', 900, 0);
+  const sources = Array.from({ length: 8 }, (_unused, index) => b.add('input.image', 0, index * 50));
+  for (const id of sources) b.graph = graphLib.connect(reg, b.graph, { node: id, port: 'image' }, { node: edit, port: 'images' }).graph;
+  const d = graphLib.describePort(reg, b.graph, edit, 'in', 'images');
+  assert.equal(d.count, 8);
+  assert.equal(d.required, true);
+  assert.equal(d.connections.length, graphLib.PORT_TIP_MAX_CONNECTIONS);
+  assert.equal(d.moreConnections, 8 - graphLib.PORT_TIP_MAX_CONNECTIONS);
+  assert.deepEqual(d.connections.map((c) => c.nodeId), sources.slice(0, graphLib.PORT_TIP_MAX_CONNECTIONS), 'the first connections are listed');
+  assert.equal(d.facts[0].vars.count, 8, 'the count covers all connections');
+
+  // portVariants: the type of the port follows the param
+  const remove = b.add('hf.remove_background', 0, 0, { kind: 'video' });
+  const video = graphLib.describePort(reg, b.graph, remove, 'in', 'media');
+  assert.equal(video.base, 'video');
+  assert.equal(video.required, true);
+  const removeImage = b.add('hf.remove_background', 0, 0);
+  const image = graphLib.describePort(reg, b.graph, removeImage, 'out', 'media');
+  assert.equal(image.base, 'image');
+  assert.equal(graphLib.describePort(reg, b.graph, remove, 'out', 'media').base, 'video');
+  assert.deepEqual(graphLib.portDescriptionChain(video.text)[1], 'nodes.portdesc.hf.remove_background.media');
+  const mediaList = b.add('input.media_list', 0, 0, { kind: 'audio' });
+  assert.equal(graphLib.describePort(reg, b.graph, mediaList, 'out', 'items').base, 'audio');
+  // a source node with a port of several outputs marks it
+  const h3 = b.add('fal.h3_video', 0, 0);
+  const sink = b.add('text.join', 0, 0);
+  b.graph = graphLib.connect(reg, b.graph, { node: h3, port: 'expanded_prompt' }, { node: sink, port: 'items' }).graph;
+  const joined = graphLib.describePort(reg, b.graph, sink, 'in', 'items');
+  assert.equal(joined.connections[0].port, 'expanded_prompt');
+  assert.equal(joined.connections[0].multiOutput, true);
+}
+
+function testQuickPickMultiMedia() {
+  const entries = paletteEntries();
+  const rank = (type, multiple, options = {}) => graphLib.rankPaletteEntries(reg, entries, { filter: { dir: 'in', type, multiple }, ...options });
+  for (const kind of ['image', 'video', 'audio']) {
+    const top = rank(kind, true).slice(0, 2);
+    assert.deepEqual(top.map((entry) => entry.type), ['input.media_list', `input.${kind}`], `${kind}: media list, then the single input`);
+    assert.deepEqual(top[0].compat.params, { kind }, 'the media list is created with the matching media type');
+    // typing a search keeps the two on top for a query that matches both
+    assert.ok(rank(kind, true, { query: 'input' }).slice(0, 4).some((entry) => entry.type === 'input.media_list'));
+  }
+  // the list also leads when the search matches something else better ("upload" is a keyword of the single input)
+  const targets = graphLib.quickPickTargets(reg, 'in', 'image', { multiple: true });
+  assert.equal(targets[0].type, 'input.media_list');
+  assert.equal(targets[1].type, 'input.image');
+  assert.ok(targets[0].rank > targets[1].rank && targets[1].rank > targets[2].rank);
+  // no multiple: unchanged, exact matches by category order (the existing rule)
+  const plain = graphLib.quickPickTargets(reg, 'in', 'image');
+  assert.equal(plain.find((entry) => entry.type === 'input.media_list').rank, 2, 'no boost for a single input');
+  assert.equal(rank('image', false)[0].type, 'input.image');
+  // other multi-inputs: text keeps "Prompt first", any gets no media boost
+  assert.equal(rank('text', true)[0].type, 'input.prompt');
+  assert.ok(!graphLib.quickPickTargets(reg, 'in', 'any', { multiple: true }).some((entry) => entry.rank > 2), 'no boost for any');
+  // dragging from an output is not affected
+  const fromOutput = graphLib.rankPaletteEntries(reg, entries, { filter: { dir: 'out', type: 'image', multiple: true } });
+  assert.ok(!fromOutput.some((entry) => entry.type === 'input.media_list'), 'the media list has no inputs');
+}
+
 function testExtractPrompt() {
   const b = build();
   const gen = b.add('image.generate', 600, 200, { prompt: 'a lighthouse at dawn' });
@@ -635,6 +826,9 @@ const tests = [
   testPromptNodeRegistered,
   testPaletteRanking,
   testQuickPick,
+  testDescribePort,
+  testDescribePortTruncationAndVariants,
+  testQuickPickMultiMedia,
   testExtractPrompt,
   testQuickPickCreatesConnectedNode,
   testShowIf,

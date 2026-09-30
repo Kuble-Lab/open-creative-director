@@ -235,10 +235,12 @@
       if (filter) {
         const base = baseOf(filter.type);
         const banner = el('div', { class: 'nv-pal-filter' });
-        banner.append(
-          el('i', { class: `nv-pal-dot nv-port-${base}` }),
-          el('span', { text: ui.T(filter.dir === 'out' ? 'nodes.palette.filterOut' : 'nodes.palette.filterIn', { type: ui.tr(`nodes.ptype.${base}`, base) }) })
-        );
+        const line = el('span', { class: 'nv-pal-filter-text', text: ui.T(filter.dir === 'out' ? 'nodes.palette.filterOut' : 'nodes.palette.filterIn', { type: ui.tr(`nodes.ptype.${base}`, base) }) });
+        // Dragged from a multi-input of a media type: say how several files are handed over.
+        if (filter.multiple && filter.dir === 'in' && ['image', 'video', 'audio'].includes(base)) {
+          line.append(el('span', { class: 'nv-pal-filter-hint', text: ui.T('nodes.palette.filterMulti') }));
+        }
+        banner.append(el('i', { class: `nv-pal-dot nv-port-${base}` }), line);
         panel.append(banner);
       }
       panel.append(chips, list, foot);

@@ -892,14 +892,20 @@
     Object.assign(cardActions, actions || {});
   }
 
-  function portDot(direction, port, reg) {
-    const base = graphLib.parseType(port.type)?.base || 'any';
-    const dot = el('span', {
-      class: `nv-port nv-port-${base} ${graphLib.parseType(port.type)?.list ? 'is-list' : ''}`.trim(),
-      dataset: { dir: direction, port: port.id, type: port.type },
-      title: `${portLabel(port.id)} (${tr(`nodes.ptype.${base}`, base)}${graphLib.parseType(port.type)?.list ? ' []' : ''})`
-    });
-    return dot;
+  // Port dot. The explanation is not a native title: the port tooltip (port-tip.js) covers the whole row.
+  // Multi-inputs get a double ring (`is-multi`): they take several connections.
+  function portDot(direction, port) {
+    const parsed = graphLib.parseType(port.type);
+    const classes = ['nv-port', `nv-port-${parsed?.base || 'any'}`];
+    if (parsed?.list) classes.push('is-list');
+    if (direction === 'in' && port.multiple) classes.push('is-multi');
+    return el('span', { class: classes.join(' '), dataset: { dir: direction, port: port.id, type: port.type } });
+  }
+
+  // "n/max" next to the label of a multi-input from the first connection on ("n/∞" without a maximum).
+  function portCountText(port, count) {
+    if (!port.multiple || !count) return '';
+    return `${count}/${Number.isFinite(port.max) ? port.max : '\u221e'}`;
   }
 
   // Signature of everything that changes the card structure (ports, visible params).
@@ -915,7 +921,7 @@
         return `${param.id}${linked ? '~' : ''}${ctxKind}`;
       });
     return JSON.stringify([
-      ports.inputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}:${p.multiple ? 'm' : ''}:${p.required ? 'r' : ''}`),
+      ports.inputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}:${p.multiple ? `m${p.max ?? ''}` : ''}:${p.required ? 'r' : ''}`),
       ports.outputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}`),
       visible,
       def.available === true ? 1 : 0,
@@ -952,6 +958,7 @@
       sig: null,
       node: null,
       portEls: { in: new Map(), out: new Map() },
+      portRows: new Map(),
       connSig: '',
       slotKey: '',
       previewKey: null
@@ -973,6 +980,21 @@
     state.widgets.clear();
   }
 
+  // Connection state of the input rows (label colour, "n/max" badge). Runs on every card update, so a new
+  // connection shows up without rebuilding the card (the widgets keep their focus).
+  function patchPorts(state, connected) {
+    if (!state.portRows) return;
+    for (const [portId, entry] of state.portRows) {
+      const count = connected.get(portId) || 0;
+      entry.row.classList.toggle('is-connected', count > 0);
+      if (entry.badge) {
+        const text = portCountText(entry.port, count);
+        if (entry.badge.textContent !== text) entry.badge.textContent = text;
+        entry.badge.classList.toggle('hidden', !text);
+      }
+    }
+  }
+
   function buildPorts(state, node, def, connected, ctx) {
     const { ports } = state.refs;
     ports.textContent = '';
@@ -982,21 +1004,24 @@
     const outputs = list.outputs.filter((port) => !port.hidden);
     const left = el('div', { class: 'nv-ports-in' });
     const right = el('div', { class: 'nv-ports-out' });
+    state.portRows = new Map();
     for (const port of inputs) {
-      const dot = portDot('in', port, ctx.reg);
-      const count = connected.get(port.id) || 0;
-      const row = el('div', { class: `nv-port-row is-in ${count ? 'is-connected' : ''}`.trim() }, dot, el('span', { class: 'nv-port-label', text: portLabel(port.id) }));
-      if (port.required) row.append(el('span', { class: 'nv-port-req', title: T('nodes.port.required'), text: '*' }));
-      if (port.multiple && count > 1) row.append(el('span', { class: 'nv-port-count', text: `×${count}` }));
+      const dot = portDot('in', port);
+      const row = el('div', { class: 'nv-port-row is-in' }, dot, el('span', { class: 'nv-port-label', text: portLabel(port.id) }));
+      if (port.required) row.append(el('span', { class: 'nv-port-req', 'aria-label': T('nodes.port.required'), text: '*' }));
+      const badge = port.multiple ? el('span', { class: 'nv-port-count' }) : null;
+      if (badge) row.append(badge);
+      state.portRows.set(port.id, { row, badge, port });
       left.append(row);
       state.portEls.in.set(port.id, dot);
     }
     for (const port of outputs) {
-      const dot = portDot('out', port, ctx.reg);
+      const dot = portDot('out', port);
       const row = el('div', { class: 'nv-port-row is-out' }, el('span', { class: 'nv-port-label', text: portLabel(port.id) }), dot);
       right.append(row);
       state.portEls.out.set(port.id, dot);
     }
+    patchPorts(state, connected);
     ports.append(left, right);
     ports.classList.toggle('is-empty', !inputs.length && !outputs.length);
   }
@@ -1126,7 +1151,8 @@
       }
       return true;
     }
-    // Same structure: only push new param values into the existing widgets.
+    // Same structure: refresh the connection badges and push new param values into the existing widgets.
+    patchPorts(state, connected);
     if (def && (!previousNode || previousNode.params !== node.params)) {
       const effective = graphLib.effectiveParams(def, node);
       for (const [id, widget] of state.widgets) widget.set(effective[id]);

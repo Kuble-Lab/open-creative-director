@@ -961,6 +961,12 @@
 .nv-port-count {
   font-size: 10px;
   color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nv-port-row.is-connected .nv-port-count {
+  color: var(--text-dim);
 }
 
 .nv-port-row.is-connected .nv-port-label {
@@ -1010,6 +1016,11 @@
   border-radius: 4px;
 }
 
+/* Multi-input: a second ring around the dot (it takes several connections, in the order they were made). */
+.nv-port.is-multi {
+  box-shadow: 0 0 0 1.5px var(--pc), 0 0 0 4px var(--nv-node-bg), 0 0 0 5.5px var(--pc);
+}
+
 .nv-port:hover {
   transform: scale(1.25);
 }
@@ -1033,6 +1044,206 @@
 @keyframes nv-pulse {
   50% {
     box-shadow: 0 0 0 1.5px var(--pc), 0 0 0 8px rgba(255, 255, 255, 0.03);
+  }
+}
+
+.nv-canvas.is-connecting .nv-port.is-multi.is-ok {
+  box-shadow: 0 0 0 1.5px var(--pc), 0 0 0 4px var(--nv-node-bg), 0 0 0 5.5px var(--pc), 0 0 0 10px rgba(255, 255, 255, 0.09);
+  animation-name: nv-pulse-multi;
+}
+
+.nv-canvas.is-connecting .nv-port.is-multi.is-hover {
+  box-shadow: 0 0 0 1.5px var(--pc), 0 0 0 4px var(--nv-node-bg), 0 0 0 5.5px var(--pc), 0 0 0 11px rgba(216, 162, 95, 0.28);
+  animation: none;
+}
+
+@keyframes nv-pulse-multi {
+  50% {
+    box-shadow: 0 0 0 1.5px var(--pc), 0 0 0 4px var(--nv-node-bg), 0 0 0 5.5px var(--pc), 0 0 0 12px rgba(255, 255, 255, 0.03);
+  }
+}
+
+/* ---------- port tooltip (screen layer, see port-tip.js) ---------- */
+
+.nv-porttip {
+  position: fixed;
+  z-index: 50;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 9px 11px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  line-height: 1.42;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.nv-porttip.is-visible {
+  opacity: 1;
+}
+
+.nv-porttip-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.nv-porttip-name {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.nv-porttip-type {
+  --pc: var(--nv-port-any);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--pc);
+  color: var(--pc);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.nv-porttip-type.nv-port-text {
+  --pc: var(--nv-port-text);
+}
+.nv-porttip-type.nv-port-number {
+  --pc: var(--nv-port-number);
+}
+.nv-porttip-type.nv-port-image {
+  --pc: var(--nv-port-image);
+}
+.nv-porttip-type.nv-port-video {
+  --pc: var(--nv-port-video);
+}
+.nv-porttip-type.nv-port-audio {
+  --pc: var(--nv-port-audio);
+}
+
+.nv-porttip-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pc);
+}
+
+.nv-porttip-swatch.is-list {
+  border-radius: 2px;
+}
+
+.nv-porttip-flag {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.nv-porttip-flag.is-required {
+  color: var(--accent);
+}
+
+.nv-porttip-text {
+  margin: 0;
+  color: var(--text);
+}
+
+.nv-porttip-facts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.nv-porttip-facts li {
+  position: relative;
+  padding-left: 11px;
+}
+
+.nv-porttip-facts li::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.nv-porttip-conns {
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.nv-porttip-conns-title {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.nv-porttip-conn-list {
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nv-porttip-conn-list li {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nv-porttip-order {
+  flex: none;
+  min-width: 1.4em;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-porttip-conn-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.nv-porttip-conn-port {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.nv-porttip-conn-port::before {
+  content: '\00b7\00a0';
+}
+
+.nv-porttip-more {
+  margin-top: 2px;
+  padding-left: calc(1.4em + 6px);
+  color: var(--text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-porttip {
+    transition: none;
   }
 }
 
@@ -2345,6 +2556,18 @@
   color: var(--text-dim);
   background: var(--accent-soft);
   border-bottom: 1px solid var(--line-soft);
+}
+
+.nv-pal-filter-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nv-pal-filter-hint {
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .nv-pal-chips {

@@ -1947,9 +1947,10 @@
       onDetach(edgeId) {
         applyGraph(graphLib.disconnect(state.graph, edgeId), { history: 'disconnect' });
       },
-      onDropEmpty({ anchor, portType, world, client }) {
-        // Weavy-style quick pick at the release point: only nodes with a compatible port, Prompt first for text inputs.
-        openPalette({ world, anchor, exact: true, client }, { dir: anchor.dir, type: portType });
+      onDropEmpty({ anchor, portType, portMultiple, world, client }) {
+        // Weavy-style quick pick at the release point: only nodes with a compatible port, Prompt first for text inputs,
+        // Media list and the single input node first for a multi-input of a media type.
+        openPalette({ world, anchor, exact: true, client }, { dir: anchor.dir, type: portType, multiple: portMultiple === true });
       },
       onCanvasDoubleClick({ world }) {
         openPalette({ world, exact: true });
