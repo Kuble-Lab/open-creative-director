@@ -5,12 +5,12 @@
 // change keep their identity so the canvas can diff by reference.
 // UMD: module.exports in Node (tests), window.OCDNodes.graph in the browser.
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./motion-html'));
   else {
     root.OCDNodes = root.OCDNodes || {};
-    root.OCDNodes.graph = factory();
+    root.OCDNodes.graph = factory(root.OCDNodes.motionHtml);
   }
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (motionHtml) {
   const LIST_SUFFIX = '[]';
   const DEFAULT_NODE_SIZE = Object.freeze({ w: 280, h: 160 });
   const ZOOM_MIN = 0.1;
@@ -23,6 +23,13 @@
   const PROMPT_NODE_WIDTH = 340;
   const PROMPT_NODE_GAP = 56;
   const PROMPT_BOOST = 10;
+  // "Convert to HTML with AI": a Motion graphics node whose HTML field holds an instruction gets a Prompt node and a
+  // Motion HTML writer in front of it. Approximate card footprints for the placement.
+  const MOTION_TYPE = 'video.motion_graphics';
+  const MOTION_WRITER_TYPE = 'llm.motion_html';
+  const WRITER_NODE_WIDTH = 340;
+  const WRITER_NODE_HEIGHT = 260;
+  const CONVERT_NODE_HEIGHT = 200;
   // Quick pick from an unconnected multi-input of a media type: the media list node and the single
   // input node of that kind lead (the list first: it is the way to hand over several files at once).
   const MEDIA_BASES = Object.freeze(['image', 'video', 'audio']);
@@ -950,6 +957,88 @@
     return { graph: cleared, node: added.node, edge: linked.edge };
   }
 
+  /* ---------- Motion graphics: instruction in the HTML field -> Prompt + Motion HTML writer ---------- */
+
+  // Why the HTML field of a Motion graphics node cannot be converted, or null when it can. Only an unconnected HTML
+  // input whose field holds free text (not HTML) qualifies, and only while the Motion HTML writer is available.
+  function motionHtmlConversionIssue(reg, graph, nodeId) {
+    if (!reg.types.has(PROMPT_TYPE) || !reg.types.has(MOTION_WRITER_TYPE)) return 'no_writer_type';
+    // The writer needs an LLM provider; without one the converted chain could not run, so no conversion is offered.
+    if (reg.types.get(MOTION_WRITER_TYPE).available !== true) return 'writer_unavailable';
+    const node = getNode(graph, nodeId);
+    if (!node) return 'unknown_node';
+    if (node.type !== MOTION_TYPE) return 'not_motion_node';
+    const port = findPort(reg, node, 'in', 'html');
+    const def = reg.types.get(node.type);
+    if (!port || !def) return 'unknown_port';
+    if (incomingEdges(graph, nodeId, 'html').length) return 'connected';
+    const text = String(effectiveParams(def, node)[port.param || 'html'] ?? '');
+    if (!text.trim()) return 'empty';
+    if (motionHtml.looksLikeHtml(text)) return 'is_html';
+    return null;
+  }
+
+  function canConvertMotionHtml(reg, graph, nodeId) {
+    return motionHtmlConversionIssue(reg, graph, nodeId) === null;
+  }
+
+  // Turns the instruction in the HTML field of a Motion graphics node into a chain to its left:
+  //   Prompt (text = the old field) -> Motion HTML writer (brief) -> Motion graphics (html)
+  // The format of the node moves to the writer, every source on the node's "Assets" input is connected to the
+  // writer's "Assets" input in the same order (so the writer knows the file names), the HTML field is cleared.
+  // Nothing is run or paid for. Returns { graph, prompt, writer, edges } or { graph, error: { reason } }.
+  // One call = one undo step for the caller. options: { promptId, writerId, edgeIds: {brief, html}, position: { x, y }
+  // (of the Prompt node), sizes, reserved }.
+  function convertMotionHtmlToWriter(reg, graph, nodeId, options = {}) {
+    const reason = motionHtmlConversionIssue(reg, graph, nodeId);
+    if (reason) return { graph, error: { reason } };
+    const target = getNode(graph, nodeId);
+    const def = reg.types.get(target.type);
+    const params = effectiveParams(def, target);
+    const text = String(params.html ?? '');
+    const gap = PROMPT_NODE_GAP;
+    let promptPos = options.position && Number.isFinite(options.position.x) && Number.isFinite(options.position.y) ? { x: options.position.x, y: options.position.y } : null;
+    if (!promptPos) {
+      const writerX = snap(target.x - WRITER_NODE_WIDTH - gap, 8);
+      const promptX = snap(writerX - PROMPT_NODE_WIDTH - gap, 8);
+      let y = snap(target.y, 8);
+      // Step down while either new card would overlap another one (bounded, the canvas can always be tidied up).
+      for (let guard = 0; guard < 60; guard += 1) {
+        const writerRect = { x: writerX, y, w: WRITER_NODE_WIDTH, h: WRITER_NODE_HEIGHT };
+        const promptRect = { x: promptX, y, w: PROMPT_NODE_WIDTH, h: CONVERT_NODE_HEIGHT };
+        const clash = graph.nodes.some((other) => {
+          if (other.id === nodeId) return false;
+          const rect = nodeRect(other, options.sizes);
+          return rectsIntersect(writerRect, rect) || rectsIntersect(promptRect, rect);
+        });
+        if (!clash) break;
+        y += 48;
+      }
+      promptPos = { x: promptX, y };
+    }
+    const writerPos = { x: promptPos.x + PROMPT_NODE_WIDTH + gap, y: promptPos.y };
+
+    const addedPrompt = addNode(reg, graph, PROMPT_TYPE, { id: options.promptId, x: promptPos.x, y: promptPos.y, params: { prompt: text }, reserved: options.reserved });
+    const addedWriter = addNode(reg, addedPrompt.graph, MOTION_WRITER_TYPE, { id: options.writerId, x: writerPos.x, y: writerPos.y, params: { format: params.format }, reserved: options.reserved });
+    let next = addedWriter.graph;
+    const edges = [];
+    const link = (from, to, id) => {
+      const result = connect(reg, next, from, to, { id, reserved: options.reserved });
+      if (result.error) return null;
+      next = result.graph;
+      edges.push(result.edge);
+      return result.edge;
+    };
+    const briefEdge = link({ node: addedPrompt.node.id, port: 'prompt' }, { node: addedWriter.node.id, port: 'brief' }, options.edgeIds && options.edgeIds.brief);
+    if (!briefEdge) return { graph, error: { reason: 'connect_failed' } };
+    // The assets of the node, in the order of graph.edges (= the order the engine collects them in).
+    for (const edge of incomingEdges(graph, nodeId, 'assets')) link(edge.from, { node: addedWriter.node.id, port: 'assets' });
+    const htmlEdge = link({ node: addedWriter.node.id, port: 'html' }, { node: nodeId, port: 'html' }, options.edgeIds && options.edgeIds.html);
+    if (!htmlEdge) return { graph, error: { reason: 'connect_failed' } };
+    next = setParams(next, nodeId, { html: '' });
+    return { graph: next, prompt: addedPrompt.node, writer: addedWriter.node, edges };
+  }
+
   /* ---------- port descriptions (hover help) ---------- */
 
   // i18n keys of the description of a port. Lookup order (the caller uses the first key that has a text):
@@ -1159,6 +1248,9 @@
     extractTextParamIssue,
     canExtractTextParam,
     extractTextParamToNode,
+    motionHtmlConversionIssue,
+    canConvertMotionHtml,
+    convertMotionHtmlToWriter,
     portDescriptionKeys,
     portDescriptionChain,
     describePort,

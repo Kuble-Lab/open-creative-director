@@ -321,6 +321,7 @@ function testDisplayStatus() {
   assert.deepEqual(d({ planNode: { status: 'stale' }, hasResults: false, category: 'input' }), { status: null }, 'input nodes carry no stale badge');
   assert.deepEqual(d({ planNode: { status: 'cached' }, hasResults: true, category: 'image' }), { status: null }, 'unchanged results need no badge');
   assert.deepEqual(d({ planNode: { status: 'invalid', reason: 'prompt missing' }, category: 'image' }), { status: 'invalid', message: 'prompt missing' });
+  assert.deepEqual(d({ planNode: { status: 'invalid', reason: 'html: not html', reasonCode: 'not_html', reasonData: { width: 1920 } }, category: 'video' }), { status: 'invalid', message: 'html: not html', code: 'not_html', data: { width: 1920 } }, 'the cause code and data pass through for the translated text');
   assert.deepEqual(d({ planNode: { status: 'unavailable', reason: 'no key' }, category: 'image' }), { status: 'unavailable', message: 'no key' });
   assert.deepEqual(d({}), { status: null });
 }

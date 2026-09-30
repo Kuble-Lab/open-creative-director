@@ -34,6 +34,26 @@
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
   const optionLabel = (value) => tr(`nodes.option.${value}`, String(value));
 
+  // Translated text of a plan / validation issue { code, data?, message }: nodes.issue.<code> with the placeholders of
+  // `data` (width -> {w}, height -> {h}, foundWidth -> {foundW}, foundHeight -> {foundH}, format -> its option label);
+  // without such a key the engine's own (English) message is shown as before.
+  function hasIssueText(code) {
+    return Boolean(code) && T(`nodes.issue.${code}`) !== `nodes.issue.${code}`;
+  }
+
+  // `variant` picks a wording for a place where the usual remedy is not available: nodes.issue.<code>.<variant>
+  // ('plain' = no conversion button offered, 'app' = the Design App has no such button); without such a key the normal
+  // text is used.
+  function issueText(issue, variant) {
+    const item = issue || {};
+    const data = item.data || {};
+    if (!hasIssueText(item.code)) return item.message || item.code || '';
+    const vars = { ...data, w: data.width, h: data.height, foundW: data.foundWidth, foundH: data.foundHeight };
+    if (data.format) vars.format = optionLabel(data.format);
+    const key = variant && hasIssueText(`${item.code}.${variant}`) ? `nodes.issue.${item.code}.${variant}` : `nodes.issue.${item.code}`;
+    return T(key, vars);
+  }
+
   /* ---------- DOM helpers ---------- */
 
   function el(tag, attrs, ...children) {
@@ -621,6 +641,8 @@
   // Widget options of a prompt textarea: the Prompt node gets a large field, embedded prompt fields that
   // also have a text input hint at the second way (connect a Prompt node). Empty object for other params.
   function promptFieldOptions(node, param, inputs) {
+    // The HTML field of the Motion graphics node holds code, not an instruction: say so in the empty field.
+    if (param && param.kind === 'code' && param.id === 'html' && node && node.type === 'video.motion_graphics') return { placeholder: T('nodes.motion.htmlPlaceholder') };
     if (!param || param.kind !== 'textarea') return {};
     if (node && node.type === 'input.prompt') return { large: true, rows: 5, maxHeight: 360, placeholder: T('nodes.prompt.placeholder') };
     if (param.id === 'prompt' && (inputs || []).some((port) => port.param === param.id && port.type === 'text')) {
@@ -845,7 +867,8 @@
       const label = el('label', { class: 'nv-field-label', text: labelText });
       if (options.action) {
         // small text button next to the label, e.g. "Move into a Prompt node"
-        const action = el('button', { type: 'button', class: 'nv-field-action', title: options.action.title, 'aria-label': options.action.title }, icon(options.action.icon || 'extract', 12), el('span', { text: options.action.label }));
+        const action = el('button', { type: 'button', class: 'nv-field-action', title: options.action.title, 'aria-label': options.action.title, dataset: options.action.dataset || {} }, icon(options.action.icon || 'extract', 12), el('span', { text: options.action.label }));
+        if (options.action.hidden) action.hidden = true;
         action.addEventListener('click', options.action.onClick);
         const tools = el('div', { class: 'nv-field-tools' }, action);
         if (options.expose) {
@@ -944,16 +967,18 @@
     head.append(iconWrap, title, badges, runBtn);
     const status = el('div', { class: 'nv-node-status', dataset: { slot: 'status' } });
     const message = el('div', { class: 'nv-node-msg nv-scroll' });
+    // One-click remedy for an issue shown in `message` (slot.fix), e.g. "Convert to HTML with AI".
+    const fix = el('div', { class: 'nv-node-fix is-empty' });
     const ports = el('div', { class: 'nv-node-ports' });
     const params = el('div', { class: 'nv-node-params' });
     const preview = el('div', { class: 'nv-node-preview', dataset: { slot: 'preview' } });
     const pager = el('div', { class: 'nv-node-pager' });
     const cost = el('span', { class: 'nv-node-cost', dataset: { slot: 'cost' } });
     const foot = el('div', { class: 'nv-node-foot' }, pager, cost);
-    card.append(head, status, message, ports, params, preview, foot);
+    card.append(head, status, message, fix, ports, params, preview, foot);
     const state = {
       el: card,
-      refs: { head, iconWrap, title, badges, runBtn, status, message, ports, params, preview, pager, cost, foot },
+      refs: { head, iconWrap, title, badges, runBtn, status, message, fix, ports, params, preview, pager, cost, foot },
       widgets: new Map(),
       sig: null,
       node: null,
@@ -1163,12 +1188,12 @@
   // Applies the persisted slot state of a card (see run.js slotFor): status row, message, preview,
   // variant pager, cost and the run button. Everything is keyed so unchanged parts are not rebuilt.
   function applySlots(state, slots) {
-    const { status, message, preview, pager, cost, runBtn } = state.refs;
+    const { status, message, fix, preview, pager, cost, runBtn } = state.refs;
     const info = slots || {};
     state.el.dataset.status = info.status || '';
     state.el.classList.toggle('is-working', Boolean(info.working));
 
-    const statusKey = [info.status || '', info.label || '', info.since || '', info.progress ? `${info.progress.done}/${info.progress.total}` : '', info.message || ''].join('|');
+    const statusKey = [info.status || '', info.label || '', info.since || '', info.progress ? `${info.progress.done}/${info.progress.total}` : '', info.message || '', info.fix ? info.fix.id : ''].join('|');
     if (statusKey !== state.slotKey) {
       state.slotKey = statusKey;
       status.textContent = '';
@@ -1182,6 +1207,16 @@
       message.textContent = info.message || '';
       message.classList.toggle('is-empty', !info.message);
       message.title = info.message || '';
+      fix.textContent = '';
+      if (info.fix) {
+        const button = el('button', { type: 'button', class: 'nv-node-fix-btn nv-nodrag', title: info.fix.title || '' }, icon(info.fix.icon || 'sparkle', 12), el('span', { text: info.fix.label }));
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (cardActions.fix && state.node) cardActions.fix(state.node.id, info.fix.id);
+        });
+        fix.append(button);
+      }
+      fix.classList.toggle('is-empty', !info.fix);
     }
     if (info.since) {
       const timeEl = status.querySelector('.nv-status-time');
@@ -1265,6 +1300,8 @@
     portLabel,
     paramLabel,
     optionLabel,
+    hasIssueText,
+    issueText,
     setRoot,
     root,
     dialog,

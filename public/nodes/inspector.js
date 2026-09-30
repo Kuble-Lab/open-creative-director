@@ -493,6 +493,19 @@
               onToggle: () => cb.app.toggleInput(node.id, param.id)
             };
           }
+          // HTML field of a Motion graphics node: "Convert to HTML with AI" next to the label. The button exists while the
+          // input is unconnected and is shown only when the field holds free text (syncValues toggles it while typing,
+          // so the inspector is not rebuilt and the field keeps its focus).
+          if (param.id === 'html' && node.type === 'video.motion_graphics' && cb.onConvertMotionHtml && !connectedPorts.has('html')) {
+            fieldOptions.action = {
+              icon: 'sparkle',
+              label: ui.T('nodes.motion.convert'),
+              title: ui.T('nodes.motion.convertTitle'),
+              onClick: () => cb.onConvertMotionHtml(node.id),
+              dataset: { motionConvert: '1' },
+              hidden: !graphLib.canConvertMotionHtml(reg, ctx.graph, node.id)
+            };
+          }
           fields.append(ui.field(ui.paramLabel(param.id), widget.el, fieldOptions));
         }
 
@@ -732,6 +745,8 @@
           if (id === '__title') widget.set(node.title);
           else widget.set(effective[id]);
         }
+        const convert = host.querySelector('[data-motion-convert]');
+        if (convert) convert.hidden = !graphLib.canConvertMotionHtml(reg, ctx.graph, node.id);
         const model = def && def.params.some((p) => p.dynamic === DYNAMIC) ? modelCache.get(String(effective.model || '')) : null;
         if (model && model.state === 'ready') {
           // Dynamic widgets keep their own state; values are re-read only on rebuild (signature change).

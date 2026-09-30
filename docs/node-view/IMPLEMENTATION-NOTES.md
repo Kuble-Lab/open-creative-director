@@ -1,6 +1,6 @@
 # Node View — Implementation Notes
 
-Status: v1 as built, plus phase 2c (Higgsfield lip sync, voice change, motion transfer and speech; 2026-09-29) the fal.ai / MiniMax H3 Max nodes (2026-09-29, §2.7) the Prompt node with its quick pick (2026-09-29, §2.8) and the port hover help with visible multi-inputs (2026-09-30, §2.9). Companion to [SPEC.md](SPEC.md). The SPEC is the design that was implemented; this file records the architecture as it ended up, every relevant deviation from the SPEC, a recipe for adding node types, the tests, the decisions taken and the backlog. **Where the SPEC and the code disagree, the code wins.**
+Status: v1 as built, plus phase 2c (Higgsfield lip sync, voice change, motion transfer and speech; 2026-09-29) the fal.ai / MiniMax H3 Max nodes (2026-09-29, §2.7) the Prompt node with its quick pick (2026-09-29, §2.8) the port hover help with visible multi-inputs (2026-09-30, §2.9) and the clarity of the Motion graphics node (2026-09-30, §2.10). Companion to [SPEC.md](SPEC.md). The SPEC is the design that was implemented; this file records the architecture as it ended up, every relevant deviation from the SPEC, a recipe for adding node types, the tests, the decisions taken and the backlog. **Where the SPEC and the code disagree, the code wins.**
 
 ---
 
@@ -60,7 +60,7 @@ server.js ─ registerNodeRoutes(app, deps)                         lib/nodes/ro
 
 ### Frontend (`public/`)
 
-Scripts load after `app.js` in this order (`public/index.html`, checked by `test-nodes-i18n.js`): `i18n-nodes` → `graph` → `history` → `api` → `node-ui` → `port-tip` → `preview` → `canvas` → `palette` → `inspector` → `workflow-list` → `asset-picker` → `run` → `app-mode` → `main`. `public/app.js` is **not** modified (a test guards this); `public/index.html` gained the stylesheet, `#nodesBtn`, `#nodeApp` and the scripts, `public/i18n.js` the keys `sidebar.nodes` / `sidebar.nodesTitle`.
+Scripts load after `app.js` in this order (`public/index.html`, checked by `test-nodes-i18n.js`): `i18n-nodes` → `motion-html` → `graph` → `history` → `api` → `node-ui` → `port-tip` → `preview` → `canvas` → `palette` → `inspector` → `workflow-list` → `asset-picker` → `run` → `app-mode` → `main`. `public/app.js` is **not** modified (a test guards this); `public/index.html` gained the stylesheet, `#nodesBtn`, `#nodeApp` and the scripts, `public/i18n.js` the keys `sidebar.nodes` / `sidebar.nodesTitle`.
 
 | File | Purpose |
 | --- | --- |
@@ -69,6 +69,7 @@ Scripts load after `app.js` in this order (`public/index.html`, checked by `test
 | `public/nodes/api.js` | REST + SSE wrapper with a typed error object (`status`, `code`, `rev`, `runId`, `issues`). |
 | `public/nodes/node-ui.js` | Node cards, generic param widgets, in-app dialogs, toasts, menus, card slots for status / preview / cost. |
 | `public/nodes/preview.js` | Result previews on cards (image, video, audio, text, number, list grid), thumbnails, downloads, media viewer. Uses `textContent` only. |
+| `public/nodes/motion-html.js` | HTML detection and `data-width` / `data-height` check of a motion composition (§2.10). UMD; also required by `lib/tools.js` and `lib/nodes/nodes-generate.js`, so the server and the client judge alike. |
 | `public/nodes/port-tip.js` | Hover help for ports (§2.9): screen-space tooltip built from `graph.describePort()`, hidden by every drag, Esc, wheel, zoom and graph change. DOM API only. |
 | `public/nodes/canvas.js` | Viewport, node / note / group layers, bezier edges, pointer interaction, minimap. Reports intent through callbacks. |
 | `public/nodes/palette.js` | Command palette (search, category chips, type filter for drag-to-empty); adds one entry per Higgsfield model. |
@@ -255,6 +256,21 @@ Feedback: nobody could tell what a port such as *Images*, *Prompt* or *Expanded 
 
 Checked visually with headless Chrome over CDP against an isolated copy of the app (own data folder, own port; screenshots for zoom 100 % and 60 %, output ports, the quick pick and all three languages) and by 37 scripted checks (dwell time, Esc, wheel, zoom, graph change, drag, node drag, row switching, aria attributes, no native titles). The scripted check is not part of the repo.
 
+### 2.10 Motion graphics node: HTML instead of an instruction
+
+Feedback: two videos on *Assets* of `video.motion_graphics` and "make it one video" in the HTML field ended in "Composition-Masse … Gefunden: ?x?". Nobody could tell why HTML is expected there. The node renders finished code; joining videos is `video.concat`, an animation from a description needs `llm.motion_html` in front. Six changes, no new dependency:
+
+- **One heuristic** (`public/nodes/motion-html.js`, UMD): `looksLikeHtml(text)` (a tag of the form `<name …>` from a list of HTML/SVG names, custom elements, `<!doctype html>`, or any element that is closed again; prose such as `x<y and z>w`, markdown and `{{asset:1}}` are not HTML), `declaredSize`, `formatSize`, `checkComposition(html, format)` → `null` | `{ code: 'not_html' }` | `{ code: 'composition_size', foundWidth, foundHeight }` plus the expected size. `tools.RENDER_FORMATS` is the same table.
+- **Validation before the run** (`video.motion_graphics.validate`). Only for the inline field (a connected HTML port is checked at run time): free text → `not_html`, HTML without the right root size → `composition_size`; both level `error`, so the node is `invalid` in the plan and a run is refused (`INVALID_GRAPH`). Issues can now carry `data` (placeholder values); the plan entry of an invalid node carries `reasonCode` / `reasonData` next to `reason`.
+- **Translated issue texts.** `ui.issueText(issue)` uses `nodes.issue.<code>` (de / en / es, placeholders `{w}`, `{h}`, `{format}`, `{foundW}`, `{foundH}` from `data`) and falls back to the English message for every code without such a key. Used by the card (`slot.message`; an invalid card is amber and shows the text, other invalid causes stay in the tooltip as before), the inspector notice, the run dialog and the Design App. `run.displayStatus` passes `code` / `data` through.
+- **Run-time errors** (`runRenderMotionGraphics`, also for the Chat Director): no tag → "Kein HTML: … erwartet wird eine HTML/GSAP-Komposition …" with the root element and a pointer to `concat_videos` / the Motion-HTML-Autor; wrong or missing size → the old "Composition-Masse …" text plus the expected root element. ASCII umlauts as elsewhere in the file.
+- **One-click fix** `graph.convertMotionHtmlToWriter(reg, graph, nodeId, options)` (`motionHtmlConversionIssue` / `canConvertMotionHtml` decide): unconnected HTML port and free text in the field → `input.prompt` (text = old field) → `llm.motion_html` (`brief`; format copied) → `html` of the node; every source on the node's *Assets* is connected to the writer's *Assets* in `graph.edges` order (= the order the engine collects them in); the field is cleared; placement to the left as in §2.8 (prompt, writer, node in a row, stepping down while any new card would overlap). One `applyGraph` = one undo step (`convert-motion-html`); a Design App input on the HTML field moves to the new Prompt node. Buttons: on the card (`slot.fix`, rendered below the message by `applySlots`, action `cardActions.fix`) while the plan reports `not_html`, and in the inspector next to the HTML label (present while the port is unconnected, hidden/shown by `syncValues` so typing does not rebuild the field). Nothing is run or paid for.
+- **Texts.** Label "Motion Graphics aus HTML (Render-Node)" / "Motion graphics from HTML (render node)", placeholder of the empty field (`promptFieldOptions`), and the port descriptions of `video.motion_graphics.html|assets|video` and `llm.motion_html.brief|assets|html` (the writer writes code, the render node renders it, assets by `{{asset:N}}` on both nodes).
+
+Pitfall found while building it: `canvas.setSlot` merges patches, so a slot key that is not set again keeps its old value; `slotFor` therefore always sets `fix: null` first.
+
+Test: `scripts/test-nodes-motion.js` (heuristic incl. the tool contract's root element and `stripCodeFence` output, validation and plan codes, tool texts, i18n incl. `ui.issueText`, conversion with edges / order / format / placement / refusals / undo, wiring). Checked visually with headless Chrome over CDP against an isolated copy of the app (issue and button on the card and in the inspector, size issue, conversion, undo).
+
 ---
 
 ## 3. How to add a node type
@@ -318,6 +334,7 @@ Plain Node scripts (`assert/strict`), no network, no build. There is no test run
 | `scripts/test-nodes-history.js` | Undo / redo stack. |
 | `scripts/test-nodes-i18n.js` | de / en / es parity, a description for every port of every registered type (variants included) in all three languages, no orphaned `nodes.portdesc.*` keys, Swiss spelling, placeholders, coverage of every registry type / category / port / param / option and of every key literal used in `public/nodes/*.js`, script order in `index.html`, `app.js` untouched. |
 | `scripts/test-nodes-run-client.js` | SSE reducer for every event type, result / cost helpers, plan description; static checks (no `innerHTML`, no native dialogs, port tooltip wiring and placement maths). |
+| `scripts/test-nodes-motion.js` | Motion graphics clarity (§2.10): HTML heuristic, `not_html` / `composition_size` validation and plan `reasonCode`, German tool errors, translated issue texts, the Prompt → writer conversion (edges, asset order, format, placement, refusals, undo), script wiring. |
 | `scripts/test-nodes-templates.js` | All eight templates validate against the registry, texts exist in de / en / es, they create workflows through the routes, the batch template maps a list through the engine, the `higgsfield` and `fal` requirements follow the connection, the talking-portrait graph. |
 | `scripts/test-fal.js` | `lib/fal.js` with an injected `fetch` (upload payload and headers, 90 MB cap, submit, status mapping, 422 details, host allowlist, streamed download and size limit, no key or signed URL in any message), the tool `fal_generate` (every check before the first upload, sequential uploads, placeholders, duplicate request ids) and the poller branch (progress, completion with cost from the duration, `auto` kinds, failures, temporary errors, timeout, missing key). No network. |
 | `scripts/test-nodes-fal.js` | The nine fal.ai node types: registry and defaults, list-price estimates, exact input per endpoint, validation with ffprobe values BEFORE the first upload (nothing is uploaded or queued when a check fails), camera presets and strict custom paths, the free node's placeholders (also against JSON injection through the prompt) and an engine run. No network. |

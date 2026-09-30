@@ -109,6 +109,8 @@
     retryDelay: 2000,
     conflict: null,
     reserved: new Set(),
+    // Design App exposures moved by a conversion (outside the undo history): [{ from: {node,param}, to: {node,param} }]
+    appRemaps: [],
     clipboard: null,
     events: null,
     loadToken: 0,
@@ -163,6 +165,30 @@
 
   function currentApp() {
     return state.workflow ? state.workflow.app || emptyApp() : emptyApp();
+  }
+
+  // Points the Design App input exposure `from` ({ node, param }) at `to`; label and the rest of the entry stay.
+  function moveAppInput(from, to) {
+    const app = state.workflow && state.workflow.app;
+    if (!app || !app.inputs.some((entry) => entry.node === from.node && entry.param === from.param)) return false;
+    state.workflow.app = {
+      ...app,
+      inputs: app.inputs.map((entry) => (entry.node === from.node && entry.param === from.param ? { ...entry, node: to.node, param: to.param } : entry))
+    };
+    updateAppButton();
+    return true;
+  }
+
+  // After undo / redo of a conversion: the exposure follows the node that drives the field. Without the converted
+  // Prompt node the field is the original one again, with it the Prompt node's text is shared.
+  function syncAppRemaps() {
+    for (const remap of state.appRemaps) {
+      const hasTo = state.graph.nodes.some((node) => node.id === remap.to.node);
+      const hasFrom = state.graph.nodes.some((node) => node.id === remap.from.node);
+      if (!hasFrom) continue;
+      if (hasTo) moveAppInput(remap.from, remap.to);
+      else moveAppInput(remap.to, remap.from);
+    }
   }
 
   // Drops exposures of nodes that no longer exist (the server does the same on save).
@@ -745,6 +771,7 @@
     state.dirtyContent = false;
     state.dirtyViewport = false;
     state.history.clear();
+    state.appRemaps = [];
     canvas.clearSlots();
     canvas.render(state.graph);
     hideBanner();
@@ -784,6 +811,7 @@
     for (const node of graph.nodes) state.reserved.add(node.id);
     state.graph = graph;
     state.history.reset(graphLib.content(graph));
+    state.appRemaps = [];
     canvas.clearSlots();
     setSelection({ nodes: [], notes: [], groups: [], edge: null });
     canvas.render(graph, { selection: { nodes: new Set(), notes: new Set(), groups: new Set(), edge: null } });
@@ -1118,14 +1146,37 @@
     // Prompt node's text instead, with the same label.
     const target = graphLib.getNode(state.graph, nodeId);
     const port = target ? graphLib.portsFor(state.reg, target).inputs.find((item) => item.id === portId) : null;
-    const app = state.workflow.app;
-    if (port && port.param && app && app.inputs.some((entry) => entry.node === nodeId && entry.param === port.param)) {
-      state.workflow.app = {
-        ...app,
-        inputs: app.inputs.map((entry) => (entry.node === nodeId && entry.param === port.param ? { ...entry, node: result.node.id, param: 'prompt' } : entry))
-      };
+    if (port && port.param && moveAppInput({ node: nodeId, param: port.param }, { node: result.node.id, param: 'prompt' })) {
+      // The app is not part of the undo history: remember the move so that undo / redo carry the exposure along.
+      state.appRemaps.push({ from: { node: nodeId, param: port.param }, to: { node: result.node.id, param: 'prompt' } });
+      if (state.appRemaps.length > 50) state.appRemaps.shift();
     }
     applyGraph(result.graph, { history: 'extract-prompt' });
+  }
+
+  // Turns free text in the HTML field of a Motion graphics node into Prompt -> Motion HTML writer -> Motion graphics
+  // (one undo step). Nothing is run: the writer is a paid node and asks for confirmation when the user starts the run.
+  function convertMotionHtml(nodeId) {
+    if (!state.workflow || !state.reg) return;
+    const result = graphLib.convertMotionHtmlToWriter(state.reg, state.graph, nodeId, { sizes: canvas.getSizes(), reserved: state.reserved });
+    if (result.error) {
+      ui.toast(ui.T('nodes.motion.convertFailed'), { kind: 'warn' });
+      return;
+    }
+    reserveId(result.prompt.id);
+    reserveId(result.writer.id);
+    for (const edge of result.edges) reserveId(edge.id);
+    // An HTML field shared in the Design App would vanish (it is driven by a connection now): share the new Prompt
+    // node's text instead, with the same label.
+    const app = state.workflow.app;
+    if (app && app.inputs.some((entry) => entry.node === nodeId && entry.param === 'html')) {
+      moveAppInput({ node: nodeId, param: 'html' }, { node: result.prompt.id, param: 'prompt' });
+      // The app is not part of the undo history: remember the move so that undo / redo carry the exposure along.
+      state.appRemaps.push({ from: { node: nodeId, param: 'html' }, to: { node: result.prompt.id, param: 'prompt' } });
+      if (state.appRemaps.length > 50) state.appRemaps.shift();
+    }
+    applyGraph(result.graph, { history: 'convert-motion-html' });
+    ui.toast(ui.T('nodes.motion.converted'));
   }
 
   function renameNode(nodeId, title) {
@@ -1191,6 +1242,7 @@
     state.graph = next;
     for (const node of next.nodes) reserveId(node.id);
     canvas.render(next);
+    syncAppRemaps();
     pruneApp();
     markDirty();
     updateUndoButtons();
@@ -1971,6 +2023,12 @@
     canvas.setRegistry(null);
 
     palette = OCD.palette.createPalette({ host: dom.overlays, getReg: () => state.reg, onPick: onPalettePick });
+    // Remedy buttons on cards (slot.fix, filled by run.js).
+    ui.setCardActions({
+      fix(nodeId, fixId) {
+        if (fixId === 'motion-html') convertMotionHtml(nodeId);
+      }
+    });
     runController = OCD.run.createController({ OCD });
     inspector = OCD.inspector.createInspector({
       host: dom.inspectorScroll,
@@ -1980,6 +2038,7 @@
         onParams: (nodeId, patch, meta, key) => applyParams(nodeId, patch, meta, `p:${nodeId}:${key || Object.keys(patch).join(',')}`),
         onTitle: (nodeId, title) => renameNode(nodeId, title),
         onExtractPrompt: extractPrompt,
+        onConvertMotionHtml: convertMotionHtml,
         onDelete: deleteSelection,
         onDuplicate: duplicateSelection,
         onGroupSelection: groupSelected,

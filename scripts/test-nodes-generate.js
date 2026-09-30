@@ -837,8 +837,9 @@ async function main() {
         /Composition-Masse/,
         'the tool validates the format dimensions'
       );
-      assert.equal(issuesOf(registry, 'video.motion_graphics', { html: '<img src="{{asset:1}}">' }, { assets: { connected: false, count: 0 } }).length, 1);
-      assert.equal(issuesOf(registry, 'video.motion_graphics', { html: '<img src="{{asset:1}}">' }, { assets: { connected: true, count: 1 } }).length, 0);
+      const composition = '<div id="main-composition" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="4"><img src="{{asset:1}}"></div>';
+      assert.equal(issuesOf(registry, 'video.motion_graphics', { html: composition }, { assets: { connected: false, count: 0 } }).length, 1);
+      assert.equal(issuesOf(registry, 'video.motion_graphics', { html: composition }, { assets: { connected: true, count: 1 } }).length, 0);
       assert.equal(generate.replaceAssetPlaceholders('a {{asset:1}} b', [image1]), `a ${image1.assetId}.png b`);
     }
 

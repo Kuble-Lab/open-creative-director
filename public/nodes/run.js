@@ -324,7 +324,13 @@
     if (isActive(runStatus)) return { status: runStatus };
     if (runStatus === 'error' || runStatus === 'skipped' || runStatus === 'cancelled') return { status: runStatus, message: run.message || null };
     const planStatus = planNode && planNode.status;
-    if (planStatus === 'invalid') return { status: 'invalid', message: planNode.reason || null };
+    if (planStatus === 'invalid') {
+      // reasonCode / reasonData (from an issue with a code) let the UI show a translated text.
+      const shown = { status: 'invalid', message: planNode.reason || null };
+      if (planNode.reasonCode) shown.code = planNode.reasonCode;
+      if (planNode.reasonData) shown.data = planNode.reasonData;
+      return shown;
+    }
     if (planStatus === 'unavailable') return { status: 'unavailable', message: planNode.reason || null };
     if (planStatus === 'stale' || planStatus === 'forced') {
       if (category === 'input') return { status: runStatus || null };
@@ -450,10 +456,16 @@
       const planNode = plan && plan.nodes ? plan.nodes[node.id] : null;
       const shown = displayStatus({ run, planNode, hasResults: Boolean(info), category: def && def.category });
       const status = shown.status;
+      // Invalid nodes whose cause has a translated text (nodes.issue.<code>) show it on the card.
+      // free text in the HTML field of a Motion graphics node: offer the one-click conversion (when it is possible)
+      const offerConvert = status === 'invalid' && shown.code === 'not_html' && graphLib.canConvertMotionHtml(st.reg, st.graph, node.id);
+      const translated = status === 'invalid' && ui.hasIssueText(shown.code) ? ui.issueText({ code: shown.code, data: shown.data, message: shown.message }, shown.code === 'not_html' && !offerConvert ? 'plain' : undefined) : null;
+      if (translated) shown.message = translated;
       const slot = {
         status: status || '',
         label: status ? ui.statusLabel(status) : '',
         message: null,
+        fix: null,
         tooltip: status ? statusTooltip(status, status === 'error' ? null : shown.message) : '',
         since: null,
         progress: null,
@@ -462,6 +474,12 @@
         working: isActive(status)
       };
       if (status === 'error') slot.message = shown.message || T('nodes.run.failedNode');
+      if (translated) {
+        slot.message = translated;
+        if (offerConvert) {
+          slot.fix = { id: 'motion-html', label: T('nodes.motion.convert'), title: T('nodes.motion.convertTitle'), icon: 'sparkle' };
+        }
+      }
       if (status === 'skipped') {
         const blocked = /^blocked by (\S+)$/.exec(shown.message || '');
         slot.message = blocked ? T('nodes.run.blockedBy', { name: titleOf(blocked[1]) }) : shown.message || T('nodes.run.skipped');
@@ -759,7 +777,7 @@
           link.addEventListener('click', () => focusNode(issue.nodeId));
           item.append(link, ': ');
         }
-        item.append(el('span', { text: issue.message || issue.code || '' }));
+        item.append(el('span', { text: ui.issueText(issue) }));
         list.append(item);
       }
       return list;
@@ -1019,11 +1037,13 @@
         const planNode = plan && plan.nodes ? plan.nodes[nodeId] : null;
         const results = nodeResults(st.results, nodeId);
         const shown = displayStatus({ run, planNode, hasResults: Boolean(selectedEntry(st.results, nodeId)), category: def && def.category });
+        const plainText = shown.code === 'not_html' && !graphLib.canConvertMotionHtml(st.reg, st.graph, nodeId);
+        const message = shown.status === 'invalid' && ui.hasIssueText(shown.code) ? ui.issueText({ code: shown.code, data: shown.data, message: shown.message }, plainText ? 'plain' : undefined) : shown.message;
         return {
           node,
           def,
           status: shown.status,
-          message: shown.message || null,
+          message: message || null,
           run: run || null,
           log: runState.logs[nodeId] || [],
           plan: planNode,

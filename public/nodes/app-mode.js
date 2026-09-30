@@ -465,7 +465,7 @@
     }
 
     function issueMessages(issues) {
-      return (issues || []).filter((issue) => issue.level === 'error').map((issue) => ({ title: issue.nodeId ? titleOf(issue.nodeId) : '', message: issue.message || issue.code || '' }));
+      return (issues || []).filter((issue) => issue.level === 'error').map((issue) => ({ title: issue.nodeId ? titleOf(issue.nodeId) : '', message: ui.issueText(issue, 'app') }));
     }
 
     function renderRunButton() {
