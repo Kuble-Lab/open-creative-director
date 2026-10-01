@@ -1984,6 +1984,96 @@ code {
   height: 34px;
 }
 
+/* video of a chat upload / result sent from the node view: same look as the video cards of tool results */
+.upload-row .asset-card {
+  max-width: min(360px, 100%);
+}
+
+.upload-row .asset-card video {
+  width: 100%;
+}
+
+/* result sent from the node view: one card with source, media, texts and a note */
+.msg.user .bubble.origin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.origin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.origin-title {
+  color: var(--text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.origin-node {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.origin-open {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.origin-open:hover,
+.origin-open:focus-visible {
+  text-decoration: underline;
+}
+
+.origin-media {
+  margin-top: 0;
+}
+
+.origin-media .asset-card {
+  max-width: min(360px, 100%);
+}
+
+.origin-text {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.origin-text summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.origin-text[open] summary {
+  margin-bottom: 6px;
+}
+
+.origin-text-body {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.origin-note {
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 /* ---------- composer ---------- */
 
 .composer {

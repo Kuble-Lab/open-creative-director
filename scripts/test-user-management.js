@@ -292,6 +292,7 @@ const FOREIGN_WORKFLOW_ROUTES = (id) => [
   ['GET', `/api/workflows/${id}/export`],
   ['GET', `/api/workflows/${id}/assets`],
   ['POST', `/api/workflows/${id}/import-asset`, { sessionId: 'a', assetId: 'b' }],
+  ['GET', `/api/workflows/${id}/send-to-chat/plan?nodeId=n`],
   ['POST', `/api/workflows/${id}/send-to-chat`, { sessionId: 'a', nodeId: 'n' }],
   ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'all' }],
   ['POST', `/api/workflows/${id}/runs`, { mode: 'all' }],
@@ -338,7 +339,7 @@ async function testWorkflows(ctx) {
   }
   const upload = await api(`/api/workflows/${flow.id}/uploads`, { method: 'POST', as: BOB, headers: { 'Content-Type': 'image/png', 'x-filename': 'x.png' }, body: PNG });
   assert.equal(upload.status, 404);
-  ctx.exercised.push(...FOREIGN_WORKFLOW_ROUTES(flow.id).map(([method, url]) => `${method} ${url.replace(flow.id, ':id')}`), 'POST /api/workflows/:id/uploads');
+  ctx.exercised.push(...FOREIGN_WORKFLOW_ROUTES(flow.id).map(([method, url]) => `${method} ${url.replace(flow.id, ':id').split('?')[0]}`), 'POST /api/workflows/:id/uploads');
   assert.equal((await wfStore.readWorkflow(flow.id)).name, 'Alice Flow');
   assert.equal((await api(`/api/workflows/${flow.id}/events`, { as: null })).status, 404, 'anonymous cannot listen either');
 
@@ -432,9 +433,24 @@ async function testWorkflows(ctx) {
   const pushOpen = await api(`/api/workflows/${flow.id}/send-to-chat`, { method: 'POST', as: BOB, json: { sessionId: legacy.id, nodeId: 'out' } });
   assert.equal(pushOpen.status, 200);
   assert.match(JSON.stringify((await store.readSession(legacy.id)).messages), /hello from bob/);
+  const originOf = async (as) => {
+    const detail = await api(`/api/sessions/${legacy.id}`, { as });
+    assert.equal(detail.status, 200);
+    return detail.body.session.messages.find((message) => message.origin).origin;
+  };
+  assert.equal((await originOf(BOB)).canOpen, true, 'the workflow is shared: the card links to it');
+  assert.equal((await originOf(BOB)).workflowId, flow.id);
+  assert.equal((await store.readSession(legacy.id)).messages.some((message) => message.origin && 'canOpen' in message.origin), false, 'canOpen is computed, never stored');
 
   // Taking the sharing back ends the stream of Bob; Alice is told
   assert.equal((await share(api, 'workflows', flow.id, ALICE, { shareMode: 'private' })).status, 200);
+  assert.equal((await originOf(BOB)).canOpen, false, 'no link to a workflow the person may no longer open');
+  assert.equal((await originOf(BOB)).workflowName, 'Alice Flow', 'the name stays');
+  const hidden = await originOf(BOB);
+  assert.equal('workflowId' in hidden, false, 'the workflow id is not delivered to a person without access');
+  assert.equal('nodeId' in hidden, false, 'nor the node id');
+  assert.equal(hidden.nodeLabel.length > 0, true, 'the names stay for the card');
+  assert.equal((await originOf(ALICE)).canOpen, true);
   const bobEnded = await Promise.race([
     (async () => {
       for (;;) {

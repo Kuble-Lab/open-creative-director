@@ -1096,6 +1096,7 @@ function toolLabel(message) {
 
 const IMAGE_ATTACHMENT_EXTENSION = /\.(png|jpe?g|webp|gif)$/i;
 const AUDIO_ATTACHMENT_EXTENSION = /\.(mp3|wav|m4a|aac)$/i;
+const VIDEO_ATTACHMENT_EXTENSION = /\.(mp4|webm|mov|m4v)$/i;
 const FONT_ATTACHMENT_EXTENSION = /\.(ttf|otf|woff2?)$/i;
 
 function attachmentFileName({ name, url } = {}) {
@@ -1115,7 +1116,7 @@ function shortenedFileName(name, maxLength = 18) {
   return characters.length > maxLength ? `${characters.slice(0, maxLength - 1).join('')}…` : characters.join('');
 }
 
-function attachmentPreviewNode({ name, dataUrl, url, lightbox = false } = {}) {
+function attachmentPreviewNode({ name, dataUrl, url, lightbox = false, assetId = '', kind = '' } = {}) {
   const fileName = attachmentFileName({ name, url });
   const cleanUrl = String(url || '').split(/[?#]/, 1)[0];
   const isImage = String(dataUrl || '').startsWith('data:image/') || IMAGE_ATTACHMENT_EXTENSION.test(cleanUrl);
@@ -1128,6 +1129,12 @@ function attachmentPreviewNode({ name, dataUrl, url, lightbox = false } = {}) {
     img.alt = fileName;
     if (lightbox) img.addEventListener('click', () => openLightbox(source));
     return img;
+  }
+
+  // A video that is stored in the chat (sent from the node view or uploaded) shows like the videos of tool results:
+  // player with the first frame, controls and the asset id. Videos that are only attached to the composer stay chips.
+  if (url && (kind === 'video' || VIDEO_ATTACHMENT_EXTENSION.test(cleanUrl || fileName))) {
+    return videoCard({ id: assetId || fileName, url });
   }
 
   if (isAudio && url && source) {
@@ -1146,6 +1153,130 @@ function attachmentPreviewNode({ name, dataUrl, url, lightbox = false } = {}) {
   label.textContent = `${icon} ${shortenedFileName(fileName)}`;
   label.title = fileName;
   return label;
+}
+
+/* ---------- results sent from the node view ---------- */
+
+// Messages sent with "Send to chat" carry `origin` (workflow, node, ports, texts). Older messages hold the same
+// information as plain German text; originOf() reads both so the chat shows one card instead of the raw note.
+const LEGACY_ORIGIN_PATTERN = /^\[Workflow «([\s\S]+?)»\] Ergebnis «([\s\S]+?)» aus der Node-Ansicht uebernommen\.(?:\nGespeichert als Asset ([^\n]*)\.)?(?:\nText:\n([\s\S]*))?$/;
+
+function originOf(message) {
+  const origin = message.origin;
+  if (origin && typeof origin === 'object' && origin.kind === 'workflow') {
+    return {
+      workflowId: typeof origin.workflowId === 'string' ? origin.workflowId : '',
+      workflowName: String(origin.workflowName || ''),
+      nodeLabel: String(origin.nodeLabel || ''),
+      nodeType: String(origin.nodeType || ''),
+      ports: Array.isArray(origin.ports) ? origin.ports : [],
+      texts: Array.isArray(origin.texts) ? origin.texts : [],
+      canOpen: origin.canOpen === true
+    };
+  }
+  const match = LEGACY_ORIGIN_PATTERN.exec(textFromContent(message.content));
+  if (!match) return null;
+  return {
+    workflowId: '',
+    workflowName: match[1],
+    nodeLabel: match[2],
+    nodeType: '',
+    ports: [],
+    texts: match[4] ? [{ port: '', text: match[4] }] : [],
+    canOpen: false
+  };
+}
+
+function i18nHas(key) {
+  const dictionaries = window.I18N || {};
+  return Boolean(dictionaries[getLang()]?.[key] ?? dictionaries.de?.[key]);
+}
+
+function humanizePortId(id) {
+  const text = String(id || '').replace(/[_-]+/g, ' ').trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function originPortLabel(portId) {
+  const key = `nodes.port.${portId}`;
+  return i18nHas(key) ? t(key) : humanizePortId(portId);
+}
+
+// Hover help of a port, same lookup order as the node view (node type, port id, port type); '' when there is none.
+function originPortHelp(origin, port) {
+  if (!port || !port.id) return '';
+  const base = ['image', 'video', 'audio', 'number', 'text'].includes(port.type) ? port.type : 'any';
+  const keys = [
+    origin.nodeType && `nodes.portdesc.${origin.nodeType}.${port.id}.out`,
+    origin.nodeType && `nodes.portdesc.${origin.nodeType}.${port.id}`,
+    `nodes.portdesc.${port.id}.out`,
+    `nodes.portdesc.${port.id}`,
+    `nodes.portdesc.type.${base}.out`
+  ].filter(Boolean);
+  const key = keys.find(i18nHas);
+  return key ? t(key) : '';
+}
+
+function originCardNode(message, assetMap) {
+  const origin = originOf(message);
+  if (!origin) return null;
+  const { wrap, bubble } = messageShell('user');
+  bubble.classList.add('origin-card');
+
+  const head = document.createElement('div');
+  head.className = 'origin-head';
+  const title = document.createElement('span');
+  title.className = 'origin-title';
+  title.textContent = t('origin.head', { workflow: origin.workflowName || '…' });
+  head.appendChild(title);
+  if (origin.nodeLabel) {
+    const node = document.createElement('span');
+    node.className = 'origin-node';
+    node.textContent = `· ${origin.nodeLabel}`;
+    head.appendChild(node);
+  }
+  if (origin.workflowId && origin.canOpen) {
+    const link = document.createElement('a');
+    link.className = 'origin-open';
+    link.href = `#w=${encodeURIComponent(origin.workflowId)}`;
+    link.textContent = t('origin.open');
+    link.title = t('origin.openTitle');
+    head.appendChild(link);
+  }
+  bubble.appendChild(head);
+
+  const ids = Array.isArray(message.uploadIds) ? message.uploadIds.filter((id) => typeof id === 'string') : [];
+  const grid = document.createElement('div');
+  grid.className = 'asset-grid origin-media';
+  for (const id of ids) {
+    const asset = assetMap.get(id);
+    if (asset) grid.appendChild(mediaCard(asset));
+  }
+  if (grid.children.length) bubble.appendChild(grid);
+
+  const portsById = new Map(origin.ports.map((port) => [port && port.id, port]));
+  for (const part of origin.texts) {
+    const text = String(part && part.text || '');
+    if (!text) continue;
+    const details = document.createElement('details');
+    details.className = 'origin-text';
+    const summary = document.createElement('summary');
+    const port = part.port ? portsById.get(part.port) || { id: part.port } : null;
+    summary.textContent = port ? t('origin.textSummary', { port: originPortLabel(port.id) }) : t('origin.textSummaryPlain');
+    const help = port ? originPortHelp(origin, port) : '';
+    if (help) summary.title = help;
+    const body = document.createElement('div');
+    body.className = 'origin-text-body';
+    body.textContent = text;
+    details.append(summary, body);
+    bubble.appendChild(details);
+  }
+
+  const note = document.createElement('div');
+  note.className = 'origin-note';
+  note.textContent = ids.length ? t('origin.noteAssets', { ids: ids.join(', ') }) : t('origin.noteText');
+  bubble.appendChild(note);
+  return wrap;
 }
 
 function renderDetail() {
@@ -1172,6 +1303,11 @@ function renderDetail() {
 
   for (const message of visible) {
     if (message.role === 'user') {
+      const originCard = originCardNode(message, assetMap);
+      if (originCard) {
+        el.messages.appendChild(originCard);
+        continue;
+      }
       const { wrap, bubble } = messageShell('user');
       if (Array.isArray(message.uploadIds) && message.uploadIds.length) {
         const row = document.createElement('div');
@@ -1180,7 +1316,7 @@ function renderDetail() {
           const asset = assetMap.get(id);
           if (!asset) continue;
           const originalName = /^Upload:\s*(.+)$/.exec(String(asset.prompt || ''))?.[1];
-          row.appendChild(attachmentPreviewNode({ name: originalName || asset.file, url: asset.url, lightbox: true }));
+          row.appendChild(attachmentPreviewNode({ name: originalName || asset.file, url: asset.url, lightbox: true, assetId: asset.id, kind: asset.kind }));
         }
         wrap.insertBefore(row, bubble);
       }

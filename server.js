@@ -1853,6 +1853,41 @@ app.patch('/api/sessions/:id/share', async (req, res) => {
   }
 });
 
+// Messages that came from a workflow carry `origin`; the client links back only when the caller may open that workflow
+// (otherwise workflowId and nodeId are left out).
+async function withOriginAccess(req, messages) {
+  const viewer = access.viewerOf(req);
+  const known = new Map();
+  const canOpen = async (workflowId) => {
+    if (typeof workflowId !== 'string') return false;
+    if (!known.has(workflowId)) {
+      try {
+        const workflow = await nodeWorkflows.defaultStore.readWorkflow(workflowId);
+        known.set(workflowId, !viewer.active || access.canUse(workflow, viewer));
+      } catch (_) {
+        known.set(workflowId, false);
+      }
+    }
+    return known.get(workflowId);
+  };
+  const out = [];
+  for (const message of messages) {
+    if (message.origin && typeof message.origin === 'object') {
+      const open = await canOpen(message.origin.workflowId);
+      if (open) {
+        out.push({ ...message, origin: { ...message.origin, canOpen: true } });
+      } else {
+        // Without the right to use the workflow, its ids stay on the server; the card shows the names only.
+        const { workflowId, nodeId, ...visible } = message.origin;
+        out.push({ ...message, origin: { ...visible, canOpen: false } });
+      }
+    } else {
+      out.push(message);
+    }
+  }
+  return out;
+}
+
 app.get('/api/sessions/:id', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
@@ -1868,7 +1903,7 @@ app.get('/api/sessions/:id', async (req, res) => {
         folder: typeof session.folder === 'string' && session.folder.trim() ? session.folder.trim() : null,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-        messages: session.messages.filter((message) => !message.hidden).map((message) => ({ ...message })),
+        messages: await withOriginAccess(req, session.messages.filter((message) => !message.hidden).map((message) => ({ ...message }))),
         brandings: viewer.active && access.isRestricted(viewer) ? [] : session.brandings,
         contextFiles: session.contextFiles,
         role: viewer.active && access.isRestricted(viewer) ? null : session.role || null,

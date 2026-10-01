@@ -114,6 +114,7 @@ const ROUTE_RULES = {
   'POST /api/workflows/:id/uploads': 'workflow',
   'POST /api/workflows/:id/import-asset': 'workflow',
   'GET /api/workflows/:id/assets': 'workflow',
+  'GET /api/workflows/:id/send-to-chat/plan': 'workflow',
   'POST /api/workflows/:id/send-to-chat': 'workflow',
   'POST /api/workflows/:id/runs/plan': 'workflow',
   'POST /api/workflows/:id/runs': 'workflow',
@@ -232,6 +233,7 @@ const PARTICIPANT_RULES = {
   'POST /api/workflows/:id/uploads': 'same',
   'POST /api/workflows/:id/import-asset': 'same',
   'GET /api/workflows/:id/assets': 'same',
+  'GET /api/workflows/:id/send-to-chat/plan': 'same',
   'POST /api/workflows/:id/send-to-chat': 'same',
   'POST /api/workflows/:id/runs/plan': 'same', // plus the budget and the blocked nodes in the plan
   'POST /api/workflows/:id/runs': 'same', // plus the budget (402) and no Higgsfield nodes (403)

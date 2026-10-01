@@ -729,7 +729,18 @@ async function main() {
       const message = chatSession.messages[chatSession.messages.length - 1];
       assert.equal(message.role, 'user');
       assert.deepEqual(message.uploadIds, sent.json.assetIds);
-      assert.ok(message.content.includes('[Workflow «Zip Flow ä»]') && message.content.includes(sent.json.assetIds[0]), message.content);
+      // the note for the Director: real umlauts, workflow, node and asset id; no ASCII transliteration
+      assert.equal(message.content, `Aus dem Workflow «Zip Flow ä» übernommen: Ergebnis von «Hero image», gespeichert als Asset ${sent.json.assetIds[0]}.`);
+      assert.deepEqual(message.origin, {
+        kind: 'workflow',
+        workflowId: zipId,
+        workflowName: 'Zip Flow ä',
+        nodeId: 'outA',
+        nodeLabel: 'Hero image',
+        nodeType: 'output.result',
+        ports: [{ id: 'result', type: 'image' }],
+        texts: []
+      });
       assert.ok(message.ts);
       const chatLedger = await store.readLedger(chat.id);
       const copiedEntry = chatLedger.find((entry) => entry.id === sent.json.assetIds[0]);
@@ -742,7 +753,86 @@ async function main() {
       assert.deepEqual(sentText.json.assetIds, []);
       const textMessage = (await store.readSession(chat.id)).messages.slice(-1)[0];
       assert.ok(textMessage.content.includes('hello zip'));
+      assert.ok(textMessage.content.includes('Text (Ausgang «result»):'));
       assert.equal(textMessage.uploadIds, undefined, 'a text result carries no uploads');
+      assert.deepEqual(textMessage.origin.ports, [{ id: 'result', type: 'text' }]);
+      assert.deepEqual(textMessage.origin.texts, [{ port: 'result', text: 'hello zip' }]);
+
+      // a result with a video and side texts (like the expanded prompt of the fal nodes): only the media by default
+      {
+        const videoLeaf = { ...up.json.value, type: 'video' };
+        const appended = await wfStore.appendHistory(zipId, 'img', {
+          cacheKey: 'wp17',
+          createdAt: new Date().toISOString(),
+          variants: [{ video: videoLeaf, expanded_prompt: textValue('A very long expanded prompt '.repeat(10)), json: textValue('{"seed":1}') }]
+        });
+        const plan = await api('GET', `/api/workflows/${zipId}/send-to-chat/plan?nodeId=img`);
+        assert.equal(plan.status, 200, plan.text);
+        assert.equal(plan.json.workflow.name, 'Zip Flow ä');
+        assert.equal(plan.json.node.type, 'input.image');
+        assert.equal(plan.json.maxFiles, 24);
+        const byId = Object.fromEntries(plan.json.ports.map((port) => [port.id, port]));
+        assert.deepEqual(Object.keys(byId).sort(), ['expanded_prompt', 'json', 'video']);
+        assert.equal(byId.video.kind, 'video');
+        assert.equal(byId.video.selected, true);
+        assert.equal(byId.video.media.length, 1);
+        assert.equal(byId.video.media[0].assetId, up.json.value.assetId);
+        assert.equal(byId.expanded_prompt.selected, false, 'side texts of a media result start unchecked');
+        assert.equal(byId.json.selected, false);
+        assert.equal(byId.expanded_prompt.texts[0].preview.length, 120, 'the dialog gets the first 120 characters only');
+        assert.ok(byId.expanded_prompt.texts[0].length > 120);
+
+        const before = (await store.readSession(chat.id)).messages.length;
+        const media = await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id });
+        assert.equal(media.status, 200, media.text);
+        assert.equal(media.json.assetIds.length, 1);
+        assert.deepEqual(media.json.ports, ['video']);
+        assert.equal(media.json.texts, 0);
+        let sentMessage = (await store.readSession(chat.id)).messages.slice(-1)[0];
+        assert.equal((await store.readSession(chat.id)).messages.length, before + 1);
+        assert.ok(!sentMessage.content.includes('expanded'), 'the side text stays out of the message');
+        assert.deepEqual(sentMessage.origin.ports, [{ id: 'video', type: 'video' }]);
+        assert.deepEqual(sentMessage.origin.texts, []);
+        assert.equal(sentMessage.origin.nodeType, 'input.image');
+
+        // explicit ports: media plus one side text; the text is kept for the card and for the Director
+        const both = await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, entry: appended.entry.id, variant: 0, ports: ['video', 'expanded_prompt'] });
+        assert.equal(both.status, 200, both.text);
+        assert.equal(both.json.texts, 1);
+        sentMessage = (await store.readSession(chat.id)).messages.slice(-1)[0];
+        assert.ok(sentMessage.content.includes('Text (Ausgang «expanded_prompt»):\nA very long expanded prompt'));
+        assert.ok(!sentMessage.content.includes('"seed"'));
+        assert.deepEqual(sentMessage.origin.ports.map((port) => port.id), ['video', 'expanded_prompt']);
+        assert.equal(sentMessage.origin.texts[0].port, 'expanded_prompt');
+
+        // only a text port: no files; the older single `port` keeps working
+        const onlyText = await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, port: 'json' });
+        assert.equal(onlyText.status, 200, onlyText.text);
+        assert.deepEqual(onlyText.json.assetIds, []);
+        sentMessage = (await store.readSession(chat.id)).messages.slice(-1)[0];
+        assert.equal(sentMessage.uploadIds, undefined);
+        assert.equal(sentMessage.content, `Aus dem Workflow «Zip Flow ä» übernommen: Ergebnis von «${sentMessage.origin.nodeLabel}».\nText (Ausgang «json»):\n{"seed":1}`);
+
+        // a port that does not exist sends nothing
+        assert.equal((await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, ports: ['nope'] })).status, 404);
+        assert.equal((await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, ports: 'video' })).status, 400);
+        assert.equal((await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, ports: ['bad id'] })).status, 400);
+        assert.equal((await api('GET', `/api/workflows/${zipId}/send-to-chat/plan`)).status, 400);
+        assert.equal((await api('GET', `/api/workflows/${zipId}/send-to-chat/plan?nodeId=nope`)).status, 404);
+        assert.equal((await api('GET', `/api/workflows/${zipId}/send-to-chat/plan?nodeId=img&entry=h-unknown`)).status, 404);
+        assert.equal((await api('GET', `/api/workflows/${zipId}/send-to-chat/plan?nodeId=img&variant=x`)).status, 400);
+
+        // only a missing chat is reported as CHAT_NOT_FOUND; the client shows "chat gone" for that code alone
+        const noPort = await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, ports: ['nope'] });
+        assert.equal(noPort.json.code, 'NOT_FOUND', 'a port that is gone is not a chat problem');
+        const noEntry = await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: chat.id, entry: 'h-unknown' });
+        assert.equal(noEntry.status, 404);
+        assert.equal(noEntry.json.code, 'ENTRY_NOT_FOUND');
+        const noChat = await api('POST', `/api/workflows/${zipId}/send-to-chat`, { nodeId: 'img', sessionId: 'a'.repeat(32) });
+        assert.equal(noChat.status, 404);
+        assert.equal(noChat.json.code, 'CHAT_NOT_FOUND');
+        assert.equal((await api('GET', '/api/workflows/wf-does-not-exist/send-to-chat/plan?nodeId=img')).status, 404);
+      }
 
       const zipResults = (await api('GET', `/api/workflows/${zipId}`)).json.results;
       const entryId = zipResults.nodes.outA.selected.entry;
@@ -967,6 +1057,7 @@ async function main() {
         ['/api/nodes/options/:source', 'get'],
         ['/api/nodes/higgsfield-models/:modelId', 'get'],
         ['/api/workflow-templates', 'get'],
+        ['/api/workflows/:id/send-to-chat/plan', 'get'],
         ['/api/workflows/:id/send-to-chat', 'post'],
         ['/api/workflows', 'get'],
         ['/api/workflows', 'post'],

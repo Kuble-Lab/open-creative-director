@@ -551,6 +551,7 @@ async function testSharing(ctx) {
     ['GET', `/api/workflows/${id}/export`],
     ['GET', `/api/workflows/${id}/assets`],
     ['POST', `/api/workflows/${id}/import-asset`, { sessionId: 'a', assetId: 'b' }],
+    ['GET', `/api/workflows/${id}/send-to-chat/plan?nodeId=n`],
     ['POST', `/api/workflows/${id}/send-to-chat`, { sessionId: 'a', nodeId: 'n' }],
     ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'all' }],
     ['POST', `/api/workflows/${id}/runs`, { mode: 'all' }],

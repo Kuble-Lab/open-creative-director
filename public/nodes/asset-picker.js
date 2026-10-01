@@ -396,7 +396,9 @@
 
   /* ---------- chat bridge ---------- */
 
-  // Lets the user pick a chat; resolves { id, title } or null.
+  // Lets the user pick a chat; resolves { id, title } or null. options.above: node shown above the list,
+  // options.ready(): extra condition for the confirm button (the send dialog needs at least one output),
+  // options.onReady(update): receives the function that re-checks the confirm button.
   function chooseChat(options = {}) {
     let chosen = null;
     let panel = null;
@@ -407,27 +409,33 @@
       },
       onConfirm: (chat) => {
         chosen = chat;
+        update();
         const primary = panel && panel.querySelector('.nv-dialog-actions .nv-btn-primary');
-        if (primary) primary.click();
+        if (primary && !primary.disabled) primary.click();
       }
     });
-    const body = el('div', { class: 'nv-ap nv-ap-send' }, list.el);
+    const body = el('div', { class: 'nv-ap nv-ap-send' });
+    if (options.above) body.append(options.above);
+    if (options.chatsLabel) body.append(el('h3', { class: 'nv-send-heading', text: options.chatsLabel }));
+    body.append(list.el);
     function update() {
       const primary = panel && panel.querySelector('.nv-dialog-actions .nv-btn-primary');
-      if (primary) primary.disabled = !chosen;
+      if (primary) primary.disabled = !chosen || (options.ready ? !options.ready() : false);
     }
+    if (options.onReady) options.onReady(update);
     return ui
       .dialog({
         title: options.title || T('nodes.send.title'),
         message: options.message || T('nodes.send.message'),
         body,
-        width: 520,
+        width: options.width || 520,
         buttons: [
           { label: T('nodes.common.cancel'), value: null, cancel: true },
           { label: options.confirmLabel || T('nodes.send.confirm'), value: '__chat__', primary: true }
         ],
         onOpen: (dialogPanel) => {
           panel = dialogPanel;
+          if (options.panelClass) dialogPanel.classList.add(options.panelClass);
           update();
           setTimeout(() => list.focus(), 0);
         }
@@ -435,17 +443,116 @@
       .then((result) => (result === '__chat__' && chosen ? { id: chosen.id, title: chosen.title || T('nodes.picker.untitledChat') } : null));
   }
 
+  // Hover help of an output port (nodes.portdesc.*, same lookup chain as the port tooltips); '' when there is none.
+  function portHelp(nodeType, port) {
+    const graphLib = OCD.graph;
+    if (!graphLib || !OCD.portTip) return '';
+    const base = ['image', 'video', 'audio', 'number', 'text'].includes(port.kind) ? port.kind : 'any';
+    return OCD.portTip.resolveDescription({ text: graphLib.portDescriptionKeys(nodeType, port.id, base, 'out') });
+  }
+
+  const kindLabel = (kind) => T(`nodes.ptype.${kind}`);
+
+  // Small preview of one media file of the send dialog (muted, no autoplay).
+  function mediaThumb(media) {
+    const url = media.url ? api.rel(media.url) : '';
+    if (media.type === 'image' && url) return el('img', { class: 'nv-send-thumb', src: url, alt: '', loading: 'lazy', draggable: 'false' });
+    if (media.type === 'video' && url) return el('video', { class: 'nv-send-thumb', src: `${url}#t=0.1`, muted: true, preload: 'metadata', playsinline: true, 'aria-hidden': 'true' });
+    return el('span', { class: 'nv-send-thumb is-icon' }, icon(media.type === 'audio' ? 'audio' : 'file', 18));
+  }
+
+  // The "what is sent" list of the send dialog: one row per output port with a checkbox. chosen: Set of port ids.
+  function sendContents(plan, chosen, onChange) {
+    const box = el('div', { class: 'nv-send-contents' });
+    box.append(el('h3', { class: 'nv-send-heading', text: T('nodes.send.what') }));
+    const rows = el('div', { class: 'nv-send-rows' });
+    const hasMedia = plan.ports.some((port) => port.media.length);
+    for (const port of plan.ports) {
+      const input = el('input', { type: 'checkbox', class: 'nv-send-check', 'aria-label': ui.portLabel(port.id) });
+      input.checked = chosen.has(port.id);
+      input.addEventListener('change', () => {
+        if (input.checked) chosen.add(port.id);
+        else chosen.delete(port.id);
+        onChange();
+      });
+      const head = el('span', { class: 'nv-send-port' }, el('span', { class: 'nv-send-name', text: ui.portLabel(port.id) }), el('span', { class: 'nv-send-kind', text: port.media.length > 1 ? `${kindLabel(port.kind)} × ${port.media.length}` : kindLabel(port.kind) }));
+      const side = el('span', { class: 'nv-send-detail' });
+      if (port.media.length) {
+        const thumbs = el('span', { class: 'nv-send-thumbs' });
+        for (const media of port.media.slice(0, 4)) thumbs.append(mediaThumb(media));
+        if (port.media.length > 4) thumbs.append(el('span', { class: 'nv-send-more', text: `+${port.media.length - 4}` }));
+        side.append(thumbs);
+      }
+      for (const text of port.texts.slice(0, 2)) {
+        side.append(el('span', { class: 'nv-send-snippet', text: `${text.preview}${text.length > 120 ? '…' : ''}` }), el('span', { class: 'nv-send-length', text: T('nodes.send.textLength', { count: text.length }) }));
+      }
+      if (port.texts.length > 2) side.append(el('span', { class: 'nv-send-length', text: `+${port.texts.length - 2}` }));
+      if (hasMedia && !port.media.length) side.append(el('span', { class: 'nv-send-length', text: T('nodes.send.sideText') }));
+      const label = el('label', { class: 'nv-send-row' }, input, el('span', { class: 'nv-send-body' }, head, side));
+      const help = portHelp(plan.node.type, port);
+      if (help) label.title = help;
+      rows.append(label);
+    }
+    box.append(rows);
+    return box;
+  }
+
+  function sendErrorText(error) {
+    if (error && error.code === 'CHAT_BUSY') return T('nodes.send.busy');
+    if (error && error.code === 'CHAT_NOT_FOUND') return T('nodes.send.chatGone');
+    if (error && error.status === 404) return T('nodes.send.resultGone');
+    return T('nodes.send.failed', { error: error && error.message ? error.message : '' });
+  }
+
   // Sends the result of a node into a chat the user picks. target: { workflowId, nodeId, entry?, variant?, port? }.
+  // The dialog first lists what will be sent (media with a preview, texts with their first characters) so nothing
+  // arrives by surprise; side texts of a media result start unchecked.
   async function sendToChat(target) {
-    const chat = await chooseChat();
+    const query = new URLSearchParams({ nodeId: target.nodeId });
+    if (target.entry) query.set('entry', target.entry);
+    if (Number.isInteger(target.variant)) query.set('variant', String(target.variant));
+    let plan;
+    try {
+      plan = await api.request('GET', `/api/workflows/${enc(target.workflowId)}/send-to-chat/plan?${query}`);
+    } catch (error) {
+      ui.toast(T('nodes.send.planFailed', { error: error.message }), { kind: 'error' });
+      return null;
+    }
+    if (target.port) for (const port of plan.ports) port.selected = port.id === target.port;
+    const chosen = new Set(plan.ports.filter((port) => port.selected).map((port) => port.id));
+    let refresh = () => {};
+    const count = () => plan.ports.filter((port) => chosen.has(port.id)).reduce((sum, port) => sum + port.media.length, 0);
+    const status = el('div', { class: 'nv-send-status', role: 'status' });
+    // Says why "Send" is disabled; shown right when the dialog opens and after every change of the checkboxes.
+    const showStatus = () => {
+      if (!plan.ports.length) status.textContent = T('nodes.send.empty');
+      else if (!chosen.size) status.textContent = T('nodes.send.nothing');
+      else if (count() > plan.maxFiles) status.textContent = T('nodes.send.tooMany', { max: plan.maxFiles });
+      else status.textContent = '';
+    };
+    showStatus();
+    const contents = sendContents(plan, chosen, () => {
+      refresh();
+      showStatus();
+    });
+    const chat = await chooseChat({
+      above: el('div', { class: 'nv-send-above' }, contents, status),
+      chatsLabel: T('nodes.send.where'),
+      width: 600,
+      panelClass: 'is-send',
+      ready: () => chosen.size > 0 && count() <= plan.maxFiles,
+      onReady: (update) => {
+        refresh = update;
+      }
+    });
     if (!chat) return null;
     try {
-      const body = { nodeId: target.nodeId, sessionId: chat.id };
+      const body = { nodeId: target.nodeId, sessionId: chat.id, ports: plan.ports.filter((port) => chosen.has(port.id)).map((port) => port.id) };
       if (target.entry) body.entry = target.entry;
       if (Number.isInteger(target.variant)) body.variant = target.variant;
-      if (target.port) body.port = target.port;
       const result = await api.request('POST', `/api/workflows/${enc(target.workflowId)}/send-to-chat`, body);
-      const notice = ui.toast(T('nodes.send.done', { title: chat.title }), { timeout: 9000 });
+      const ids = (result.assetIds || []).join(', ');
+      const notice = ui.toast(ids ? T('nodes.send.done', { title: chat.title, ids }) : T('nodes.send.doneText', { title: chat.title }), { timeout: 9000 });
       const open = el('button', { type: 'button', class: 'nv-link nv-toast-action', text: T('nodes.send.openChat') });
       open.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -454,7 +561,7 @@
       notice.append(' ', open);
       return { chat, result };
     } catch (error) {
-      ui.toast(T('nodes.send.failed', { error: error.message }), { kind: 'error' });
+      ui.toast(sendErrorText(error), { kind: 'error' });
       return null;
     }
   }
