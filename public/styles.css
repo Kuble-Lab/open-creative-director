@@ -1913,11 +1913,19 @@ code {
 
 .asset-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 2px 0;
   padding: 7px 4px 2px;
   font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* One calm line under a result: "vid-002 · $0.84 · Kling v3.0". */
+.asset-meta > span + span::before {
+  content: '·';
+  margin: 0 8px;
   color: var(--text-faint);
 }
 
@@ -1960,14 +1968,22 @@ code {
 
 .asset-model {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-status);
 }
 
-.asset-meta {
-  flex-wrap: wrap;
+/* On a phone the model gets its own line, so the line breaks cleanly instead of leaving a dot at the end. */
+@media (max-width: 480px) {
+  .asset-meta > .asset-model {
+    flex: 1 1 100%;
+  }
+
+  .asset-meta > .asset-model::before {
+    display: none;
+  }
 }
 
 .video-model-choice {

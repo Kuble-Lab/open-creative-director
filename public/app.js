@@ -1005,6 +1005,30 @@ function mediaCard(asset) {
   return imageCard(asset);
 }
 
+// The price line of a result: the real cost in USD, "Higgsfield credits" for Higgsfield (it bills in credits, not USD), and
+// nothing for free local results (cost 0) or when no cost is known. No "$0.00" is ever shown as a cost.
+// A cost that is only an estimate (fal list price, ElevenLabs flat rate per character) gets the same "about" as the
+// estimate of a running video, so the line never passes an estimate off as the price the provider charged.
+function assetPriceLabel(asset) {
+  if (asset.billing === 'credits') return t('assets.credits');
+  if (typeof asset.cost !== 'number' || !(asset.cost > 0)) return '';
+  return asset.costEstimated === true ? t('jobs.estimate', { amount: formatCost(asset.cost) }) : formatCost(asset.cost);
+}
+
+// The model line: the readable name from the server; the full model id as the hover text. Providers' ids and names are
+// foreign data, so everything goes in as text.
+function assetModelNode(asset, className) {
+  const name = String(asset.modelName || '').trim();
+  if (!name) return null;
+  const node = document.createElement('span');
+  node.className = className;
+  node.textContent = name;
+  const id = String(asset.model || '').trim();
+  node.title = id ? t('assets.model', { model: id }) : name;
+  return node;
+}
+
+// One calm line under a result: "vid-002 · $0.84 · Kling v3.0". The same for images, video and audio.
 function assetMeta(asset) {
   const meta = document.createElement('div');
   meta.className = 'asset-meta';
@@ -1012,23 +1036,26 @@ function assetMeta(asset) {
   id.className = 'asset-id';
   id.textContent = asset.id;
   meta.appendChild(id);
-  const cost = formatCost(asset.cost);
-  if (cost) {
+  const price = assetPriceLabel(asset);
+  if (price) {
     const costEl = document.createElement('span');
     costEl.className = 'asset-cost';
-    costEl.textContent = cost;
+    costEl.textContent = price;
     meta.appendChild(costEl);
   }
-  // The model that made a video (from the job or the ledger entry).
-  const model = asset.kind === 'video' ? String(asset.model || '').trim() : '';
-  if (model) {
-    const modelEl = document.createElement('span');
-    modelEl.className = 'asset-model';
-    modelEl.textContent = t('assets.model', { model: videoModelShortName(model) });
-    modelEl.title = model;
-    meta.appendChild(modelEl);
-  }
+  const modelEl = assetModelNode(asset, 'asset-model');
+  if (modelEl) meta.appendChild(modelEl);
   return meta;
+}
+
+// The estimate of a running job, from the model card: "about $0.84" or "about $0.62–$0.84".
+function jobEstimateLabel(job) {
+  // null (no estimate) must not turn into 0: Number(null) is 0.
+  const max = typeof job.estimateUsd === 'number' ? job.estimateUsd : NaN;
+  if (!Number.isFinite(max) || max < 0) return '';
+  const min = typeof job.estimateMinUsd === 'number' ? job.estimateMinUsd : NaN;
+  const amount = Number.isFinite(min) && min >= 0 && max - min > 0.005 ? `${videoModelMoney(min)}–${videoModelMoney(max)}` : videoModelMoney(max);
+  return t('jobs.estimate', { amount });
 }
 
 function jobCard(job) {
@@ -1044,23 +1071,27 @@ function jobCard(job) {
   body.className = 'job-card-text';
   body.textContent = failed ? t('jobs.failed', { id: job.assetId }) : t('jobs.running', { id: job.assetId });
   const small = document.createElement('small');
-  const statusDetail = failed ? job.error || t('jobs.unknownError') : t('jobs.duration');
-  const jobModel = job.kind === 'video' || !job.kind ? String(job.model || '').trim() : '';
-  small.textContent = jobModel ? `${statusDetail} · ${t('assets.model', { model: videoModelShortName(jobModel) })}` : statusDetail;
-  if (jobModel) small.title = jobModel;
+  const modelName = String(job.modelName || '').trim();
+  if (failed) {
+    const detail = job.error || t('jobs.unknownError');
+    small.textContent = modelName ? `${detail} · ${modelName}` : detail;
+  } else {
+    // "Kling v3.0 · about $0.84 · usually takes 2–5 minutes"; Higgsfield shows its credits instead of a USD estimate.
+    const parts = [];
+    if (modelName) parts.push(modelName);
+    const price = job.billing === 'credits' ? t('assets.credits') : jobEstimateLabel(job);
+    if (price) parts.push(price);
+    parts.push(t(parts.length ? 'jobs.durationInline' : 'jobs.duration'));
+    small.textContent = parts.join(' · ');
+  }
+  const modelId = String(job.model || '').trim();
+  if (modelId) small.title = t('assets.model', { model: modelId });
   body.appendChild(small);
   card.appendChild(body);
   return card;
 }
 
 /* ---------- Video model picker (card of the Director, lib/video-models.js) ---------- */
-
-// "bytedance/seedance-2.5" -> "seedance-2.5": the slug without the provider, for the small model label.
-function videoModelShortName(model) {
-  const text = String(model || '');
-  const slash = text.indexOf('/');
-  return slash >= 0 ? text.slice(slash + 1) : text;
-}
 
 function videoModelMoney(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
@@ -1601,7 +1632,10 @@ function renderDetail() {
             kind: job.kind || asset?.kind || 'video',
             url: rel(job.url),
             cost: job.cost ?? asset?.cost ?? null,
+            costEstimated: job.costEstimated === true || asset?.costEstimated === true,
             model: job.model || asset?.model || null,
+            modelName: job.modelName || asset?.modelName || null,
+            billing: job.billing || asset?.billing || null,
             prompt: job.prompt
           }));
           for (const resultAssetId of job.resultAssetIds || []) {
@@ -5225,7 +5259,16 @@ function handleEvent(event) {
     node.className = 'msg tool';
     const grid = document.createElement('div');
     grid.className = 'asset-grid';
-    grid.appendChild(jobCard({ assetId: event.assetId, status: 'pending', kind: event.kind || 'video', model: event.model }));
+    grid.appendChild(jobCard({
+      assetId: event.assetId,
+      status: 'pending',
+      kind: event.kind || 'video',
+      model: event.model,
+      modelName: event.modelName,
+      estimateUsd: event.estimateUsd,
+      estimateMinUsd: event.estimateMinUsd,
+      billing: event.billing
+    }));
     node.appendChild(grid);
     appendLiveNode(node);
     if (state.detail) {
@@ -5238,6 +5281,10 @@ function handleEvent(event) {
         provider: event.provider || null,
         kind: event.kind || 'video',
         model: event.model || null,
+        modelName: event.modelName || null,
+        estimateUsd: event.estimateUsd ?? null,
+        estimateMinUsd: event.estimateMinUsd ?? null,
+        billing: event.billing || null,
         createdAt: event.createdAt || new Date().toISOString(),
         startedAt: event.startedAt || null,
         renderNodeId: event.renderNodeId || null,

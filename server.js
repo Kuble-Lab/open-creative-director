@@ -17,6 +17,7 @@ const or = require('./lib/openrouter');
 const brain = require('./lib/brain');
 const tools = require('./lib/tools');
 const videoModels = require('./lib/video-models');
+const resultMeta = require('./lib/result-meta');
 const gts = require('./lib/gts');
 const fal = require('./lib/fal');
 const poller = require('./lib/poller');
@@ -468,42 +469,57 @@ function requireFolderName(req, res) {
 
 function jobsWithUrls(session) {
   const renderNodes = new Map(rendernode.listConfiguredNodes().map((node) => [node.id, node]));
-  return session.jobs.map((job) => ({
-    jobId: job.jobId,
-    assetId: job.assetId,
-    status: job.status,
-    prompt: job.prompt,
-    submittedAt: job.submittedAt,
-    createdAt: job.createdAt || job.submittedAt || null,
-    startedAt: job.startedAt || null,
-    completedAt: job.completedAt || null,
-    error: job.error || null,
-    cost: typeof job.cost === 'number' ? job.cost : null,
-    source: job.source || null,
-    provider: job.provider || null,
-    kind: job.kind || 'video',
-    model: String(job.model || '').trim() || null,
-    resultAssetIds: Array.isArray(job.resultAssetIds) ? job.resultAssetIds : [],
-    renderNodeId: job.renderNodeId || null,
-    nodeId: job.renderNodeId || job.nodeId || null,
-    nodeName: job.nodeName || renderNodes.get(job.renderNodeId || job.nodeId)?.name || null,
-    url: job.status === 'completed' && job.file ? store.assetUrl(session.id, job.file) : null
-  }));
+  return session.jobs.map((job) => {
+    const meta = resultMeta.describe(job);
+    return {
+      jobId: job.jobId,
+      assetId: job.assetId,
+      status: job.status,
+      prompt: job.prompt,
+      submittedAt: job.submittedAt,
+      createdAt: job.createdAt || job.submittedAt || null,
+      startedAt: job.startedAt || null,
+      completedAt: job.completedAt || null,
+      error: job.error || null,
+      cost: typeof job.cost === 'number' ? job.cost : null,
+      costEstimated: job.costEstimated === true,
+      // The model with its readable name, the estimate the model card showed (video) and how the job is billed.
+      model: meta.model || null,
+      modelName: meta.modelName || null,
+      estimateUsd: Number.isFinite(job.estimateUsd) ? job.estimateUsd : null,
+      estimateMinUsd: Number.isFinite(job.estimateMinUsd) ? job.estimateMinUsd : null,
+      billing: resultMeta.billingOf(job),
+      source: job.source || null,
+      provider: job.provider || null,
+      kind: job.kind || 'video',
+      resultAssetIds: Array.isArray(job.resultAssetIds) ? job.resultAssetIds : [],
+      renderNodeId: job.renderNodeId || null,
+      nodeId: job.renderNodeId || job.nodeId || null,
+      nodeName: job.nodeName || renderNodes.get(job.renderNodeId || job.nodeId)?.name || null,
+      url: job.status === 'completed' && job.file ? store.assetUrl(session.id, job.file) : null
+    };
+  });
 }
 
-// The ledger entries of a chat with the model that made them: from the entry itself or from the job that produced it,
-// so videos made before the model was recorded on the entry still show it.
+// The ledger entries of a chat with what the cards show: the model that made each (`model`, `modelName`) and how it was
+// billed (`billing`). The model comes from the entry itself, else from the job that produced it (results of jobs made before
+// the entry recorded it, and the further results of a job). Nothing is guessed: an entry without a recorded model shows none.
 function assetsWithUrls(session, ledger) {
-  const modelByAssetId = new Map();
+  const jobByAssetId = new Map();
   for (const job of session.jobs || []) {
-    const model = String(job.model || '').trim();
-    if (!model) continue;
-    if (job.assetId) modelByAssetId.set(job.assetId, model);
-    for (const resultAssetId of job.resultAssetIds || []) modelByAssetId.set(resultAssetId, model);
+    if (job.assetId) jobByAssetId.set(job.assetId, job);
+  }
+  for (const job of session.jobs || []) {
+    for (const resultAssetId of job.resultAssetIds || []) {
+      if (!jobByAssetId.has(resultAssetId)) jobByAssetId.set(resultAssetId, job);
+    }
   }
   return ledger.map((entry) => {
-    const model = entry.kind === 'video' ? String(entry.model || entry.metadata?.model || modelByAssetId.get(entry.id) || '').trim() : '';
-    return { ...entry, ...(model ? { model } : {}), url: store.assetUrl(session.id, entry.file) };
+    const job = jobByAssetId.get(entry.id) || null;
+    const own = resultMeta.describe(entry);
+    const meta = own.model ? own : resultMeta.describe(job);
+    const billing = resultMeta.billingOf(job);
+    return { ...entry, ...meta, ...(billing ? { billing } : {}), url: store.assetUrl(session.id, entry.file) };
   });
 }
 
@@ -2107,6 +2123,7 @@ app.post('/api/sessions/:id/video-model-requests/:requestId', async (req, res) =
         user: req.kubleUser,
         viewer,
         selectedVideoModel: true,
+        videoOption: selected.option,
         videoEstimateUsd: selected.option.estimateUsd,
         videoModelRequestId: selected.requestId
       },

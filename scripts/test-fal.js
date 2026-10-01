@@ -809,6 +809,7 @@ async function testPoller(sessionId) {
   assert.equal(entry.pending, undefined);
   assert.equal(entry.file, `${finished.assetId}.mp4`);
   assert.equal(entry.cost, 0.56);
+  assert.equal(entry.costEstimated, true, 'the list price is an estimate: the ledger says so, the card shows "about"');
   assert.equal(entry.duration, 7);
   assert.equal(await fsp.readFile(path.join(store.sessionAssetDir(sessionId), entry.file), 'utf8'), 'fake-media-bytes');
   const cost = journal.find((line) => line.assetId === finished.assetId);
