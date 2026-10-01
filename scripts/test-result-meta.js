@@ -267,6 +267,8 @@ async function runServer(iso) {
   assert.equal(resultMeta.displayName('acme/some-model-9', ''), 'some-model-9', 'the slug without the provider');
   assert.equal(resultMeta.displayName('acme/some-model-9', 'Acme: Some Model 9'), 'Some Model 9');
   assert.equal(resultMeta.displayName('bytedance/seedance-2.5', 'whatever'), 'Seedance 2.5', 'the curated name wins');
+  assert.equal(resultMeta.displayName('openai/gpt-image-2.5-sunburst'), 'GPT Image 2.5 Sunburst');
+  assert.equal(resultMeta.displayName('openai/gpt-image-2.5-flare'), 'GPT Image 2.5 Flare');
   assert.equal(resultMeta.displayName('fal-ai/flux/dev'), 'flux/dev');
   assert.equal(resultMeta.displayName('acme/foo-video-1', 'acme/foo-video-1'), 'foo-video-1', 'a stored full slug is no name');
   assert.equal(resultMeta.displayName(''), '');
