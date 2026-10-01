@@ -168,16 +168,19 @@ async function runServer(iso) {
   assert.equal((await store.readLedger(chat.id)).filter((entry) => entry.kind === 'audio').at(-1).model, 'elevenlabs/eleven_turbo_v2_5');
 
   // ============ 3. the tool message of a turn carries the model, the reloaded chat serves it for every kind ============
+  // A turn runs with the image model of the app's own configuration (config.json), whichever it is.
+  const runtimeImageModel = (await api('/api/config', { as: ADMIN })).body.imageModel;
+  assert.ok(runtimeImageModel, 'the app names its image model');
   const turnChat = await newChat();
   director.say({ text: 'Ich male es.', tools: [{ name: 'generate_image', args: { prompt: 'A lighthouse at night.' } }] });
   director.say({ text: 'Fertig.' });
   const turn = await api(`/api/sessions/${turnChat.id}/message`, { method: 'POST', as: ADMIN, json: { text: 'Bild bitte', brainModel: 'brain-test' } });
   assert.equal(turn.status, 200, turn.text);
   const liveAsset = parseEvents(turn.text).find((event) => event.type === 'asset');
-  assert.equal(liveAsset.asset.modelName, 'GPT Image 2');
+  assert.equal(liveAsset.asset.modelName, resultMeta.displayName(runtimeImageModel));
   const toolMessage = (await store.readSession(turnChat.id)).messages.find((message) => message.role === 'tool');
-  assert.equal(toolMessage.assets[0].model, 'openai/gpt-image-2', 'the stored tool message keeps the model');
-  assert.equal(toolMessage.assets[0].modelName, 'GPT Image 2');
+  assert.equal(toolMessage.assets[0].model, runtimeImageModel, 'the stored tool message keeps the model');
+  assert.equal(toolMessage.assets[0].modelName, resultMeta.displayName(runtimeImageModel));
   assert.equal(toolMessage.assets[0].cost, 0.04);
 
   const reloaded = await detail(chat.id);
