@@ -28,6 +28,7 @@ const ROUTE_RULES = {
   'GET /api/config': 'open',
   'GET /api/settings': 'admin',
   'PUT /api/settings': 'admin',
+  'PUT /api/settings/preferences': 'admin',
   'GET /api/admins': 'admin',
   'POST /api/admins': 'admin',
   'DELETE /api/admins/:email': 'admin',
@@ -97,6 +98,9 @@ const ROUTE_RULES = {
   'DELETE /api/sessions/:id/context-files/:fileId': 'session',
   'DELETE /api/sessions/:id': 'session',
   'POST /api/sessions/:id/message': 'session',
+  'POST /api/sessions/:id/video-model-requests/:requestId': 'session', // the click on a model of the picker card
+  'POST /api/sessions/:id/video-model-requests/:requestId/cancel': 'session',
+  'DELETE /api/sessions/:id/video-model-preference': 'session',
   'GET /api/nodes/registry': 'public',
   'GET /api/nodes/options/:source': 'open',
   'GET /api/nodes/higgsfield-models/:modelId': 'open',
@@ -147,6 +151,7 @@ const PARTICIPANT_RULES = {
   'GET /api/config': 'filtered', // no ChatGPT subscription models, no GTS
   'GET /api/settings': 'admin',
   'PUT /api/settings': 'admin',
+  'PUT /api/settings/preferences': 'admin',
   'GET /api/admins': 'admin',
   'POST /api/admins': 'admin',
   'DELETE /api/admins/:email': 'admin',
@@ -216,6 +221,9 @@ const PARTICIPANT_RULES = {
   'DELETE /api/sessions/:id/context-files/:fileId': 'same',
   'DELETE /api/sessions/:id': 'same',
   'POST /api/sessions/:id/message': 'same', // plus the budget (402) and no ChatGPT models (403)
+  'POST /api/sessions/:id/video-model-requests/:requestId': 'same', // plus the budget (402): an option over what is left is refused
+  'POST /api/sessions/:id/video-model-requests/:requestId/cancel': 'same',
+  'DELETE /api/sessions/:id/video-model-preference': 'same',
   'GET /api/nodes/registry': 'filtered', // Higgsfield nodes marked as not available
   'GET /api/nodes/options/:source': 'filtered', // Higgsfield sources 403, models without ChatGPT, library voices only
   'GET /api/nodes/higgsfield-models/:modelId': 'forbidden',

@@ -93,6 +93,7 @@
           <div id="jobStatusBar" class="job-status-bar hidden" aria-live="polite" aria-label="Laufende Jobs" data-i18n-aria-label="jobs.liveLabel">
             <div id="jobStatusList" class="job-status-list"></div>
           </div>
+          <div id="videoModelHint" class="video-model-hint hidden"></div>
           <div id="attachStrip" class="attach-strip hidden"></div>
           <div class="composer-row">
             <button id="attachBtn" class="btn-icon" title="Datei anhängen" aria-label="Datei anhängen" data-i18n-title="composer.attach" data-i18n-aria-label="composer.attach">
@@ -220,6 +221,16 @@
                 <button id="chatgptDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="chatgpt.disconnect">Trennen</button>
               </div>
             </div>
+          </section>
+          <section class="settings-video-ask" aria-labelledby="videoAskTitle">
+            <h3 id="videoAskTitle" class="settings-section-title" data-i18n="settings.videoTitle">Videos im Chat</h3>
+            <label class="settings-switch" for="videoAskToggle">
+              <input id="videoAskToggle" type="checkbox" role="switch" checked />
+              <span class="settings-switch-copy">
+                <span class="settings-switch-label" data-i18n="settings.videoAskLabel">Vor jedem Video nach dem Modell fragen</span>
+                <small class="settings-hint" data-i18n="settings.videoAskHint">An: Der Director zeigt vor jedem Video eine Auswahl mit Preis, Stärken und Schwächen; erst der Klick startet die Erzeugung. Aus: Das Standardmodell startet sofort, ohne Karte.</small>
+              </span>
+            </label>
           </section>
           </div>
           <div id="settingsGroup-people" class="settings-group hidden" role="tabpanel" aria-labelledby="settingsTab-people" data-settings-group="people">

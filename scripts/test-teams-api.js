@@ -455,7 +455,10 @@ async function testSharing(ctx) {
     ['DELETE', `/api/sessions/${chat.id}/context/x`],
     ['POST', `/api/sessions/${chat.id}/context-files`, { name: 'a.md', text: 'x' }],
     ['DELETE', `/api/sessions/${chat.id}/context-files/x`],
-    ['POST', `/api/sessions/${chat.id}/message`, { text: 'hi' }]
+    ['POST', `/api/sessions/${chat.id}/message`, { text: 'hi' }],
+    ['POST', `/api/sessions/${chat.id}/video-model-requests/vmr-x`, { model: 'bytedance/seedance-2.5' }],
+    ['POST', `/api/sessions/${chat.id}/video-model-requests/vmr-x/cancel`, {}],
+    ['DELETE', `/api/sessions/${chat.id}/video-model-preference`]
   ];
   for (const email of [P2, P3, GUEST]) {
     for (const [method, url, json] of foreign) {

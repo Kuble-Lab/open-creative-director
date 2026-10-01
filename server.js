@@ -15,6 +15,8 @@ const {
 const store = require('./lib/store');
 const or = require('./lib/openrouter');
 const brain = require('./lib/brain');
+const tools = require('./lib/tools');
+const videoModels = require('./lib/video-models');
 const gts = require('./lib/gts');
 const fal = require('./lib/fal');
 const poller = require('./lib/poller');
@@ -480,12 +482,29 @@ function jobsWithUrls(session) {
     source: job.source || null,
     provider: job.provider || null,
     kind: job.kind || 'video',
+    model: String(job.model || '').trim() || null,
     resultAssetIds: Array.isArray(job.resultAssetIds) ? job.resultAssetIds : [],
     renderNodeId: job.renderNodeId || null,
     nodeId: job.renderNodeId || job.nodeId || null,
     nodeName: job.nodeName || renderNodes.get(job.renderNodeId || job.nodeId)?.name || null,
     url: job.status === 'completed' && job.file ? store.assetUrl(session.id, job.file) : null
   }));
+}
+
+// The ledger entries of a chat with the model that made them: from the entry itself or from the job that produced it,
+// so videos made before the model was recorded on the entry still show it.
+function assetsWithUrls(session, ledger) {
+  const modelByAssetId = new Map();
+  for (const job of session.jobs || []) {
+    const model = String(job.model || '').trim();
+    if (!model) continue;
+    if (job.assetId) modelByAssetId.set(job.assetId, model);
+    for (const resultAssetId of job.resultAssetIds || []) modelByAssetId.set(resultAssetId, model);
+  }
+  return ledger.map((entry) => {
+    const model = entry.kind === 'video' ? String(entry.model || entry.metadata?.model || modelByAssetId.get(entry.id) || '').trim() : '';
+    return { ...entry, ...(model ? { model } : {}), url: store.assetUrl(session.id, entry.file) };
+  });
 }
 
 async function renderNodeStatus() {
@@ -652,7 +671,8 @@ function publicRuntimeConfig(viewer = null) {
     imageModel: runtime.imageModel,
     videoModel: runtime.videoModel,
     gts: { enabled: gts.hasToken() && !restricted },
-    fal: { enabled: fal.hasKey() }
+    fal: { enabled: fal.hasKey() },
+    askVideoModel: settings.getPreference('askVideoModel')
   };
 }
 
@@ -704,7 +724,22 @@ app.get('/api/config', (req, res) => {
 
 app.get('/api/settings', (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
-  res.json({ keys: settings.listSettingsStatus() });
+  res.json({ keys: settings.listSettingsStatus(), preferences: settings.listPreferences() });
+});
+
+// Plain on/off switches of the services tab (no secrets): GET /api/settings lists them, this changes one.
+app.put('/api/settings/preferences', (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  if (typeof body.name !== 'string' || !settings.PREFERENCE_NAMES.includes(body.name)) {
+    return fail(res, 400, 'Diese Einstellung ist nicht erlaubt.');
+  }
+  if (typeof body.value !== 'boolean') return fail(res, 400, 'Der Wert muss true oder false sein.');
+  try {
+    res.json({ preferences: settings.setPreference(body.name, body.value) });
+  } catch (err) {
+    fail(res, 500, err.message);
+  }
 });
 
 app.put('/api/settings', (req, res) => {
@@ -1903,13 +1938,18 @@ app.get('/api/sessions/:id', async (req, res) => {
         folder: typeof session.folder === 'string' && session.folder.trim() ? session.folder.trim() : null,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-        messages: await withOriginAccess(req, session.messages.filter((message) => !message.hidden).map((message) => ({ ...message }))),
+        messages: videoModels.attachChoices(
+          await withOriginAccess(req, session.messages.filter((message) => !message.hidden).map((message) => ({ ...message }))),
+          session,
+          await budget.status(viewer)
+        ),
+        videoModelPreference: videoModels.publicPreference(session, viewer),
         brandings: viewer.active && access.isRestricted(viewer) ? [] : session.brandings,
         contextFiles: session.contextFiles,
         role: viewer.active && access.isRestricted(viewer) ? null : session.role || null,
         ...(viewer.active ? access.describe(session, viewer) : {})
       },
-      assets: ledger.map((entry) => ({ ...entry, url: store.assetUrl(id, entry.file) })),
+      assets: assetsWithUrls(session, ledger),
       jobs: jobsWithUrls(session)
     });
   } catch (err) {
@@ -2031,6 +2071,98 @@ app.delete('/api/sessions/:id', async (req, res) => {
     await store.deleteSession(id);
     res.json({ ok: true });
   } catch (err) {
+    fail(res, 500, err.message);
+  }
+});
+
+/* ---------- video model picker (lib/video-models.js) ---------- */
+
+// The click on a model of the card starts the video job. The model must be one of the options stored with the request,
+// the price the budget reserves comes from that stored option too: nothing here comes from the client except the choice.
+app.post('/api/sessions/:id/video-model-requests/:requestId', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  const requestId = String(req.params.requestId || '').trim();
+  const selectedModel = typeof req.body?.model === 'string' ? req.body.model.trim() : '';
+  if (!store.isValidId(requestId)) return fail(res, 400, 'Ungueltige Video-Modellwahl.');
+  if (!selectedModel || selectedModel.length > 120) return fail(res, 400, 'Videomodell fehlt.');
+
+  const viewer = access.viewerOf(req);
+  let selected;
+  try {
+    selected = await videoModels.beginRequest({ sessionId: id, requestId, selectedModel, budgetStatus: await budget.status(viewer) });
+  } catch (err) {
+    if (failAccountRule(res, err)) return;
+    if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
+    return fail(res, err.status || 400, err.message);
+  }
+
+  try {
+    const outcome = await tools.executeTool(
+      {
+        sessionId: id,
+        config: { ...runtime, videoModel: selected.option.id },
+        emit() {},
+        user: req.kubleUser,
+        viewer,
+        selectedVideoModel: true,
+        videoEstimateUsd: selected.option.estimateUsd,
+        videoModelRequestId: selected.requestId
+      },
+      'generate_video',
+      selected.args
+    );
+    // The provider has the job from here on. If the bookkeeping fails, the choice must not open again for a second paid
+    // job: reopenRequest sees the job of this request and closes the choice as submitted instead.
+    try {
+      await videoModels.finishRequest({ sessionId: id, requestId, outcome, remember: req.body?.remember === true, viewer });
+    } catch (finishError) {
+      console.warn(`[video-model] ${requestId}: Nachbearbeitung nach dem Start fehlgeschlagen: ${finishError.message}`);
+      await videoModels.reopenRequest({ sessionId: id, requestId, error: finishError }).catch(() => {});
+    }
+    const session = await store.readSession(id);
+    const request = (session.videoModelRequests || []).find((item) => item && item.id === requestId);
+    res.status(201).json({
+      choice: videoModels.publicChoice(request, await budget.status(viewer)),
+      job: jobsWithUrls(session).find((item) => item.jobId === outcome.job?.jobId) || null,
+      videoModelPreference: videoModels.publicPreference(session, viewer)
+    });
+  } catch (err) {
+    await videoModels.reopenRequest({ sessionId: id, requestId, error: err }).catch(() => {});
+    if (failAccountRule(res, err)) return;
+    const status = err instanceof or.OpenRouterError ? Math.min(502, Math.max(400, err.status || 502)) : 400;
+    fail(res, status, err.message);
+  }
+});
+
+app.post('/api/sessions/:id/video-model-requests/:requestId/cancel', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  const requestId = String(req.params.requestId || '').trim();
+  if (!store.isValidId(requestId)) return fail(res, 400, 'Ungueltige Video-Modellwahl.');
+  try {
+    await videoModels.cancelRequest({ sessionId: id, requestId });
+    const session = await store.readSession(id);
+    const request = (session.videoModelRequests || []).find((item) => item && item.id === requestId);
+    res.json({ choice: videoModels.publicChoice(request, await budget.status(access.viewerOf(req))) });
+  } catch (err) {
+    if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
+    fail(res, err.status || 500, err.message);
+  }
+});
+
+// "Ask again": forgets the model this chat remembered.
+app.delete('/api/sessions/:id/video-model-preference', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  try {
+    await videoModels.clearPreference(id, access.viewerOf(req));
+    res.json({ videoModelPreference: null });
+  } catch (err) {
+    if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
     fail(res, 500, err.message);
   }
 });

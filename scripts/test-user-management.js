@@ -152,7 +152,10 @@ async function testSessions(ctx) {
     ['DELETE', `/api/sessions/${chat.id}/context/x`],
     ['POST', `/api/sessions/${chat.id}/context-files`, { name: 'a.md', text: 'x' }],
     ['DELETE', `/api/sessions/${chat.id}/context-files/x`],
-    ['POST', `/api/sessions/${chat.id}/message`, { text: 'hi' }]
+    ['POST', `/api/sessions/${chat.id}/message`, { text: 'hi' }],
+    ['POST', `/api/sessions/${chat.id}/video-model-requests/vmr-x`, { model: 'bytedance/seedance-2.5' }],
+    ['POST', `/api/sessions/${chat.id}/video-model-requests/vmr-x/cancel`, {}],
+    ['DELETE', `/api/sessions/${chat.id}/video-model-preference`]
   ];
   for (const [method, url, json] of foreign) {
     const response = await api(url, { method, as: BOB, json });
@@ -747,6 +750,7 @@ async function testChatToolsAdminOnly({ api, iso }) {
 const ADMIN_ONLY_ROUTES = [
   ['GET', '/api/settings'],
   ['PUT', '/api/settings', { name: 'FAL_KEY', value: 'x' }],
+  ['PUT', '/api/settings/preferences', { name: 'askVideoModel', value: false }],
   ['GET', '/api/admins'],
   ['POST', '/api/admins', { email: 'x@example.com' }],
   ['DELETE', '/api/admins/x%40example.com'],

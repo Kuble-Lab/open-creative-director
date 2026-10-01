@@ -65,6 +65,7 @@
       <nav class="toc" aria-label="Inhalt"><strong>Inhalt</strong><ol>
         <li><a href="#de-start">Erste Schritte</a></li>
         <li><a href="#de-chat">Chat und Director</a></li>
+        <li><a href="#de-videos">Videos im Chat</a></li>
         <li><a href="#de-projects">Projekte und Chats</a></li>
         <li><a href="#de-context">Kontext, Brandings und Rollen</a></li>
         <li><a href="#de-sharing">Teilen und Zusammenarbeit</a></li>
@@ -93,7 +94,7 @@
 <li><strong>Dateien anhängen:</strong> Büroklammer, Einfügen aus der Zwischenablage oder Ablegen ins Fenster. Möglich sind Bilder, Audio, Video, Schriften und Textdateien (<code>.md</code>, <code>.txt</code>). Nicht unterstützte Dateien werden übersprungen und gemeldet.</li>
 <li><strong>Live-Status:</strong> laufende Video-Jobs erscheinen in einer Statusleiste mit Laufzeit. Der Director meldet Ergebnisse und Fehler selbst im Chat. Die Statuszeile unter dem Eingabefeld zeigt, was gerade passiert.</li>
 <li><strong>Kosten:</strong> jede Generierung zeigt ihre Kosten. Die Übersicht öffnest du im Menü unter «Kosten».</li>
-<li><strong>Werkzeuge:</strong> der Director erzeugt und bearbeitet Bilder, startet Videos (Seedance), spricht Texte (ElevenLabs), setzt Clips zusammen und rendert Motion Graphics auf einem Render-Node. Mit verbundenem Higgsfield-Konto stehen über 30 weitere Modelle bereit.</li>
+<li><strong>Werkzeuge:</strong> der Director erzeugt und bearbeitet Bilder, startet Videos (nach deiner Modellwahl), spricht Texte (ElevenLabs), setzt Clips zusammen und rendert Motion Graphics auf einem Render-Node. Mit verbundenem Higgsfield-Konto stehen über 30 weitere Modelle bereit.</li>
 <li><strong>Verbindungsabbruch:</strong> reisst die Verbindung ab, steht ein verständlicher Satz da; prüfe das Netz und sende nochmals.</li>
 </ul>
 <h3>Werkzeuge-Menü (Schieberegler links im Eingabefeld)</h3>
@@ -101,6 +102,16 @@
 <li><strong>Modell:</strong> welches Sprachmodell den Director antreibt.</li>
 <li><strong>Rolle:</strong> ein eigener System-Prompt für diesen Chat. Neue Rollen legen Admins an, auf Wunsch mit KI-Hilfe.</li>
 <li><strong>Aktionen:</strong> «HyperFrames für nächste Nachricht» (nur mit Render-Node) und, für Admins, das Branding-Interview.</li>
+</ul></section>
+      <section class="card" id="de-videos" data-section="videos"><h2>Videos im Chat</h2><p>Eine Videoerzeugung kostet Geld. Darum fragt der Director vorher nach dem Modell und startet erst nach deinem Klick.</p>
+<ul>
+<li><strong>Auswahlkarte:</strong> Der Director sagt kurz, dass die Auswahl erscheint, und hält an. Die Karte zeigt nur Modelle, die zu Länge, Auflösung, Format, Startbild und Referenzen dieses Videos passen. Jedes hat den geschätzten Preis für genau diesen Auftrag, eine Kurzbeschreibung sowie Stärken und Schwächen. Empfohlen ist das Standardmodell, wenn es passt.</li>
+<li><strong>Der Klick startet:</strong> Erst der Klick auf ein Modell startet den Job; danach läuft alles wie gewohnt (Statusleiste, Ergebnis im Chat, Kosten). Die fertige Videokarte nennt das verwendete Modell. «Abbrechen» verwirft die Auswahl, ohne dass etwas berechnet wird. Schlägt der Start fehl, bleibt die Karte offen und zeigt den Grund.</li>
+<li><strong>Preis:</strong> eine Schätzung nach den aktuellen OpenRouter-Preisen. Ton, Referenzen und Anbieter können den endgültigen Preis verändern.</li>
+<li><strong>Mit Budget:</strong> Die Karte zeigt dein Restbudget. Modelle über dem Rest sind deaktiviert und nennen den Grund. Der Server prüft das beim Klick noch einmal und reserviert den geschätzten Preis des gewählten Modells.</li>
+<li><strong>In diesem Chat nicht mehr fragen:</strong> Mit dem Kästchen merkt sich der Chat dein Modell, nur für dich: In einem geteilten Chat bekommen die anderen weiterhin die Karte. Weitere Videos starten dann ohne Karte, solange das Modell zum Auftrag und in dein Budget passt; der Director nennt Modell und geschätzten Preis. Passt es nicht, erscheint die Karte wieder und sagt, warum. Über dem Eingabefeld steht «Video: Modell · ändern»; «ändern» setzt die Wahl zurück.</li>
+<li><strong>Admins:</strong> In den Einstellungen, Bereich «Dienste», schaltet «Vor jedem Video nach dem Modell fragen» die Karte aus. Dann startet das Standardmodell sofort.</li>
+<li><strong>Higgsfield:</strong> Higgsfield-Videos gibt es nur auf ausdrücklichen Wunsch, und nicht für Personen in einer Schulung.</li>
 </ul></section>
       <section class="card" id="de-projects" data-section="projects"><h2>Projekte und Chats</h2><ul>
 <li><strong>Seitenmenü:</strong> «+ Chat» startet einen Chat, «+ Projekt» ein Projekt. Die Suche findet Chats nach Titel und Inhalt.</li>
@@ -202,7 +213,7 @@
 </ul></section>
       <section class="card" id="de-settings" data-section="settings"><h2>Einstellungen (Admins)</h2><p>Menü, Eintrag «Einstellungen». Die Einstellungen sind in Bereiche gegliedert:</p>
 <ul>
-<li><strong>Dienste:</strong> API-Keys (OpenRouter, ElevenLabs, fal.ai …), Verbindung zu Higgsfield und ChatGPT. Keys liegen nur auf dem Server und wirken sofort.</li>
+<li><strong>Dienste:</strong> API-Keys (OpenRouter, ElevenLabs, fal.ai …), Verbindung zu Higgsfield und ChatGPT sowie der Schalter «Vor jedem Video nach dem Modell fragen» (Standard: an, siehe «Videos im Chat»). Keys liegen nur auf dem Server und wirken sofort.</li>
 <li><strong>Personen:</strong> zusätzliche Admins und, mit Anmeldung, die Team-Liste. Sie enthält die Personen, die du beim Teilen wählen kannst. Sie ist keine Zugangsliste: wer sich anmelden darf, bestimmt weiter der Login. Mehrere Adressen lassen sich auf einmal einfügen. Darunter stehen die <strong>Teams</strong> (Schulungen mit Budget pro Person), siehe «Teams und Schulungen».</li>
 <li><strong>Rendering:</strong> Render-Nodes für Motion Graphics; mehrere Nodes werden automatisch verteilt.</li>
 </ul></section>
@@ -217,6 +228,7 @@
       <nav class="toc" aria-label="Contents"><strong>Contents</strong><ol>
         <li><a href="#en-start">Getting started</a></li>
         <li><a href="#en-chat">Chat and Director</a></li>
+        <li><a href="#en-videos">Videos in the chat</a></li>
         <li><a href="#en-projects">Projects and chats</a></li>
         <li><a href="#en-context">Context, brandings and roles</a></li>
         <li><a href="#en-sharing">Sharing and collaboration</a></li>
@@ -245,7 +257,7 @@
 <li><strong>Attaching files:</strong> paperclip, paste from the clipboard or drop onto the window. Images, audio, video, fonts and text files (<code>.md</code>, <code>.txt</code>) work. Unsupported files are skipped and reported.</li>
 <li><strong>Live status:</strong> running video jobs show up in a status bar with elapsed time. The Director reports results and failures in the chat by itself. The status line under the input shows what is happening.</li>
 <li><strong>Costs:</strong> every generation shows its cost. Open the overview in the menu under “Costs”.</li>
-<li><strong>Tools:</strong> the Director creates and edits images, starts videos (Seedance), speaks text (ElevenLabs), joins clips and renders motion graphics on a render node. With a connected Higgsfield account over 30 more models are available.</li>
+<li><strong>Tools:</strong> the Director creates and edits images, starts videos (after you choose the model), speaks text (ElevenLabs), joins clips and renders motion graphics on a render node. With a connected Higgsfield account over 30 more models are available.</li>
 <li><strong>Lost connection:</strong> if the connection drops you get a plain sentence; check your network and send again.</li>
 </ul>
 <h3>Tools menu (sliders icon left of the input)</h3>
@@ -253,6 +265,16 @@
 <li><strong>Model:</strong> which language model drives the Director.</li>
 <li><strong>Role:</strong> a custom system prompt for this chat. Admins create new roles, optionally with AI help.</li>
 <li><strong>Actions:</strong> “HyperFrames for next message” (with a render node only) and, for admins, the branding interview.</li>
+</ul></section>
+      <section class="card" id="en-videos" data-section="videos"><h2>Videos in the chat</h2><p>Generating a video costs money. So the Director asks for the model first and starts only after your click.</p>
+<ul>
+<li><strong>Choice card:</strong> the Director says briefly that the choice appears and stops. The card shows only models that fit the length, resolution, format, first frame and references of this video. Each one has the estimated price for exactly this job, a short description, strengths and weaknesses. The default model is recommended if it fits.</li>
+<li><strong>The click starts it:</strong> only the click on a model starts the job; after that everything works as usual (status bar, result in the chat, costs). The finished video card names the model that was used. “Cancel” discards the choice without charging anything. If the start fails, the card stays open and shows the reason.</li>
+<li><strong>Price:</strong> an estimate based on the current OpenRouter prices. Audio, references and provider can change the final price.</li>
+<li><strong>With a budget:</strong> the card shows your remaining budget. Models over what is left are disabled and say why. The server checks this again at the click and reserves the estimated price of the chosen model.</li>
+<li><strong>Do not ask again in this chat:</strong> the tick box makes the chat remember your model, for you only: in a shared chat the others still get the card. Further videos then start without a card as long as the model fits the job and your budget; the Director names the model and the estimated price. If it does not fit, the card comes back and says why. Above the input you see “Video: model · change”; “change” resets the choice.</li>
+<li><strong>Admins:</strong> in the settings, section “Services”, the switch “Ask for the model before every video” turns the card off. The default model then starts right away.</li>
+<li><strong>Higgsfield:</strong> Higgsfield videos only on explicit request, and not for people in a training.</li>
 </ul></section>
       <section class="card" id="en-projects" data-section="projects"><h2>Projects and chats</h2><ul>
 <li><strong>Side menu:</strong> “+ Chat” starts a chat, “+ Project” a project. Search finds chats by title and content.</li>
@@ -354,7 +376,7 @@
 </ul></section>
       <section class="card" id="en-settings" data-section="settings"><h2>Settings (admins)</h2><p>Menu, entry “Settings”. The settings are divided into sections:</p>
 <ul>
-<li><strong>Services:</strong> API keys (OpenRouter, ElevenLabs, fal.ai …), connection to Higgsfield and ChatGPT. Keys stay on the server and take effect at once.</li>
+<li><strong>Services:</strong> API keys (OpenRouter, ElevenLabs, fal.ai …), connection to Higgsfield and ChatGPT, and the switch “Ask for the model before every video” (default: on, see “Videos in the chat”). Keys stay on the server and take effect at once.</li>
 <li><strong>People:</strong> additional admins and, with sign-in, the team list. It holds the people you can pick when sharing. It is not an access list: the login still decides who may sign in. Several addresses can be pasted at once. Below are the <strong>teams</strong> (trainings with a budget per person), see “Teams and trainings”.</li>
 <li><strong>Rendering:</strong> render nodes for motion graphics; several nodes are balanced automatically.</li>
 </ul></section>
@@ -369,6 +391,7 @@
       <nav class="toc" aria-label="Contenido"><strong>Contenido</strong><ol>
         <li><a href="#es-start">Primeros pasos</a></li>
         <li><a href="#es-chat">Chat y Director</a></li>
+        <li><a href="#es-videos">Vídeos en el chat</a></li>
         <li><a href="#es-projects">Proyectos y chats</a></li>
         <li><a href="#es-context">Contexto, brandings y roles</a></li>
         <li><a href="#es-sharing">Compartir y colaborar</a></li>
@@ -397,7 +420,7 @@
 <li><strong>Adjuntar archivos:</strong> clip, pegar desde el portapapeles o soltar en la ventana. Sirven imágenes, audio, vídeo, fuentes y archivos de texto (<code>.md</code>, <code>.txt</code>). Los archivos no admitidos se omiten y se avisa.</li>
 <li><strong>Estado en vivo:</strong> los trabajos de vídeo en curso aparecen en una barra de estado con el tiempo transcurrido. El Director informa por sí mismo de resultados y errores en el chat. La línea de estado bajo el campo de texto muestra lo que ocurre.</li>
 <li><strong>Costes:</strong> cada generación muestra su coste. El resumen se abre en el menú, en «Costes».</li>
-<li><strong>Herramientas:</strong> el Director crea y edita imágenes, inicia vídeos (Seedance), locuta textos (ElevenLabs), une clips y renderiza motion graphics en un nodo de render. Con una cuenta de Higgsfield conectada hay más de 30 modelos adicionales.</li>
+<li><strong>Herramientas:</strong> el Director crea y edita imágenes, inicia vídeos (con el modelo que elijas), locuta textos (ElevenLabs), une clips y renderiza motion graphics en un nodo de render. Con una cuenta de Higgsfield conectada hay más de 30 modelos adicionales.</li>
 <li><strong>Conexión perdida:</strong> si se corta la conexión aparece una frase clara; comprueba la red y envía de nuevo.</li>
 </ul>
 <h3>Menú de herramientas (icono de controles a la izquierda del campo de texto)</h3>
@@ -405,6 +428,16 @@
 <li><strong>Modelo:</strong> qué modelo de lenguaje impulsa al Director.</li>
 <li><strong>Rol:</strong> un prompt de sistema propio para este chat. Los roles nuevos los crean los administradores, si quieren con ayuda de la IA.</li>
 <li><strong>Acciones:</strong> «HyperFrames para el próximo mensaje» (solo con nodo de render) y, para administradores, la entrevista de branding.</li>
+</ul></section>
+      <section class="card" id="es-videos" data-section="videos"><h2>Vídeos en el chat</h2><p>Generar un vídeo cuesta dinero. Por eso el Director pregunta antes por el modelo y solo empieza después de tu clic.</p>
+<ul>
+<li><strong>Tarjeta de selección:</strong> el Director dice brevemente que aparece la selección y se detiene. La tarjeta solo muestra modelos que encajan con la duración, la resolución, el formato, el primer fotograma y las referencias de este vídeo. Cada uno trae el precio estimado para este trabajo concreto, una descripción breve, puntos fuertes y débiles. Se recomienda el modelo predeterminado si encaja.</li>
+<li><strong>El clic lo inicia:</strong> solo el clic en un modelo inicia el trabajo; después todo funciona como siempre (barra de estado, resultado en el chat, costes). La tarjeta del vídeo terminado indica el modelo utilizado. «Cancelar» descarta la selección sin cobrar nada. Si falla el inicio, la tarjeta sigue abierta y muestra el motivo.</li>
+<li><strong>Precio:</strong> una estimación según los precios actuales de OpenRouter. El audio, las referencias y el proveedor pueden cambiar el precio final.</li>
+<li><strong>Con presupuesto:</strong> la tarjeta muestra tu presupuesto restante. Los modelos que superan lo que queda están desactivados e indican el motivo. El servidor lo comprueba otra vez al hacer clic y reserva el precio estimado del modelo elegido.</li>
+<li><strong>No volver a preguntar en este chat:</strong> con la casilla, el chat recuerda tu modelo, solo para ti: en un chat compartido los demás siguen recibiendo la tarjeta. Los siguientes vídeos empiezan sin tarjeta mientras el modelo encaje con el trabajo y con tu presupuesto; el Director menciona el modelo y el precio estimado. Si no encaja, la tarjeta vuelve y explica por qué. Encima del campo de texto aparece «Vídeo: modelo · cambiar»; «cambiar» restablece la elección.</li>
+<li><strong>Administradores:</strong> en los ajustes, apartado «Servicios», el interruptor «Preguntar por el modelo antes de cada vídeo» desactiva la tarjeta. Entonces el modelo predeterminado empieza de inmediato.</li>
+<li><strong>Higgsfield:</strong> los vídeos de Higgsfield solo si se piden expresamente, y no para las personas de una formación.</li>
 </ul></section>
       <section class="card" id="es-projects" data-section="projects"><h2>Proyectos y chats</h2><ul>
 <li><strong>Menú lateral:</strong> «+ Chat» inicia un chat, «+ Proyecto» un proyecto. La búsqueda encuentra chats por título y contenido.</li>
@@ -506,7 +539,7 @@
 </ul></section>
       <section class="card" id="es-settings" data-section="settings"><h2>Ajustes (administradores)</h2><p>Menú, entrada «Ajustes». Los ajustes se dividen en apartados:</p>
 <ul>
-<li><strong>Servicios:</strong> claves API (OpenRouter, ElevenLabs, fal.ai …), conexión con Higgsfield y ChatGPT. Las claves quedan solo en el servidor y surten efecto de inmediato.</li>
+<li><strong>Servicios:</strong> claves API (OpenRouter, ElevenLabs, fal.ai …), conexión con Higgsfield y ChatGPT, y el interruptor «Preguntar por el modelo antes de cada vídeo» (predeterminado: activado, véase «Vídeos en el chat»). Las claves quedan solo en el servidor y surten efecto de inmediato.</li>
 <li><strong>Personas:</strong> administradores adicionales y, con inicio de sesión, la lista del equipo. Contiene a las personas que puedes elegir al compartir. No es una lista de acceso: el inicio de sesión sigue decidiendo quién puede entrar. Se pueden pegar varias direcciones a la vez. Debajo están los <strong>equipos</strong> (formaciones con presupuesto por persona), consulta «Equipos y formaciones».</li>
 <li><strong>Renderizado:</strong> nodos de render para motion graphics; varios nodos se reparten automáticamente.</li>
 </ul></section>

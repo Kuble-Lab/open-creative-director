@@ -83,6 +83,8 @@ const el = {
   input: document.getElementById('input'),
   sendBtn: document.getElementById('sendBtn'),
   jobStatusBar: document.getElementById('jobStatusBar'),
+  videoModelHint: document.getElementById('videoModelHint'),
+  videoAskToggle: document.getElementById('videoAskToggle'),
   jobStatusList: document.getElementById('jobStatusList'),
   statusLine: document.getElementById('statusLine'),
   statusText: document.getElementById('statusText'),
@@ -249,6 +251,7 @@ const state = {
   liveRenderNodeJob: false,
   costs: null,
   settings: [],
+  preferences: { askVideoModel: true },
   pendingSettingsDeleteName: null,
   settingsDeleteTimer: null,
   admins: [],
@@ -1016,6 +1019,15 @@ function assetMeta(asset) {
     costEl.textContent = cost;
     meta.appendChild(costEl);
   }
+  // The model that made a video (from the job or the ledger entry).
+  const model = asset.kind === 'video' ? String(asset.model || '').trim() : '';
+  if (model) {
+    const modelEl = document.createElement('span');
+    modelEl.className = 'asset-model';
+    modelEl.textContent = t('assets.model', { model: videoModelShortName(model) });
+    modelEl.title = model;
+    meta.appendChild(modelEl);
+  }
   return meta;
 }
 
@@ -1032,10 +1044,236 @@ function jobCard(job) {
   body.className = 'job-card-text';
   body.textContent = failed ? t('jobs.failed', { id: job.assetId }) : t('jobs.running', { id: job.assetId });
   const small = document.createElement('small');
-  small.textContent = failed ? job.error || t('jobs.unknownError') : t('jobs.duration');
+  const statusDetail = failed ? job.error || t('jobs.unknownError') : t('jobs.duration');
+  const jobModel = job.kind === 'video' || !job.kind ? String(job.model || '').trim() : '';
+  small.textContent = jobModel ? `${statusDetail} · ${t('assets.model', { model: videoModelShortName(jobModel) })}` : statusDetail;
+  if (jobModel) small.title = jobModel;
   body.appendChild(small);
   card.appendChild(body);
   return card;
+}
+
+/* ---------- Video model picker (card of the Director, lib/video-models.js) ---------- */
+
+// "bytedance/seedance-2.5" -> "seedance-2.5": the slug without the provider, for the small model label.
+function videoModelShortName(model) {
+  const text = String(model || '');
+  const slash = text.indexOf('/');
+  return slash >= 0 ? text.slice(slash + 1) : text;
+}
+
+function videoModelMoney(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '';
+  return `$${value < 0.1 ? value.toFixed(3) : value.toFixed(2)}`;
+}
+
+function videoModelPriceLabel(price) {
+  if (!price) return t('videoModel.priceUnknown');
+  const min = videoModelMoney(price.minTotal);
+  const max = videoModelMoney(price.maxTotal);
+  const amount = Math.abs(price.maxTotal - price.minTotal) > 0.005 ? `${min}–${max}` : min;
+  return t('videoModel.priceEstimate', { amount, seconds: price.durationSeconds });
+}
+
+function videoModelProfileText(profileKey, field) {
+  const key = `videoModel.profile.${profileKey || 'generic'}.${field}`;
+  return i18nHas(key) ? t(key) : t(`videoModel.profile.generic.${field}`);
+}
+
+function videoModelBlockText(option) {
+  const block = option.blocked;
+  if (!block) return '';
+  if (block.reason === 'exhausted') return t('videoModel.blockedExhausted');
+  return t('videoModel.blockedBudget', { estimate: videoModelMoney(block.needUsd), remaining: videoModelMoney(block.remainingUsd) });
+}
+
+// The error a failed start left on the card, in the interface language where it is a known rule.
+function videoModelErrorText(choice) {
+  if (!choice.lastError) return '';
+  const rule = choice.lastErrorCode ? OCAccess.accountRuleMessage({ code: choice.lastErrorCode }) : null;
+  return t('videoModel.startFailed', { error: rule || choice.lastError });
+}
+
+async function afterVideoModelChange() {
+  await Promise.all([refreshDetail(), loadSessions(), refreshCosts().catch(() => {})]);
+  if (OCAccess.me().restricted) OCAccess.refreshMe().catch(() => {});
+}
+
+async function submitVideoModelChoice(choice, option, card) {
+  if (state.streaming || choice.status !== 'pending' || !state.currentId || card.dataset.busy === '1') return;
+  card.dataset.busy = '1';
+  const buttons = [...card.querySelectorAll('button')];
+  const status = card.querySelector('.vmc-status');
+  const remember = card.querySelector('.vmc-remember input')?.checked === true;
+  for (const button of buttons) button.disabled = true;
+  status.textContent = t('videoModel.starting');
+  status.classList.remove('error');
+  try {
+    await api(`/api/sessions/${encodeURIComponent(state.currentId)}/video-model-requests/${encodeURIComponent(choice.id)}`, {
+      method: 'POST',
+      body: JSON.stringify({ model: option.id, remember })
+    });
+    await afterVideoModelChange();
+  } catch (error) {
+    // The card may be out of date (budget changed, started elsewhere): show the reason, then read the chat again.
+    const rule = OCAccess.accountRuleMessage(error);
+    if (rule) OCAccess.refreshMe().catch(() => {});
+    status.textContent = t('videoModel.startFailed', { error: rule || error.message });
+    status.classList.add('error');
+    delete card.dataset.busy;
+    for (const button of buttons) button.disabled = false;
+    refreshDetail().catch(() => {});
+  }
+}
+
+async function cancelVideoModelChoice(choice, card) {
+  if (state.streaming || choice.status !== 'pending' || !state.currentId || card.dataset.busy === '1') return;
+  card.dataset.busy = '1';
+  for (const button of card.querySelectorAll('button')) button.disabled = true;
+  try {
+    await api(`/api/sessions/${encodeURIComponent(state.currentId)}/video-model-requests/${encodeURIComponent(choice.id)}/cancel`, { method: 'POST', body: '{}' });
+    await refreshDetail();
+  } catch (error) {
+    const status = card.querySelector('.vmc-status');
+    status.textContent = error.message;
+    status.classList.add('error');
+    delete card.dataset.busy;
+    for (const button of card.querySelectorAll('button')) button.disabled = false;
+  }
+}
+
+function videoModelOptionButton(choice, option, card, locked) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  const blocked = Boolean(option.blocked);
+  button.className = `vmc-option${option.recommended ? ' recommended' : ''}${blocked ? ' blocked' : ''}`;
+  button.dataset.videoModel = option.id;
+  button.disabled = locked || blocked;
+  if (locked && state.streaming) button.title = t('videoModel.waitStream');
+
+  const top = document.createElement('span');
+  top.className = 'vmc-option-top';
+  top.appendChild(textNode('strong', 'vmc-option-name', option.name));
+  if (option.recommended) top.appendChild(textNode('span', 'vmc-badge', t('videoModel.recommended')));
+  button.appendChild(top);
+  button.appendChild(textNode('span', 'vmc-price', videoModelPriceLabel(option.price)));
+  button.appendChild(textNode('span', 'vmc-summary', videoModelProfileText(option.profileKey, 'summary')));
+  const tradeoffs = document.createElement('span');
+  tradeoffs.className = 'vmc-tradeoffs';
+  tradeoffs.appendChild(textNode('span', 'vmc-pro', videoModelProfileText(option.profileKey, 'pro')));
+  tradeoffs.appendChild(textNode('span', 'vmc-con', videoModelProfileText(option.profileKey, 'con')));
+  button.appendChild(tradeoffs);
+  if (blocked) button.appendChild(textNode('span', 'vmc-blocked', videoModelBlockText(option)));
+  button.addEventListener('click', () => submitVideoModelChoice(choice, option, card));
+  return button;
+}
+
+function videoModelChoiceCard(choice) {
+  const status = choice.status || 'pending';
+  const card = document.createElement('section');
+  card.className = `video-model-choice ${status}`;
+  card.dataset.requestId = choice.id;
+  card.setAttribute('aria-label', t('videoModel.title'));
+
+  const head = document.createElement('div');
+  head.className = 'vmc-head';
+  const titleKey = status === 'submitted' ? 'videoModel.selectedTitle' : status === 'cancelled' ? 'videoModel.cancelledTitle' : 'videoModel.title';
+  head.appendChild(textNode('strong', 'vmc-title', t(titleKey)));
+  card.appendChild(head);
+
+  const requirements = choice.requirements || {};
+  if (status === 'pending' || status === 'processing') {
+    head.appendChild(textNode('p', 'vmc-lead', t('videoModel.lead')));
+  }
+  if (choice.prompt) card.appendChild(textNode('p', 'vmc-prompt', choice.prompt));
+  if (status === 'pending' || status === 'processing') {
+    const mode = requirements.mode === 'image_to_video' ? t('videoModel.modeImage') : t('videoModel.modeText');
+    const first = (choice.options || [])[0];
+    card.appendChild(textNode('p', 'vmc-job', t('videoModel.jobLine', {
+      seconds: requirements.duration,
+      resolution: first?.resolution || requirements.resolution || '720p',
+      mode
+    })));
+    if (choice.budget) card.appendChild(textNode('p', 'vmc-budget', t('videoModel.budgetLine', { remaining: videoModelMoney(choice.budget.remainingUsd) || '$0.00' })));
+    if (choice.preferenceNote) {
+      const key = choice.preferenceNote.reason === 'budget' ? 'videoModel.prefBudget' : 'videoModel.prefIncompatible';
+      card.appendChild(textNode('p', 'vmc-note', t(key, { model: choice.preferenceNote.name })));
+    }
+    const options = document.createElement('div');
+    options.className = 'vmc-options';
+    options.setAttribute('role', 'group');
+    options.setAttribute('aria-label', t('videoModel.listLabel'));
+    const locked = status !== 'pending' || state.streaming;
+    for (const option of choice.options || []) options.appendChild(videoModelOptionButton(choice, option, card, locked));
+    card.appendChild(options);
+    card.appendChild(textNode('p', 'vmc-fine', t('videoModel.priceNote')));
+
+    const foot = document.createElement('div');
+    foot.className = 'vmc-foot';
+    const remember = document.createElement('label');
+    remember.className = 'vmc-remember';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.disabled = locked;
+    remember.append(checkbox, textNode('span', '', t('videoModel.remember')));
+    remember.title = t('videoModel.rememberHint');
+    foot.appendChild(remember);
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'vmc-cancel';
+    cancel.textContent = t('videoModel.cancel');
+    cancel.disabled = locked;
+    cancel.addEventListener('click', () => cancelVideoModelChoice(choice, card));
+    foot.appendChild(cancel);
+    card.appendChild(foot);
+  } else if (status === 'submitted') {
+    const price = choice.selectedEstimate ? ` · ${videoModelPriceLabel(choice.selectedEstimate)}` : '';
+    card.appendChild(textNode('p', 'vmc-result', `${t('videoModel.selected', { model: choice.selectedName || choice.selectedModel || '' })}${price}`));
+    if (choice.remember) card.appendChild(textNode('p', 'vmc-note', t('videoModel.selectedRemembered')));
+  } else if (status === 'cancelled') {
+    card.appendChild(textNode('p', 'vmc-result', t('videoModel.cancelled')));
+  }
+
+  const line = document.createElement('div');
+  line.className = 'vmc-status';
+  line.setAttribute('role', 'status');
+  if (choice.lastError && status === 'pending') {
+    line.textContent = videoModelErrorText(choice);
+    line.classList.add('error');
+  } else if (status === 'processing') {
+    line.textContent = t('videoModel.starting');
+  }
+  card.appendChild(line);
+  return card;
+}
+
+// Above the input: the model this person remembered for the chat, with a way back to the question. Not shown while the
+// admin switch is off (the next video then uses the default model, whatever was remembered).
+function renderVideoModelHint() {
+  const asking = state.config?.askVideoModel !== false;
+  const preference = state.currentId && asking ? state.detail?.session?.videoModelPreference : null;
+  el.videoModelHint.classList.toggle('hidden', !preference);
+  el.videoModelHint.replaceChildren();
+  if (!preference) return;
+  el.videoModelHint.appendChild(textNode('span', 'video-model-hint-text', t('videoModel.hint', { model: preference.name || preference.model })));
+  const change = document.createElement('button');
+  change.type = 'button';
+  change.className = 'video-model-hint-change';
+  change.textContent = t('videoModel.hintChange');
+  change.title = t('videoModel.hintChangeTitle');
+  change.addEventListener('click', async () => {
+    change.disabled = true;
+    try {
+      await api(`/api/sessions/${encodeURIComponent(state.currentId)}/video-model-preference`, { method: 'DELETE' });
+      if (state.detail?.session) state.detail.session.videoModelPreference = null;
+      renderVideoModelHint();
+      setStatus(t('videoModel.hintReset'));
+    } catch (error) {
+      change.disabled = false;
+      setStatus(t('videoModel.resetFailed', { error: error.message }));
+    }
+  });
+  el.videoModelHint.appendChild(change);
 }
 
 function chip(label, spinning, isError) {
@@ -1083,6 +1321,8 @@ function textFromContent(content) {
 function toolLabel(message) {
   if (message.name === 'generate_image') return t('tools.imageGenerated');
   if (message.name === 'edit_image') return t('tools.imageEdited');
+  if (message.name === 'generate_video' && message.videoModelChoice?.status === 'pending') return t('tools.videoChoosing');
+  if (message.name === 'generate_video' && (message.videoModelChoice?.status || message.videoModelChoiceStatus) === 'cancelled') return t('videoModel.cancelledTitle');
   if (message.name === 'generate_video') return t('tools.videoStarted');
   if (message.name === 'higgsfield_generate_image') return t('tools.higgsfieldImageStarted');
   if (message.name === 'higgsfield_generate_video') return t('tools.higgsfieldVideoStarted');
@@ -1283,6 +1523,7 @@ function renderDetail() {
   const detail = state.detail;
   el.messages.innerHTML = '';
   renderJobStatusBar();
+  renderVideoModelHint();
   if (!detail) return;
 
   const assetMap = new Map((detail.assets || []).map((a) => [a.id, a]));
@@ -1343,6 +1584,7 @@ function renderDetail() {
       wrap.className = 'msg tool';
       const failed = /^Fehler bei /.test(String(message.content || ''));
       wrap.appendChild(chip(failed ? String(message.content).slice(0, 200) : toolLabel(message), false, failed));
+      if (message.videoModelChoice) wrap.appendChild(videoModelChoiceCard(message.videoModelChoice));
 
       const grid = document.createElement('div');
       grid.className = 'asset-grid';
@@ -1359,6 +1601,7 @@ function renderDetail() {
             kind: job.kind || asset?.kind || 'video',
             url: rel(job.url),
             cost: job.cost ?? asset?.cost ?? null,
+            model: job.model || asset?.model || null,
             prompt: job.prompt
           }));
           for (const resultAssetId of job.resultAssetIds || []) {
@@ -1789,6 +2032,31 @@ async function deleteSetting(name, row) {
   }
 }
 
+// "Ask for the video model before every video": a plain switch next to the keys (saved like the other settings).
+function renderVideoAskToggle() {
+  el.videoAskToggle.checked = state.preferences.askVideoModel !== false;
+}
+
+async function saveVideoAskToggle() {
+  const wanted = el.videoAskToggle.checked;
+  el.videoAskToggle.disabled = true;
+  showSettingsFeedback('');
+  try {
+    const data = await api('/api/settings/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'askVideoModel', value: wanted })
+    });
+    state.preferences = { ...state.preferences, ...(data.preferences || {}) };
+    showSettingsFeedback(t('settings.videoAskSaved'));
+    refreshRuntimeConfigStatus().then(() => renderVideoModelHint()).catch(() => {});
+  } catch (err) {
+    el.videoAskToggle.checked = !wanted;
+    showSettingsFeedback(t('settings.videoAskFailed', { error: err.message }), { error: true });
+  } finally {
+    el.videoAskToggle.disabled = false;
+  }
+}
+
 function renderSettings() {
   el.settingsList.innerHTML = '';
   for (const key of state.settings) {
@@ -2073,6 +2341,7 @@ async function loadSettingsAccess() {
       api('/api/chatgpt/status')
     ]);
     state.settings = Array.isArray(settingsData.keys) ? settingsData.keys : [];
+    state.preferences = { askVideoModel: true, ...(settingsData.preferences || {}) };
     state.admins = Array.isArray(adminsData.admins) ? adminsData.admins : [];
     state.renderNodes = Array.isArray(renderNodesData.nodes) ? renderNodesData.nodes : [];
     state.higgsfield = higgsfieldData;
@@ -2080,6 +2349,7 @@ async function loadSettingsAccess() {
     state.settingsAvailable = true;
     OCShell.refresh();
     renderSettings();
+    renderVideoAskToggle();
     renderAdmins();
     loadUsers();
     // Teams (trainings with a budget): only with user management, only for admins.
@@ -4938,6 +5208,16 @@ function handleEvent(event) {
     appendLiveNode(node);
     return;
   }
+  if (event.type === 'video_model_choice' && event.choice) {
+    finishChips();
+    live.textEl = null;
+    const node = document.createElement('div');
+    node.className = 'msg tool';
+    node.appendChild(chip(t('tools.videoChoosing'), false, false));
+    node.appendChild(videoModelChoiceCard(event.choice));
+    appendLiveNode(node);
+    return;
+  }
   if (event.type === 'video_job' || event.type === 'generation_job') {
     finishChips();
     live.textEl = null;
@@ -4945,7 +5225,7 @@ function handleEvent(event) {
     node.className = 'msg tool';
     const grid = document.createElement('div');
     grid.className = 'asset-grid';
-    grid.appendChild(jobCard({ assetId: event.assetId, status: 'pending' }));
+    grid.appendChild(jobCard({ assetId: event.assetId, status: 'pending', kind: event.kind || 'video', model: event.model }));
     node.appendChild(grid);
     appendLiveNode(node);
     if (state.detail) {
@@ -4957,6 +5237,7 @@ function handleEvent(event) {
         source: event.source || null,
         provider: event.provider || null,
         kind: event.kind || 'video',
+        model: event.model || null,
         createdAt: event.createdAt || new Date().toISOString(),
         startedAt: event.startedAt || null,
         renderNodeId: event.renderNodeId || null,
@@ -5186,6 +5467,7 @@ el.settingsTabs.addEventListener('keydown', (event) => {
   next.focus();
 });
 el.settingsClose.addEventListener('click', () => closeSettingsModal());
+el.videoAskToggle.addEventListener('change', () => saveVideoAskToggle());
 el.adminForm.addEventListener('submit', (event) => {
   event.preventDefault();
   addAdmin();
