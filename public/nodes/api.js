@@ -145,6 +145,8 @@
     importWorkflow: (document) => request('POST', '/api/workflows/import', { document }),
     importAsset: (id, sessionId, assetId) => request('POST', `/api/workflows/${enc(id)}/import-asset`, { sessionId, assetId }),
     assets: (id) => request('GET', `/api/workflows/${enc(id)}/assets`),
+    // assistant of the node view (WP25): { question, canvas, history, lang } -> { answer, mentions, insert?, ... }
+    assistant: (id, body) => request('POST', `/api/workflows/${enc(id)}/assistant`, body),
     // run UX (WP6)
     plan: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs/plan`, body || {}),
     startRun: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs`, body || {}),

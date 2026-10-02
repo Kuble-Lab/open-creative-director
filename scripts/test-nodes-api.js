@@ -1077,6 +1077,7 @@ async function main() {
         ['/api/workflows/:id/assets', 'get'],
         ['/api/workflows/:id/runs/plan', 'post'],
         ['/api/workflows/:id/runs', 'post'],
+        ['/api/workflows/:id/assistant', 'post'],
         ['/api/workflows/:id/runs', 'get'],
         ['/api/workflows/:id/outputs.zip', 'get'],
         ['/api/workflows/:id/runs/:runId', 'get'],
