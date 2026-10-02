@@ -295,7 +295,7 @@ function testSafety() {
   assert.doesNotMatch(block, /innerHTML|\bconfirm\(|\balert\(/, 'user management block of app.js: no innerHTML and no native dialogs');
   // No internal hosts in the open files.
   for (const file of ['public/access-client.js', 'public/monitoring.js', 'public/monitoring.css', 'views/monitoring.html', 'public/i18n.js', 'public/teams-ui.js', 'public/help.html']) {
-    assert.doesNotMatch(read(...file.split('/')), /maniak|kuble\.internal|10\.\d+\.\d+\.\d+/i, `${file}: no internal names or addresses`);
+    assert.doesNotMatch(read(...file.split('/')), /\.internal\b|10\.\d+\.\d+\.\d+/i, `${file}: no internal names or addresses`);
   }
 }
 

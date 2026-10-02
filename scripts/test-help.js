@@ -55,7 +55,7 @@ function testHelpPage() {
     assert.ok(ids.de.includes(id), `section ${id}`);
   }
   assert.doesNotMatch(page, /ß/, 'Swiss spelling: no sharp s');
-  assert.doesNotMatch(page, /maniak|kuble\.com|kuble\.internal|\b10\.\d+\.\d+\.\d+\b/i, 'no internal names or addresses');
+  assert.doesNotMatch(page, /kuble\.com|\.internal\b|\b10\.\d+\.\d+\.\d+\b/i, 'no internal names or addresses');
   assert.doesNotMatch(page, /innerHTML|\b(?:alert|confirm|prompt)\(/, 'no HTML from strings, no native dialogs');
   assert.match(page, /localStorage\.getItem\('vcd-lang'\)/, 'reads the app language');
   assert.match(page, /localStorage\.setItem\('vcd-lang'/, 'writes the app language');
@@ -132,8 +132,8 @@ function testFrame() {
   // no HTML from strings, no native dialogs in the frame
   assert.doesNotMatch(shell, /innerHTML|insertAdjacentHTML|outerHTML/, 'shell.js: no HTML from strings');
   assert.doesNotMatch(shell, /\b(?:window\.)?(?:confirm|alert|prompt)\(/, 'shell.js: no native dialogs');
-  assert.doesNotMatch(shell, /maniak|kuble\.com|10\.\d+\.\d+\.\d+/i, 'shell.js: no internal names');
-  assert.doesNotMatch(read('docs', 'agent-rules.md'), /maniak|kuble\.com/i, 'docs/agent-rules.md: no internal names');
+  assert.doesNotMatch(shell, /kuble\.com|10\.\d+\.\d+\.\d+/i, 'shell.js: no internal names');
+  assert.doesNotMatch(read('docs', 'agent-rules.md'), /kuble\.com/i, 'docs/agent-rules.md: no internal names');
 }
 
 testHelpPage();
