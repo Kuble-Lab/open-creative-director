@@ -128,6 +128,7 @@
   let inspector = null;
   let workflowList = null;
   let runController = null;
+  let assistant = null;
   let appView = null;
   let booted = false;
 
@@ -1032,6 +1033,7 @@
     updateAccessChrome();
     updateAppButton();
     dom.inspectorToggle.classList.toggle('hidden', !has);
+    dom.assistantBtn.classList.toggle('hidden', !has);
     dom.stage.classList.toggle('is-empty', !has);
     dom.body.classList.toggle('no-workflow', !has);
     if (!has) dom.name.value = '';
@@ -1792,8 +1794,9 @@
   // Puts a sub graph ({ nodes, edges, notes, groups }) into the open workflow as ONE undo step: new ids, a free place
   // (right of the existing content, the middle of the view on an empty canvas), the new items selected and in view.
   // Nothing is run. options: { history: undo label, at, avoid } as for graphLib.insertSubgraph. Returns its result
-  // ({ ids, idMap, bounds }) or null (with a toast) when nothing could be inserted. Templates, "insert with inputs" and
-  // the assistant all come through here.
+  // ({ ids, idMap, bounds, skippedLinks }) or null (with a toast) when nothing could be inserted. Templates, "insert with
+  // inputs" and the assistant all come through here. sub.links (the assistant) connect new nodes and existing ones; they
+  // are checked against the graph as it is now and never replace a connection (graphLib.insertSubgraph).
   function insertSubgraph(sub, options = {}) {
     if (!canInsertNow()) return null;
     const { history, ...placement } = options;
@@ -1803,9 +1806,13 @@
       return null;
     }
     for (const id of result.ids.nodes) reserveId(id);
+    for (const id of result.ids.edges || []) reserveId(id);
     applyGraph(result.graph, { history: history || 'insert' });
-    setSelection({ nodes: result.ids.nodes, notes: result.ids.notes, groups: result.ids.groups, edge: null });
-    revealBounds(result.bounds);
+    // only connections between existing nodes (sub.links without new items): the selection stays as it is
+    if (result.ids.nodes.length || result.ids.notes.length || result.ids.groups.length) {
+      setSelection({ nodes: result.ids.nodes, notes: result.ids.notes, groups: result.ids.groups, edge: null });
+      revealBounds(result.bounds);
+    }
     return result;
   }
 
@@ -1821,6 +1828,30 @@
       const inside = topLeft.x >= margin && topLeft.y >= margin && topLeft.x + bounds.w * view.zoom <= size.width - margin && topLeft.y + bounds.h * view.zoom <= size.height - margin;
       if (!inside) canvas.fit({ padding: 96 });
     });
+  }
+
+  // The nodes of an insertion by the assistant, selected and in view.
+  function showNodes(ids) {
+    if (!canInsertNow() || !ids.length) return;
+    setSelection({ nodes: ids, notes: [], groups: [], edge: null });
+    revealBounds(graphLib.boundsOf(state.graph, canvas.getSizes(), { nodes: ids }));
+  }
+
+  // What the plan of the engine complains about (the assistant gets it as data to explain what is missing).
+  function assistantWarnings() {
+    const plan = runController ? runController.getPlan() : null;
+    return ((plan && plan.issues) || []).filter((issue) => issue && typeof issue.message === 'string').map((issue) => ({ node: issue.nodeId || undefined, message: issue.message }));
+  }
+
+  // The assistant opened or closed (assistant-ui.js onToggle). Closing with Escape brings the focus back to its button.
+  function setAssistantOpen(open, options = {}) {
+    if (!dom) return;
+    dom.body.classList.toggle('assistant-open', open);
+    dom.root.classList.toggle('has-assistant', open);
+    dom.assistantBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    dom.assistantBtn.classList.toggle('is-active', open);
+    if (!open && options.focus) dom.assistantBtn.focus({ preventScroll: true });
+    setTimeout(() => canvas && canvas.relayout(), 220);
   }
 
   // Inserts a starter template into the open workflow (the app section of the template is not taken over).
@@ -2357,7 +2388,18 @@
     const menuBtn = tbtn('more', 'nodes.topbar.menu');
     menuBtn.addEventListener('click', workflowMenu);
     const inspectorToggle = tbtn('panel-right', 'nodes.topbar.toggleInspector');
-    inspectorToggle.addEventListener('click', () => setInspector(!state.inspectorOpen));
+    // The assistant takes the place of the inspector; this button brings the inspector back.
+    inspectorToggle.addEventListener('click', () => {
+      if (assistant && assistant.isOpen()) {
+        assistant.close();
+        setInspector(true, { remember: false });
+        return;
+      }
+      setInspector(!state.inspectorOpen);
+    });
+    const assistantBtn = tbtn('sparkle', 'nodes.assistant.buttonTitle', { className: 'nv-btn nv-assistant-btn hidden', text: 'nodes.assistant.button' });
+    assistantBtn.setAttribute('aria-pressed', 'false');
+    assistantBtn.addEventListener('click', () => assistant && assistant.toggle());
     const topbar = el(
       'header',
       { class: 'nv-topbar' },
@@ -2368,6 +2410,7 @@
       runSlot,
       shareBtn,
       appBtn,
+      assistantBtn,
       addNode,
       el('div', { class: 'nv-btn-group' }, undoBtn, redoBtn),
       menuBtn,
@@ -2422,7 +2465,8 @@
     const inspectorHost = el('aside', { class: 'nv-inspector', 'aria-label': ui.T('nodes.inspector.label') });
     const inspectorScroll = el('div', { class: 'nv-insp-scroll' });
     inspectorHost.append(inspectorScroll);
-    const body = el('div', { class: 'nv-body' }, drawer, stage, inspectorHost);
+    const assistantHost = el('aside', { class: 'nv-assistant', 'aria-label': ui.T('nodes.assistant.label') });
+    const body = el('div', { class: 'nv-body' }, drawer, stage, inspectorHost, assistantHost);
     const appViewEl = el('section', { class: 'nv-appview hidden', 'aria-label': ui.T('nodes.app.section') });
     const overlays = el('div', { class: 'nv-overlays' });
     rootEl.append(topbar, body, appViewEl, overlays);
@@ -2448,6 +2492,8 @@
       emptyTemplate,
       inspectorHost,
       inspectorScroll,
+      assistantHost,
+      assistantBtn,
       overlays,
       name,
       saveState: saveStateEl,
@@ -2474,6 +2520,8 @@
     for (const node of dom.root.querySelectorAll('[data-t-text]')) node.textContent = ui.T(node.dataset.tText);
     dom.name.placeholder = ui.T('nodes.workflow.name');
     dom.name.setAttribute('aria-label', ui.T('nodes.workflow.name'));
+    dom.assistantHost.setAttribute('aria-label', ui.T('nodes.assistant.label'));
+    if (assistant) assistant.relabel();
     if (global.OCShell) global.OCShell.refresh();
     setSaveState(state.saveState);
     if (!state.workflow) showListViewText();
@@ -2647,6 +2695,27 @@
     });
 
     runController.attach();
+    assistant = OCD.assistant.createAssistant({
+      OCD,
+      host: dom.assistantHost,
+      help: nodeHelp,
+      getWorkflowId: () => (state.workflow ? state.workflow.id : null),
+      getGraph: () => state.graph,
+      getReg: () => state.reg,
+      getSelection: () => [...state.selection.nodes],
+      getWarnings: assistantWarnings,
+      canInsert: canInsertNow,
+      insert: (sub, options) => insertSubgraph(sub, options),
+      historyRevision: () => state.history.revision,
+      undo,
+      flushSave: () => flushSave().catch(() => {}),
+      plan: () => api.plan(state.workflow.id, { mode: 'all', force: false }),
+      showNodes,
+      getLang: currentLang,
+      onToggle: setAssistantOpen
+    });
+    bus.on('workflow:open', () => assistant.workflowChanged());
+    bus.on('workflow:close', () => assistant.workflowChanged());
     ui.onModelChange(onModelCapabilities);
     extensions.nodeMenu.push(({ nodeId }) => [{ label: ui.T('nodes.send.menu'), icon: 'send', disabled: !hasNodeResult(nodeId), onClick: () => sendNodeToChat(nodeId) }]);
     appView = OCD.appMode.createAppView({

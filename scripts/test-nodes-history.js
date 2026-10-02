@@ -117,7 +117,42 @@ function testClear() {
   assert.equal(h.canUndo(), false);
 }
 
-const tests = [testBasicUndoRedo, testBranching, testSnapshotsAreCopies, testLimit, testCoalescing, testClear];
+// `revision` moves on with every change and never goes back; `position` does not (a full stack, a new start).
+function testRevision() {
+  const h = createHistory({ coalesceMs: 0 });
+  h.reset({ n: 0 });
+  let last = h.revision;
+  const moved = (what) => {
+    assert.ok(h.revision > last, `${what} moves the revision`);
+    last = h.revision;
+  };
+  for (let i = 1; i < 130; i += 1) {
+    h.commit({ n: i });
+    moved('a commit');
+  }
+  const position = h.position;
+  h.commit({ n: 'next' });
+  assert.equal(h.position, position, 'a full stack: the position stays the same');
+  moved('a commit on a full stack');
+  assert.equal(h.commit({ n: 'next' }), false);
+  assert.equal(h.revision, last, 'an identical snapshot changes nothing');
+  h.undo();
+  moved('undo');
+  h.redo();
+  moved('redo');
+  h.undo();
+  last = h.revision;
+  assert.equal(h.redo() !== null && h.undo() !== null, true);
+  h.reset({ n: 'again' });
+  assert.ok(h.revision > last, 'reset moves it');
+  last = h.revision;
+  h.clear();
+  moved('clear');
+  assert.equal(h.undo(), null);
+  assert.equal(h.revision, last, 'an undo that does nothing changes nothing');
+}
+
+const tests = [testBasicUndoRedo, testBranching, testSnapshotsAreCopies, testLimit, testCoalescing, testClear, testRevision];
 for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);

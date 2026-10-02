@@ -762,14 +762,26 @@
   //   options.avoid    with `at`: move down while the items would overlap existing ones (default off)
   //   options.reg      registry index: unknown node types are refused, params get their defaults
   //   options.sizes    measured card sizes of the existing nodes; options.reserved ids not to be reused
-  // Returns { graph, ids: { nodes, notes, groups, edges }, idMap (old node id -> new), at, bounds } or
+  //   sub.links        (the assistant) connections that are checked one by one against the graph as it is while they
+  //                    are added: [{ from: { node, port, existing? }, to: { node, port, existing? } }]. A side with
+  //                    `existing: true` is a node of `graph` (its id stays), any other side is a node of `sub.nodes`
+  //                    (its id becomes the new one). Nothing is replaced: a link into a single input that is taken,
+  //                    into a full multi-input, a duplicate, a loop or a port that does not fit is skipped and
+  //                    reported in `skippedLinks`. Existing nodes and connections stay exactly as they are. Needs
+  //                    options.reg. Without any new item, links alone are fine (connect existing nodes).
+  // Returns { graph, ids: { nodes, notes, groups, edges }, idMap (old node id -> new), at, bounds, skippedLinks } or
   // { graph, error: { reason: 'empty' | 'too_many' | 'unknown_type', type? } }.
   function insertSubgraph(graph, sub, options = {}) {
     const source = isPlainObject(sub) ? sub : {};
     const nodes = Array.isArray(source.nodes) ? source.nodes : [];
     const notes = Array.isArray(source.notes) ? source.notes : [];
     const groups = Array.isArray(source.groups) ? source.groups : [];
-    if (!nodes.length && !notes.length && !groups.length) return { graph, error: { reason: 'empty' } };
+    const links = Array.isArray(source.links) && options.reg ? source.links : [];
+    if (!nodes.length && !notes.length && !groups.length) {
+      if (!links.length) return { graph, error: { reason: 'empty' } };
+      const linked = addLinks(options.reg, graph, links, {}, options.reserved);
+      return { graph: linked.graph, ids: { nodes: [], notes: [], groups: [], edges: linked.ids }, idMap: {}, at: null, bounds: null, skippedLinks: linked.skipped };
+    }
     if (graph.nodes.length + nodes.length > MAX_NODES) return { graph, error: { reason: 'too_many' } };
     if (options.reg) {
       const unknown = nodes.find((node) => !options.reg.types.has(node.type));
@@ -805,11 +817,52 @@
       }
     }
     const result = paste(graph, clip, at, { reserved: options.reserved });
+    const linked = links.length ? addLinks(options.reg, result.graph, links, result.idMap, options.reserved) : { graph: result.graph, ids: [], skipped: [] };
     return {
       ...result,
+      graph: linked.graph,
+      ids: { ...result.ids, edges: [...result.ids.edges, ...linked.ids] },
       at,
-      bounds: { x: at.x + box.x - clip.origin.x, y: at.y + box.y - clip.origin.y, w: box.w, h: box.h }
+      bounds: { x: at.x + box.x - clip.origin.x, y: at.y + box.y - clip.origin.y, w: box.w, h: box.h },
+      skippedLinks: linked.skipped
     };
+  }
+
+  // Adds the links of insertSubgraph one by one with the checks of checkConnection. A single input that already has a
+  // connection is never taken over (connect() would replace it): such a link is skipped, like every other refused one.
+  // Returns { graph, ids (new edge ids), skipped: [{ index, code, data? }] }.
+  function addLinks(reg, graph, links, idMap, reserved) {
+    let current = graph;
+    const ids = [];
+    const skipped = [];
+    links.forEach((link, index) => {
+      const side = (end) => {
+        if (!isPlainObject(end) || typeof end.node !== 'string') return null;
+        const node = end.existing === true ? end.node : Object.prototype.hasOwnProperty.call(idMap, end.node) ? idMap[end.node] : null;
+        return node ? { node, port: end.port } : null;
+      };
+      const from = side(link && link.from);
+      const to = side(link && link.to);
+      if (!from || !to) {
+        skipped.push({ index, code: 'unknown_node' });
+        return;
+      }
+      const error = checkConnection(reg, current, from, to);
+      if (error) {
+        skipped.push({ index, code: error.code, ...(error.data ? { data: error.data } : {}) });
+        return;
+      }
+      const toNode = getNode(current, to.node);
+      const toPort = findPort(reg, toNode, 'in', to.port);
+      if (!toPort.multiple && incomingEdges(current, to.node, to.port).length) {
+        skipped.push({ index, code: 'input_taken' });
+        return;
+      }
+      const result = connect(reg, current, from, to, { reserved });
+      current = result.graph;
+      ids.push(result.edge.id);
+    });
+    return { graph: current, ids, skipped };
   }
 
   // Deletes a whole selection { nodes, notes, groups }.

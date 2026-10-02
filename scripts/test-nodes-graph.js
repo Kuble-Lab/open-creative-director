@@ -343,6 +343,102 @@ function testClipboard() {
   assert.equal(removed.edges.length, 1, 'the edge of the removed node vanishes, the unrelated one stays');
 }
 
+// Sub graph with links (the assistant): connections between new nodes and to existing ones, checked one by one against
+// the graph as it is, never replacing anything.
+function testInsertSubgraphLinks() {
+  const b = build();
+  const prompt = b.add('input.prompt', 40, 40, { prompt: 'Ein Fuchs' });
+  const video = b.add('video.generate', 400, 40);
+  const result = b.add('output.result', 800, 40);
+  b.graph = graphLib.connect(reg, b.graph, { node: prompt, port: 'prompt' }, { node: video, port: 'prompt' }).graph;
+  b.graph = graphLib.connect(reg, b.graph, { node: video, port: 'video' }, { node: result, port: 'inputs' }).graph;
+  const before = b.graph;
+  const snapshot = JSON.stringify(before);
+
+  // new nodes, a link between them and one to a free input of an existing node
+  const sub = {
+    nodes: [
+      { id: 'a1', type: 'input.prompt', x: 0, y: 0, params: { prompt: 'Titel' }, title: 'Titelidee' },
+      { id: 'a2', type: 'image.generate', x: 380, y: 0, params: { prompt: 'Titel' } }
+    ],
+    links: [
+      { from: { node: 'a1', port: 'prompt' }, to: { node: 'a2', port: 'prompt' } },
+      { from: { node: 'a2', port: 'image' }, to: { node: video, port: 'first_frame', existing: true } }
+    ]
+  };
+  const done = graphLib.insertSubgraph(before, sub, { reg, center: { x: 0, y: 0 } });
+  assert.equal(done.error, undefined);
+  assert.deepEqual(done.skippedLinks, []);
+  assert.equal(done.graph.nodes.length, before.nodes.length + 2);
+  assert.equal(done.graph.edges.length, before.edges.length + 2);
+  assert.equal(done.ids.edges.length, 2, 'the links count as new edges');
+  const added = done.graph.edges.slice(-2).map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`);
+  assert.deepEqual(added, [`${done.idMap.a1}.prompt>${done.idMap.a2}.prompt`, `${done.idMap.a2}.image>${video}.first_frame`]);
+  assert.equal(done.graph.nodes.find((node) => node.id === done.idMap.a1).title, 'Titelidee');
+  assert.deepEqual(graphLib.validate(reg, done.graph), []);
+  // what was there stays exactly as it was (same objects, same order)
+  assert.equal(JSON.stringify(before), snapshot, 'the graph that went in is not changed');
+  before.nodes.forEach((node, index) => assert.equal(done.graph.nodes[index], node));
+  before.edges.forEach((edge, index) => assert.equal(done.graph.edges[index], edge));
+
+  // a link from an existing output into a new node
+  const fromExisting = graphLib.insertSubgraph(before, { nodes: [{ id: 'z', type: 'llm.chat', x: 0, y: 0, params: {} }], links: [{ from: { node: prompt, port: 'prompt', existing: true }, to: { node: 'z', port: 'prompt' } }] }, { reg });
+  assert.deepEqual(fromExisting.skippedLinks, []);
+  assert.equal(fromExisting.graph.edges.at(-1).from.node, prompt);
+  assert.equal(fromExisting.graph.edges.at(-1).to.node, fromExisting.idMap.z);
+
+  // refused links are skipped and named, the rest goes in; nothing is replaced or removed
+  const mixed = graphLib.insertSubgraph(
+    before,
+    {
+      nodes: [{ id: 'a', type: 'image.generate', x: 0, y: 0, params: { prompt: 'x' } }],
+      links: [
+        { from: { node: 'a', port: 'image' }, to: { node: video, port: 'prompt', existing: true } }, // text input already connected, wrong type as well
+        { from: { node: 'a', port: 'image' }, to: { node: video, port: 'first_frame', existing: true } }, // fine
+        { from: { node: 'a', port: 'image' }, to: { node: video, port: 'first_frame', existing: true } }, // the same again
+        { from: { node: video, port: 'video', existing: true }, to: { node: prompt, port: 'prompt', existing: true } }, // nothing goes into a Prompt node
+        { from: { node: 'a', port: 'nothing' }, to: { node: result, port: 'inputs', existing: true } },
+        { from: { node: 'ghost', port: 'image' }, to: { node: result, port: 'inputs', existing: true } },
+        { from: { node: 'a', port: 'image' }, to: { node: 'missing', port: 'inputs', existing: true } },
+        { from: { node: 'a', port: 'image' } }
+      ]
+    },
+    { reg }
+  );
+  assert.deepEqual(mixed.skippedLinks.map((item) => [item.index, item.code]), [[0, 'incompatible'], [2, 'duplicate'], [3, 'no_input'], [4, 'no_output'], [5, 'unknown_node'], [6, 'unknown_node'], [7, 'unknown_node']]);
+  assert.equal(mixed.graph.edges.length, before.edges.length + 1);
+  assert.equal(mixed.ids.edges.length, 1);
+
+  // a taken single input is never taken over (connect() alone would replace it)
+  const taken = graphLib.insertSubgraph(before, { nodes: [{ id: 't', type: 'input.prompt', x: 0, y: 0, params: { prompt: 'andere Idee' } }], links: [{ from: { node: 't', port: 'prompt' }, to: { node: video, port: 'prompt', existing: true } }] }, { reg });
+  assert.deepEqual(taken.skippedLinks, [{ index: 0, code: 'input_taken' }]);
+  assert.equal(taken.graph.edges.length, before.edges.length);
+  assert.ok(taken.graph.edges.some((edge) => edge.from.node === prompt && edge.to.node === video && edge.to.port === 'prompt'), 'the old connection is still there');
+
+  // a loop is refused as well
+  const loop = graphLib.insertSubgraph(before, { nodes: [{ id: 'l', type: 'llm.chat', x: 0, y: 0, params: {} }], links: [{ from: { node: result, port: 'inputs', existing: true }, to: { node: 'l', port: 'prompt' } }] }, { reg });
+  assert.equal(loop.skippedLinks.length, 1);
+
+  // a multiple input takes several links, in the order given
+  const multi = graphLib.insertSubgraph(before, { nodes: [{ id: 'i1', type: 'image.generate', x: 0, y: 0, params: { prompt: 'a' } }, { id: 'i2', type: 'image.generate', x: 0, y: 400, params: { prompt: 'b' } }], links: [{ from: { node: 'i1', port: 'image' }, to: { node: result, port: 'inputs', existing: true } }, { from: { node: 'i2', port: 'image' }, to: { node: result, port: 'inputs', existing: true } }] }, { reg });
+  assert.deepEqual(multi.skippedLinks, []);
+  assert.deepEqual(multi.graph.edges.slice(-2).map((edge) => edge.from.node), [multi.idMap.i1, multi.idMap.i2]);
+
+  // no new items, only links between existing nodes: allowed while the input is free
+  const only = graphLib.insertSubgraph(before, { nodes: [], links: [{ from: { node: prompt, port: 'prompt', existing: true }, to: { node: result, port: 'inputs', existing: true } }] }, { reg });
+  assert.equal(only.error, undefined);
+  assert.deepEqual(only.ids.nodes, []);
+  assert.equal(only.ids.edges.length, 1);
+  assert.equal(only.bounds, null);
+  assert.equal(only.graph.nodes, before.nodes, 'no node was touched');
+  assert.equal(graphLib.insertSubgraph(before, { nodes: [], links: [] }, { reg }).error.reason, 'empty');
+  // without a registry the links are not trusted: nothing to do
+  assert.equal(graphLib.insertSubgraph(before, { nodes: [], links: [{ from: { node: prompt, port: 'prompt', existing: true }, to: { node: result, port: 'inputs', existing: true } }] }, {}).error.reason, 'empty');
+  // an id that happens to be a property name of Object is not a node of the sub graph
+  const proto = graphLib.insertSubgraph(before, { nodes: [{ id: 'a', type: 'image.generate', x: 0, y: 0, params: { prompt: 'x' } }], links: [{ from: { node: 'constructor', port: 'image' }, to: { node: result, port: 'inputs', existing: true } }] }, { reg });
+  assert.deepEqual(proto.skippedLinks.map((item) => item.code), ['unknown_node']);
+}
+
 function testNormalizeLoaded() {
   const raw = {
     nodes: [
@@ -1215,6 +1311,7 @@ const tests = [
   testGeometry,
   testClipboard,
   testInsertSubgraph,
+  testInsertSubgraphLinks,
   testNormalizeLoaded,
   testContentSnapshots,
   testFuzzyAndPalette,

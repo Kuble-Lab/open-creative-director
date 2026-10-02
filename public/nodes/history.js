@@ -22,10 +22,14 @@
     let index = -1;
     let lastKey = null;
     let lastAt = 0;
+    // Counts every change of the stack (commit, undo, redo, reset, clear) and never goes back. `position` cannot tell
+    // "nothing happened since": a full stack drops its oldest entry, so the index stays the same while the content moves.
+    let revision = 0;
 
     const serialize = (snapshot) => JSON.stringify(snapshot);
 
     function reset(snapshot) {
+      revision += 1;
       entries = [{ json: serialize(snapshot), label: 'initial' }];
       index = 0;
       lastKey = null;
@@ -55,6 +59,7 @@
       }
       lastKey = key;
       lastAt = time;
+      revision += 1;
       return true;
     }
 
@@ -69,6 +74,7 @@
     function undo() {
       if (!canUndo()) return null;
       index -= 1;
+      revision += 1;
       lastKey = null;
       return JSON.parse(entries[index].json);
     }
@@ -76,6 +82,7 @@
     function redo() {
       if (!canRedo()) return null;
       index += 1;
+      revision += 1;
       lastKey = null;
       return JSON.parse(entries[index].json);
     }
@@ -85,6 +92,7 @@
     }
 
     function clear() {
+      revision += 1;
       entries = [];
       index = -1;
       lastKey = null;
@@ -105,6 +113,9 @@
       },
       get position() {
         return index;
+      },
+      get revision() {
+        return revision;
       }
     };
   }
