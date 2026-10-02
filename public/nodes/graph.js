@@ -1876,10 +1876,14 @@
   // Conditional param visibility (registry showIf): { param, equals }, { param, empty } (empty true = the field holds no text),
   // { port, connected } or { ports: [...], connected } (connected false = none of the ports is connected, true = at
   // least one), and { all: [...] } when several of these must hold.
-  function isVisible(showIf, node, def, connectedPorts) {
+  // options.ignoreParams: conditions on the value of a param count as met. What is left is the part that only a connection
+  // can change, so the inspector knows which fields it has to build at all (see dependsOnParam).
+  function isVisible(showIf, node, def, connectedPorts, options) {
     if (!showIf) return true;
-    if (Array.isArray(showIf.all)) return showIf.all.every((item) => isVisible(item, node, def, connectedPorts));
+    const ignoreParams = Boolean(options && options.ignoreParams);
+    if (Array.isArray(showIf.all)) return showIf.all.every((item) => isVisible(item, node, def, connectedPorts, options));
     if (showIf.param !== undefined) {
+      if (ignoreParams) return true;
       const params = effectiveParams(def, node);
       if (showIf.empty !== undefined) return !String(params[showIf.param] ?? '').trim() === Boolean(showIf.empty);
       return String(params[showIf.param]) === String(showIf.equals);
@@ -1893,6 +1897,14 @@
       return any === Boolean(showIf.connected);
     }
     return true;
+  }
+
+  // Does the visibility of a field depend on the value of another param (typing or choosing something shows or hides it)?
+  // Such fields stay in the form and are shown or hidden in place; building the form again would pull the cursor away.
+  function dependsOnParam(showIf) {
+    if (!showIf) return false;
+    if (Array.isArray(showIf.all)) return showIf.all.some((item) => dependsOnParam(item));
+    return showIf.param !== undefined;
   }
 
   return {
@@ -1998,6 +2010,7 @@
     PORT_TIP_MAX_CONNECTIONS,
     PROMPT_TYPE,
     firstCompatiblePort,
-    isVisible
+    isVisible,
+    dependsOnParam
   };
 });

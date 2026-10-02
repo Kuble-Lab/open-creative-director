@@ -2561,6 +2561,11 @@
   min-width: 0;
 }
 
+/* a field that the value of another field hides stays in the form (typing must not rebuild it) */
+.nv-field[hidden] {
+  display: none;
+}
+
 .nv-field.is-inline {
   flex-direction: row;
   align-items: center;
