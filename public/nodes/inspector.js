@@ -276,7 +276,7 @@
             'aria-pressed': chosen ? 'true' : 'false',
             disabled: info.busy
           });
-          button.append(OCD.preview.thumb(primaryValue(variant, info)));
+          button.append(OCD.preview.thumb(primaryValue(variant, info), { poster: OCD.preview.posterOf(Object.values(variant)) }));
           if ((entry.variants || []).length > 1) button.append(el('span', { class: 'nv-history-index', text: String(index + 1) }));
           button.addEventListener('click', () => cb.run.selectVariant(nodeId, entry.id, index));
           variants.append(button);

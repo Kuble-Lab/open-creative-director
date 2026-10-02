@@ -163,8 +163,8 @@ async function main() {
 
     /* ---------- registry ---------- */
     {
-      const types = ['fal.h3_video', 'fal.h3_reference', 'fal.h3_lipsync', 'fal.h3_camera', 'fal.h3_extend', 'fal.h3_insert', 'fal.h3_3d', 'fal.h3_style', 'fal.remove_background', 'fal.model'];
-      assert.deepEqual(nodesFal.definitions.map((def) => def.type), types, 'H3 Max first, background removal before the free node, which stays last');
+      const types = ['fal.h3_video', 'fal.h3_reference', 'fal.h3_lipsync', 'fal.h3_camera', 'fal.h3_extend', 'fal.h3_insert', 'fal.h3_3d', 'fal.h3_style', 'fal.image_to_3d', 'fal.remove_background', 'fal.model'];
+      assert.deepEqual(nodesFal.definitions.map((def) => def.type), types, 'H3 Max first, image to 3D and background removal before the free node, which stays last');
       for (const type of types) {
         const def = oneOf(registry, type);
         assert.equal(def.category, 'fal', type);
@@ -183,8 +183,8 @@ async function main() {
       assert.ok(defaultRegistry.CATEGORIES.includes('fal'));
       assert.ok(defaultRegistry.publicRegistry().categories.includes('fal'));
       for (const type of types) assert.ok(defaultRegistry.get(type), `${type} in the default registry`);
-      assert.equal(defaultRegistry.list().length, 77, '62 + 10 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid');
-      assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 10);
+      assert.equal(defaultRegistry.list().length, 78, '62 + 11 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid');
+      assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 11);
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });
       assert.deepEqual(ports('fal.h3_video'), { in: ['prompt', 'first_frame', 'last_frame', 'audio'], out: ['video', 'expanded_prompt'] });

@@ -1,8 +1,9 @@
 'use strict';
 
-// Media previews of the node view (SPEC §13): the result area of a node card (image, video, audio,
+// Media previews of the node view (SPEC §13): the result area of a node card (image, video, audio, 3D model,
 // text, number, list grid), thumbnails for the history strip, downloads and the media viewer overlay
-// (image zoom, video, audio, text). Text from LLMs and users is only ever set via textContent.
+// (image zoom, video, audio, 3D model, text). Text from LLMs and users is only ever set via textContent.
+// A 3D model (GLB) is shown with the bundled <model-viewer> (public/vendor/model-viewer/), loaded the first time one is shown.
 // Loaded after node-ui.js; node-ui calls renderCardPreview() for the preview slot of a card.
 (function (global) {
   const OCD = (global.OCDNodes = global.OCDNodes || {});
@@ -11,7 +12,7 @@
 
   const GRID_LIMIT = 12;
   const TEXT_LINES = 8;
-  const MEDIA_TYPES = ['image', 'video', 'audio'];
+  const MEDIA_TYPES = ['image', 'video', 'audio', 'model3d'];
 
   /* ---------- value helpers ---------- */
 
@@ -109,6 +110,7 @@
   /* ---------- media elements ---------- */
 
   function mediaNode(value, options = {}) {
+    if (value.type === 'model3d') return modelNode(value, options);
     if (value.type === 'image') {
       return el('img', { class: 'nv-media nv-media-image', src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' });
     }
@@ -116,6 +118,110 @@
       return el('video', { class: 'nv-media nv-media-video', src: videoSource(value), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
     }
     return el('audio', { class: 'nv-media nv-media-audio', src: ui.mediaUrl(value), controls: true, preload: 'metadata', autoplay: options.autoplay || null });
+  }
+
+  /* ---------- 3D models (<model-viewer>) ---------- */
+
+  const MODEL_VIEWER_SRC = 'vendor/model-viewer/model-viewer.min.js';
+  const MODEL_VIEWER_TIMEOUT_MS = 20000;
+  // <model-viewer> reads its settings from self.ModelViewerElement when it starts. Its default for Lottie textures is an address
+  // at a CDN. The models of this app have no Lottie textures, so the setting points at the app itself (a file that is not shipped):
+  // such a texture would not load, and nothing goes to a foreign address because of it. The decoders for compressed models keep
+  // their defaults (README).
+  const LOTTIE_NOT_SHIPPED = 'vendor/model-viewer/lottie-loader-not-shipped.js';
+  let modelViewerLoad = null;
+
+  function configureModelViewer() {
+    try {
+      global.ModelViewerElement = { ...(global.ModelViewerElement || {}), lottieLoaderLocation: new URL(OCD.api.rel(LOTTIE_NOT_SHIPPED), document.baseURI).href };
+    } catch (_) {
+      /* the setting is a precaution: the viewer works with its defaults */
+    }
+  }
+
+  // Loads the bundled <model-viewer> (a module script next to the app, relative like the other scripts) the first time a
+  // 3D model is shown, not with every page view. Resolves true once the element is defined, false when it cannot be loaded.
+  function loadModelViewer() {
+    const registry = global.customElements;
+    if (!registry) return Promise.resolve(false);
+    if (registry.get('model-viewer')) return Promise.resolve(true);
+    if (!modelViewerLoad) {
+      modelViewerLoad = new Promise((resolve) => {
+        const timer = setTimeout(() => finish(false), MODEL_VIEWER_TIMEOUT_MS);
+        function finish(ok) {
+          clearTimeout(timer);
+          if (!ok) modelViewerLoad = null;
+          resolve(ok);
+        }
+        configureModelViewer();
+        const script = el('script', { type: 'module', src: OCD.api.rel(MODEL_VIEWER_SRC) });
+        script.addEventListener('load', () => registry.whenDefined('model-viewer').then(() => finish(true)));
+        script.addEventListener('error', () => finish(false));
+        document.head.append(script);
+      });
+    }
+    return modelViewerLoad;
+  }
+
+  // Poster of a 3D model: the first image of the same result (the preview image the provider renders), or null.
+  function posterOf(values) {
+    return (values || []).find((value) => value && value.type === 'image' && typeof value.url === 'string') || null;
+  }
+
+  // The 3D model of one GLB as a rotatable view. options.poster: an image value shown until the model is there; options.large:
+  // the size of the viewer overlay; options.scrolling: the model sits in a page that scrolls (app view). Dragging turns the model and the wheel zooms it: none of it reaches the canvas behind.
+  function modelNode(value, options = {}) {
+    const wrap = el('div', { class: `nv-model nv-nodrag ${options.large ? 'is-large' : ''}`.trim(), title: T('nodes.model.hint') });
+    const poster = options.poster && isMedia(options.poster) ? ui.mediaUrl(options.poster) : '';
+    const status = el('div', { class: 'nv-model-status', role: 'status', text: T('nodes.model.loading') });
+    // no AR attributes: the view never offers augmented reality. touch-action: on the canvas card a finger drag turns the model
+    // (none); in the scrolling app view and in the large view the page keeps its vertical swipe (pan-y), so a finger on the
+    // model never traps the page.
+    const viewer = el('model-viewer', {
+      src: ui.mediaUrl(value),
+      poster: poster || null,
+      alt: T('nodes.model.alt'),
+      'camera-controls': true,
+      'touch-action': options.large || options.scrolling ? 'pan-y' : 'none',
+      'interaction-prompt': 'none',
+      'shadow-intensity': '1',
+      loading: options.eager || options.large ? 'eager' : 'lazy'
+    });
+    wrap.append(viewer, status, el('span', { class: 'nv-model-badge', text: T('nodes.model.badge'), 'aria-hidden': 'true' }));
+
+    function fallback() {
+      wrap.classList.add('is-failed');
+      viewer.remove();
+      status.remove();
+      const box = el('div', { class: 'nv-model-fallback' });
+      if (poster) box.append(el('img', { src: poster, alt: '', draggable: 'false' }));
+      else box.append(icon('cube', 28));
+      box.append(el('span', { text: T('nodes.model.unavailable') }));
+      wrap.append(box);
+    }
+    viewer.addEventListener('load', () => status.remove());
+    viewer.addEventListener('error', () => {
+      // the file cannot be read as a model (or WebGL is not there): say so instead of an empty frame
+      if (!wrap.classList.contains('is-failed')) fallback();
+    });
+    loadModelViewer().then((ok) => {
+      if (!ok) fallback();
+    });
+
+    // A turn or a zoom in the view must not move the canvas: wheel, double click and the arrow keys stay here.
+    wrap.addEventListener(
+      'wheel',
+      (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+    wrap.addEventListener('dblclick', (event) => event.stopPropagation());
+    wrap.addEventListener('keydown', (event) => {
+      if (event.key.startsWith('Arrow') || event.key === 'PageUp' || event.key === 'PageDown') event.stopPropagation();
+    });
+    return wrap;
   }
 
   /* ---------- card preview ---------- */
@@ -131,19 +237,25 @@
     // Flat list of everything the viewer can show, in reading order; cells map into it by index.
     const viewItems = [];
     const entries = [];
+    const unwrap = (value) => (value && value.type === 'list' && Array.isArray(value.items) && value.items.length === 1 ? value.items[0] : value);
+    // A 3D model next to an image (the preview the provider renders): the image is the poster of the model and does not
+    // take a second place on the card. It stays in the viewer, one step after the model.
+    const singles = items.map((item) => unwrap(item.value));
+    const poster = singles.some((value) => value && value.type === 'model3d') ? posterOf(singles) : null;
     for (const item of items) {
       const value = item.value;
       const label = options.portLabel ? options.portLabel(item.port) : item.port;
       // A list with one entry (output nodes) reads as that entry.
-      const single = value && value.type === 'list' && Array.isArray(value.items) && value.items.length === 1 ? value.items[0] : value;
+      const single = unwrap(value);
       if (single && single.type === 'list') {
         const list = single.items || [];
         const first = viewItems.length;
         for (const leaf of leaves(single)) if (isViewable(leaf)) viewItems.push({ value: leaf, label });
         entries.push({ kind: 'list', label, list, first });
       } else if (isViewable(single)) {
-        entries.push({ kind: 'single', label, value: single, index: viewItems.length });
-        viewItems.push({ value: single, label });
+        const isPoster = poster !== null && single === poster;
+        if (!isPoster) entries.push({ kind: 'single', label, value: single, index: viewItems.length, poster: single.type === 'model3d' ? poster : null });
+        viewItems.push({ value: single, label, poster: single.type === 'model3d' ? poster : null });
       }
     }
     const open = (index) => openViewer(viewItems, index, { title: options.title });
@@ -156,7 +268,7 @@
         holder.append(el('div', { class: 'nv-pv-label', text: `${entry.label}${count}` }));
       }
       const body = el('div', { class: 'nv-pv-body' });
-      if (entry.kind === 'single') renderSingle(body, entry.value, () => open(entry.index));
+      if (entry.kind === 'single') renderSingle(body, entry.value, () => open(entry.index), entry.poster);
       else renderGrid(body, entry.list, entry.first, open);
       holder.append(body);
       container.append(holder);
@@ -164,10 +276,10 @@
     container.classList.toggle('is-empty', !container.children.length);
   }
 
-  function renderSingle(body, value, onOpen) {
+  function renderSingle(body, value, onOpen, poster) {
     if (isMedia(value)) {
       const frame = el('div', { class: `nv-pv-frame is-${value.type}` });
-      frame.append(mediaNode(value));
+      frame.append(mediaNode(value, { poster }));
       const tools = el('div', { class: 'nv-pv-tools' });
       const expand = el('button', { type: 'button', class: 'nv-pv-tool', title: T('nodes.preview.open'), 'aria-label': T('nodes.preview.open') }, icon('fullscreen', 13));
       expand.addEventListener('click', (event) => {
@@ -176,7 +288,7 @@
       });
       tools.append(expand, downloadLink(value));
       frame.append(tools);
-      if (value.type !== 'audio') frame.addEventListener('dblclick', (event) => {
+      if (value.type !== 'audio' && value.type !== 'model3d') frame.addEventListener('dblclick', (event) => {
         if (event.target.closest('video')) return;
         event.stopPropagation();
         onOpen();
@@ -242,6 +354,15 @@
     } else if (value.type === 'audio') {
       wrap.classList.add('is-glyph');
       wrap.append(icon('audio', 16));
+    } else if (value.type === 'model3d') {
+      // the preview image of the model when there is one, else the 3D tile; never an audio player
+      const poster = options.poster && isMedia(options.poster) && options.poster.type === 'image' ? options.poster : null;
+      if (poster) {
+        wrap.append(el('img', { src: ui.mediaUrl(poster), alt: '', loading: 'lazy', draggable: 'false' }), el('span', { class: 'nv-thumb-badge is-model' }, icon('cube', 10)));
+      } else {
+        wrap.classList.add('is-glyph', 'is-model');
+        wrap.append(icon('cube', 18));
+      }
     } else if (value.type === 'text') {
       wrap.classList.add('is-text');
       wrap.append(el('span', { text: shortText(value.value, 90) }));
@@ -318,7 +439,7 @@
     function show() {
       stopMedia();
       stage.textContent = '';
-      stage.classList.remove('is-zoomed');
+      stage.classList.remove('is-zoomed', 'has-model');
       zoom.scale = 1;
       zoom.x = 0;
       zoom.y = 0;
@@ -336,6 +457,9 @@
         stage.append(el('video', { class: 'nv-viewer-video', src: ui.mediaUrl(value), controls: true, autoplay: true, loop: true, playsinline: true }));
       } else if (value.type === 'audio') {
         stage.append(el('div', { class: 'nv-viewer-audio' }, icon('audio', 34), el('audio', { src: ui.mediaUrl(value), controls: true, autoplay: true })));
+      } else if (value.type === 'model3d') {
+        stage.classList.add('has-model');
+        stage.append(modelNode(value, { poster: item.poster, large: true }));
       } else if (value.type === 'text') {
         stage.append(el('pre', { class: 'nv-viewer-text nv-scroll', text: value.value }));
       } else {
@@ -370,7 +494,8 @@
     }
 
     function onKey(event) {
-      const typing = event.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName);
+      // the arrow keys turn a focused 3D model (<model-viewer>) and do not leave the item
+      const typing = event.target && ['INPUT', 'TEXTAREA', 'SELECT', 'MODEL-VIEWER'].includes(event.target.tagName);
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -464,6 +589,9 @@
     downloadLink,
     copyButton,
     mediaNode,
+    modelNode,
+    loadModelViewer,
+    posterOf,
     thumb,
     shortText,
     renderCardPreview,

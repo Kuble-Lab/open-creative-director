@@ -12,13 +12,13 @@
   const { el, icon, T } = ui;
 
   const enc = encodeURIComponent;
-  const EXT_KIND = { '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.webp': 'image', '.gif': 'image', '.mp4': 'video', '.webm': 'video', '.mp3': 'audio', '.wav': 'audio', '.m4a': 'audio', '.aac': 'audio' };
+  const EXT_KIND = { '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.webp': 'image', '.gif': 'image', '.mp4': 'video', '.webm': 'video', '.mp3': 'audio', '.wav': 'audio', '.m4a': 'audio', '.aac': 'audio', '.glb': 'model3d' };
   const PAGE = 30;
 
-  // Media kind of a chat ledger entry (kind image/video/audio, or an upload classified by extension).
+  // Media kind of a chat ledger entry (kind image/video/audio/model3d, or an upload classified by extension).
   function ledgerKind(entry) {
     if (!entry || entry.pending) return null;
-    if (['image', 'video', 'audio'].includes(entry.kind)) return entry.kind;
+    if (['image', 'video', 'audio', 'model3d'].includes(entry.kind)) return entry.kind;
     if (entry.kind === 'upload') {
       const match = /\.[A-Za-z0-9]+$/.exec(String(entry.file || ''));
       return match ? EXT_KIND[match[0].toLowerCase()] || null : null;
@@ -44,7 +44,7 @@
     const wrap = el('span', { class: `nv-ap-thumb is-${kind}` });
     if (kind === 'image') wrap.append(el('img', { src: url, alt: '', loading: 'lazy', draggable: 'false' }));
     else if (kind === 'video') wrap.append(el('video', { src: `${url}#t=0.1`, muted: true, preload: 'metadata', playsinline: true }));
-    else wrap.append(icon('audio', 22));
+    else wrap.append(icon(kind === 'model3d' ? 'cube' : 'audio', 22));
     return wrap;
   }
 
@@ -447,7 +447,7 @@
   function portHelp(nodeType, port) {
     const graphLib = OCD.graph;
     if (!graphLib || !OCD.portTip) return '';
-    const base = ['image', 'video', 'audio', 'number', 'text'].includes(port.kind) ? port.kind : 'any';
+    const base = ['image', 'video', 'audio', 'model3d', 'number', 'text'].includes(port.kind) ? port.kind : 'any';
     return OCD.portTip.resolveDescription({ text: graphLib.portDescriptionKeys(nodeType, port.id, base, 'out') });
   }
 
@@ -458,13 +458,17 @@
     const url = media.url ? api.rel(media.url) : '';
     if (media.type === 'image' && url) return el('img', { class: 'nv-send-thumb', src: url, alt: '', loading: 'lazy', draggable: 'false' });
     if (media.type === 'video' && url) return el('video', { class: 'nv-send-thumb', src: `${url}#t=0.1`, muted: true, preload: 'metadata', playsinline: true, 'aria-hidden': 'true' });
-    return el('span', { class: 'nv-send-thumb is-icon' }, icon(media.type === 'audio' ? 'audio' : 'file', 18));
+    return el('span', { class: 'nv-send-thumb is-icon' }, icon(media.type === 'audio' ? 'audio' : media.type === 'model3d' ? 'cube' : 'file', 18));
   }
 
   // The "what is sent" list of the send dialog: one row per output port with a checkbox. chosen: Set of port ids.
   function sendContents(plan, chosen, onChange) {
     const box = el('div', { class: 'nv-send-contents' });
     box.append(el('h3', { class: 'nv-send-heading', text: T('nodes.send.what') }));
+    // the chat takes no 3D model (GLB): the dialog says so instead of leaving it out silently
+    if (plan.unsupported && plan.unsupported.length) {
+      box.append(el('p', { class: 'nv-send-note', dataset: { unsupported: 'model3d' } }, icon('cube', 14), el('span', { text: T('nodes.send.noModel3d') })));
+    }
     const rows = el('div', { class: 'nv-send-rows' });
     const hasMedia = plan.ports.some((port) => port.media.length);
     for (const port of plan.ports) {

@@ -1873,7 +1873,8 @@
     };
   }
 
-  // Conditional param visibility (registry showIf): { param, equals }, { param, empty } (empty true = the field holds no text),
+  // Conditional param visibility (registry showIf): { param, equals }, { param, in: [...] } (the param holds one of the values),
+  // { param, empty } (empty true = the field holds no text),
   // { port, connected } or { ports: [...], connected } (connected false = none of the ports is connected, true = at
   // least one), and { all: [...] } when several of these must hold.
   // options.ignoreParams: conditions on the value of a param count as met. What is left is the part that only a connection
@@ -1886,6 +1887,7 @@
       if (ignoreParams) return true;
       const params = effectiveParams(def, node);
       if (showIf.empty !== undefined) return !String(params[showIf.param] ?? '').trim() === Boolean(showIf.empty);
+      if (Array.isArray(showIf.in)) return showIf.in.some((value) => String(params[showIf.param]) === String(value));
       return String(params[showIf.param]) === String(showIf.equals);
     }
     if (showIf.port !== undefined) {

@@ -83,7 +83,7 @@ function testRegistryCoverage() {
     }
   }
   assert.deepEqual([...new Set(missing)], [], `registry strings without translation: ${[...new Set(missing)].join(', ')}`);
-  assert.ok(payload.nodeTypes.length >= 72);
+  assert.ok(payload.nodeTypes.length >= 73);
 }
 
 function sourceFiles() {
@@ -207,11 +207,11 @@ function testPortDescriptions() {
     }
   }
 
-  // generic texts for all port ids, and the last-resort texts for all six base types on both sides
+  // generic texts for all port ids, and the last-resort texts for all seven base types on both sides
   const ids = new Set(ports.map((p) => p.port));
-  assert.equal(ids.size, 46, 'the registry has 46 port ids');
+  assert.equal(ids.size, 51, 'the registry has 51 port ids');
   for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
-  for (const base of ['text', 'number', 'image', 'video', 'audio', 'any']) {
+  for (const base of ['text', 'number', 'image', 'video', 'audio', 'model3d', 'any']) {
     for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);
   }
 
@@ -225,7 +225,7 @@ function testPortDescriptions() {
   const orphans = [];
   for (const key of nodeKeys('de').filter((k) => k.startsWith('nodes.portdesc.'))) {
     const rest = key.slice('nodes.portdesc.'.length);
-    let match = /^type\.(text|number|image|video|audio|any)\.(in|out)$/.exec(rest);
+    let match = /^type\.(text|number|image|video|audio|model3d|any)\.(in|out)$/.exec(rest);
     if (match) continue;
     if (ids.has(rest)) continue; // generic
     match = /^([a-z0-9_]+)\.(in|out)$/.exec(rest);

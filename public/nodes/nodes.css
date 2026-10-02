@@ -12,6 +12,7 @@
   --nv-port-image: #d8a25f;
   --nv-port-video: #c49bff;
   --nv-port-audio: #5fd3a2;
+  --nv-port-model3d: #f08a78;
   --nv-port-any: #9aa1ab;
   --nv-status-running: var(--accent);
   --nv-status-done: #5fd3a2;
@@ -678,7 +679,8 @@
 
 .nv-node-title {
   flex: 1;
-  min-width: 0;
+  /* the title never disappears behind the badges (a long "experimental" badge gives way first, see below) */
+  min-width: 5em;
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: -0.005em;
@@ -696,6 +698,20 @@
 
 .nv-node-badges:empty {
   display: none;
+}
+
+/* in a narrow card the long badge is cut with an ellipsis (its title says the whole word) before the title of the node is */
+.nv-node-badges {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.nv-node-badges .nv-badge.is-experimental {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 3.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* status row under the header (dot, label, elapsed time, progress) */
@@ -1073,6 +1089,9 @@
 .nv-port.nv-port-audio {
   --pc: var(--nv-port-audio);
 }
+.nv-port.nv-port-model3d {
+  --pc: var(--nv-port-model3d);
+}
 .nv-port.nv-port-any {
   --pc: var(--nv-port-any);
 }
@@ -1194,6 +1213,9 @@
 }
 .nv-porttip-type.nv-port-audio {
   --pc: var(--nv-port-audio);
+}
+.nv-porttip-type.nv-port-model3d {
+  --pc: var(--nv-port-model3d);
 }
 
 .nv-porttip-swatch {
@@ -3094,6 +3116,9 @@
 .nv-pal-dot.nv-port-audio {
   --pc: var(--nv-port-audio);
 }
+.nv-pal-dot.nv-port-model3d {
+  --pc: var(--nv-port-model3d);
+}
 .nv-pal-dot.nv-port-any {
   --pc: var(--nv-port-any);
 }
@@ -3782,6 +3807,153 @@
 .nv-viewer-nav:disabled {
   opacity: 0.25;
   cursor: default;
+}
+
+/* ---------- 3D models (<model-viewer>, see preview.js) ---------- */
+
+.nv-model {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 300px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 38%, #2a2f38 0%, #14161a 72%);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nv-model:active {
+  cursor: grabbing;
+}
+
+.nv-model model-viewer {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  --poster-color: transparent;
+  --progress-bar-color: var(--nv-port-model3d);
+  outline: none;
+}
+
+.nv-model-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 1px 7px;
+  border: 1px solid rgba(240, 138, 120, 0.45);
+  border-radius: 999px;
+  background: rgba(10, 11, 13, 0.72);
+  color: var(--nv-port-model3d);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+  pointer-events: none;
+}
+
+.nv-model-status {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(10, 11, 13, 0.72);
+  color: var(--text-dim);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.nv-model-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.nv-model-fallback img {
+  max-width: 55%;
+  max-height: 55%;
+  object-fit: contain;
+}
+
+.nv-model.is-failed {
+  cursor: default;
+}
+
+/* where the page scrolls (the app view) or the model is shown large, a vertical swipe stays with the page (the same value as the
+   touch-action of the <model-viewer>, which sets it on its own canvas): the card on the canvas keeps none */
+.nv-model.is-large,
+.nv-appleaf-frame .nv-model {
+  touch-action: pan-y;
+}
+
+.nv-model.is-large {
+  width: min(1100px, 100%);
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.nv-viewer-stage.has-model {
+  padding: 14px 72px;
+}
+
+.nv-appleaf-frame .nv-model {
+  max-height: 540px;
+}
+
+.nv-appout-body.is-grid .nv-appleaf-frame .nv-model {
+  max-height: none;
+}
+
+.nv-thumb.is-glyph.is-model {
+  color: var(--nv-port-model3d);
+}
+
+.nv-thumb-badge.is-model {
+  color: var(--nv-port-model3d);
+}
+
+.nv-thumb-badge.is-model svg {
+  fill: none;
+  stroke: currentColor;
+}
+
+.nv-send-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.nv-send-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--nv-port-model3d);
+}
+
+@media (max-width: 640px) {
+  .nv-viewer-stage.has-model {
+    padding: 8px;
+  }
 }
 
 /* ---------- inspector: run section, history ---------- */

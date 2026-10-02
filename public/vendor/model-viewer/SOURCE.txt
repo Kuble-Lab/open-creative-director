@@ -1,0 +1,23 @@
+<model-viewer> (3D viewer web component, includes three.js)
+
+Package:   @google/model-viewer
+Version:   4.3.1 (latest stable on npm on 2026-10-02, published 2026-06-04)
+Licence:   Apache-2.0 (file LICENSE)
+Source:    https://registry.npmjs.org/@google/model-viewer/-/model-viewer-4.3.1.tgz
+Integrity: sha512-GP+inXhAtY31E8rILVmByA6z8CZZjdlNajddppyI1/j1eIaSQiZcMRaUqTFe7+jv4mzRzwKIOiKBud0apiv+WQ==
+           (the "integrity" value of the npm registry for the tarball, checked against the downloaded file)
+Files:     dist/model-viewer.min.js from the tarball, unchanged, as model-viewer.min.js
+           sha256 283b0672384614b4847636c306fc93fe4b1fcadc76d668b4e47f0ca76bcf033b
+           LICENSE from the tarball, unchanged
+           sha256 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+
+Not shipped: the decoders for compressed models (Draco, KTX2/Basis, Meshopt). model-viewer fetches them from
+www.gstatic.com only when a model needs them; an ordinary GLB makes no request to another address.
+The bundle names one more address: its default for lottieLoaderLocation is
+https://cdn.jsdelivr.net/npm/three@0.149.0/examples/jsm/loaders/LottieLoader.js. It is used only for Lottie textures set
+through the API, never for a GLB. public/nodes/preview.js sets lottieLoaderLocation to a path of the app before the
+bundle starts, so even that case makes no request to a foreign address.
+
+Loaded on demand by public/nodes/preview.js (the first time a 3D result is shown), not on every page load.
+It is not a dependency in package.json. To update: download the new tarball, compare its integrity with the
+registry, replace the two files and this note.

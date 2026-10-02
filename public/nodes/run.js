@@ -1227,7 +1227,10 @@
     }
 
     function downloadResult(nodeId) {
-      const items = viewerItems(nodeId).filter((item) => OCD.preview.isMedia(item.value));
+      const media = viewerItems(nodeId).filter((item) => OCD.preview.isMedia(item.value));
+      // a 3D result downloads the GLB file; its preview image (a second file) is not what "Download" asks for
+      const models = media.filter((item) => item.value.type === 'model3d');
+      const items = models.length ? models : media;
       if (!items.length) {
         ui.toast(T('nodes.run.noResult'), { kind: 'warn' });
         return;
