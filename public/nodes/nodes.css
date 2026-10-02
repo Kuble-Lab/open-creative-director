@@ -202,6 +202,11 @@
   color: var(--text);
 }
 
+/* a model that does not fit the connections of the node: selectable, but marked */
+.nv-select option[data-misfit] {
+  color: #e5c07b;
+}
+
 .nv-hint {
   color: var(--text-faint);
   font-size: 12px;
@@ -1009,6 +1014,20 @@
   color: var(--text-dim);
 }
 
+/* more connections than the chosen model takes ("2/1"): an error, the connections stay */
+.nv-port-count.is-over {
+  padding: 0 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(224, 104, 95, 0.55);
+  background: rgba(224, 104, 95, 0.14);
+  color: #f0a39c;
+  font-weight: 600;
+}
+
+.nv-port-row.is-over .nv-port-label {
+  color: #f0a39c;
+}
+
 .nv-port-row.is-connected .nv-port-label {
   color: var(--text);
 }
@@ -1222,6 +1241,18 @@
   height: 4px;
   border-radius: 50%;
   background: var(--text-faint);
+}
+
+.nv-porttip-roles {
+  color: var(--text);
+}
+
+.nv-porttip-facts li.is-error {
+  color: #f0a39c;
+}
+
+.nv-porttip-facts li.is-error::before {
+  background: var(--danger);
 }
 
 .nv-porttip-conns {
@@ -2443,6 +2474,21 @@
 
 .nv-model-info {
   font-size: 12.5px;
+}
+
+.nv-model-takes {
+  margin-top: 2px;
+}
+
+.nv-model-misfit {
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(229, 192, 123, 0.4);
+  background: rgba(229, 192, 123, 0.07);
+  color: #e5c07b;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 .nv-field {

@@ -302,6 +302,17 @@ Test: `scripts/test-nodes-search.js` (golden queries in DE / EN / ES as particip
 - **Completeness.** All 72 types have help, example and at least one tip in German, English and Spanish, and `REQUIRE_ALL_TYPES` in `scripts/test-nodes-help.js` is `true`: a new type without help fails the test. While texts are being written, set it to `false` (or force one run with `NODE_HELP_REQUIRE_ALL=1`) to get a count instead.
 - **Help page.** Section "Templates and node help" (`#<lang>-templates`) in `public/help.html`.
 
+### Reference limits per model (WP31)
+
+- **One mechanism.** A multiple input may declare `limitBy: { param, capability }` (`capability`: `references` or `audio`) and the definition then needs `limitsFor(params)`, which answers `{ known: true, max, roles?, required?, subject? }` or `{ known: false }`. `registry.portsFor` (server) and `graph.portsFor` (client, resolver injected through `indexRegistry(payload, { limitsFor })`, so `graph.js` stays pure) add `port.limit` and lower `port.max` to the model limit; the fixed `max` of the port (12 references, 15 audio) stays the ceiling. An unknown limit is never shown as 12: the badge shows the count only.
+- **Capabilities.** `higgsfield-catalog.capabilitiesOf(model, { type })` reads `medias` (sum of the image slots, capped at 12, roles, required) and the audio slot. `describeModel` and the option lists (`/api/nodes/options/higgsfield-*-models`) carry `references: { max, roles, required }` and, for video, `audio: { max }`; both are `null`/absent when the catalogue does not say.
+- **Refusal and validation.** `checkConnection` refuses over the limit with `{ code: 'too_many', data: { port, max, count, model } }` (toast through `ui.connectText`). `validate` answers `too_many_refs` / `refs_required` with `data: { model, max, count }`; the plan node carries `reasonCode/reasonData/reasonPort`, `run.js` shows the text on the card, `start()` rejects such a graph with `INVALID_GRAPH` before any submit. The execute check stays as the last safeguard.
+- **Model change.** `pruneEdges` does not remove over-limit multi inputs: the connections stay, the node is invalid with a readable message and a toast is shown once (`noticeModelLimits`). The inspector select marks models that do not fit the current connections (they stay selectable).
+- **Cold or expired catalogue.** `validate` reads the catalogue cache without I/O. A definition may therefore declare `prepare(params)`; the engine calls it for the nodes that will run before every plan and every start (in parallel, 10 s at most, `limits.prepareTimeoutMs`; failures and timeouts leave the data unknown and never fail the plan; not for restricted nodes of a participant). The Higgsfield nodes load their model there, so a run that exceeds the references of the model is refused before any upstream paid node runs, also after a restart or after the one-hour TTL of the catalogue.
+- **Client cache.** `ui.modelDetail` fetches one model description per id (shared by inspector, card and tooltip); on arrival the canvas and the plan are refreshed. A description older than 20 minutes is read again in the background (the old one stays in use; a failed refresh keeps it) and before every run. A failed read marks the limit as unknown for good (`limit.error`, tooltip "could not be read"), not as "still loading".
+- **Other nodes.** `hf.speech` with `text2speech_v2` takes no reference audio (`portVariants`, fixed max 0); a fixed maximum counts as a limit on the card and in the tooltip (`2/0` is an error). `video.seedance` has the input limits of Seedance 2.5 (30 / 10 / 10); the configured video model decides what is really taken (`video-models.referenceLimits`: 9/3/3, Wan 5/0/0, Kling and Veo 0), and `execute` refuses before anything is sent. The limits on the card do not follow the configured model yet (no model param on the node; the configuration is not part of the registry view).
+- **Test.** `scripts/test-nodes-limits.js` (graph, ui helpers, texts in three languages) and the WP31 section of `scripts/test-nodes-generate.js`.
+
 ---
 
 ## 3. How to add a node type
@@ -356,6 +367,7 @@ Plain Node scripts (`assert/strict`), no network, no build. There is no test run
 
 | Script | Purpose |
 | --- | --- |
+| `scripts/test-nodes-limits.js` | Reference limits per model (WP31): `limitBy` ports, `checkConnection` refusal, over-limit detection, capability texts, unknown limit shown as count, texts in three languages. |
 | `scripts/test-nodes-help.js` | Help texts (keys, three languages, limits, fallback), generated ports / cost / provider, `suggest` hints, fix texts, wiring (no innerHTML, CSS classes, script order); completeness of all types behind a switch. |
 | `scripts/test-nodes-types.js` | Port types, compatibility rules, values, fingerprints, registry framework, the 14 basic nodes (incl. `input.prompt`). |
 | `scripts/test-nodes-store.js` | Backing-session support in `lib/store.js` and the poller, workflow store (CRUD, `rev` conflicts, import / export validation, results, runs), asset helpers. |

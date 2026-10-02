@@ -625,7 +625,7 @@
         .registry()
         .then((payload) => {
           state.registry = payload;
-          state.reg = graphLib.indexRegistry(payload);
+          state.reg = graphLib.indexRegistry(payload, { limitsFor: ui.limitsFor });
           state.registryError = null;
           canvas.setRegistry(state.reg);
           registryWatcher = graphLib.createRegistryWatcher({ load: () => api.registry(), apply: applyFreshRegistry });
@@ -646,7 +646,7 @@
   function applyFreshRegistry(payload) {
     const previous = state.reg;
     state.registry = payload;
-    state.reg = graphLib.indexRegistry(payload);
+    state.reg = graphLib.indexRegistry(payload, { limitsFor: ui.limitsFor });
     // Only what depends on a type that changed is rebuilt: a card or the inspector the person is typing in stays.
     const changed = new Set();
     for (const def of state.reg.list) {
@@ -659,6 +659,7 @@
     }
     if (appView) appView.setRegistry(state.reg);
     for (const source of CONNECTION_OPTION_SOURCES) ui.refreshOptions(source);
+    ui.refreshModelDetails();
     if (palette) palette.refresh();
     if (runController) runController.relabel();
     if (inspector) {
@@ -1138,13 +1139,13 @@
           anchor.dir === 'out'
             ? graphLib.connect(state.reg, next, { node: anchor.node, port: anchor.port }, { node: out.node.id, port: port.id }, { reserved: state.reserved })
             : graphLib.connect(state.reg, next, { node: out.node.id, port: port.id }, { node: anchor.node, port: anchor.port }, { reserved: state.reserved });
-        if (result.error) connectionError = result.error.code;
+        if (result.error) connectionError = result.error;
         else next = result.graph;
       }
     }
     applyGraph(next, { history: 'add-node' });
     setSelection({ nodes: [out.node.id], notes: [], groups: [], edge: null });
-    if (connectionError) ui.toast(ui.T(`nodes.connect.${connectionError}`), { kind: 'warn' });
+    if (connectionError) ui.toast(ui.connectText(connectionError), { kind: 'warn' });
     return out.node;
   }
 
@@ -1255,6 +1256,42 @@
       next = graphLib.setParams(next, nodeId, reset);
     }
     applyGraph(next, { history: 'params', key: key || `p:${nodeId}:${Object.keys(patch).join(',')}` });
+    // Another model never removes connections; when it takes fewer than the node has, the person is told once.
+    if (def && Object.prototype.hasOwnProperty.call(patch, 'model') && patch.model !== node.params.model && def.inputs.some((port) => port.limitBy)) noticeModelLimits(nodeId);
+  }
+
+  // Node ids whose new model has not been read yet; the notice follows when its description arrives.
+  const limitNotices = new Set();
+
+  // Says once that the connections of a node exceed what its model takes. The connections stay (the node is invalid
+  // for the run until they fit, the server refuses the run before anything is paid).
+  function noticeModelLimits(nodeId) {
+    const node = graphLib.getNode(state.graph, nodeId);
+    if (!node || !state.reg) {
+      limitNotices.delete(nodeId);
+      return;
+    }
+    const over = graphLib.overLimits(state.reg, state.graph, nodeId);
+    if (over.length) {
+      limitNotices.delete(nodeId);
+      const first = over[0];
+      ui.toast(ui.T(first.max === 0 ? 'nodes.toast.modelLimits.none' : 'nodes.toast.modelLimits', { model: first.model, port: ui.portLabel(first.port), count: first.count, max: first.max }), { kind: 'warn', timeout: 7000 });
+      return;
+    }
+    // not known yet: wait for the description of the model, but only when something is connected to such an input
+    const usage = graphLib.capabilityUsage(state.reg, state.graph, nodeId);
+    const waiting = graphLib.portsFor(state.reg, node).inputs.some((port) => port.limit && !port.limit.known) && Object.values(usage).some((count) => count > 0);
+    if (waiting) limitNotices.add(nodeId);
+    else limitNotices.delete(nodeId);
+  }
+
+  // A model description arrived: cards, inspector (own listener) and plan follow, and a waiting notice is given.
+  function onModelCapabilities() {
+    if (!state.reg || !canvas || !state.graph) return;
+    canvas.refreshLimits();
+    for (const nodeId of [...limitNotices]) noticeModelLimits(nodeId);
+    // the server knows the model now (the description came through it): the plan can judge the connections
+    if (runController && state.workflow) runController.refreshPlan();
   }
 
   // Moves the text of an embedded prompt field into its own Prompt node (one undo step).
@@ -1312,7 +1349,7 @@
     if (meta.replaceEdge) graph = graphLib.disconnect(graph, meta.replaceEdge);
     const result = graphLib.connect(state.reg, graph, from, to, { reserved: state.reserved });
     if (result.error) {
-      ui.toast(ui.T(`nodes.connect.${result.error.code}`), { kind: 'warn' });
+      ui.toast(ui.connectText(result.error), { kind: 'warn' });
       return;
     }
     applyGraph(result.graph, { history: 'connect' });
@@ -2484,8 +2521,9 @@
         scheduleSave(VIEWPORT_SAVE_DELAY);
       },
       onConnect: connectEdge,
-      onConnectRefused(code) {
-        ui.toast(ui.T(`nodes.connect.${code}`), { kind: 'warn' });
+      onConnectRefused(error) {
+        // an error of the graph ({ code, data? }) or just the code of a refused drop target
+        ui.toast(ui.connectText(error), { kind: 'warn' });
       },
       onDetach(edgeId) {
         applyGraph(graphLib.disconnect(state.graph, edgeId), { history: 'disconnect' });
@@ -2578,6 +2616,7 @@
     });
 
     runController.attach();
+    ui.onModelChange(onModelCapabilities);
     extensions.nodeMenu.push(({ nodeId }) => [{ label: ui.T('nodes.send.menu'), icon: 'send', disabled: !hasNodeResult(nodeId), onClick: () => sendNodeToChat(nodeId) }]);
     appView = OCD.appMode.createAppView({
       host: dom.appView,

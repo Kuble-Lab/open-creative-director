@@ -85,8 +85,31 @@
     // specific wording (a setting that does not fit).
     if (vars.port === undefined && item.port) vars.port = portLabel(item.port);
     if (vars.message === undefined && item.message) vars.message = item.message;
-    const key = variant && hasIssueText(`${item.code}.${variant}`) ? `nodes.issue.${item.code}.${variant}` : `nodes.issue.${item.code}`;
+    let key = variant && hasIssueText(`${item.code}.${variant}`) ? `nodes.issue.${item.code}.${variant}` : `nodes.issue.${item.code}`;
+    // A text about a number of connections has its own wording for "none" and "one" (nodes.issue.<code>.none / .one).
+    const form = data.max === 0 ? 'none' : data.max === 1 ? 'one' : '';
+    if (form && key === `nodes.issue.${item.code}` && hasIssueText(`${item.code}.${form}`)) key = `nodes.issue.${item.code}.${form}`;
     return T(key, vars);
+  }
+
+  // Text of a refused connection { code, data? }. Over the limit of a model it names the model and the limit
+  // ("Grok Video 1.5 takes at most 1 reference image."): nodes.connect.too_many.<port>.<none|one|many>, else the generic
+  // nodes.connect.too_many.limit.<form>; an input that takes nothing (max 0) says so without a model.
+  function connectText(error) {
+    const code = error && typeof error === 'object' ? error.code : error;
+    const data = error && typeof error === 'object' && error.data ? error.data : null;
+    if (code === 'too_many' && data && Number.isFinite(data.max)) {
+      const form = data.max === 0 ? 'none' : data.max === 1 ? 'one' : 'many';
+      const vars = { model: data.model || '', max: data.max, count: data.count, port: portLabel(data.port) };
+      if (data.model) {
+        for (const key of [`nodes.connect.too_many.${data.port}.${form}`, `nodes.connect.too_many.limit.${form}`]) {
+          if (T(key) !== key) return T(key, vars);
+        }
+      } else if (data.max === 0) {
+        return T('nodes.connect.too_many.none', vars);
+      }
+    }
+    return T(`nodes.connect.${code}`);
   }
 
   /* ---------- DOM helpers ---------- */
@@ -408,9 +431,16 @@
   const optionCache = new Map();
   const optionListeners = new Set();
 
+  // Entries may carry what a model takes (`references`, `audio`, see lib/nodes/routes.js); they are kept as they come.
   function normalizeOptions(payload) {
     const list = Array.isArray(payload?.options) ? payload.options : Array.isArray(payload) ? payload : [];
-    return list.map((option) => (option && typeof option === 'object' ? { value: String(option.value), label: String(option.label ?? option.value) } : { value: String(option), label: String(option) }));
+    return list.map((option) => {
+      if (!option || typeof option !== 'object') return { value: String(option), label: String(option) };
+      const out = { value: String(option.value), label: String(option.label ?? option.value) };
+      if (option.references && typeof option.references === 'object') out.references = option.references;
+      if (option.audio && typeof option.audio === 'object') out.audio = option.audio;
+      return out;
+    });
   }
 
   // Option list of a select param: static or from an options source (fetched once, cached).
@@ -452,6 +482,174 @@
   function onOptionsChange(fn) {
     optionListeners.add(fn);
     return () => optionListeners.delete(fn);
+  }
+
+  /* ---------- what the chosen model takes (limits that depend on a param) ---------- */
+
+  // Description of a Higgsfield model (GET /api/nodes/higgsfield-models/:id), fetched once and shared by the inspector
+  // and the limits of the inputs. { state: 'loading' | 'ready' | 'error', data, error }.
+  const modelDetails = new Map();
+  const modelListeners = new Set();
+
+  // A description is not kept for good: the server forgets its copy of the catalogue after an hour (and at every restart),
+  // so a limit the page still shows could be out of date. After this time it is read again; the old description stays in
+  // use until the new one arrives.
+  const MODEL_DETAIL_TTL_MS = 20 * 60 * 1000;
+
+  function loadModelDetail(modelId, entry) {
+    entry.loading = true;
+    return api
+      .higgsfieldModel(modelId)
+      .then((data) => {
+        entry.data = data;
+        entry.state = 'ready';
+        entry.error = null;
+      })
+      .catch((error) => {
+        // a description that was read before is kept when the refresh fails
+        if (entry.state !== 'ready') {
+          entry.state = 'error';
+          entry.error = error.message;
+        }
+      })
+      .finally(() => {
+        entry.loading = false;
+        entry.at = Date.now();
+        modelListeners.forEach((fn) => fn(modelId));
+      });
+  }
+
+  function isStaleDetail(entry) {
+    return entry.state === 'ready' && !entry.loading && Date.now() - entry.at > MODEL_DETAIL_TTL_MS;
+  }
+
+  function modelDetail(modelId) {
+    let entry = modelDetails.get(modelId);
+    if (!entry) {
+      entry = { state: 'loading', data: null, error: null, at: Date.now(), loading: false };
+      modelDetails.set(modelId, entry);
+      loadModelDetail(modelId, entry);
+    } else if (isStaleDetail(entry)) {
+      loadModelDetail(modelId, entry);
+    }
+    return entry;
+  }
+
+  // The entry if the model has been asked for, without asking.
+  function peekModelDetail(modelId) {
+    return modelDetails.get(modelId) || null;
+  }
+
+  // Called with the model id whenever a description arrived (or failed).
+  function onModelChange(fn) {
+    modelListeners.add(fn);
+    return () => modelListeners.delete(fn);
+  }
+
+  // A failed read is tried again with the next call (the connection to the provider may be there now).
+  function refreshModelDetails() {
+    for (const [id, entry] of modelDetails) if (entry.state === 'error') modelDetails.delete(id);
+  }
+
+  // Before a run: the descriptions that are out of date are read again (the answer refreshes the cards and the plan).
+  function refreshStaleModelDetails() {
+    for (const [id, entry] of modelDetails) if (isStaleDetail(entry)) loadModelDetail(id, entry);
+  }
+
+  // { name, references, audio } of the option `value` of a model param (`source` = its optionsSource), or null without a
+  // value. references: { max, roles, required }, audio: { max }; either is null while it is not known. The option list
+  // answers when it carries the media list of the models; if not, the description of the model is read once (async: the
+  // listeners are told, the next call knows).
+  function optionCapabilities(source, value) {
+    const id = String(value ?? '').trim();
+    if (!id) return null;
+    const list = source ? optionCache.get(source) : null;
+    const option = list && list.state === 'ready' ? list.options.find((item) => item.value === id) : null;
+    let detail = modelDetails.get(id);
+    const fromList = Boolean(option && option.references);
+    if ((!detail && !fromList) || (detail && isStaleDetail(detail))) detail = modelDetail(id);
+    const data = detail && detail.state === 'ready' ? detail.data : null;
+    const references = (data && data.references) || (option && option.references) || null;
+    return {
+      name: (data && data.name) || (option && option.label) || id,
+      references,
+      audio: (data && data.audio) || (option && option.audio) || null,
+      // reading the description failed (the model is gone from the catalogue, or the provider is not reachable)
+      error: !references && Boolean(detail && detail.state === 'error')
+    };
+  }
+
+  // reg.limitsFor of the app (graph.indexRegistry): per input with `limitBy` what the chosen model takes.
+  function limitsFor(node, def) {
+    const out = {};
+    const params = graphLib.effectiveParams(def, node);
+    for (const port of def.inputs || []) {
+      if (!port.limitBy) continue;
+      const param = (def.params || []).find((item) => item.id === port.limitBy.param);
+      if (!param) continue;
+      const caps = optionCapabilities(param.optionsSource, params[param.id]);
+      const cap = caps && caps[port.limitBy.capability];
+      if (cap && Number.isFinite(cap.max)) out[port.id] = { max: cap.max, roles: Array.isArray(cap.roles) ? cap.roles : [], required: cap.required === true, subject: caps.name };
+      else if (caps && caps.error) out[port.id] = { error: true };
+    }
+    return out;
+  }
+
+  // A role of a reference slot ("start_image") in the interface language; unknown roles are shown readable.
+  function roleLabel(role) {
+    return tr(`nodes.role.${role}`, humanize(role));
+  }
+
+  function hasStartAndEnd(references) {
+    const roles = (references.roles || []).map((role) => String(role).toLowerCase());
+    return references.max === 2 && roles.some((role) => /start|first/.test(role)) && roles.some((role) => /end|last/.test(role));
+  }
+
+  // "1 image", "up to 4 images", "start and end image", "no reference image" (+ "required").
+  function referencesText(references) {
+    if (!references) return '';
+    let text;
+    if (references.max === 0) text = T('nodes.cap.refs.none');
+    else if (hasStartAndEnd(references)) text = T('nodes.cap.refs.startEnd');
+    else if (references.max === 1) text = T('nodes.cap.refs.one');
+    else text = T('nodes.cap.refs.upTo', { max: references.max });
+    return references.required && references.max > 0 ? `${text} ${T('nodes.cap.required')}` : text;
+  }
+
+  function audioText(audio) {
+    if (!audio || !(audio.max > 0)) return '';
+    return audio.max >= 15 ? T('nodes.cap.audio') : T('nodes.cap.audioUpTo', { max: audio.max });
+  }
+
+  // What a model takes, in one line: "up to 4 images, audio". '' while nothing is known.
+  function capabilitiesText(caps) {
+    if (!caps) return '';
+    return [referencesText(caps.references), audioText(caps.audio)].filter(Boolean).join(', ');
+  }
+
+  // Why a model does not fit the connections of the node ('' = it fits or nothing is known); usage = { references, audio }
+  // (graph.capabilityUsage).
+  // `short` gives the form for an entry of the model list ("⚠ only 1"): a long text would be cut off in the closed field.
+  function misfitText(caps, usage, { short = false } = {}) {
+    if (!caps || !usage) return '';
+    const refs = usage.references || 0;
+    const audio = usage.audio || 0;
+    const key = (name) => (short ? `nodes.cap.misfitShort.${name}` : `nodes.cap.misfit.${name}`);
+    if (caps.references && refs > caps.references.max) {
+      return caps.references.max === 0 ? T(key('noRefs'), { count: refs }) : T(key('refs'), { max: caps.references.max, count: refs });
+    }
+    if (caps.audio && audio > caps.audio.max) {
+      return caps.audio.max === 0 ? T(key('noAudio'), { count: audio }) : T(key('audio'), { max: caps.audio.max, count: audio });
+    }
+    return '';
+  }
+
+  // Label of an entry of the model list: the name, what it takes and, when it does not fit the connections, why.
+  function modelOptionLabel(option, usage) {
+    const capabilities = capabilitiesText(option);
+    // short in the entry (the full reason is in the inspector under "does not fit the connections")
+    const misfit = misfitText(option, usage, { short: true });
+    return { text: `${option.label}${capabilities ? ` · ${capabilities}` : ''}${misfit ? ` ${misfit}` : ''}`, misfit: Boolean(misfit) };
   }
 
   /* ---------- media previews ---------- */
@@ -833,7 +1031,16 @@
         const options = source.options.slice();
         if (param.optionsSource) options.unshift({ value: '', label: source.state === 'loading' ? T('nodes.option.loading') : source.state === 'error' ? T('nodes.option.unavailable') : T('nodes.option.default') });
         if (current !== '' && !options.some((option) => option.value === current)) options.push({ value: current, label: current });
-        for (const option of options) select.append(el('option', { value: option.value, text: option.label }));
+        // Model lists tell what each model takes; models that do not fit the connections of the node are marked.
+        const usage = param.optionsSource && typeof ctx.usage === 'function' ? ctx.usage() : null;
+        for (const option of options) {
+          if (option.references || option.audio) {
+            const label = modelOptionLabel(option, usage);
+            select.append(el('option', { value: option.value, text: label.text, dataset: label.misfit ? { misfit: '1' } : null }));
+          } else {
+            select.append(el('option', { value: option.value, text: option.label }));
+          }
+        }
         select.value = current;
       };
       fill();
@@ -962,10 +1169,18 @@
     return el('span', { class: classes.join(' '), dataset: { dir: direction, port: port.id, type: port.type } });
   }
 
-  // "n/max" next to the label of a multi-input from the first connection on ("n/∞" without a maximum).
+  // "n/max" next to the label of a multi-input from the first connection on ("n/∞" without a maximum). While the limit
+  // of the chosen model is not known, only the number is shown.
   function portCountText(port, count) {
     if (!port.multiple || !count) return '';
+    if (port.limit && !port.limit.known) return String(count);
     return `${count}/${Number.isFinite(port.max) ? port.max : '\u221e'}`;
+  }
+
+  // More connections than the input takes (the chosen model, or a fixed maximum such as 0 of an input a setting switched
+  // off): the badge is an error then. An unknown limit of a model leaves the fixed ceiling as the only limit.
+  function portOverLimit(port, count) {
+    return Boolean(port.multiple && Number.isFinite(port.max) && count > port.max);
   }
 
   // Signature of everything that changes the card structure (ports, visible params).
@@ -981,7 +1196,7 @@
         return `${param.id}${linked ? '~' : ''}${ctxKind}`;
       });
     return JSON.stringify([
-      ports.inputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}:${p.multiple ? `m${p.max ?? ''}` : ''}:${p.required ? 'r' : ''}`),
+      ports.inputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}:${p.multiple ? `m${p.max ?? ''}` : ''}:${p.required ? 'r' : ''}${p.limit ? (p.limit.known ? 'k' : 'u') : ''}`),
       ports.outputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}`),
       visible,
       def.available === true ? 1 : String(def.available),
@@ -1048,17 +1263,24 @@
     state.widgets.clear();
   }
 
-  // Connection state of the input rows (label colour, "n/max" badge). Runs on every card update, so a new
-  // connection shows up without rebuilding the card (the widgets keep their focus).
-  function patchPorts(state, connected) {
+  // Connection state of the input rows (label colour, "n/max" badge, red when the chosen model takes fewer; the reason is in
+  // the port tooltip). Runs on every card update, so a new connection shows up without rebuilding the card (the widgets
+  // keep their focus).
+  function patchPorts(state, connected, ctx) {
     if (!state.portRows) return;
+    // The ports as they are now: the limit of the chosen model can change without the structure of the card changing.
+    const fresh = ctx && state.node ? new Map(graphLib.portsFor(ctx.reg, state.node).inputs.map((port) => [port.id, port])) : null;
     for (const [portId, entry] of state.portRows) {
       const count = connected.get(portId) || 0;
+      const port = (fresh && fresh.get(portId)) || entry.port;
       entry.row.classList.toggle('is-connected', count > 0);
       if (entry.badge) {
-        const text = portCountText(entry.port, count);
+        const text = portCountText(port, count);
+        const over = portOverLimit(port, count);
         if (entry.badge.textContent !== text) entry.badge.textContent = text;
         entry.badge.classList.toggle('hidden', !text);
+        entry.badge.classList.toggle('is-over', over);
+        entry.row.classList.toggle('is-over', over);
       }
     }
   }
@@ -1089,7 +1311,7 @@
       right.append(row);
       state.portEls.out.set(port.id, dot);
     }
-    patchPorts(state, connected);
+    patchPorts(state, connected, ctx);
     ports.append(left, right);
     ports.classList.toggle('is-empty', !inputs.length && !outputs.length);
   }
@@ -1223,7 +1445,7 @@
       return true;
     }
     // Same structure: refresh the connection badges and push new param values into the existing widgets.
-    patchPorts(state, connected);
+    patchPorts(state, connected, ctx);
     if (def && (!previousNode || previousNode.params !== node.params)) {
       const effective = graphLib.effectiveParams(def, node);
       for (const [id, widget] of state.widgets) widget.set(effective[id]);
@@ -1350,6 +1572,7 @@
     optionLabel,
     hasIssueText,
     issueText,
+    connectText,
     setRoot,
     root,
     dialog,
@@ -1363,6 +1586,19 @@
     refreshOptions,
     onOptionsChange,
     normalizeOptions,
+    modelDetail,
+    peekModelDetail,
+    onModelChange,
+    refreshModelDetails,
+    refreshStaleModelDetails,
+    optionCapabilities,
+    limitsFor,
+    roleLabel,
+    capabilitiesText,
+    misfitText,
+    modelOptionLabel,
+    portCountText,
+    portOverLimit,
     mediaElement,
     mediaUrl,
     isMediaValue,

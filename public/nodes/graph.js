@@ -143,11 +143,15 @@
   /* ---------- registry index ---------- */
 
   // Wraps the payload of GET /api/nodes/registry for fast lookups.
-  function indexRegistry(payload) {
+  // options.limitsFor(node, def) -> { [portId]: { max, roles?, required?, subject? } } (optional): what the chosen option
+  // of a param allows at the inputs with `limitBy` (the app reads it from the capabilities of the Higgsfield model);
+  // graph.js itself does no I/O. Without it, or while the answer is unknown, such an input only has its fixed maximum.
+  function indexRegistry(payload, options) {
     const source = payload || {};
     const types = new Map();
     for (const def of source.nodeTypes || []) types.set(def.type, def);
     return {
+      limitsFor: options && typeof options.limitsFor === 'function' ? options.limitsFor : null,
       version: source.version || 1,
       types,
       list: Array.from(types.values()),
@@ -191,7 +195,34 @@
         if (variant.outputs) outputs = variant.outputs;
       }
     }
+    if (reg.limitsFor && inputs.some((port) => port.limitBy)) {
+      let limits = {};
+      try {
+        limits = reg.limitsFor(node, def) || {};
+      } catch (_) {
+        limits = {};
+      }
+      inputs = inputs.map((port) => (port.limitBy ? withLimit(port, limits[port.id]) : port));
+    }
     return { inputs, outputs };
+  }
+
+  // The same rule as portsFor of lib/nodes/registry.js: an input with `limitBy` carries `limit`. Known: { known: true,
+  // max, roles, required, subject } and `max` is the smaller of that and the fixed maximum of the port; unknown:
+  // { known: false } and the fixed maximum stays the ceiling (it is not shown as the limit of the model). The app adds
+  // `error: true` when reading the model failed (limitsFor answers { error: true }): the limit is unknown for good then.
+  function withLimit(port, limit) {
+    if (!limit || !Number.isFinite(limit.max)) return { ...port, limit: limit && limit.error === true ? { known: false, error: true } : { known: false } };
+    const max = Number.isFinite(port.max) ? Math.min(port.max, limit.max) : limit.max;
+    return { ...port, max, limit: { known: true, max, roles: Array.isArray(limit.roles) ? limit.roles : [], required: limit.required === true, subject: String(limit.subject || '') } };
+  }
+
+  // The number to show as the maximum of an input ("n/max"): null when there is none or it is not known (an input whose
+  // limit depends on a model that has not been read yet shows the count only).
+  function portMax(port) {
+    if (!port || !port.multiple) return null;
+    if (port.limit && !port.limit.known) return null;
+    return Number.isFinite(port.max) ? port.max : null;
   }
 
   function findPort(reg, node, direction, portId) {
@@ -292,9 +323,42 @@
     if (wouldCreateCycle(graph, fromNode.id, toNode.id)) return { code: 'cycle' };
     if (toPort.multiple && Number.isFinite(toPort.max)) {
       const count = incomingEdges(graph, toNode.id, toPort.id).length;
-      if (count >= toPort.max) return { code: 'too_many' };
+      if (count >= toPort.max) return { code: 'too_many', data: limitData(toPort, count) };
     }
     return null;
+  }
+
+  // Values for the text of a refused connection: the input, its limit and, when the limit comes from a model, the model.
+  function limitData(port, count) {
+    const data = { port: port.id, max: port.max, count };
+    if (port.limit && port.limit.known) data.model = port.limit.subject || '';
+    return data;
+  }
+
+  // Inputs whose connections exceed the limit of the chosen model: [{ port, count, max, model }]. Connections are never
+  // removed for this (a model change must not lose work); the node is invalid for the run instead (server side).
+  function overLimits(reg, graph, nodeId) {
+    const node = getNode(graph, nodeId);
+    if (!node) return [];
+    const found = [];
+    for (const port of portsFor(reg, node).inputs) {
+      if (!port.multiple || !port.limit || !port.limit.known) continue;
+      const count = incomingEdges(graph, nodeId, port.id).length;
+      if (count > port.limit.max) found.push({ port: port.id, count, max: port.limit.max, model: port.limit.subject || '' });
+    }
+    return found;
+  }
+
+  // How many connections each capability ('references', 'audio') of a node has at the moment: { [capability]: count }.
+  // The model list uses it to mark the models that do not fit.
+  function capabilityUsage(reg, graph, nodeId) {
+    const node = getNode(graph, nodeId);
+    const usage = {};
+    if (!node) return usage;
+    for (const port of portsFor(reg, node).inputs) {
+      if (port.limitBy) usage[port.limitBy.capability] = incomingEdges(graph, nodeId, port.id).length;
+    }
+    return usage;
   }
 
   // Adds an edge. A single-input port replaces its previous edge (reported in `removed`).
@@ -320,8 +384,9 @@
     return edges.length === graph.edges.length ? graph : { ...graph, edges };
   }
 
-  // Removes edges whose ports no longer exist or became incompatible (after a portVariants param
-  // change) and edges beyond the max of a multi-input port.
+  // Removes edges whose ports no longer exist or became incompatible (after a portVariants param change) and a second
+  // edge into a single input. Edges beyond the maximum of a multi-input port stay: that maximum can come from a model
+  // (`limit`), and a change of the model must never delete connections (the node is invalid instead, see overLimits).
   function pruneEdges(reg, graph, nodeIds) {
     const scope = nodeIds ? new Set(nodeIds) : null;
     const kept = [];
@@ -1621,7 +1686,8 @@
 
   // Structured description of one port for the hover tooltip; no strings, no HTML: the UI resolves the keys.
   //   { nodeId, nodeType, portId, direction, labelKey, label, base, typeKey, list, required (in: boolean, out: null),
-  //     multiple, max, count, text: { key, dirKey, fallbackKeys }, facts: [{ key, vars }],
+  //     multiple, max, count, limit (the limit that depends on the chosen model, or null), overLimit,
+  //     text: { key, dirKey, fallbackKeys }, facts: [{ key, vars, error? }],
   //     connections: [{ order, edgeId, nodeId, nodeTitle, titled, nodeType, port, multiOutput }], moreConnections }
   // Facts come from the definition alone (multi-input, list input / output, param fallback). The connections of an
   // input are listed in graph.edges order, which is exactly the order resolveNodeInputs (lib/nodes/engine.js)
@@ -1639,16 +1705,40 @@
     const parsed = parseType(port.type) || { base: 'any', list: false };
     const isInput = dir === 'in';
     const multiple = isInput && port.multiple === true;
-    const max = multiple && Number.isFinite(port.max) ? port.max : null;
+    const max = multiple ? portMax(port) : null;
     const incoming = isInput ? incomingEdges(graph, nodeId, portId) : [];
     const count = incoming.length;
     const media = MEDIA_BASES.includes(parsed.base);
     const facts = [];
-    if (multiple) {
-      if (max !== null) facts.push({ key: 'nodes.porttip.fact.multi', vars: { max, count } });
-      else facts.push({ key: 'nodes.porttip.fact.multiUnlimited', vars: { count } });
-      const listKey = `nodes.porttip.fact.multiList${media ? 'Media' : ''}${max !== null ? 'Max' : ''}`;
-      facts.push({ key: listKey, vars: max !== null ? { max } : {} });
+    // An input whose limit depends on a param (the model): { known, max, roles, required, subject } or, while the model is
+    // not known, { known: false, chosen } (chosen: a model is set, it only has not been read yet).
+    let limit = null;
+    if (multiple && port.limit) {
+      limit = port.limit.known
+        ? { known: true, max: port.limit.max, roles: port.limit.roles.slice(), required: port.limit.required, subject: port.limit.subject }
+        : { known: false, ...(port.limit.error === true ? { error: true } : {}), chosen: Boolean(def && port.limitBy && String(effectiveParams(def, node)[port.limitBy.param] || '').trim()) };
+    }
+    if (multiple && limit && limit.known) {
+      // 'none', 'one' or 'many' picks the wording; the list fact only matters when more than one connection fits
+      const form = limit.max === 0 ? 'none' : limit.max === 1 ? 'one' : 'many';
+      facts.push({ key: `nodes.porttip.fact.limit.${form}`, vars: { model: limit.subject, max: limit.max, count } });
+      if (limit.max > 1) facts.push({ key: `nodes.porttip.fact.multiList${media ? 'Media' : ''}Max`, vars: { max: limit.max } });
+      if (limit.required) facts.push({ key: 'nodes.porttip.fact.limitRequired', vars: { model: limit.subject } });
+      if (count > limit.max) facts.push({ key: 'nodes.porttip.fact.limitOver', vars: { count, max: limit.max }, error: true });
+    } else if (multiple && limit) {
+      facts.push({ key: limit.error ? 'nodes.porttip.fact.limitError' : limit.chosen ? 'nodes.porttip.fact.limitUnknown' : 'nodes.porttip.fact.limitChoose', vars: { count } });
+      facts.push({ key: `nodes.porttip.fact.multiList${media ? 'Media' : ''}`, vars: {} });
+    } else if (multiple) {
+      // a fixed maximum of 0 (an input that a param value switched off, see portVariants) takes nothing at all
+      if (max === 0) {
+        facts.push({ key: 'nodes.porttip.fact.takesNone', vars: { count } });
+      } else {
+        if (max !== null) facts.push({ key: 'nodes.porttip.fact.multi', vars: { max, count } });
+        else facts.push({ key: 'nodes.porttip.fact.multiUnlimited', vars: { count } });
+        const listKey = `nodes.porttip.fact.multiList${media ? 'Media' : ''}${max !== null ? 'Max' : ''}`;
+        facts.push({ key: listKey, vars: max !== null ? { max } : {} });
+      }
+      if (max !== null && count > max) facts.push({ key: 'nodes.porttip.fact.limitOver', vars: { count, max }, error: true });
     } else if (isInput && parsed.list) {
       facts.push({ key: 'nodes.porttip.fact.listIn', vars: {} });
     } else if (isInput) {
@@ -1703,6 +1793,8 @@
       multiple,
       max,
       count,
+      limit,
+      overLimit: Boolean(multiple && Number.isFinite(port.max) && count > port.max),
       text: keys,
       facts,
       connections,
@@ -1748,6 +1840,9 @@
     effectiveParams,
     portsFor,
     findPort,
+    portMax,
+    overLimits,
+    capabilityUsage,
     parseType,
     canConnectTypes,
     getNode,

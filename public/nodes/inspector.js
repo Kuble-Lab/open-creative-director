@@ -21,7 +21,14 @@
     let actionsSlot = null;
     let current = null;
     let runRefs = null; // { nodeId?, runEl, histEl? } containers refreshed by refreshRun() without rebuilding the form
-    const modelCache = new Map();
+    // Model descriptions are shared with the limits of the inputs (ui.modelDetail); when the one of the selected model
+    // arrives, the form is built again.
+    const stopModelWatch = ui.onModelChange((modelId) => {
+      if (current && lastKey && current.node?.params?.model === modelId) {
+        lastKey = null;
+        render(current, { force: true });
+      }
+    });
 
     function clearWidgets() {
       for (const widget of widgets.values()) widget.dispose && widget.dispose();
@@ -32,29 +39,8 @@
 
     /* ---------- Higgsfield model descriptions ---------- */
 
-    function modelState(modelId, refresh) {
-      let entry = modelCache.get(modelId);
-      if (!entry) {
-        entry = { state: 'loading', data: null, error: null };
-        modelCache.set(modelId, entry);
-        api
-          .higgsfieldModel(modelId)
-          .then((data) => {
-            entry.data = data;
-            entry.state = 'ready';
-          })
-          .catch((error) => {
-            entry.state = 'error';
-            entry.error = error.message;
-          })
-          .finally(() => {
-            if (current && lastKey && current.node?.params?.model === modelId) {
-              lastKey = null;
-              refresh();
-            }
-          });
-      }
-      return entry;
+    function modelState(modelId) {
+      return ui.modelDetail(modelId);
     }
 
     function parseExtra(text) {
@@ -463,7 +449,7 @@
 
         const hasDynamic = def.params.some((param) => param.dynamic === DYNAMIC);
         const modelId = hasDynamic ? String(effective.model || '') : '';
-        const model = modelId ? modelState(modelId, refresh) : null;
+        const model = modelId ? modelState(modelId) : null;
         const useDynamic = Boolean(model && model.state === 'ready' && model.data);
 
         for (const param of def.params) {
@@ -478,6 +464,8 @@
           const widget = ui.paramWidget(param, effective[param.id], {
             node,
             compact: false,
+            // the model list marks the models that do not fit the connections of the node
+            usage: param.optionsSource ? () => graphLib.capabilityUsage(reg, ctx.graph, node.id) : undefined,
             ...ui.promptFieldOptions(node, param, ports.inputs),
             onChange: (value, meta) => cb.onParam && cb.onParam(node.id, param.id, value, meta),
             uploadFile: (file, options) => (cb.uploadFile ? cb.uploadFile(node.id, file, options) : Promise.reject(new Error('Upload unavailable')))
@@ -530,6 +518,12 @@
               const unit = data.credits.unit === 'per_second' ? ui.T('nodes.inspector.perSecond') : ui.T('nodes.inspector.perImage');
               info.append(el('div', { class: 'nv-hint', text: ui.T('nodes.inspector.credits', { credits: data.credits.perUnit, unit }) }));
             }
+            // what the model takes at its inputs, and a warning when the connected inputs do not fit it
+            const caps = { references: data.references || null, audio: data.audio || null };
+            const takes = ui.capabilitiesText(caps);
+            if (takes) info.append(el('div', { class: 'nv-hint nv-model-takes', text: ui.T('nodes.inspector.takes', { caps: takes }) }));
+            const misfit = ui.misfitText(caps, graphLib.capabilityUsage(reg, ctx.graph, node.id));
+            if (misfit) info.append(el('div', { class: 'nv-model-misfit', text: ui.T('nodes.inspector.misfit', { misfit }) }));
             block.append(info);
             for (const descriptor of data.params) {
               block.append(
@@ -724,7 +718,7 @@
           };
           const sources = connected.map((c) => titleOf(c.split('<')[1].split('.')[0]));
           const outCount = graphLib.outgoingEdges(ctx.graph, node.id).length;
-          const modelReady = model ? modelCache.get(model)?.state : '';
+          const modelReady = model ? ui.peekModelDetail(model)?.state : '';
           const exposure = cb.app ? cb.app.signature(node.id) : '';
           parts.push(node.id, node.type, visible.join(','), connected.join(','), model, variant, modelReady, outCount, sources.join(','), exposure);
         }
@@ -756,7 +750,7 @@
         }
         const convert = host.querySelector('[data-motion-convert]');
         if (convert) convert.hidden = !graphLib.canConvertMotionHtml(reg, ctx.graph, node.id);
-        const model = def && def.params.some((p) => p.dynamic === DYNAMIC) ? modelCache.get(String(effective.model || '')) : null;
+        const model = def && def.params.some((p) => p.dynamic === DYNAMIC) ? ui.peekModelDetail(String(effective.model || '')) : null;
         if (model && model.state === 'ready') {
           // Dynamic widgets keep their own state; values are re-read only on rebuild (signature change).
         }
@@ -806,7 +800,10 @@
       invalidate: () => {
         lastKey = null;
       },
-      dispose: clearWidgets
+      dispose: () => {
+        stopModelWatch();
+        clearWidgets();
+      }
     };
   }
 

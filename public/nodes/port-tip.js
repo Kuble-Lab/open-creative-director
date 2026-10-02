@@ -116,7 +116,11 @@
 
       if (description.facts.length) {
         const facts = el('ul', { class: 'nv-porttip-facts' });
-        for (const fact of description.facts) facts.append(el('li', { text: T(fact.key, fact.vars) }));
+        for (const fact of description.facts) facts.append(el('li', { class: fact.error ? 'is-error' : '', text: T(fact.key, fact.vars) }));
+        // the roles the chosen model names for its reference slots ("start image, end image")
+        if (description.limit && description.limit.known && description.limit.roles.length) {
+          facts.append(el('li', { class: 'nv-porttip-roles', text: T('nodes.porttip.roles', { roles: description.limit.roles.map((role) => ui.roleLabel(role)).join(', ') }) }));
+        }
         tip.append(facts);
       }
 

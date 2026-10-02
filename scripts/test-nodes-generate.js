@@ -593,6 +593,24 @@ async function main() {
       } finally {
         stop();
       }
+
+      // WP31: the limits of the inputs are those of Seedance 2.5; another configured video model takes fewer references
+      // (lib/video-models.js). The node view skips the check of the tool layer, so the node refuses before anything is sent.
+      const sent = payloads.length;
+      const tenImages = list('image', Array.from({ length: 10 }, () => image1));
+      await assert.rejects(
+        execute(registry, 'video.seedance', makeCtx(sessionId, { videoModel: 'bytedance/seedance-2.0-fast' }), { prompt: text('x'), refs: tenImages }),
+        /Model bytedance\/seedance-2.0-fast accepts at most 9 reference images \(got 10\)/
+      );
+      await assert.rejects(
+        execute(registry, 'video.seedance', makeCtx(sessionId, { videoModel: 'alibaba/wan-2.7' }), { prompt: text('x'), ref_videos: list('video', [video1]) }),
+        /Model alibaba\/wan-2.7 takes no reference videos \(got 1\)/
+      );
+      await assert.rejects(
+        execute(registry, 'video.seedance', makeCtx(sessionId, { videoModel: 'google/veo-3.1-lite' }), { prompt: text('x'), refs: list('image', [image1]) }),
+        /Model google\/veo-3.1-lite takes no reference images \(got 1\)/
+      );
+      assert.equal(payloads.length, sent, 'nothing was submitted');
     }
 
     /* ----- catalogue: paging, caching, mapping ----- */
@@ -2127,6 +2145,249 @@ async function main() {
       assert.deepEqual(described.describeModel(JSON.parse(modelJson({ parameters: [{ name: 'format', type: 'string', options: ['png', 'jpg'] }] }))).params.find((param) => param.id === 'format').options, ['png', 'jpg']);
     }
 
+    /* ----- WP31: what a model takes at its inputs (references, audio) is known, shown and enforced ----- */
+    {
+      resetMocks();
+      // models as models_explore describes them: a Grok-like one with a single reference image, one with up to four, one
+      // with start and end image (roles), one without image references, one that needs a reference, one image model
+      const model = (id, name, medias, output = 'video') => JSON.stringify({ id, name, provider_name: 'Test', output_type: output, parameters: [], medias, credits_per_unit: 2, credit_unit: 'per_generation' });
+      const catalogue = {
+        one: model('grok_like', 'Grok Like 1.5', [{ name: 'start', type: 'image', max: 1, roles: ['start_image'] }]),
+        four: model('four_refs', 'Four Refs', [{ name: 'refs', type: 'image', max: 4, roles: ['image_references'] }]),
+        startEnd: model('start_end', 'Start End', [{ name: 'frames', type: 'image', max: 2, roles: ['start_image', 'end_image'] }]),
+        none: model('text_only', 'Text Only', []),
+        required: model('needs_ref', 'Needs Ref', [{ name: 'start', type: 'image', max: 1, required: true, roles: ['start_image'] }]),
+        audio: model('with_audio', 'With Audio', [{ name: 'medias', type: 'image', max: 3, roles: ['start_image', 'audio_references'] }]),
+        image: model('multi_image', 'Multi Image', [{ name: 'refs', type: 'image', max: 8, roles: ['image'] }], 'image')
+      };
+      const byId = Object.fromEntries(Object.values(catalogue).map((json) => [JSON.parse(json).id, json]));
+
+      // capabilities: the numbers come from medias[]; no media list = unknown, which is not "no references"
+      const caps = (json, options) => catalogLib.capabilitiesOf(JSON.parse(json), options);
+      assert.deepEqual(caps(catalogue.one).references, { max: 1, roles: ['start_image'], required: false });
+      assert.deepEqual(caps(catalogue.four).references, { max: 4, roles: ['image_references'], required: false });
+      assert.deepEqual(caps(catalogue.startEnd).references, { max: 2, roles: ['start_image', 'end_image'], required: false });
+      assert.deepEqual(caps(catalogue.none).references, { max: 0, roles: [], required: false }, 'a model without image slots takes none');
+      assert.equal(caps(catalogue.required).references.required, true);
+      assert.deepEqual(caps(catalogue.one).audio, { max: 0 }, 'a video model without an audio role takes no audio');
+      assert.deepEqual(caps(catalogue.audio).audio, { max: 15 }, 'no stated limit: the limit of the tool');
+      assert.deepEqual(caps(catalogue.image).references, { max: 8, roles: ['image'], required: false }, 'image models have capabilities');
+      assert.ok(!('audio' in caps(catalogue.image)), 'audio is a video thing');
+      assert.deepEqual(caps(catalogue.image, { type: 'video' }).audio, { max: 0 }, 'the type of the list can say it is a video model');
+      assert.equal(catalogLib.capabilitiesOf({ id: 'x', name: 'No media list' }), null);
+      assert.equal(catalogLib.capabilitiesOf(null), null);
+
+      // the model description (GET /api/nodes/higgsfield-models/:id) carries the same, unknown as null
+      const described = catalogLib.describeModel(JSON.parse(catalogue.startEnd));
+      assert.deepEqual(described.references, { max: 2, roles: ['start_image', 'end_image'], required: false });
+      assert.deepEqual(described.audio, { max: 0 });
+      assert.deepEqual(described.refs, described.references, 'refs stays for older clients');
+      assert.equal(catalogLib.describeModel({ id: 'bare', name: 'Bare' }).references, null);
+      assert.ok(!('audio' in catalogLib.describeModel({ id: 'bare', name: 'Bare' })));
+
+      // a list entry without media list is read again on the first getModel (it would look like "no references" otherwise)
+      {
+        const calls = [];
+        const fake = {
+          status: () => ({ connected: true }),
+          mcpCall: async (name, args) => {
+            calls.push(args);
+            if (args.action === 'list') return JSON.stringify({ items: [{ id: 'grok_like', name: 'Grok Like 1.5' }, JSON.parse(catalogue.four)], has_more: false });
+            return byId[args.model_id];
+          }
+        };
+        const catalog = catalogLib.createCatalog({ higgsfield: fake });
+        await catalog.listModels('video');
+        assert.equal(catalog.peekModel('grok_like').medias, undefined, 'the list entry is partial');
+        const full = await catalog.getModel('grok_like');
+        assert.equal(calls.filter((call) => call.action === 'get').length, 1, 'the partial entry is read in full');
+        assert.equal(catalogLib.capabilitiesOf(full).references.max, 1);
+        await catalog.getModel('grok_like');
+        await catalog.getModel('four_refs');
+        assert.equal(calls.filter((call) => call.action === 'get').length, 1, 'a full entry (list or get) is cached');
+      }
+
+      // the registry gives the port its limit: known from the cached model, unknown otherwise; the fixed maximum stays the ceiling
+      patch(higgsfield, 'status', () => ({ connected: true }));
+      let getCalls = 0;
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        assert.equal(name, 'models_explore');
+        if (args.action === 'get') {
+          getCalls += 1;
+          return byId[args.model_id] || JSON.stringify({ items: [] });
+        }
+        return JSON.stringify({ items: [], has_more: false });
+      });
+      catalogLib.clearCache();
+      const refsPort = (type, model) => registry.portsFor(oneOf(registry, type), { model }).inputs.find((port) => port.id === 'refs');
+      assert.deepEqual(refsPort('video.higgsfield', 'grok_like').limit, { known: false }, 'not in the cache yet: unknown');
+      assert.equal(refsPort('video.higgsfield', 'grok_like').max, 12, 'the fixed maximum is the ceiling meanwhile');
+      assert.deepEqual(refsPort('video.higgsfield', '').limit, { known: false });
+      for (const id of Object.keys(byId)) await catalogLib.getModel(id);
+      assert.deepEqual(refsPort('video.higgsfield', 'grok_like'), { id: 'refs', type: 'image', multiple: true, max: 1, limitBy: { param: 'model', capability: 'references' }, limit: { known: true, max: 1, roles: ['start_image'], required: false, subject: 'Grok Like 1.5' } });
+      assert.equal(refsPort('video.higgsfield', 'four_refs').max, 4);
+      assert.equal(refsPort('video.higgsfield', 'text_only').max, 0);
+      assert.deepEqual(refsPort('video.higgsfield', 'start_end').limit.roles, ['start_image', 'end_image']);
+      assert.equal(refsPort('image.higgsfield', 'multi_image').max, 8);
+      const audioPort = (model) => registry.portsFor(oneOf(registry, 'video.higgsfield'), { model }).inputs.find((port) => port.id === 'audio');
+      assert.equal(audioPort('grok_like').max, 0);
+      assert.equal(audioPort('with_audio').max, 15);
+      assert.equal(registry.portsFor(oneOf(registry, 'image.higgsfield'), { model: 'multi_image' }).inputs.some((port) => port.id === 'audio'), false);
+      // what the client reads: the declaration of the descriptor
+      const descriptor = registry.publicDescriptor(oneOf(registry, 'video.higgsfield'));
+      assert.deepEqual(descriptor.inputs.find((port) => port.id === 'refs').limitBy, { param: 'model', capability: 'references' });
+      assert.deepEqual(descriptor.inputs.find((port) => port.id === 'audio').limitBy, { param: 'model', capability: 'audio' });
+      assert.equal(typeof descriptor.limitsFor, 'undefined', 'the function stays on the server');
+      // a definition with limitBy needs a limitsFor, and limitBy names a param
+      const broken = (patchDef) => () => createRegistry().register({ type: 'util.broken', category: 'utility', execute: async () => ({ variants: [] }), params: [{ id: 'model', kind: 'text' }], ...patchDef });
+      assert.throws(broken({ inputs: [{ id: 'refs', type: 'image', multiple: true, max: 4, limitBy: { param: 'model', capability: 'references' } }] }), /limitsFor/);
+      assert.throws(broken({ limitsFor: () => ({}), inputs: [{ id: 'refs', type: 'image', multiple: true, max: 4, limitBy: { param: 'nope', capability: 'references' } }] }), /unknown param/);
+      assert.throws(broken({ limitsFor: () => ({}), inputs: [{ id: 'refs', type: 'image', max: 4, limitBy: { param: 'model', capability: 'references' } }] }), /limitBy/);
+
+      // validate: too many references is an issue with a stable code and the data for the translation
+      const issues = (type, model, ports) => oneOf(registry, type).validate(registry.normalizeParams(oneOf(registry, type), { model }), ports);
+      const withRefs = (count) => ({ refs: { connected: count > 0, count } });
+      let found = issues('video.higgsfield', 'grok_like', withRefs(2));
+      assert.equal(found.length, 1);
+      assert.deepEqual([found[0].code, found[0].port, found[0].data], ['too_many_refs', 'refs', { model: 'Grok Like 1.5', max: 1, count: 2 }]);
+      assert.match(found[0].message, /accepts at most 1 reference images \(got 2\)/);
+      assert.deepEqual(issues('video.higgsfield', 'grok_like', withRefs(1)), []);
+      assert.deepEqual(issues('video.higgsfield', 'four_refs', withRefs(4)), []);
+      assert.equal(issues('video.higgsfield', 'four_refs', withRefs(5))[0].data.max, 4);
+      assert.deepEqual(issues('image.higgsfield', 'text_only', withRefs(1))[0].data, { model: 'Text Only', max: 0, count: 1 }, 'a model without image references takes none');
+      assert.deepEqual(issues('image.higgsfield', 'text_only', withRefs(0)), []);
+      assert.deepEqual(issues('image.higgsfield', 'multi_image', withRefs(8)), []);
+      assert.equal(issues('image.higgsfield', 'multi_image', withRefs(9))[0].code, 'too_many_refs');
+      assert.deepEqual(issues('video.higgsfield', 'start_end', withRefs(2)), []);
+      assert.equal(issues('video.higgsfield', 'start_end', withRefs(3))[0].data.max, 2);
+      // a model that is not in the cache (or not chosen) cannot be judged here: execute() checks again
+      assert.deepEqual(issues('video.higgsfield', 'not_cached', withRefs(5)), []);
+      assert.equal(issues('video.higgsfield', '', withRefs(2)).length, 1, 'only "select a model"');
+      // more than 12 stays the fixed rule
+      assert.deepEqual(issues('video.higgsfield', 'four_refs', withRefs(13)), ['refs: at most 12 references are allowed']);
+      // a required reference
+      found = issues('video.higgsfield', 'needs_ref', withRefs(0));
+      assert.deepEqual([found[0].code, found[0].port, found[0].data], ['refs_required', 'refs', { model: 'Needs Ref' }]);
+      assert.deepEqual(issues('video.higgsfield', 'needs_ref', withRefs(1)), []);
+      assert.deepEqual(issues('video.higgsfield', 'grok_like', withRefs(0)), [], 'a model that does not require one is fine without');
+
+      // changing the model never removes connections; the node is invalid and the run is refused before anything is submitted
+      patch(or, 'hasKey', () => true);
+      const calls = [];
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        calls.push({ name, args });
+        if (args.action === 'get') return byId[args.model_id] || JSON.stringify({ items: [] });
+        return JSON.stringify({ items: [], has_more: false });
+      });
+      const engine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { jobPollMs: 20 } });
+      const node = (id, type, params = {}, x = 0) => ({ id, type, typeVersion: 1, x, y: 0, params });
+      const edge = (id, from, fromPort, to, toPort) => ({ id, from: { node: from, port: fromPort }, to: { node: to, port: toPort } });
+      const limited = await newWorkflow('Reference limits', {
+        nodes: [
+          node('p1', 'input.text', { text: 'A fox runs' }),
+          node('i1', 'input.image', { asset: image1 }),
+          node('i2', 'input.image', { asset: image2 }, 0),
+          node('v1', 'video.higgsfield', { model: 'four_refs' }, 400)
+        ],
+        edges: [edge('e1', 'p1', 'text', 'v1', 'prompt'), edge('e2', 'i1', 'image', 'v1', 'refs'), edge('e3', 'i2', 'image', 'v1', 'refs')]
+      });
+      const fits = await engine.plan(limited.id, { mode: 'all' });
+      assert.equal(fits.nodes.v1.status, 'stale', JSON.stringify(fits.issues));
+      const before = await wfStore.readWorkflow(limited.id);
+      const other = before.graph.nodes.map((item) => (item.id === 'v1' ? { ...item, params: { model: 'grok_like' } } : item));
+      await wfStore.saveGraph(limited.id, { baseRev: before.rev, graph: { ...before.graph, nodes: other } });
+      assert.equal((await wfStore.readWorkflow(limited.id)).graph.edges.length, 3, 'the connections stay');
+      const over = await engine.plan(limited.id, { mode: 'all' });
+      assert.equal(over.valid, false);
+      assert.equal(over.nodes.v1.status, 'invalid');
+      assert.equal(over.nodes.v1.reasonCode, 'too_many_refs');
+      assert.equal(over.nodes.v1.reasonPort, 'refs');
+      assert.deepEqual(over.nodes.v1.reasonData, { model: 'Grok Like 1.5', max: 1, count: 2 });
+      assert.match(over.nodes.v1.reason, /accepts at most 1 reference images/);
+      calls.length = 0;
+      await assert.rejects(engine.start(limited.id, { mode: 'all', user: 'tester' }), (err) => err.code === 'INVALID_GRAPH' && /reference images/.test(err.message) && err.issues.some((issue) => issue.code === 'too_many_refs'));
+      assert.equal(calls.filter((call) => call.name.endsWith('_batch') || call.name.startsWith('generate')).length, 0, 'nothing was submitted');
+      // the same graph with a model that takes more is valid again, without touching the connections
+      const back = await wfStore.readWorkflow(limited.id);
+      await wfStore.saveGraph(limited.id, { baseRev: back.rev, graph: { ...back.graph, nodes: back.graph.nodes.map((item) => (item.id === 'v1' ? { ...item, params: { model: 'four_refs' } } : item)) } });
+      assert.equal((await engine.plan(limited.id, { mode: 'all' })).nodes.v1.status, 'stale');
+
+      // A cold or expired catalogue must not let the run through: the engine loads the model of the nodes before it judges
+      // (plan and start). Measured before: plan valid, POST /runs accepted, execute failed after paid nodes had run.
+      {
+        const current = await wfStore.readWorkflow(limited.id);
+        await wfStore.saveGraph(limited.id, { baseRev: current.rev, graph: { ...current.graph, nodes: current.graph.nodes.map((item) => (item.id === 'v1' ? { ...item, params: { model: 'grok_like' } } : item)) } });
+        catalogLib.clearCache();
+        assert.equal(catalogLib.peekModel('grok_like'), null, 'the cache is cold');
+        calls.length = 0;
+        const cold = await engine.plan(limited.id, { mode: 'all' });
+        assert.equal(cold.valid, false, 'judged although the cache was cold');
+        assert.equal(cold.nodes.v1.reasonCode, 'too_many_refs');
+        assert.equal(calls.filter((call) => call.args.action === 'get').length, 1, 'the model was read once');
+        await engine.plan(limited.id, { mode: 'all' });
+        assert.equal(calls.filter((call) => call.args.action === 'get').length, 1, 'a warm cache is not asked again');
+        catalogLib.clearCache();
+        const runsBefore = (await wfStore.listRuns(limited.id)).length;
+        await assert.rejects(engine.start(limited.id, { mode: 'all', user: 'tester' }), (err) => err.code === 'INVALID_GRAPH' && err.issues.some((issue) => issue.code === 'too_many_refs'));
+        assert.equal((await wfStore.listRuns(limited.id)).length, runsBefore, 'no run was created');
+        assert.equal(engine.activeRun(limited.id), null);
+        // the catalogue cannot be read (or is slow): unknown stays unknown, the plan still works
+        catalogLib.clearCache();
+        patch(higgsfield, 'mcpCall', async () => {
+          throw new Error('models_explore down');
+        });
+        const unreadable = await engine.plan(limited.id, { mode: 'all' });
+        assert.equal(unreadable.nodes.v1.status, 'stale', 'not judged without the model');
+        const slowEngine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { jobPollMs: 20, prepareTimeoutMs: 40 } });
+        patch(higgsfield, 'mcpCall', () => new Promise(() => {}));
+        const started = Date.now();
+        assert.equal((await slowEngine.plan(limited.id, { mode: 'all' })).nodes.v1.status, 'stale');
+        assert.ok(Date.now() - started < 2000, 'a slow catalogue does not hold the plan');
+        patch(higgsfield, 'mcpCall', async (name, args) => {
+          calls.push({ name, args });
+          if (args.action === 'get') return byId[args.model_id] || JSON.stringify({ items: [] });
+          return JSON.stringify({ items: [], has_more: false });
+        });
+        // the hook is declared on the definition and must be a function
+        assert.equal(typeof oneOf(registry, 'video.higgsfield').prepare, 'function');
+        assert.throws(() => createRegistry().register({ type: 'util.broken', category: 'utility', execute: async () => ({ variants: [] }), prepare: 'no' }), /prepare/);
+        catalogLib.clearCache();
+      }
+
+      // audio: the same rule as for references, with a stable code and the data for the translation
+      {
+        await catalogLib.getModel('grok_like');
+        await catalogLib.getModel('with_audio');
+        const audioIssues = (model, count) => oneOf(registry, 'video.higgsfield').validate(registry.normalizeParams(oneOf(registry, 'video.higgsfield'), { model }), { refs: { connected: true, count: 1 }, audio: { connected: true, count } });
+        let audioFound = audioIssues('grok_like', 2);
+        assert.equal(audioFound.length, 1);
+        assert.deepEqual([audioFound[0].code, audioFound[0].port, audioFound[0].data], ['too_many_audio', 'audio', { model: 'Grok Like 1.5', max: 0, count: 2 }]);
+        assert.match(audioFound[0].message, /declares no audio input/);
+        assert.deepEqual(audioIssues('with_audio', 4), []);
+        assert.equal(audioIssues('with_audio', 16).length, 1, 'more than 15 is only the fixed rule');
+        // a list entry without the media list is not a model that takes no audio
+        catalogLib.clearCache();
+        const listOnly = catalogLib.createCatalog({ higgsfield: { status: () => ({ connected: true }), mcpCall: async () => JSON.stringify({ items: [{ id: 'grok_like', name: 'Grok Like 1.5' }], has_more: false }) } });
+        await listOnly.listModels('video');
+        assert.equal(listOnly.peekModel('grok_like').medias, undefined);
+        assert.equal(catalogLib.capabilitiesOf(listOnly.peekModel('grok_like'), { type: 'video' }), null, 'unknown, not none');
+        const realPeek = catalogLib.peekModel;
+        catalogLib.peekModel = () => listOnly.peekModel('grok_like');
+        try {
+          assert.deepEqual(audioIssues('grok_like', 2), [], 'no issue from a partial record');
+        } finally {
+          catalogLib.peekModel = realPeek;
+        }
+        catalogLib.clearCache();
+      }
+
+      // hf.speech: text2speech_v2 takes no reference audio (a fixed list of models: portVariants)
+      const speechPort = (model) => registry.portsFor(oneOf(registry, 'hf.speech'), { model }).inputs.find((port) => port.id === 'reference_audio');
+      assert.equal(speechPort('seed_audio').max, 2);
+      assert.equal(speechPort('text2speech_v2').max, 0);
+      catalogLib.clearCache();
+    }
+
     /* ----- engine integration: list map, count variants, caching ----- */
     {
       resetMocks();
@@ -2282,6 +2543,34 @@ async function main() {
       assert.equal(model.body.name, 'Kling 3');
       assert.ok(model.body.params.some((param) => param.id === 'quality' && param.target === 'extra_params'));
       assert.equal((await call('/api/nodes/higgsfield-models/:modelId', { modelId: 'gone' })).status, 404);
+      // WP31: the description tells what the model takes; the model list does too when it carries the media list
+      assert.deepEqual(model.body.references, { max: 2, roles: ['start_image', 'end_image'], required: false });
+      assert.deepEqual(model.body.audio, { max: 0 });
+      catalogLib.clearCache();
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        assert.equal(name, 'models_explore');
+        const withMedias = (id, name, medias) => ({ id, name, output_type: args.type, medias });
+        return JSON.stringify({
+          items: [
+            withMedias('one-ref', 'One Ref', [{ name: 'start', type: 'image', max: 1, roles: ['start_image'] }]),
+            withMedias('frames', 'Frames', [{ name: 'start', type: 'image', max: 2, roles: ['start_image', 'end_image'], required: true }, { name: 'sound', type: 'image', max: 2, roles: ['audio_references'] }]),
+            withMedias('text-only', 'Text only', []),
+            { id: 'unread', name: 'Unread' }
+          ],
+          has_more: false
+        });
+      });
+      const videoOptions = (await call('/api/nodes/options/:source', { source: 'higgsfield-video-models' })).body.options;
+      assert.deepEqual(videoOptions, [
+        { value: 'one-ref', label: 'One Ref', references: { max: 1, roles: ['start_image'], required: false }, audio: { max: 0 } },
+        { value: 'frames', label: 'Frames', references: { max: 2, roles: ['start_image', 'end_image'], required: true }, audio: { max: 2 } },
+        { value: 'text-only', label: 'Text only', references: { max: 0, roles: [], required: false }, audio: { max: 0 } },
+        { value: 'unread', label: 'Unread' }
+      ]);
+      catalogLib.clearCache();
+      const imageOptions = (await call('/api/nodes/options/:source', { source: 'higgsfield-image-models' })).body.options;
+      assert.deepEqual(imageOptions[0], { value: 'one-ref', label: 'One Ref', references: { max: 1, roles: ['start_image'], required: false } }, 'no audio for image models');
+      assert.deepEqual(imageOptions[3], { value: 'unread', label: 'Unread' }, 'without a media list nothing is claimed');
       const registryPayload = (await call('/api/nodes/registry', {})).body;
       assert.ok(registryPayload.nodeTypes.some((type) => type.type === 'image.higgsfield' && type.category === 'higgsfield'));
       assert.ok(registryPayload.nodeTypes.some((type) => type.type === 'hf.remove_background' && type.experimental === true));

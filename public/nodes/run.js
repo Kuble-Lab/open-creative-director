@@ -540,7 +540,7 @@
           data.port = ui.portLabel(shown.port);
         }
       }
-      return { message: ui.issueText({ code: shown.code, data, message: shown.message }, variant), fix };
+      return { message: ui.issueText({ code: shown.code, data, port: shown.port, message: shown.message }, variant), fix };
     }
 
     function slotFor(node) {
@@ -975,6 +975,8 @@
       starting = true;
       updateTopbar();
       schedulePaint();
+      // descriptions of models that are out of date are read again: the cards show the limit the server will apply
+      ui.refreshStaleModelDetails();
       try {
         try {
           await OCD.editor.flushSave();

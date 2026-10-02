@@ -702,11 +702,21 @@
               dot.classList.add('is-no');
               continue;
             }
-            const ok = id !== drag.anchor.node && !drag.blocked.has(id) && canConnectPort(id, direction, portId);
+            const ok = id !== drag.anchor.node && !drag.blocked.has(id) && canConnectPort(id, direction, portId) && !atModelLimit(id, direction, portId);
             dot.classList.add(ok ? 'is-ok' : 'is-no');
           }
         }
       }
+    }
+
+    // An input that already has as many connections as the chosen model takes is not offered as a target.
+    function atModelLimit(nodeId, direction, portId) {
+      if (direction !== 'in') return false;
+      const node = graph.nodes.find((n) => n.id === nodeId);
+      const port = node ? graphLib.findPort(reg, node, 'in', portId) : null;
+      if (!port || !port.multiple || !port.limit || !port.limit.known) return false;
+      // the graph without the connection that is being moved: its own input is free for it again
+      return graphLib.incomingEdges((drag && drag.baseGraph) || graph, nodeId, portId).length >= port.max;
     }
 
     function canConnectPort(nodeId, direction, portId) {
@@ -751,6 +761,7 @@
       markConnectable(false);
       drag = null;
       updateEdges(null);
+      if (limitsPending) setTimeout(() => limitsPending && refreshLimits(), 0);
       if (!info.started) return;
       const anchor = info.anchor;
       if (target.kind === 'port') {
@@ -759,7 +770,8 @@
         if (info.edgeId && info.originalTo && info.originalTo.node === to.node && info.originalTo.port === to.port) return;
         const error = graphLib.checkConnection(reg, info.baseGraph, from, to);
         if (error) {
-          if (opts.onConnectRefused) opts.onConnectRefused(error.code);
+          // the whole error: over the limit of a model it carries the model and the limit for the text
+          if (opts.onConnectRefused) opts.onConnectRefused(error);
           return;
         }
         if (opts.onConnect) opts.onConnect(from, to, { replaceEdge: info.edgeId });
@@ -1238,6 +1250,25 @@
       }
     }
 
+    // The limits of inputs that follow a model arrive after the card was drawn (the model description is read when it is
+    // needed): the cards of such nodes are brought up to date, the others stay untouched.
+    let limitsPending = false;
+
+    function refreshLimits() {
+      if (!reg || !graph) return;
+      // not under a connection that is being dragged (the ports would be built again); it is done when the drag ends
+      if (drag) {
+        limitsPending = true;
+        return;
+      }
+      limitsPending = false;
+      for (const state of cards.values()) {
+        const def = state.node ? reg.types.get(state.node.type) : null;
+        if (def && (def.inputs || []).some((port) => port.limitBy)) state.node = null;
+      }
+      render(graph);
+    }
+
     function setTool(next) {
       tool = next === 'hand' ? 'hand' : 'select';
       updateCursorClass();
@@ -1284,6 +1315,7 @@
 
     return {
       setRegistry,
+      refreshLimits,
       render,
       setViewport,
       getViewport: () => ({ ...viewport }),

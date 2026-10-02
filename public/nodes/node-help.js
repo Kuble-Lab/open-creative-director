@@ -67,7 +67,8 @@
       typeLabel: `${tr(`nodes.ptype.${parsed.base}`, parsed.base)}${parsed.list ? ' []' : ''}`,
       required: input ? port.required === true : null,
       multiple: input && port.multiple === true,
-      max: input && port.multiple === true && Number.isFinite(port.max) ? port.max : null,
+      // an input whose maximum follows the model has no fixed number to state
+      max: input && port.multiple === true && !port.limitBy && Number.isFinite(port.max) ? port.max : null,
       // a text or number input that can also be typed into the node itself
       orField: input && Boolean(port.param) && (parsed.base === 'text' || parsed.base === 'number')
     };
