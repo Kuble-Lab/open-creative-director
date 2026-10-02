@@ -61,6 +61,7 @@ async function main() {
     store.readSession = originalRead;
     await store.deleteSession(session.id);
   }
+  console.log('test-poller-scan-cache.js: ok');
 }
 
 main().catch((err) => {

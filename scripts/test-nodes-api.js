@@ -1120,7 +1120,7 @@ async function main() {
       /* folder registry entry is best-effort */
     }
   }
-  console.log('test-nodes-api ok');
+  console.log('test-nodes-api.js: ok');
 }
 
 main().catch((err) => {

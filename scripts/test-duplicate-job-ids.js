@@ -54,6 +54,7 @@ async function main() {
   } finally {
     await store.deleteSession(session.id);
   }
+  console.log('test-duplicate-job-ids.js: ok');
 }
 
 main().catch((err) => {

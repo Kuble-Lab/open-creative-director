@@ -215,4 +215,4 @@ for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);
 }
-console.log('test-nodes-music-ui ok');
+console.log('test-nodes-music-ui.js: ok');

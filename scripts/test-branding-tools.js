@@ -81,6 +81,7 @@ async function main() {
     if (brandingId) await brandings.deleteBranding(brandingId).catch(() => {});
     await store.deleteSession(session.id);
   }
+  console.log('test-branding-tools.js: ok');
 }
 
 main().catch((err) => {

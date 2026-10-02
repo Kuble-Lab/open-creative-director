@@ -308,7 +308,7 @@ function testSafety() {
   testTexts();
   testHtmlWiring();
   testSafety();
-  console.log('access client ok');
+  console.log('test-access-client.js: ok');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

@@ -152,6 +152,7 @@ async function main() {
     await store.deleteSession(session.id);
     for (const id of createdBrandings) await brandings.deleteBranding(id).catch(() => {});
   }
+  console.log('test-branding-api.js: ok');
 }
 
 main().catch((err) => {

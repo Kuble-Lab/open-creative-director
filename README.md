@@ -206,6 +206,17 @@ Data: `data/teams.json` (chmod 600, written atomically), `data/folder-owners.jso
 
 Participants have addresses your login does not know. If your login keeps an allowlist file (`{ "default": {...}, "routes": [{ "path": "/training", "public": false, "extra_emails": [...] }] }`), set `ACCESS_ALLOWLIST_FILE` (path) and `ACCESS_ALLOWLIST_ROUTE` (route). After every change of a team the app then makes `extra_emails` of that route hold the manually maintained addresses plus everybody in an active team (addresses of `INTERNAL_EMAIL_DOMAINS` are not entered). Manual entries and other routes are never touched: only what the app added itself is removed again (remembered in `data/access-sync.json`, written before the list changes, with a copy next to the list; an unreadable record stops the sync with a warning). The file is written atomically (a symlink is followed; the owner is kept where the app may set it; a single file mounted into a container is written in place), keeps its permissions, and a copy `<file>.bak-<timestamp>` is made once before the first change; a missing route is created. A failure never blocks the team change — it shows up as a warning in `sync`. Both variables unset = nothing happens.
 
+## Tests
+
+```bash
+npm test                          # every scripts/test-*.js, one after another
+npm test -- nodes-generate        # only tests whose file name contains the text
+npm test -- --timeout=600         # seconds per test (default 240)
+npm test -- --jobs=4              # several at once (faster; tests share data/ and projects/, so they can collide)
+```
+
+`scripts/run-tests.js` starts each `scripts/test-*.js` as its own process and prints `PASS` or `FAIL` with the duration, then `n/m passed` (exit code 1 if anything failed). A test passes only if it exits with 0 **and** its last output line is `<file name>: ok`; a test that just stops early (for example a promise that never settles) is reported as `FAIL ... silent end`. Every new test therefore ends with `console.log('test-<name>.js: ok')`, after its last check. Some tests skip their browser part when Chrome or `render-node/` is missing, and `test-minimal-config.js` depends on your local `.env`.
+
 ## Help and contributing
 
 The help page (`public/help.html`, linked in the menu) documents every function in German, English and Spanish. Whoever changes a function updates all three language blocks; see [docs/agent-rules.md](docs/agent-rules.md).

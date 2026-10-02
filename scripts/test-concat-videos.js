@@ -120,6 +120,7 @@ async function main() {
     if (session) await store.deleteSession(session.id);
     await fsp.rm(directory, { recursive: true, force: true });
   }
+  console.log('test-concat-videos.js: ok');
 }
 
 main().catch((error) => {

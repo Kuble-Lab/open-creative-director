@@ -314,6 +314,7 @@ async function main() {
     await fsp.rm(directory, { recursive: true, force: true });
   }
   console.log('higgsfield ok: Legacy-Refresh, Rotation, Fehler, JSON/SSE, 401, structuredContent, Parser, Tool-Gating und Audio-Ergebnisse');
+  console.log('test-higgsfield.js: ok');
 }
 
 main().catch((err) => {

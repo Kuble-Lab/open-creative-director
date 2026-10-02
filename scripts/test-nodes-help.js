@@ -376,6 +376,7 @@ const tests = [testKeysBelongToTypes, testTextsAreComplete, testEveryTypeHasHelp
     console.log(`ok ${test.name}`);
   }
   console.log(`help ok: ${tests.length} Gruppen, ${typeIds.length} Node-Typen`);
+  console.log('test-nodes-help.js: ok');
 })().catch((err) => {
   console.error(err);
   process.exit(1);

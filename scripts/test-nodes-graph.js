@@ -1239,3 +1239,4 @@ for (const test of tests) {
   console.log(`ok ${test.name}`);
 }
 console.log(`graph ok: ${tests.length} Gruppen, ${reg.types.size} Node-Typen geprueft`);
+console.log('test-nodes-graph.js: ok');

@@ -477,6 +477,7 @@ async function main() {
   await testErrorJournal();
   await testErrorJournalFlood();
   console.log('Access: Modus, Identitaet, Rollen, Zugriffsregeln (Bestand, anonym, Admin, team/specific), Team-Liste mit Auto-Erfassung, Teilnehmer-/Gast-Rollen und Monitoring-Aggregation sind korrekt.');
+  console.log('test-access.js: ok');
 }
 
 main().catch((error) => {

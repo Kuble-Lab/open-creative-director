@@ -490,7 +490,7 @@ async function main() {
   console.log('ok testConversion');
   testWiring();
   console.log('ok testWiring');
-  console.log('test-nodes-motion: ok');
+  console.log('test-nodes-motion.js: ok');
 }
 
 main().catch((err) => {

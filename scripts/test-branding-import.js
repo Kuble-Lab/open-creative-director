@@ -189,6 +189,7 @@ async function main() {
     await fsp.rm(escapedTarget, { force: true });
     for (const id of createdIds) await brandings.deleteBranding(id).catch(() => {});
   }
+  console.log('test-branding-import.js: ok');
 }
 
 main().catch((err) => {

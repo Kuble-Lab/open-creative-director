@@ -40,6 +40,7 @@ async function main() {
   assert.equal(summary.bySession[0].title, 'August-Kampagne');
   await fsp.rm(dir, { recursive: true, force: true });
   console.log('costs.js: record, read und Summary mit Europe/Zurich sind korrekt.');
+  console.log('test-costs.js: ok');
 }
 
 main().catch((err) => {

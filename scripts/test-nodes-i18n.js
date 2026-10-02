@@ -334,3 +334,4 @@ for (const test of tests) {
   console.log(`ok ${test.name}`);
 }
 console.log(`nodes i18n ok: ${nodeKeys('de').length} Keys in DE/EN/ES`);
+console.log('test-nodes-i18n.js: ok');

@@ -971,12 +971,12 @@ async function main() {
     const pollerSession = await store.createSession();
     sessions.push(pollerSession.id);
     await testPoller(pollerSession.id);
-    console.log('test-fal: ok');
   } finally {
     restoreAll();
     for (const id of sessions) await store.deleteSession(id).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
+  console.log('test-fal.js: ok');
 }
 
 main().catch((err) => {

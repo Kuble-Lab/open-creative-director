@@ -644,7 +644,7 @@ async function main() {
   }
   await testCapabilityStore();
   console.log('ok testCapabilityStore');
-  console.log('limits ok');
+  console.log('test-nodes-limits.js: ok');
 }
 
 main().catch((err) => {

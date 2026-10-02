@@ -65,6 +65,7 @@ async function main() {
     discovery.videoCapabilities = originalVideoCapabilities;
     await store.deleteSession(session.id);
   }
+  console.log('test-render-mode.js: ok');
 }
 
 main().catch((err) => {

@@ -626,6 +626,7 @@ const tests = [
     console.log(`ok ${test.name}`);
   }
   console.log(`search ok: ${tests.length} Gruppen, ${GOLDEN.length + 1} Golden Queries`);
+  console.log('test-nodes-search.js: ok');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

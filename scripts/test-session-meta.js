@@ -86,6 +86,7 @@ async function main() {
     await store.deleteSession(session.id);
     await store.deleteFolder(folder);
   }
+  console.log('test-session-meta.js: ok');
 }
 
 main().catch((err) => {

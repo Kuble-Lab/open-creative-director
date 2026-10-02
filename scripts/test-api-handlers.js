@@ -236,6 +236,7 @@ async function main() {
     }
   }
   console.log(JSON.stringify({ costs: costResponse.body, rendernode: renderResponse.body }, null, 2));
+  console.log('test-api-handlers.js: ok');
 }
 
 main().catch((err) => {

@@ -140,4 +140,4 @@ testHelpPage();
 console.log('ok testHelpPage');
 testFrame();
 console.log('ok testFrame');
-console.log('help ok');
+console.log('test-help.js: ok');

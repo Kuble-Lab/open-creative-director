@@ -302,7 +302,7 @@ async function main() {
   testValues();
   testRegistry();
   await testBasicNodes();
-  console.log('test-nodes-types: ok');
+  console.log('test-nodes-types.js: ok');
 }
 
 main().catch((err) => {

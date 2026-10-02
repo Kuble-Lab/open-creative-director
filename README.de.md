@@ -206,6 +206,17 @@ Daten: `data/teams.json` (chmod 600, atomar geschrieben), `data/folder-owners.js
 
 Teilnehmer haben Adressen, die dein Login nicht kennt. Führt dein Login eine Freigabelisten-Datei (`{ "default": {...}, "routes": [{ "path": "/training", "public": false, "extra_emails": [...] }] }`), setze `ACCESS_ALLOWLIST_FILE` (Pfad) und `ACCESS_ALLOWLIST_ROUTE` (Route). Nach jeder Änderung an einem Team hält die App dann `extra_emails` dieser Route auf den von Hand gepflegten Adressen plus allen Mitgliedern aktiver Teams (Adressen aus `INTERNAL_EMAIL_DOMAINS` werden nicht eingetragen). Manuelle Einträge und andere Routen bleiben unangetastet: Nur was die App selbst eingetragen hat, wird wieder entfernt (gemerkt in `data/access-sync.json`, vor der Änderung der Liste geschrieben und zusätzlich als Kopie neben der Liste; ein unlesbarer Status stoppt den Sync mit einer Warnung). Die Datei wird atomar geschrieben (ein Symlink wird aufgelöst; der Eigentümer bleibt erhalten, soweit die App ihn setzen darf; eine in einen Container eingehängte Einzeldatei wird direkt überschrieben), behält ihre Rechte, und vor der ersten Änderung entsteht einmal eine Kopie `<Datei>.bak-<Zeitstempel>`; eine fehlende Route wird angelegt. Ein Fehler blockiert die Team-Änderung nie — er erscheint als Warnung in `sync`. Sind beide Variablen nicht gesetzt, passiert nichts.
 
+## Tests
+
+```bash
+npm test                          # alle scripts/test-*.js, nacheinander
+npm test -- nodes-generate        # nur Tests, deren Dateiname den Text enthält
+npm test -- --timeout=600         # Sekunden pro Test (Standard 240)
+npm test -- --jobs=4              # mehrere gleichzeitig (schneller; Tests teilen data/ und projects/ und können sich stören)
+```
+
+`scripts/run-tests.js` startet jedes `scripts/test-*.js` als eigenen Prozess und meldet `PASS` oder `FAIL` mit Dauer, am Ende `n/m passed` (Exit 1 bei Fehlern). Ein Test gilt nur als bestanden, wenn er mit 0 endet **und** seine letzte Ausgabezeile `<Dateiname>: ok` lautet; ein Test, der still abbricht (etwa ein Promise, das nie erfüllt wird), wird als `FAIL ... silent end` gemeldet. Jeder neue Test schliesst deshalb nach seiner letzten Prüfung mit `console.log('test-<name>.js: ok')`. Einige Tests überspringen ihren Browserteil, wenn Chrome oder `render-node/` fehlt, und `test-minimal-config.js` hängt von deiner lokalen `.env` ab.
+
 ## Hilfe und Mitarbeit
 
 Die Hilfe-Seite (`public/help.html`, im Menü verlinkt) beschreibt alle Funktionen auf Deutsch, Englisch und Spanisch. Wer eine Funktion ändert, führt alle drei Sprachblöcke nach; siehe [docs/agent-rules.md](docs/agent-rules.md).

@@ -71,6 +71,7 @@ async function main() {
     await store.deleteSession(session.id);
     await store.deleteFolder(folder);
   }
+  console.log('test-folder-profile-brain.js: ok');
 }
 
 main().catch((err) => {

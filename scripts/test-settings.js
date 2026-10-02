@@ -113,6 +113,7 @@ async function main() {
     }
     await fsp.rm(directory, { recursive: true, force: true });
   }
+  console.log('test-settings.js: ok');
 }
 
 main().catch((err) => {

@@ -510,4 +510,4 @@ for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);
 }
-console.log('test-nodes-run-client ok');
+console.log('test-nodes-run-client.js: ok');

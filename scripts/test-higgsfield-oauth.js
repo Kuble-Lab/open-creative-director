@@ -789,6 +789,7 @@ async function main() {
     await fsp.rm(directory, { recursive: true, force: true });
   }
   console.log('higgsfield oauth ok: Discovery, Registrierung, PKCE, Callback-Pruefungen, Token-Tausch, Refresh, Legacy, Routen');
+  console.log('test-higgsfield-oauth.js: ok');
 }
 
 main().catch((err) => {

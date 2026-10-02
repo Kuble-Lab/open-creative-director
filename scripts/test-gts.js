@@ -96,6 +96,7 @@ async function main() {
     if (originalToken === undefined) delete process.env.GTS_API_TOKEN;
     else process.env.GTS_API_TOKEN = originalToken;
   }
+  console.log('test-gts.js: ok');
 }
 
 main().catch((err) => {

@@ -63,4 +63,4 @@ assert.match(source, /folder=\$\{encodeURIComponent\(folder\)\}/, 'through the f
 assert.match(source, /folderSessionsRequested\.clear\(\)/, 'the request memory is reset on every list load');
 assert.match(source, /sessions\.length < chatCount/, 'only when the badge counts more chats than the list holds');
 
-console.log('sidebar order ok');
+console.log('test-sidebar-order.js: ok');

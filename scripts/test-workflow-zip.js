@@ -936,6 +936,7 @@ async function main() {
   await part1();
   await part2();
   console.log('Workflow-ZIP: Export mit Dateien, Rundlauf mit Pruefsummen, alle Ablehnungen ohne Reste, Rueckgewinnung beim JSON-Import und Zugriff fuer Besitzer, Geteilte, Teilnehmende und Gaeste sind korrekt.');
+  console.log('test-workflow-zip.js: ok');
 }
 
 main().catch((err) => {

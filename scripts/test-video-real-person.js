@@ -311,6 +311,7 @@ async function main() {
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
   console.log('Echte-Person-Ablehnung: Erkennung mit der echten Meldung, Texte in drei Sprachen, Karte mit gesperrten Modellen (gespeichert, serverseitig durchgesetzt), Budget freigegeben, Director-Text, Node-Fehler und Hilfe-Tipp sind korrekt.');
+  console.log('test-video-real-person.js: ok');
 }
 
 async function run(iso, guard) {

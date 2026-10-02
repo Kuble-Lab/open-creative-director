@@ -443,13 +443,13 @@ async function main() {
     await assert.rejects(wfStore.deleteWorkflow(doomed.workflow.id), { code: 'WORKFLOW_NOT_FOUND' });
     created.splice(created.indexOf(doomed.workflow.id), 1);
 
-    console.log('test-nodes-store: ok');
   } finally {
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
     await store.deleteSession(chat.id).catch(() => {});
     await store.deleteFolder(folder).catch(() => {});
     await fsp.rm(dir, { recursive: true, force: true });
   }
+  console.log('test-nodes-store.js: ok');
 }
 
 main().catch((err) => {

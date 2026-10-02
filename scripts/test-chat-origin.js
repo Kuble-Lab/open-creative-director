@@ -198,4 +198,4 @@ testCard();
 testPortLabels();
 testSources();
 testKeys();
-console.log('chat origin ok');
+console.log('test-chat-origin.js: ok');

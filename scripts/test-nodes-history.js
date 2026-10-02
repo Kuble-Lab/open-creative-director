@@ -123,3 +123,4 @@ for (const test of tests) {
   console.log(`ok ${test.name}`);
 }
 console.log(`history ok: ${tests.length} Gruppen`);
+console.log('test-nodes-history.js: ok');

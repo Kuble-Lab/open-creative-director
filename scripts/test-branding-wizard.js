@@ -57,6 +57,7 @@ async function main() {
     discovery.videoCapabilities = originals.videoCapabilities;
     await store.deleteSession(session.id);
   }
+  console.log('test-branding-wizard.js: ok');
 }
 
 main().catch((err) => {

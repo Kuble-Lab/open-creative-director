@@ -215,6 +215,7 @@ async function main() {
     if (!folderDeleted) await store.deleteFolder(folder).catch(() => {});
     if (roleId) await roles.deleteRole(roleId).catch(() => {});
   }
+  console.log('test-roles-context-files.js: ok');
 }
 
 main().catch((err) => {
