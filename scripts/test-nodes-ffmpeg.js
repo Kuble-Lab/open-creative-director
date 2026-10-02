@@ -906,6 +906,11 @@ async function testWithFfmpeg() {
       probe = await probeRaw(await fileOf(out));
       assert.deepEqual([probe.width, probe.height], [300, 200]);
       await assert.rejects(run('image.text_render', { text: { type: 'text', value: '   ' } }), /nothing to render/);
+      // an emoji would turn the whole text into boxes: it is left out, and a text of emoji only is refused with the reason
+      const withEmoji = (await run('image.text_render', { text: { type: 'text', value: 'Müller 😀 ok' } }, { width: 600, font_size: 80 })).image;
+      const withoutEmoji = (await run('image.text_render', { text: { type: 'text', value: 'Müller ok' } }, { width: 600, font_size: 80 })).image;
+      assert.ok((await fsp.readFile(await fileOf(withEmoji))).equals(await fsp.readFile(await fileOf(withoutEmoji))), 'the text is drawn as without the emoji');
+      await assert.rejects(run('image.text_render', { text: { type: 'text', value: '😀🚀' } }), /emoji cannot be drawn/);
     }
 
     /* ----- ledger: outputs are ordinary assets, scratch dirs are gone ----- */

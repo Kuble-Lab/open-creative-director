@@ -126,8 +126,9 @@ const GOLDEN = [
   ['de', 'participant', 0, 'zeitlupe', (r) => assert.equal(r[0].type, 'video.speed')],
   ['de', 'admin', 13, 'zeitlupe', (r) => assert.equal(r[0].type, 'video.speed')],
   ['de', 'participant', 0, 'kling', (r) => {
-    // no Higgsfield for participants: nothing, or at most the free fal.ai model that names Kling as a keyword. Never noise.
-    assert.ok(r.every((entry) => entry.type === 'fal.model'), `only the free fal.ai model may match: ${types(r)}`);
+    // no Higgsfield for participants: nothing, or at most the free fal.ai model and the video node with a model choice, which
+    // both name Kling as a keyword. Never noise.
+    assert.ok(r.every((entry) => ['fal.model', 'video.generate'].includes(entry.type)), `only the free fal.ai model may match: ${types(r)}`);
     assert.ok(!r.some((entry) => ['image.chroma_key', 'image.invert', 'image.adjust', 'image.crop'].includes(entry.type)));
   }],
   ['de', 'admin', 13, 'kling', (r) => {
@@ -236,7 +237,8 @@ function testQuickPickFromImage() {
 }
 
 function testNoiseAndTypos() {
-  assert.deepEqual(types(search('de', 'participant', 'veo')), [], '"veo" finds no scattered letters for participants');
+  // only the video node that names Veo as a model it can use, no scattered letters
+  assert.deepEqual(types(search('de', 'participant', 'veo')), ['video.generate'], '"veo" finds no scattered letters for participants');
   assert.deepEqual(types(search('de', 'participant', 'untertitel')), [], 'nothing, instead of anything at random');
   assert.equal(search('de', 'participant', 'sedance')[0].type, 'video.seedance', 'a typo still finds the node while nothing else matches');
   assert.ok(search('de', 'participant', 'sprechend').some((entry) => entry.type === 'fal.h3_lipsync'));
@@ -250,7 +252,8 @@ function testNoiseAndTypos() {
   assert.equal(search('de', 'participant', 'prompt')[0].type, 'input.prompt');
   assert.equal(search('en', 'participant', 'image to video').some((entry) => entry.type === 'image.to_video'), true, 'the zoom node is still found, just not first');
   // the old English names keep working in the German interface
-  assert.ok(types(search('de', 'participant', 'text to video'), 2).includes('video.seedance'));
+  // among the first three: the other video generators (the one with a model choice, the fal.ai one) share the top
+  assert.ok(types(search('de', 'participant', 'text to video'), 3).includes('video.seedance'));
   // normal search needs every word
   assert.deepEqual(types(search('de', 'participant', 'zeitlupe xyzxyz')), []);
 }
@@ -549,11 +552,15 @@ function testImageEditingSynonyms() {
   const first = (lang, query) => search(lang, 'participant', query).map((entry) => entry.type);
   assert.equal(first('de', 'hochskalieren')[0], 'image.resize');
   assert.equal(first('de', 'vergrössern')[0], 'image.resize');
+  // the AI cutout with fal (open to participants) answers "remove background" first; "freistellen" still starts with the chroma key
   assert.equal(first('de', 'freistellen')[0], 'image.chroma_key');
-  assert.equal(first('de', 'hintergrund entfernen')[0], 'image.chroma_key');
-  // "Hintergrundmusik" (music nodes) starts with the same word: both rank at the top, the editor behind the generators.
-  assert.ok(first('de', 'hintergrund').slice(0, 3).includes('image.chroma_key'));
-  assert.equal(first('de', 'hintergrund entfernen')[0], 'image.chroma_key');
+  assert.ok(first('de', 'freistellen').slice(0, 3).includes('fal.remove_background'));
+  assert.equal(first('de', 'freisteller')[0], 'fal.remove_background');
+  assert.equal(first('de', 'hintergrund entfernen')[0], 'fal.remove_background');
+  assert.ok(first('en', 'remove background').slice(0, 3).includes('fal.remove_background'));
+  assert.ok(first('es', 'quitar fondo').slice(0, 3).includes('fal.remove_background'));
+  // "Hintergrundmusik" (music nodes) starts with the same word: all rank at the top, the editors behind the generators.
+  assert.ok(first('de', 'hintergrund').slice(0, 4).includes('image.chroma_key'));
   assert.equal(first('de', 'überblenden')[0], 'image.composite');
   assert.equal(first('de', 'zusammenführen')[0], 'image.composite');
   assert.ok(first('de', 'heller').includes('image.adjust'));
@@ -565,6 +572,26 @@ function testImageEditingSynonyms() {
   assert.equal(first('de', 'crop')[0], 'image.crop');
   assert.equal(first('de', 'zuschneiden')[0], 'image.crop');
   assert.ok(first('de', 'upscale').includes('image.resize'));
+}
+
+function testVideoGridSynonyms() {
+  // the local comparison node (WP28): the words of the task lead to it, in the three languages
+  const first = (lang, query) => search(lang, 'participant', query).map((entry) => entry.type);
+  assert.equal(first('de', 'nebeneinander')[0], 'video.grid');
+  assert.equal(first('de', 'videos nebeneinander')[0], 'video.grid');
+  assert.equal(first('de', 'videos vergleichen')[0], 'video.grid');
+  assert.ok(first('de', 'raster').slice(0, 3).includes('video.grid'), '"Raster" also finds "SVG rastern", the grid is among the first');
+  assert.equal(first('de', 'vergleich')[0], 'video.grid');
+  assert.equal(first('de', 'split screen')[0], 'video.grid');
+  assert.ok(first('de', 'beschriftung').includes('video.grid'));
+  assert.equal(first('en', 'side by side')[0], 'video.grid');
+  assert.equal(first('en', 'compare videos')[0], 'video.grid');
+  assert.equal(first('en', 'video grid')[0], 'video.grid');
+  assert.equal(first('es', 'comparar vídeos')[0], 'video.grid');
+  assert.equal(first('es', 'cuadrícula')[0], 'video.grid');
+  // the node is open to everyone and local: participants find it, nothing marks it as restricted
+  const entry = search('de', 'participant', 'nebeneinander').find((item) => item.type === 'video.grid');
+  assert.ok(entry && entry.def.available === true && !entry.def.restricted);
 }
 
 function testSearchTextNormalization() {
@@ -584,6 +611,7 @@ const tests = [
   testExactNameIsFirst,
   testNodesBeforeModelsOnTies,
   testImageEditingSynonyms,
+  testVideoGridSynonyms,
   testSearchTextNormalization,
   testZoomNodeRename,
   testOldWorkflowsStillLoad,

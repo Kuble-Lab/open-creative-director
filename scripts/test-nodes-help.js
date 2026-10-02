@@ -25,8 +25,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const LANGS = ['de', 'en', 'es'];
 const SAMPLE_TYPES = ['video.motion_graphics', 'llm.motion_html', 'video.seedance', 'input.image', 'image.edit', 'video.concat'];
 const LIMITS = { help: 320, example: 260, tip: 240 };
-// Types with a fourth tip: real persons (Seedance), the cost of the speech, the points of the music nodes.
-const FOURTH_TIP = ['video.seedance', 'audio.tts', 'audio.music', 'audio.music_plan'];
+// Types with a fourth tip: real persons (Seedance, and the video node that can choose it), the cost of the speech, the points of the music nodes.
+const FOURTH_TIP = ['video.seedance', 'video.generate', 'audio.tts', 'audio.music', 'audio.music_plan'];
 
 const payload = JSON.parse(JSON.stringify(registryModule.publicRegistry()));
 const reg = graphLib.indexRegistry(payload);

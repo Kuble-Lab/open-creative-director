@@ -34,7 +34,7 @@ function testRegistryIndex() {
   assert.equal(remove.inputs[0].type, 'video');
   assert.deepEqual(graphLib.portsFor(reg, { type: 'nope.unknown', params: {} }), { inputs: [], outputs: [] });
   const defaults = graphLib.paramDefaults(reg.types.get('image.generate'));
-  assert.deepEqual(defaults, { prompt: '', aspect_ratio: '1:1', count: 1 });
+  assert.deepEqual(defaults, { model: '', prompt: '', aspect_ratio: '1:1', count: 1 });
   assert.deepEqual(graphLib.paramDefaults(reg.types.get('input.media_list')).assets, []);
 }
 
@@ -163,7 +163,7 @@ function testNodeMutations() {
   const b = build();
   const gen = b.add('image.generate', 10, 20, { prompt: 'hello', count: 3 });
   const node = graphLib.getNode(b.graph, gen);
-  assert.deepEqual(node.params, { prompt: 'hello', aspect_ratio: '1:1', count: 3 }, 'defaults merged with overrides');
+  assert.deepEqual(node.params, { model: '', prompt: 'hello', aspect_ratio: '1:1', count: 3 }, 'defaults merged with overrides');
   assert.equal(node.typeVersion, 1);
 
   const moved = graphLib.moveItems(b.graph, { nodes: [gen] }, 5, -5);
@@ -1184,7 +1184,7 @@ function testInsertSubgraph() {
 
   // defaults are filled from the registry; node types the view does not know are refused
   const filled = graphLib.insertSubgraph(graphLib.emptyGraph(), { nodes: [{ id: 'a', type: 'image.generate', x: 0, y: 0 }], edges: [] }, { reg });
-  assert.deepEqual(filled.graph.nodes[0].params, { prompt: '', aspect_ratio: '1:1', count: 1 });
+  assert.deepEqual(filled.graph.nodes[0].params, { model: '', prompt: '', aspect_ratio: '1:1', count: 1 });
   assert.equal(filled.graph.nodes[0].typeVersion, 1);
   const unknown = graphLib.insertSubgraph(b.graph, { nodes: [{ id: 'a', type: 'nope.unknown', x: 0, y: 0 }] }, { reg });
   assert.deepEqual(unknown.error, { reason: 'unknown_type', type: 'nope.unknown' });

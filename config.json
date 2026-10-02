@@ -1,5 +1,9 @@
 {
   "imageModel": "openai/gpt-image-2",
+  "imageModels": [
+    "openai/gpt-image-2",
+    "google/gemini-3-pro-image"
+  ],
   "videoModel": "bytedance/seedance-2.5",
   "brainModels": [
     "anthropic/claude-opus-4.6",

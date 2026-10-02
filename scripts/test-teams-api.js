@@ -30,6 +30,32 @@ const PNG_B64 = PNG.toString('base64');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const enc = encodeURIComponent;
 
+// The public video model list of OpenRouter (checked 2026-10-02), reduced to two of the curated models.
+const VIDEO_SEEDANCE = 'bytedance/seedance-2.5';
+const VIDEO_KLING = 'kwaivgi/kling-v3.0-std';
+const VIDEO_CATALOG = [
+  {
+    id: VIDEO_SEEDANCE,
+    name: 'ByteDance: Seedance 2.5',
+    supported_resolutions: ['480p', '720p'],
+    supported_aspect_ratios: ['16:9', '9:16', '1:1'],
+    supported_durations: [4, 5, 6, 7, 8, 9, 10, 11, 12],
+    supported_frame_images: ['first_frame', 'last_frame'],
+    generate_audio: true,
+    pricing_skus: { video_tokens: '0.0000107', video_tokens_without_audio: '0.0000107', video_tokens_with_video_input: '0.0000064' }
+  },
+  {
+    id: VIDEO_KLING,
+    name: 'Kling: Video v3.0 Standard',
+    supported_resolutions: ['720p'],
+    supported_aspect_ratios: ['16:9', '9:16', '1:1'],
+    supported_durations: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    supported_frame_images: ['first_frame', 'last_frame'],
+    generate_audio: true,
+    pricing_skus: { duration_seconds: '0.084', duration_seconds_with_audio: '0.126' }
+  }
+];
+
 async function waitFor(fn, { timeout = 8000, step = 50, message = 'condition' } = {}) {
   const started = Date.now();
   for (;;) {
@@ -159,6 +185,9 @@ async function testActiveMode() {
   // The model discovery would ask the provider for its catalogue; the test answers it locally (module of the private copy).
   const discovery = iso.load('lib/discovery');
   discovery.brainSupportsImages = async () => true;
+  discovery.listImageModels = async () => ({ data: [] }); // the image nodes and their model lists read the public model list of OpenRouter
+  // the video node (video.generate) and its model list read the public video model list of OpenRouter (lib/video-node-models.js)
+  discovery.listVideoModels = async () => ({ data: VIDEO_CATALOG });
   discovery.videoCapabilities = async () => ({ resolutions: ['720p', '1080p'], aspectRatios: ['16:9', '9:16', '1:1'], durations: { min: 4, max: 12 }, frameImages: ['first_frame', 'last_frame'] });
   ctx.call = async (email, method, url, json, extra = {}) => api(url, { method, as: email, json, ...extra });
   try {
@@ -1158,6 +1187,120 @@ async function testBudgetTools(ctx) {
   // guests have no budget: no music, but the free plan works
   assert.equal((await errorOf(run(GUEST, 'generate_music', musicArgs, nodeView))).code, 'BUDGET_EXHAUSTED');
   assert.equal((await run(GUEST, 'plan_music', { prompt: 'a calm song' }, nodeView)).planText.startsWith('[Verse'), true);
+
+  // an image node with a model of its own passes the price of that model (imageEstimateUsd, WP28): reserved while the provider
+  // works and booked afterwards; where the rest does not cover it the call is refused before the provider is called. The
+  // chat knows no price (no estimate): anything left is enough, as before.
+  await sleep(1100);
+  teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
+  let imageReserved = null;
+  let imageProviderCalls = 0;
+  patch(or, 'createImage', async (payload) => {
+    imageProviderCalls += 1;
+    imageReserved = (await budgetLib.statusOfEmail(PAB)).reservedUsd;
+    assert.equal(payload.model, 'google/gemini-3-pro-image', 'the model of the node reaches the provider');
+    return imageResult(0.139);
+  });
+  const imageConfig = { config: { imageModel: 'test/image', videoModel: 'test/video' } };
+  const priced = await run(PAB, 'generate_image', { prompt: 'Eine Tasse' }, { config: { ...imageConfig.config, imageModel: 'google/gemini-3-pro-image' }, imageEstimateUsd: 0.134 });
+  assert.match(priced.toolResult, /Bild erzeugt/);
+  assert.ok(Math.abs(imageReserved - 0.134) < 1e-9, 'the estimate of the model is reserved during the call');
+  assert.equal(priced.asset.model, 'google/gemini-3-pro-image');
+  const imageRows = (await costsLib.readCosts()).filter((row) => row.user === PAB && row.type === 'image' && row.model === 'google/gemini-3-pro-image');
+  assert.deepEqual(imageRows.map((row) => row.cost), [0.139], 'the cost of the model that made the image');
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: chat.id, type: 'image', model: 'm', cost: (await budgetLib.statusOfEmail(PAB)).remainingUsd - 0.1, user: PAB });
+  imageProviderCalls = 0;
+  const tooDear = await errorOf(run(PAB, 'generate_image', { prompt: 'Eine Tasse' }, { config: { ...imageConfig.config, imageModel: 'google/gemini-3-pro-image' }, imageEstimateUsd: 0.134 }));
+  assert.equal(tooDear.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(tooDear.estimateUsd, 0.134);
+  assert.equal(imageProviderCalls, 0, 'the provider was not called');
+  const tooDearEdit = await errorOf(run(PAB, 'edit_image', { prompt: 'Mach es blau', reference_asset_ids: [asset.id] }, { config: { ...imageConfig.config, imageModel: 'google/gemini-3-pro-image' }, imageEstimateUsd: 0.134 }));
+  assert.equal(tooDearEdit.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(imageProviderCalls, 0);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  const unpriced = await run(PAB, 'generate_image', { prompt: 'Eine Tasse' }, { config: { ...imageConfig.config, imageModel: 'google/gemini-3-pro-image' } });
+  assert.match(unpriced.toolResult, /Bild erzeugt/, 'no price known: anything left is enough');
+  assert.equal(imageProviderCalls, 1);
+  // background removal with fal: its list price per image is the estimate; it fits a small rest, a smaller one is refused
+  await sleep(1100);
+  teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
+  const removeArgs = { endpoint: 'fal-ai/bria/background/remove', input: {}, media: [{ field: 'image_url', assetIds: [asset.id] }], kind: 'image', estimateUsd: 0.018 };
+  const cutout = await errorOf(run(PAB, 'fal_generate', removeArgs, nodeView));
+  assert.ok(cutout && !cutout.code, `not a budget error (stops at the missing key): ${cutout && cutout.message}`);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: chat.id, type: 'image', model: 'm', cost: (await budgetLib.statusOfEmail(PAB)).remainingUsd - 0.01, user: PAB });
+  const noCutout = await errorOf(run(PAB, 'fal_generate', removeArgs, nodeView));
+  assert.equal(noCutout.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(noCutout.estimateUsd, 0.018);
+  // a video node with a model of its own passes the estimate of that model (videoEstimateUsd, WP28 part 2): it stays reserved for
+  // the job until the poller books the cost, the job remembers it; where the rest does not cover it the call is refused before
+  // the provider is called (the same rule as the click on a model card of the chat); a price that is not known needs anything left
+  await sleep(1100);
+  teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
+  const klingOption = { id: VIDEO_KLING, name: 'Kling v3.0 Standard', estimateUsd: 0.63, price: { minTotal: 0.42, maxTotal: 0.63 } };
+  const videoNode = { nodeView: true, config: { imageModel: 'test/image', videoModel: VIDEO_KLING }, videoOption: klingOption, videoEstimateUsd: 0.63 };
+  let nodeVideoCalls = 0;
+  patch(or, 'createVideo', async (payload) => {
+    nodeVideoCalls += 1;
+    assert.equal(payload.model, VIDEO_KLING, 'the model of the node reaches the provider');
+    return { id: `node-job-${nodeVideoCalls}`, polling_url: 'http://127.0.0.1:1/x', status: 'pending' };
+  });
+  await run(PAB, 'generate_video', { prompt: 'Ein Spaziergang', mode: 'text_to_video', duration_seconds: 5 }, videoNode);
+  assert.equal(nodeVideoCalls, 1);
+  assert.ok(Math.abs((await budgetLib.statusOfEmail(PAB)).reservedUsd - 0.63) < 1e-9, 'the estimate of the model stays reserved for the job');
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 1);
+  const nodeJob = (await store.readSession(chat.id)).jobs.find((job) => job.jobId === 'node-job-1');
+  assert.deepEqual([nodeJob.model, nodeJob.modelName, nodeJob.estimateUsd, nodeJob.reservedUsd], [VIDEO_KLING, 'Kling v3.0 Standard', 0.63, 0.63]);
+  assert.deepEqual(nodeJob.estimateMinUsd, 0.42);
+  assert.match(nodeJob.budgetKey, /^hold:/);
+  budgetLib.settleJob(nodeJob, 0.5);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0, 'booked: nothing stays reserved');
+  await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: chat.id, type: 'image', model: 'm', cost: (await budgetLib.statusOfEmail(PAB)).remainingUsd - 0.5, user: PAB });
+  const tooDearVideo = await errorOf(run(PAB, 'generate_video', { prompt: 'Noch ein Spaziergang', mode: 'text_to_video', duration_seconds: 5 }, videoNode));
+  assert.equal(tooDearVideo.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(tooDearVideo.estimateUsd, 0.63);
+  assert.equal(tooDearVideo.status, 402);
+  assert.equal(nodeVideoCalls, 1, 'the provider was not called');
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  const unpricedVideo = await run(PAB, 'generate_video', { prompt: 'Noch ein Spaziergang', mode: 'text_to_video', duration_seconds: 5 }, { ...videoNode, videoOption: { id: VIDEO_KLING, name: 'Kling v3.0 Standard' }, videoEstimateUsd: undefined });
+  assert.equal(nodeVideoCalls, 2, 'no price known: anything left is enough');
+  for (const job of (await store.readSession(chat.id)).jobs.filter((entry) => entry.budgetKey)) budgetLib.settleJob(job, 0.1);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  assert.ok(unpricedVideo.job);
+  await sleep(1100);
+  teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
+  // the same nodes for everybody: the registry and the model lists do not differ between participants and internal people
+  const registryOf = async (email) => (await api('/api/nodes/registry', { as: email })).body;
+  const staffRegistry = await registryOf(STAFF);
+  const p1Registry = await registryOf(PAB);
+  for (const type of ['image.generate', 'image.edit', 'fal.remove_background', 'video.generate']) {
+    const forStaff = staffRegistry.nodeTypes.find((item) => item.type === type);
+    const forParticipant = p1Registry.nodeTypes.find((item) => item.type === type);
+    assert.ok(forStaff && forParticipant, type);
+    assert.equal(forParticipant.restricted, undefined, `${type} is not closed for participants`);
+    assert.equal(forParticipant.available === true, forStaff.available === true, `${type}: same availability`);
+  }
+  for (const source of ['image-models', 'image-edit-models', 'video-models']) {
+    const forStaff = await api(`/api/nodes/options/${source}`, { as: STAFF });
+    const forParticipant = await api(`/api/nodes/options/${source}`, { as: PAB });
+    const forGuest = await api(`/api/nodes/options/${source}`, { as: GUEST });
+    assert.equal(forStaff.status, 200, source);
+    assert.equal(forParticipant.status, 200, source);
+    assert.equal(forGuest.status, 200, source);
+    assert.deepEqual(forParticipant.body.options, forStaff.body.options, `${source}: the same list for participants`);
+    assert.deepEqual(forGuest.body.options, forStaff.body.options, `${source}: and for guests`);
+    assert.equal(forStaff.body.options[0].value, '');
+    if (source === 'video-models') {
+      // the models of the chat (the configured one and the curated list the provider knows), with what each takes
+      const kling = forParticipant.body.options.find((item) => item.value === VIDEO_KLING);
+      assert.ok(kling && kling.last_frame.max === 1 && kling.references.max === 0, 'Kling takes an end frame and no references');
+      assert.ok(forParticipant.body.options.some((item) => item.value === VIDEO_SEEDANCE));
+      assert.ok(forParticipant.body.options.every((item) => item.value === '' || [VIDEO_SEEDANCE, VIDEO_KLING].includes(item.value)));
+    }
+  }
+  await sleep(1100);
+  teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
   restoreAll();
   patch(or, 'createVideo', async () => ({ id: 'job-x', polling_url: 'http://127.0.0.1:1/x', status: 'pending' }));
   teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
@@ -1344,6 +1487,51 @@ async function testBudgetNodes(ctx) {
   assert.equal(hfRun.body.code, 'FORBIDDEN_FOR_ROLE');
   assert.equal(hfRun.body.feature, 'higgsfield');
   assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+  restoreAll();
+
+  // the video node with a model choice is open for participants; its plan carries the estimate of the model (the upper end of
+  // the price of the chat), a run that does not fit the budget is refused before the provider is called
+  let videoStarts = 0;
+  patch(or, 'createVideo', async () => {
+    videoStarts += 1;
+    return { id: `plan-job-${videoStarts}`, polling_url: 'http://127.0.0.1:1/x', status: 'pending' };
+  });
+  const videoGraph = (params) => {
+    const base = graph('video.generate');
+    return { ...base, nodes: base.nodes.map((item) => (item.id === 'gen' ? node('gen', 'video.generate', params, 300, 0) : item)) };
+  };
+  const vidFlow = (await call(person, 'POST', '/api/workflows', { name: 'Video mit Modell' })).body.workflow;
+  assert.equal((await call(person, 'PUT', `/api/workflows/${vidFlow.id}`, { baseRev: 1, graph: videoGraph({ model: VIDEO_KLING, duration: 5 }) })).status, 200);
+  const vidPlan = await call(person, 'POST', `/api/workflows/${vidFlow.id}/runs/plan`, { mode: 'all' });
+  assert.equal(vidPlan.status, 200, vidPlan.text);
+  assert.equal(vidPlan.body.nodes.gen.status !== 'unavailable', true);
+  assert.deepEqual(vidPlan.body.blocked, []);
+  assert.ok(Math.abs(vidPlan.body.nodes.gen.estimate.usd - 0.63) < 1e-9, 'Kling, 5 s: up to 0.126 per second');
+  assert.equal(vidPlan.body.budget.enough, true);
+  assert.ok(Math.abs(vidPlan.body.budget.estimateUsd - 0.63) < 1e-9);
+  // a rest of 0.5 USD does not cover 0.63: the plan says so and the run is refused with the estimate
+  const spentNow = (await ctx.budget.statusOfEmail(person)).spentUsd;
+  await api(`/api/teams/${ctx.teamA.id}/members/${enc(person)}`, { method: 'PATCH', as: ADMIN, json: { budgetOverrideUsd: spentNow + 0.5 } });
+  const dearPlan = await call(person, 'POST', `/api/workflows/${vidFlow.id}/runs/plan`, { mode: 'all' });
+  assert.equal(dearPlan.body.budget.enough, false);
+  assert.equal(dearPlan.body.budget.code, 'BUDGET_INSUFFICIENT');
+  const dearRun = await call(person, 'POST', `/api/workflows/${vidFlow.id}/runs`, { mode: 'all' });
+  assert.equal(dearRun.status, 402);
+  assert.equal(dearRun.body.code, 'BUDGET_INSUFFICIENT');
+  assert.ok(Math.abs(dearRun.body.estimateUsd - 0.63) < 1e-9);
+  assert.equal(videoStarts, 0, 'the provider was not called');
+  assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+  // a shorter clip of the same model fits: the estimate follows the duration
+  assert.equal((await call(person, 'PUT', `/api/workflows/${vidFlow.id}`, { baseRev: (await call(person, 'GET', `/api/workflows/${vidFlow.id}`)).body.workflow.rev, graph: videoGraph({ model: VIDEO_KLING, duration: 3 }) })).status, 200);
+  const fitsPlan = await call(person, 'POST', `/api/workflows/${vidFlow.id}/runs/plan`, { mode: 'all' });
+  assert.ok(Math.abs(fitsPlan.body.nodes.gen.estimate.usd - 0.378) < 1e-9, 'Kling, 3 s');
+  assert.equal(fitsPlan.body.budget.enough, true);
+  // guests have no budget: the plan says so, the run is refused
+  const gvFlow = (await call(GUEST, 'POST', '/api/workflows', { name: 'Gast Video' })).body.workflow;
+  await call(GUEST, 'PUT', `/api/workflows/${gvFlow.id}`, { baseRev: 1, graph: videoGraph({ model: VIDEO_KLING }) });
+  assert.equal((await call(GUEST, 'POST', `/api/workflows/${gvFlow.id}/runs`, { mode: 'all' })).status, 402);
+  assert.equal(videoStarts, 0);
+  await api(`/api/teams/${ctx.teamA.id}/members/${enc(person)}`, { method: 'PATCH', as: ADMIN, json: { budgetOverrideUsd: 50 } });
   restoreAll();
 
   // speech and music in one run: the plan counts both, the run reserves ONCE (run key) and every booking is settled against it

@@ -446,7 +446,9 @@
   const optionCache = new Map();
   const optionListeners = new Set();
 
-  // Entries may carry what a model takes (`references`, `audio`, see lib/nodes/routes.js); they are kept as they come.
+  // Entries may carry what a model takes (`references`, `audio`, `videos`, `last_frame`, `durations`, see lib/nodes/routes.js),
+  // what an image costs (`estimateUsd`) or a second of video (`perSecondUsd`) and `default: true` for the entry of the model that a node without a choice uses (value ''); they are
+  // kept as they come.
   function normalizeOptions(payload) {
     const list = Array.isArray(payload?.options) ? payload.options : Array.isArray(payload) ? payload : [];
     return list.map((option) => {
@@ -454,8 +456,38 @@
       const out = { value: String(option.value), label: String(option.label ?? option.value) };
       if (option.references && typeof option.references === 'object') out.references = option.references;
       if (option.audio && typeof option.audio === 'object') out.audio = option.audio;
+      // video models: reference videos, the end frame ({ max: 0 | 1 }), the durations and what a second costs
+      if (option.videos && typeof option.videos === 'object') out.videos = option.videos;
+      if (option.last_frame && typeof option.last_frame === 'object') out.last_frame = option.last_frame;
+      if (option.durations && typeof option.durations === 'object') out.durations = option.durations;
+      if (option.perSecondUsd && typeof option.perSecondUsd === 'object') out.perSecondUsd = option.perSecondUsd;
+      if (Number.isFinite(option.estimateUsd) && option.estimateUsd > 0) out.estimateUsd = option.estimateUsd;
+      if (option.default === true) out.default = true;
       return out;
     });
+  }
+
+  // The model lists of the app itself (image-models, image-edit-models): their entries say what a model takes. The
+  // Higgsfield lists are only the names; what a model takes is read from its description.
+  function isOwnModelList(source) {
+    return Boolean(source) && !/^higgsfield-/.test(source);
+  }
+
+  // The entries of a select param as the node shows them. A model list starts with the entry of the model that a node without a
+  // choice uses, named as such ("Default: GPT Image 2"). The same model once more with an explicit value stays what it is when
+  // the server changes its default; its label says so ("GPT Image 2 (fixed)"), or the two entries look like a mistake.
+  function selectEntries(param, source, current) {
+    const standard = source.options.find((option) => option.default === true);
+    const options = source.options
+      .filter((option) => option !== standard)
+      .map((option) => (param.optionsSource && standard && option.value !== '' && option.label === standard.label ? { ...option, label: T('nodes.option.pinnedNamed', { name: option.label }) } : option));
+    if (param.optionsSource) {
+      options.unshift(standard
+        ? { ...standard, value: '', label: T('nodes.option.defaultNamed', { name: standard.label }) }
+        : { value: '', label: source.state === 'loading' ? T('nodes.option.loading') : source.state === 'error' ? T('nodes.option.unavailable') : T('nodes.option.default') });
+    }
+    if (current !== '' && !options.some((option) => option.value === current)) options.push({ value: current, label: current });
+    return options;
   }
 
   // Option list of a select param: static or from an options source (fetched once, cached).
@@ -475,7 +507,11 @@
             entry.state = 'error';
             entry.error = error.message;
           })
-          .finally(() => optionListeners.forEach((fn) => fn(param.optionsSource)));
+          .finally(() => {
+            optionListeners.forEach((fn) => fn(param.optionsSource));
+            // a list of the app itself carries what its models take: cards, notices and the plan follow when it arrives
+            if (isOwnModelList(param.optionsSource)) modelListeners.forEach((fn) => fn(param.optionsSource));
+          });
         return entry;
       }
       return cached;
@@ -577,9 +613,27 @@
   // listeners are told, the next call knows).
   function optionCapabilities(source, value) {
     const id = String(value ?? '').trim();
-    if (!id) return null;
+    const own = isOwnModelList(source);
+    if (own && !optionCache.has(source)) optionsFor({ optionsSource: source });
     const list = source ? optionCache.get(source) : null;
-    const option = list && list.state === 'ready' ? list.options.find((item) => item.value === id) : null;
+    const ready = Boolean(list && list.state === 'ready');
+    if (own) {
+      // the entry says what the model takes (none: unknown, the fixed maximum of the input applies); no description to read.
+      // Without a choice: the model of the configuration, which the list names as the entry with `default`.
+      const entry = ready ? list.options.find((item) => (id ? item.value === id : item.default === true)) : null;
+      if (!id && !entry) return null;
+      return {
+        name: entry ? entry.label : id,
+        references: (entry && entry.references) || null,
+        audio: (entry && entry.audio) || null,
+        videos: (entry && entry.videos) || null,
+        last_frame: (entry && entry.last_frame) || null,
+        durations: (entry && entry.durations) || null,
+        error: false
+      };
+    }
+    if (!id) return null;
+    const option = ready ? list.options.find((item) => item.value === id) : null;
     let detail = modelDetails.get(id);
     const fromList = Boolean(option && option.references);
     if ((!detail && !fromList) || (detail && isStaleDetail(detail))) detail = modelDetail(id);
@@ -636,10 +690,27 @@
     return audio.max >= 15 ? T('nodes.cap.audio') : T('nodes.cap.audioUpTo', { max: audio.max });
   }
 
-  // What a model takes, in one line: "up to 4 images, audio". '' while nothing is known.
+  // Video models: "end frame" where the model takes one, "videos up to 3", "4-30 s" or "4, 6, 8 s".
+  function lastFrameText(lastFrame) {
+    return lastFrame && lastFrame.max > 0 ? T('nodes.cap.lastFrame') : '';
+  }
+
+  function videosText(videos) {
+    return videos && videos.max > 0 ? T('nodes.cap.videosUpTo', { max: videos.max }) : '';
+  }
+
+  function durationText(durations) {
+    if (!durations) return '';
+    if (Array.isArray(durations.values) && durations.values.length) return T('nodes.cap.durationValues', { values: durations.values.join(', ') });
+    return Number.isFinite(durations.min) && Number.isFinite(durations.max) ? T('nodes.cap.duration', { min: durations.min, max: durations.max }) : '';
+  }
+
+  // What a model takes, in one line: "end frame, up to 4 images, audio, 4-30 s". '' while nothing is known.
   function capabilitiesText(caps) {
     if (!caps) return '';
-    return [referencesText(caps.references), audioText(caps.audio)].filter(Boolean).join(', ');
+    return [lastFrameText(caps.last_frame), referencesText(caps.references), videosText(caps.videos), audioText(caps.audio), durationText(caps.durations)]
+      .filter(Boolean)
+      .join(', ');
   }
 
   // Why a model does not fit the connections of the node ('' = it fits or nothing is known); usage = { references, audio }
@@ -649,9 +720,15 @@
     if (!caps || !usage) return '';
     const refs = usage.references || 0;
     const audio = usage.audio || 0;
+    const videos = usage.videos || 0;
+    const lastFrame = usage.last_frame || 0;
     const key = (name) => (short ? `nodes.cap.misfitShort.${name}` : `nodes.cap.misfit.${name}`);
+    if (caps.last_frame && lastFrame > caps.last_frame.max) return T(key('noLastFrame'), { count: lastFrame });
     if (caps.references && refs > caps.references.max) {
       return caps.references.max === 0 ? T(key('noRefs'), { count: refs }) : T(key('refs'), { max: caps.references.max, count: refs });
+    }
+    if (caps.videos && videos > caps.videos.max) {
+      return caps.videos.max === 0 ? T(key('noVideos'), { count: videos }) : T(key('videos'), { max: caps.videos.max, count: videos });
     }
     if (caps.audio && audio > caps.audio.max) {
       return caps.audio.max === 0 ? T(key('noAudio'), { count: audio }) : T(key('audio'), { max: caps.audio.max, count: audio });
@@ -659,12 +736,31 @@
     return '';
   }
 
-  // Label of an entry of the model list: the name, what it takes and, when it does not fit the connections, why.
+  // "about $0.13 per image" for an entry that carries a price; '' while the price is not known (never "$0").
+  function money(value, decimals) {
+    return `$${value.toFixed(decimals === undefined ? (value < 0.1 ? 3 : 2) : decimals)}`;
+  }
+
+  // A video model: "about $0.05-$0.12 per second" (the range of the price estimate of the chat); '' while it is not known.
+  function priceText(option) {
+    const second = option && option.perSecondUsd;
+    if (second && Number.isFinite(second.max) && second.max > 0) {
+      const low = Number.isFinite(second.min) && second.min > 0 ? second.min : second.max;
+      // a second costs cents: three decimals up to one dollar
+      const decimals = second.max < 1 ? 3 : 2;
+      return T('nodes.cap.priceVideo', { price: money(low, decimals) === money(second.max, decimals) ? money(second.max, decimals) : `${money(low, decimals)}–${money(second.max, decimals)}` });
+    }
+    if (!option || !Number.isFinite(option.estimateUsd) || !(option.estimateUsd > 0)) return '';
+    return T('nodes.cap.priceImage', { price: money(option.estimateUsd) });
+  }
+
+  // Label of an entry of the model list: the name, what it takes, what it costs and, when it does not fit the
+  // connections, why.
   function modelOptionLabel(option, usage) {
-    const capabilities = capabilitiesText(option);
+    const details = [capabilitiesText(option), priceText(option)].filter(Boolean).join(' · ');
     // short in the entry (the full reason is in the inspector under "does not fit the connections")
     const misfit = misfitText(option, usage, { short: true });
-    return { text: `${option.label}${capabilities ? ` · ${capabilities}` : ''}${misfit ? ` ${misfit}` : ''}`, misfit: Boolean(misfit) };
+    return { text: `${option.label}${details ? ` · ${details}` : ''}${misfit ? ` ${misfit}` : ''}`, misfit: Boolean(misfit) };
   }
 
   /* ---------- media previews ---------- */
@@ -1045,13 +1141,11 @@
       const fill = () => {
         const source = optionsFor(param);
         select.textContent = '';
-        const options = source.options.slice();
-        if (param.optionsSource) options.unshift({ value: '', label: source.state === 'loading' ? T('nodes.option.loading') : source.state === 'error' ? T('nodes.option.unavailable') : T('nodes.option.default') });
-        if (current !== '' && !options.some((option) => option.value === current)) options.push({ value: current, label: current });
+        const options = selectEntries(param, source, current);
         // Model lists tell what each model takes; models that do not fit the connections of the node are marked.
         const usage = param.optionsSource && typeof ctx.usage === 'function' ? ctx.usage() : null;
         for (const option of options) {
-          if (option.references || option.audio) {
+          if (option.references || option.audio || option.videos || option.last_frame || option.durations || option.perSecondUsd || option.estimateUsd) {
             const label = modelOptionLabel(option, usage);
             select.append(el('option', { value: option.value, text: label.text, dataset: label.misfit ? { misfit: '1' } : null }));
           } else {
@@ -1605,6 +1699,7 @@
   }
 
   OCD.ui = {
+    selectEntries,
     T,
     tr,
     el,

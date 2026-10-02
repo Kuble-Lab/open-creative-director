@@ -57,6 +57,7 @@ store.ensureDirs();
 const fileConfig = loadConfig();
 const runtime = {
   imageModel: fileConfig.imageModel,
+  imageModels: fileConfig.imageModels,
   videoModel: fileConfig.videoModel,
   brainModels: fileConfig.brainModels,
   defaultBrain: fileConfig.defaultBrain,
@@ -708,6 +709,7 @@ function publicRuntimeConfig(viewer = null) {
     brainModels,
     defaultBrain: availableDefaultBrain(runtime.defaultBrain, brainModels),
     imageModel: runtime.imageModel,
+    imageModels: runtime.imageModels,
     videoModel: runtime.videoModel,
     gts: { enabled: gts.hasToken() && !restricted },
     fal: { enabled: fal.hasKey() },

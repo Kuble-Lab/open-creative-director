@@ -282,6 +282,8 @@ async function main() {
         return entry;
       });
       patch(discovery, 'brainSupportsImages', async () => true);
+      // the image nodes read the model list of OpenRouter before a plan or a run (lib/image-models.js): none here
+      patch(discovery, 'listImageModels', async () => ({ data: [] }));
       patch(discovery, 'videoCapabilities', async () => ({
         resolutions: ['480p', '720p'],
         aspectRatios: ['16:9', '9:16', '1:1'],
@@ -306,7 +308,7 @@ async function main() {
       const expected = [
         'llm.chat', 'llm.prompt_enhancer', 'llm.image_describer', 'llm.video_describer', 'llm.motion_html',
         'image.generate', 'image.edit', 'image.relight', 'image.higgsfield',
-        'video.seedance', 'video.higgsfield', 'video.motion_graphics', 'video.concat', 'audio.tts', 'audio.music', 'audio.music_plan',
+        'video.seedance', 'video.generate', 'video.higgsfield', 'video.motion_graphics', 'video.concat', 'audio.tts', 'audio.music', 'audio.music_plan',
         'hf.remove_background', 'hf.upscale_image', 'hf.upscale_video', 'hf.outpaint_image', 'hf.reframe_video',
         'hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech'
       ];

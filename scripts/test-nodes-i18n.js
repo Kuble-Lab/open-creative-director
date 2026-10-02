@@ -209,7 +209,7 @@ function testPortDescriptions() {
 
   // generic texts for all port ids, and the last-resort texts for all six base types on both sides
   const ids = new Set(ports.map((p) => p.port));
-  assert.equal(ids.size, 45, 'the registry has 45 port ids');
+  assert.equal(ids.size, 46, 'the registry has 46 port ids');
   for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
   for (const base of ['text', 'number', 'image', 'video', 'audio', 'any']) {
     for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);
