@@ -814,9 +814,10 @@ async function testAdminOnly({ api }) {
   assert.equal((await api('/api/settings', { as: 'newadmin@example.com' })).status, 403);
 
   // Not admin-only (the team works with them): reading roles, presets, brandings, config, node registry, folders
-  for (const url of ['/api/roles', '/api/prompt-presets', '/api/brandings', '/api/config', '/api/nodes/registry', '/api/workflow-templates', '/api/rendernode/status']) {
+  for (const url of ['/api/roles', '/api/prompt-presets', '/api/brandings', '/api/config', '/api/nodes/registry', '/api/workflow-templates', '/api/workflow-templates/dub-clip', '/api/rendernode/status']) {
     assert.equal((await api(url, { as: ALICE })).status, 200, url);
   }
+  assert.ok((await api('/api/workflow-templates', { as: ALICE })).body.templates.some((template) => template.id === 'dub-clip'), 'internal people see every starter template');
 }
 
 /* ---------- team list ---------- */

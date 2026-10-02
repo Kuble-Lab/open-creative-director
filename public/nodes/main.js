@@ -400,6 +400,7 @@
     markDirty();
     refreshInspector();
     scheduleAppMarks();
+    updateStart();
     bus.emit('graph', state.graph);
   }
 
@@ -904,7 +905,11 @@
       makeRoomForFit();
       requestAnimationFrame(() => fitAfterMeasure());
     }
-    else canvas.setViewport({ x: canvas.containerSize().width / 2 - 160, y: canvas.containerSize().height / 2 - 120, zoom: 1 }, { silent: true });
+    else {
+      // On a phone the panels would cover the start of an empty workflow.
+      if (global.innerWidth < 900) makeRoomForFit();
+      canvas.setViewport({ x: canvas.containerSize().width / 2 - 160, y: canvas.containerSize().height / 2 - 120, zoom: 1 }, { silent: true });
+    }
     setSaveState('saved');
     hideBanner();
     dom.name.value = state.workflow.name;
@@ -936,9 +941,9 @@
     }
   }
 
-  // Fit once the cards have been measured and the side panels stopped animating (their grid
+  // Runs `callback` once the cards have been measured and the side panels stopped animating (their grid
   // transition would otherwise leave the canvas wider than it ends up).
-  function fitAfterMeasure() {
+  function whenLayoutSettled(callback) {
     const started = performance.now();
     const settle = () => {
       const animating = dom.body.getAnimations ? dom.body.getAnimations().some((animation) => animation.playState === 'running') : false;
@@ -946,12 +951,16 @@
         requestAnimationFrame(settle);
         return;
       }
-      requestAnimationFrame(() => {
-        canvas.fit({ padding: 48 });
-        state.graph = { ...state.graph, viewport: canvas.getViewport() };
-      });
+      requestAnimationFrame(callback);
     };
     requestAnimationFrame(settle);
+  }
+
+  function fitAfterMeasure() {
+    whenLayoutSettled(() => {
+      canvas.fit({ padding: 48 });
+      state.graph = { ...state.graph, viewport: canvas.getViewport() };
+    });
   }
 
   function openEvents(id) {
@@ -1024,7 +1033,14 @@
     dom.stage.classList.toggle('is-empty', !has);
     dom.body.classList.toggle('no-workflow', !has);
     if (!has) dom.name.value = '';
+    updateStart();
     updateZoomLabel();
+  }
+
+  // The start in the middle of an open workflow without nodes; it goes as soon as there is a node.
+  function updateStart() {
+    if (!dom) return;
+    dom.start.classList.toggle('hidden', !(state.workflow && state.graph.nodes.length === 0));
   }
 
   // User management (only with AUTH_WHOAMI_URL): owner in the header, share button, read-only name for others.
@@ -1355,6 +1371,7 @@
     updateUndoButtons();
     refreshInspector();
     scheduleAppMarks();
+    updateStart();
     bus.emit('graph', state.graph);
   }
 
@@ -1375,6 +1392,12 @@
       options.portType = filter.type;
     }
     addNodeAt(entry.type, { x: world.x - (context.anchor && context.anchor.dir === 'in' ? 300 : 0), y: world.y - 20 }, options);
+  }
+
+  // Shift+Enter in the palette: the node with a node in front of each required input, the node itself where it would go.
+  function onPalettePickWithInputs(entry, context) {
+    const world = context.world || viewCenter();
+    insertWithInputs(entry.type, { params: { ...(entry.params || {}), ...((entry.compat && entry.compat.params) || {}) }, world: { x: world.x, y: world.y - 20 } });
   }
 
   /* ---------- uploads and file drops ---------- */
@@ -1534,8 +1557,6 @@
 
   /* ---------- templates, projects, chat bridge (WP7) ---------- */
 
-  const REQUIREMENT_LABELS = { openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', elevenlabs: 'ElevenLabs', rendernode: 'Render node', higgsfield: 'Higgsfield', fal: 'fal.ai' };
-
   function currentLang() {
     return typeof global.getLang === 'function' ? global.getLang() : 'en';
   }
@@ -1558,67 +1579,51 @@
     return select;
   }
 
-  // "New from template": cards of the starter workflows with their requirements.
-  async function openTemplateDialog() {
+  // Starter templates (public/nodes/templates-ui.js): list and documents, cached for a few minutes.
+  const templateStore = OCD.templatesUi.createStore({ api, getLang: () => currentLang() });
+
+  // Translated name of a node type, for the reading line and the search of a template.
+  function typeLabelOf(type) {
+    const def = state.reg && state.reg.types.get(type);
+    return def ? ui.typeLabel(def) : type;
+  }
+
+  // Help of the node types (public/nodes/node-help.js): palette, quick pick, card popover and inspector section.
+  const nodeHelp = OCD.nodeHelp.createHelp({
+    getReg: () => state.reg,
+    templates: () => templateStore,
+    canInsert: canInsertNow,
+    insertWithInputs,
+    insertTemplate: (template) => insertTemplate(template)
+  });
+
+  // The gallery of the starter templates. "New workflow" creates one from the template (as before); "Insert into this
+  // workflow" puts it into the open workflow (only offered with one open). options.primary: 'insert' makes the latter the
+  // main button (the empty canvas), 'new' the former (the workflow list).
+  async function openTemplateDialog(options = {}) {
     let templates;
     try {
-      templates = (await api.request('GET', `/api/workflow-templates?lang=${encodeURIComponent(currentLang())}`)).templates || [];
+      templates = await templateStore.list({ refresh: true });
     } catch (error) {
       ui.toast(ui.T('nodes.template.loadFailed', { error: error.message }), { kind: 'error' });
       return;
     }
     const folders = await loadFolders();
-    let chosen = null;
-    let panel = null;
-    const grid = el('div', { class: 'nv-tpl-grid', role: 'listbox', 'aria-label': ui.T('nodes.template.title') });
-    const cards = new Map();
-    for (const template of templates) {
-      const card = el('button', { type: 'button', class: `nv-tpl-card ${template.available ? '' : 'is-unavailable'}`.trim(), role: 'option', 'aria-selected': 'false', dataset: { id: template.id } });
-      const head = el('div', { class: 'nv-tpl-head' }, el('span', { class: 'nv-tpl-icon' }, ui.icon('template', 16)), el('span', { class: 'nv-tpl-name', text: template.name }));
-      const tags = el('div', { class: 'nv-tpl-tags' });
-      if (template.batch) tags.append(el('span', { class: 'nv-badge is-batch', text: ui.T('nodes.app.batch') }));
-      for (const key of template.requires || []) {
-        const missing = (template.missing || []).find((item) => item.key === key);
-        tags.append(el('span', { class: `nv-badge ${missing ? 'is-warn' : ''}`.trim(), title: missing ? missing.reason : ui.T('nodes.template.ready'), text: REQUIREMENT_LABELS[key] || key }));
-      }
-      card.append(head, el('p', { class: 'nv-tpl-desc', text: template.description }), tags);
-      card.addEventListener('click', () => {
-        chosen = template;
-        for (const [id, other] of cards) {
-          other.classList.toggle('is-selected', id === template.id);
-          other.setAttribute('aria-selected', id === template.id ? 'true' : 'false');
-        }
-        update();
-      });
-      cards.set(template.id, card);
-      grid.append(card);
-    }
-    const select = projectSelect(folders, '');
-    const projectRow = el('div', { class: 'nv-tpl-project' }, el('label', { class: 'nv-field-label', text: ui.T('nodes.project.label') }), select);
-    const note = el('p', { class: 'nv-hint nv-tpl-note', text: ui.T('nodes.template.note') });
-    function update() {
-      const create = panel && panel.querySelector('.nv-dialog-actions .nv-btn-primary');
-      if (create) create.disabled = !chosen;
-      note.classList.toggle('is-warn', Boolean(chosen && !chosen.available));
-      note.textContent = chosen && !chosen.available ? ui.T('nodes.template.unavailableNote', { missing: chosen.missing.map((item) => REQUIREMENT_LABELS[item.key] || item.key).join(', ') }) : ui.T('nodes.template.note');
-    }
-    const result = await ui.dialog({
-      title: ui.T('nodes.template.title'),
-      body: el('div', { class: 'nv-tpl' }, grid, note, projectRow),
-      width: 760,
-      buttons: [
-        { label: ui.T('nodes.common.cancel'), value: false, cancel: true },
-        { label: ui.T('nodes.template.create'), value: true, primary: true }
-      ],
-      onOpen: (dialogPanel) => {
-        panel = dialogPanel;
-        dialogPanel.classList.add('is-wide');
-        update();
-      }
+    const canInsert = canInsertNow();
+    const choice = await OCD.templatesUi.openGallery({
+      templates,
+      labelOf: typeLabelOf,
+      canInsert,
+      primary: options && options.primary === 'insert' ? 'insert' : 'new',
+      select: projectSelect(folders, '')
     });
-    if (!result || !chosen) return;
+    if (!choice) return;
+    if (choice.action === 'insert') {
+      await insertTemplate(choice.template);
+      return;
+    }
     try {
-      const payload = await api.createWorkflow({ templateId: chosen.id, lang: currentLang(), folder: select.value || null });
+      const payload = await api.createWorkflow({ templateId: choice.template.id, lang: currentLang(), folder: choice.folder });
       state.workflows.unshift({
         id: payload.workflow.id,
         name: payload.workflow.name,
@@ -1635,6 +1640,134 @@
     } catch (error) {
       ui.toast(ui.T('nodes.template.createFailed', { error: error.message }), { kind: 'error' });
     }
+  }
+
+  // Is there an open workflow that can take new nodes right now?
+  function canInsertNow() {
+    return Boolean(state.workflow && state.reg && canvas);
+  }
+
+  // Puts a sub graph ({ nodes, edges, notes, groups }) into the open workflow as ONE undo step: new ids, a free place
+  // (right of the existing content, the middle of the view on an empty canvas), the new items selected and in view.
+  // Nothing is run. options: { history: undo label, at, avoid } as for graphLib.insertSubgraph. Returns its result
+  // ({ ids, idMap, bounds }) or null (with a toast) when nothing could be inserted. Templates, "insert with inputs" and
+  // the assistant all come through here.
+  function insertSubgraph(sub, options = {}) {
+    if (!canInsertNow()) return null;
+    const { history, ...placement } = options;
+    const result = graphLib.insertSubgraph(state.graph, sub, { reg: state.reg, sizes: canvas.getSizes(), reserved: state.reserved, center: viewCenter(), ...placement });
+    if (result.error) {
+      ui.toast(ui.T(`nodes.insert.${result.error.reason}`, { type: result.error.type || '' }), { kind: 'warn' });
+      return null;
+    }
+    for (const id of result.ids.nodes) reserveId(id);
+    applyGraph(result.graph, { history: history || 'insert' });
+    setSelection({ nodes: result.ids.nodes, notes: result.ids.notes, groups: result.ids.groups, edge: null });
+    revealBounds(result.bounds);
+    return result;
+  }
+
+  // Brings a world rectangle into view: nothing moves when it is already there, otherwise the view fits the whole graph
+  // (old and new content), never zoomed in beyond 100 %. Waits for the cards to be measured and the panels to settle.
+  function revealBounds(bounds) {
+    whenLayoutSettled(() => {
+      if (!canvas || !bounds) return;
+      const size = canvas.containerSize();
+      const view = canvas.getViewport();
+      const topLeft = graphLib.worldToScreen(view, bounds.x, bounds.y);
+      const margin = 24;
+      const inside = topLeft.x >= margin && topLeft.y >= margin && topLeft.x + bounds.w * view.zoom <= size.width - margin && topLeft.y + bounds.h * view.zoom <= size.height - margin;
+      if (!inside) canvas.fit({ padding: 96 });
+    });
+  }
+
+  // Inserts a starter template into the open workflow (the app section of the template is not taken over).
+  async function insertTemplate(template) {
+    if (!canInsertNow()) return null;
+    const workflowId = state.workflow.id;
+    let document;
+    try {
+      document = await templateStore.document(template.id);
+    } catch (error) {
+      ui.toast(ui.T('nodes.template.insertFailed', { error: error.message }), { kind: 'error' });
+      return null;
+    }
+    // another workflow may have been opened while the document loaded
+    if (!state.workflow || state.workflow.id !== workflowId) return null;
+    const result = insertSubgraph(document.graph, { history: 'insert-template' });
+    if (result) ui.toast(ui.T('nodes.template.inserted', { name: document.name || template.name }));
+    return result;
+  }
+
+  // Puts a node of `type` into the open workflow with a node in front of each required input (the input node of its
+  // kind, or the node the input's `suggest` hint names), connected, as ONE undo step. Nothing is run.
+  // options: { params, world }: with a point the node itself lands there, otherwise the block goes beside the content.
+  function insertWithInputs(type, options = {}) {
+    if (!canInsertNow()) return null;
+    const built = graphLib.inputsSubgraph(state.reg, type, { params: options.params });
+    if (built.error) {
+      ui.toast(ui.T(`nodes.insert.${built.error.reason}`, { type }), { kind: 'warn' });
+      return null;
+    }
+    const placement = {};
+    if (options.world && Number.isFinite(options.world.x) && Number.isFinite(options.world.y)) {
+      const left = Math.min(...built.nodes.map((node) => node.x));
+      const top = Math.min(...built.nodes.map((node) => node.y));
+      placement.at = { x: graphLib.snap(options.world.x + left, 8), y: graphLib.snap(options.world.y + top, 8) };
+      placement.avoid = true;
+    }
+    const result = insertSubgraph({ nodes: built.nodes, edges: built.edges }, { history: 'insert-with-inputs', ...placement });
+    if (result) ui.toast(ui.T('nodes.help.insertedWithInputs', { name: typeLabelOf(type), count: result.ids.nodes.length }));
+    return result;
+  }
+
+  // Fix of an incomplete card, "Put <node> in front": the node named by the `suggest` hint of the missing input goes in
+  // front of it, connected, with its own required inputs supplied as well (Motion HTML writer <- Prompt) and the assets
+  // the node already has handed on to it. One undo step; nothing is run (a paid node asks before the run).
+  function addInputFor(nodeId, portId) {
+    if (!canInsertNow() || !portId) return;
+    const result = graphLib.addInputSources(state.reg, state.graph, nodeId, { ports: [portId], sizes: canvas.getSizes(), reserved: state.reserved });
+    if (result.error) {
+      ui.toast(ui.T('nodes.fix.failed'), { kind: 'warn' });
+      return;
+    }
+    for (const node of result.nodes) reserveId(node.id);
+    for (const edge of result.edges) reserveId(edge.id);
+    // A field shared in the Design App (the HTML field, say) is driven by a connection now: share the new Prompt node's
+    // text instead, with the same label (as the conversion of free text does).
+    const target = graphLib.getNode(state.graph, nodeId);
+    const port = target ? graphLib.findPort(state.reg, target, 'in', portId) : null;
+    const prompt = result.nodes.find((node) => node.type === graphLib.PROMPT_TYPE);
+    if (port && port.param && prompt && moveAppInput({ node: nodeId, param: port.param }, { node: prompt.id, param: 'prompt' })) {
+      state.appRemaps.push({ from: { node: nodeId, param: port.param }, to: { node: prompt.id, param: 'prompt' } });
+      if (state.appRemaps.length > 50) state.appRemaps.shift();
+    }
+    applyGraph(result.graph, { history: 'add-input' });
+    const ids = result.nodes.map((node) => node.id);
+    setSelection({ nodes: ids, notes: [], groups: [], edge: null });
+    revealBounds(graphLib.boundsOf(result.graph, canvas.getSizes(), { nodes: [nodeId, ...ids] }));
+    const supplied = result.supplied[0] ? result.nodes.find((node) => node.id === result.supplied[0].node) : null;
+    ui.toast(ui.T('nodes.fix.added', { name: supplied ? typeLabelOf(supplied.type) : '' }));
+  }
+
+  // Fix of an incomplete card, "Choose a suitable node …": the quick pick for exactly this input, as when dragging from its
+  // port; a node named by the hint of the input is on top.
+  function pickInputFor(nodeId, portId) {
+    if (!canInsertNow()) return;
+    const node = graphLib.getNode(state.graph, nodeId);
+    const port = node ? graphLib.findPort(state.reg, node, 'in', portId) : null;
+    if (!port) return;
+    openPalette(
+      { world: { x: node.x - 56, y: node.y + 20 }, anchor: { dir: 'in', node: nodeId, port: portId }, exact: true },
+      { dir: 'in', type: port.type, multiple: port.multiple === true, prefer: port.suggest }
+    );
+  }
+
+  // The buttons of a card or of the inspector that remove the cause of an "Incomplete" status in one step.
+  function applyFix(nodeId, fixId, fix) {
+    if (fixId === 'motion-html') convertMotionHtml(nodeId);
+    else if (fixId === 'add-input') addInputFor(nodeId, fix && fix.port);
+    else if (fixId === 'pick-input') pickInputFor(nodeId, fix && fix.port);
   }
 
   // Assigns a workflow to a project (chat folder) or removes the assignment.
@@ -1900,6 +2033,18 @@
     return Boolean(dom.overlays.querySelector('.nv-dialog-backdrop, .nv-viewer'));
   }
 
+  // "?" or F1: the help popover of the selected node, the keyboard way to the "?" of its card. Needs exactly one node.
+  function openSelectedHelp() {
+    if (state.selection.nodes.size !== 1) return false;
+    const [id] = state.selection.nodes;
+    const node = graphLib.getNode(state.graph, id);
+    const card = [...dom.canvasHost.querySelectorAll('.nv-node')].find((item) => item.dataset.id === id);
+    const anchor = card && card.querySelector('.nv-node-help');
+    if (!node || !anchor) return false;
+    nodeHelp.openPopover(node.type, anchor);
+    return true;
+  }
+
   function onKeyDown(event) {
     if (!state.active) return;
     if (dialogOpen()) return;
@@ -1922,6 +2067,8 @@
     if (palette.isOpen()) return;
 
     if (key === ' ' || event.code === 'Space') {
+      // on a focused button (the "?" of a card) the space bar clicks, as it does everywhere else
+      if (event.target && event.target.closest && event.target.closest('button')) return;
       if (!event.repeat) canvas.setSpace(true);
       event.preventDefault();
       return;
@@ -1965,6 +2112,8 @@
     if (key === 'Tab' || key === '/') {
       event.preventDefault();
       openPalette({ world: pointerWorld() });
+    } else if (key === '?' || key === 'F1') {
+      if (openSelectedHelp()) event.preventDefault();
     } else if (key === 'Delete' || key === 'Backspace') {
       event.preventDefault();
       deleteSelection();
@@ -2094,8 +2243,25 @@
     const emptyTemplate = el('button', { type: 'button', class: 'nv-btn nv-empty-button nv-empty-template' }, ui.icon('template', 15), el('span', { text: ui.T('nodes.template.new'), dataset: { tText: 'nodes.template.new' } }));
     emptyTemplate.addEventListener('click', openTemplateDialog);
     const empty = el('div', { class: 'nv-empty' }, el('div', { class: 'nv-empty-mark' }, ui.icon('workflow', 26)), emptyTitle, emptyBody, el('div', { class: 'nv-empty-actions' }, emptyButton, emptyTemplate));
+    // An open workflow without nodes: a quiet start in the middle (it lets drops, drags and shortcuts through).
+    const startTemplate = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-start-button' }, ui.icon('template', 15), el('span', { text: ui.T('nodes.start.template'), dataset: { tText: 'nodes.start.template' } }));
+    startTemplate.addEventListener('click', () => openTemplateDialog({ primary: 'insert' }));
+    const startAdd = el('button', { type: 'button', class: 'nv-btn nv-start-button' }, ui.icon('plus', 15), el('span', { text: ui.T('nodes.start.addNode'), dataset: { tText: 'nodes.start.addNode' } }));
+    startAdd.addEventListener('click', () => openPalette({ world: viewCenter() }));
+    const start = el(
+      'div',
+      { class: 'nv-start hidden' },
+      el(
+        'div',
+        { class: 'nv-start-card' },
+        el('h3', { class: 'nv-start-title', text: ui.T('nodes.start.title'), dataset: { tText: 'nodes.start.title' } }),
+        el('p', { class: 'nv-start-body', text: ui.T('nodes.start.body'), dataset: { tText: 'nodes.start.body' } }),
+        el('div', { class: 'nv-start-actions' }, startTemplate, startAdd),
+        el('p', { class: 'nv-start-hint', text: ui.T('nodes.start.hint'), dataset: { tText: 'nodes.start.hint' } })
+      )
+    );
     const loading = el('div', { class: 'nv-loading', 'aria-hidden': 'true' }, el('div', { class: 'nv-spinner' }));
-    const stage = el('section', { class: 'nv-stage is-empty' }, canvasHost, toolbar, minimap, empty, loading, banner);
+    const stage = el('section', { class: 'nv-stage is-empty' }, canvasHost, toolbar, minimap, start, empty, loading, banner);
     const inspectorHost = el('aside', { class: 'nv-inspector', 'aria-label': ui.T('nodes.inspector.label') });
     const inspectorScroll = el('div', { class: 'nv-insp-scroll' });
     inspectorHost.append(inspectorScroll);
@@ -2117,6 +2283,7 @@
       toolHand,
       zoomLabel,
       banner,
+      start,
       empty,
       emptyTitle,
       emptyBody,
@@ -2256,12 +2423,22 @@
     });
     canvas.setRegistry(null);
 
-    palette = OCD.palette.createPalette({ host: dom.overlays, getReg: () => state.reg, onPick: onPalettePick });
-    // Remedy buttons on cards (slot.fix, filled by run.js).
+    palette = OCD.palette.createPalette({
+      host: dom.overlays,
+      getReg: () => state.reg,
+      onPick: onPalettePick,
+      getTemplates: () => templateStore.list(),
+      onPickTemplate: (template) => insertTemplate(template),
+      help: nodeHelp,
+      onPickWithInputs: onPalettePickWithInputs
+    });
+    // The "?" of a card (popover) and the remedy buttons on cards (slot.fix, filled by run.js).
     ui.setCardActions({
-      fix(nodeId, fixId) {
-        if (fixId === 'motion-html') convertMotionHtml(nodeId);
-      }
+      help: (nodeId, anchor) => {
+        const node = graphLib.getNode(state.graph, nodeId);
+        if (node) nodeHelp.openPopover(node.type, anchor);
+      },
+      fix: applyFix
     });
     runController = OCD.run.createController({ OCD });
     inspector = OCD.inspector.createInspector({
@@ -2273,6 +2450,8 @@
         onTitle: (nodeId, title) => renameNode(nodeId, title),
         onExtractPrompt: extractPrompt,
         onConvertMotionHtml: convertMotionHtml,
+        onFix: applyFix,
+        help: nodeHelp,
         onDelete: deleteSelection,
         onDuplicate: duplicateSelection,
         onGroupSelection: groupSelected,
@@ -2393,6 +2572,12 @@
     undo,
     redo,
     addNodeAt,
+    insertSubgraph,
+    insertTemplate,
+    insertWithInputs,
+    addInputFor,
+    getHelp: () => nodeHelp,
+    getTemplates: () => templateStore,
     connectEdge,
     deleteSelection,
     duplicateSelection,

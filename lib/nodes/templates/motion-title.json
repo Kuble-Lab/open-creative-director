@@ -2,12 +2,12 @@
   "id": "motion-title",
   "format": "ocd.workflow",
   "version": 1,
-  "name": "Motion title over footage",
-  "description": "Write a short brief; an LLM builds the HTML/GSAP animation and a render node turns it into a video with your footage as background.",
+  "name": "Title or lower third over footage",
+  "description": "Write a short brief for a title or a lower third (for example a name and a role); an LLM builds the HTML/GSAP animation and a render node turns it into a video with your footage as background.",
   "requires": ["openrouter", "rendernode"],
   "graph": {
     "nodes": [
-      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 60, "title": "Title brief", "params": { "text": "Bold lower-third title \"Summer Sale\" with a thin amber line that wipes in, subtitle \"Up to 40% off\", elegant and calm." } },
+      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 60, "title": "Title brief", "params": { "text": "Lower third for \"Anna Meier\", subtitle \"Head of Marketing\": a thin amber line wipes in, the name slides up, the role fades in below it. Bottom left, elegant and calm." } },
       { "id": "n2", "type": "input.video", "typeVersion": 1, "x": 80, "y": 380, "title": "Background footage", "params": { "asset": null } },
       { "id": "n3", "type": "llm.motion_html", "typeVersion": 1, "x": 500, "y": 60, "title": "Animation code", "params": { "model": "", "format": "landscape", "duration": 6 } },
       { "id": "n4", "type": "video.motion_graphics", "typeVersion": 1, "x": 920, "y": 80, "title": "Render title", "params": { "html": "", "format": "landscape", "quality": "standard", "label": "Motion title" } },
@@ -28,8 +28,8 @@
   },
   "app": {
     "enabled": true,
-    "title": "Motion title",
-    "description": "Upload footage and describe the title. You get a rendered title animation on top of your video.",
+    "title": "Title or lower third",
+    "description": "Upload footage and describe the title or lower third. You get a rendered animation on top of your video.",
     "inputs": [
       { "node": "n2", "param": "asset", "label": "Background footage" },
       { "node": "n1", "param": "text", "label": "Title brief" }
@@ -40,31 +40,31 @@
   },
   "i18n": {
     "de": {
-      "name": "Motion-Titel über Footage",
-      "description": "Schreibe ein kurzes Briefing; ein LLM baut die HTML/GSAP-Animation und ein Render-Node macht daraus ein Video mit deinem Footage als Hintergrund.",
+      "name": "Titel oder Bauchbinde über Footage",
+      "description": "Schreibe ein kurzes Briefing für einen Titel oder eine Bauchbinde (zum Beispiel Name und Funktion); ein LLM baut die HTML/GSAP-Animation und ein Render-Node macht daraus ein Video mit deinem Footage als Hintergrund.",
       "node.n1": "Titel-Briefing",
       "node.n2": "Hintergrund-Footage",
       "node.n3": "Animationscode",
       "node.n4": "Titel rendern",
       "note.t1": "Braucht einen eingerichteten Render-Node. Das Footage geht als Asset 1 an die Animation, damit das LLM es als Videoebene einsetzen kann.",
-      "param.n1.text": "Kräftiger Lower-Third-Titel «Sommer-Sale» mit dünner Bernsteinlinie, die einläuft, Untertitel «Bis zu 40 % Rabatt», elegant und ruhig.",
-      "app.title": "Motion-Titel",
-      "app.description": "Lade Footage hoch und beschreibe den Titel. Du erhältst eine gerenderte Titelanimation über deinem Video.",
+      "param.n1.text": "Bauchbinde für «Anna Meier», Untertitel «Leiterin Marketing»: Eine dünne Bernsteinlinie läuft ein, der Name schiebt sich hoch, die Funktion blendet darunter ein. Unten links, elegant und ruhig.",
+      "app.title": "Titel oder Bauchbinde",
+      "app.description": "Lade Footage hoch und beschreibe den Titel oder die Bauchbinde. Du erhältst eine gerenderte Animation über deinem Video.",
       "app.input.n2.asset": "Hintergrund-Footage",
       "app.input.n1.text": "Titel-Briefing",
       "app.output.n5": "Titel-Video"
     },
     "es": {
-      "name": "Título animado sobre metraje",
-      "description": "Escribe un briefing corto; un LLM crea la animación HTML/GSAP y un nodo de render la convierte en vídeo con tu metraje de fondo.",
+      "name": "Título o tercio inferior sobre metraje",
+      "description": "Escribe un briefing corto para un título o un tercio inferior (por ejemplo un nombre y un cargo); un LLM crea la animación HTML/GSAP y un nodo de render la convierte en vídeo con tu metraje de fondo.",
       "node.n1": "Briefing del título",
       "node.n2": "Metraje de fondo",
       "node.n3": "Código de animación",
       "node.n4": "Renderizar título",
       "note.t1": "Necesita un nodo de render configurado. El metraje llega a la animación como recurso 1, así el LLM puede usarlo como capa de vídeo.",
-      "param.n1.text": "Título potente en tercio inferior «Rebajas de verano» con una fina línea ámbar que aparece, subtítulo «Hasta un 40 % de descuento», elegante y tranquilo.",
-      "app.title": "Título animado",
-      "app.description": "Sube metraje y describe el título. Obtienes una animación de título renderizada sobre tu vídeo.",
+      "param.n1.text": "Tercio inferior para «Ana Meier», subtítulo «Directora de marketing»: una fina línea ámbar aparece, el nombre sube y el cargo se desvanece debajo. Abajo a la izquierda, elegante y tranquilo.",
+      "app.title": "Título o tercio inferior",
+      "app.description": "Sube metraje y describe el título o el tercio inferior. Obtienes una animación renderizada sobre tu vídeo.",
       "app.input.n2.asset": "Metraje de fondo",
       "app.input.n1.text": "Briefing del título",
       "app.output.n5": "Vídeo con título"

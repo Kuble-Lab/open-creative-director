@@ -73,6 +73,7 @@
         <li><a href="#de-budget">Budget und Teilnahme</a></li>
         <li><a href="#de-account">Menü, Konto und Kosten</a></li>
         <li><a href="#de-nodes">Node-Ansicht</a></li>
+        <li><a href="#de-templates">Vorlagen und Node-Hilfe</a></li>
         <li><a href="#de-presets">Prompt-Vorlagen</a></li>
         <li><a href="#de-languages">Sprachen</a></li>
         <li><a href="#de-keys">Bedienung und Tastatur</a></li>
@@ -200,11 +201,29 @@
 <li><strong>Bauen:</strong> Nodes für Eingaben (Text, Bilder, Video, Audio), Sprachmodell-Schritte, Bild-, Video- und Audio-Erzeugung, ffmpeg-Bearbeitung und Ergebnisse werden verbunden. Ziehen auf die leere Fläche zeichnet einen Auswahlrahmen, V und H schalten Auswahl und Hand um, Leertaste plus Ziehen verschiebt, Strg/Cmd plus Mausrad zoomt.</li>
 <li><strong>Ausführen:</strong> einzelner Node, Auswahl oder ganzer Ablauf. Unveränderte Nodes werden übersprungen. Kostenpflichtige Nodes tragen ein <code>$</code> und fragen vor dem Lauf nach.</li>
 <li><strong>Stapel:</strong> eine Textliste oder Medienliste lässt den Ablauf pro Eintrag laufen (bis 50).</li>
-<li><strong>Vorlagen:</strong> «Aus Vorlage» bietet fertige Abläufe (Produkt-Hero, Hochformat-Anzeige mit Sprecher, Figurenserie, Motion-Titel, Lippensynchronisation und weitere).</li>
+<li><strong>Vorlagen:</strong> «Aus Vorlage» bietet fertige Abläufe (Produkt-Hero, Hochformat-Anzeige mit Sprecher, Figurenserie, Motion-Titel, Lippensynchronisation und weitere). Mehr unter «Vorlagen und Node-Hilfe».</li>
 <li><strong>Design App:</strong> ein Workflow lässt sich als schlichtes Formular mit «Ausführen»-Knopf veröffentlichen (<code>#app=…</code>). Die Werte gelten nur für den einen Lauf.</li>
 <li><strong>An den Chat senden</strong> (Knopf im Inspektor und in der Design App, oder im Rechtsklick-Menü eines Nodes): Der Dialog zeigt zuerst, was gesendet wird: Bilder, Videos und Audio mit kleiner Vorschau, Texte mit ihren ersten Zeichen. Hat ein Ergebnis Medien, sind nur diese angehakt; Zusatztexte des Nodes (zum Beispiel der erweiterte Prompt eines Anbieters) sendest du nur, wenn du sie anhakst. Dann wählst du den Chat. Das Ergebnis wird in diesen Chat kopiert und erscheint dort als Karte «Aus dem Workflow …» mit Vorschau, einklappbaren Texten und dem Link «Workflow öffnen» (nur wenn du den Workflow öffnen darfst). Der Director sieht die Dateien mit ihren Asset-IDs und kann damit weiterarbeiten. Es startet nichts automatisch und das Senden kostet nichts. Danach meldet ein Hinweis «An «Chat» gesendet» mit dem Knopf «Chat öffnen». Läuft der Director gerade im Ziel-Chat, versuchst du es nach seiner Antwort erneut.</li>
 <li><strong>Projekte und Teilen:</strong> ein Workflow kann einem Projekt zugeordnet und wie ein Chat geteilt werden.</li>
 </ul></section>
+      <section class="card" id="de-templates" data-section="templates"><h2>Vorlagen und Node-Hilfe</h2><p>Zwei Hilfen in der Node-Ansicht: Vorlagen bringen dich schneller zu einem Ablauf, die Node-Hilfe erklärt, was ein Node tut und wie du ihn anschliesst.</p>
+<h3>Vorlagen</h3>
+<ul>
+<li><strong>Wo:</strong> auf der leeren Fläche eines Workflows («Mit einer Vorlage starten»), im Menü «+ Node» unter dem Chip «Vorlagen» und in der Workflow-Liste unter «Aus Vorlage …».</li>
+<li><strong>Was du siehst:</strong> Name, Beschreibung, den Ablauf in einer Zeile, die Zahl der Nodes, was du brauchst (zum Beispiel den Schlüssel eines Anbieters) und die ungefähren Kosten. Bei Vorlagen mit einer Liste steht «pro Zeile». Kostenlose Vorlagen laufen lokal.</li>
+<li><strong>Einfügen:</strong> «In diesen Workflow einfügen» legt die Vorlage neben deinen bisherigen Inhalt und wählt die neuen Nodes aus. Das Einfügen lässt sich mit einem Schritt rückgängig machen. «Neuer Workflow» legt einen eigenen Workflow an, den du bei Bedarf wieder löschst. Beides startet nichts.</li>
+<li><strong>Teilnehmende und Gäste</strong> sehen nur die Vorlagen, die sie nutzen dürfen.</li>
+</ul>
+<h3>Hilfe zu einem Node</h3>
+<ul>
+<li><strong>Im Menü «+ Node»:</strong> Auf breiten Fenstern erklärt der Bereich rechts den markierten Eintrag (Pfeiltasten oder Maus), auch in der Schnellwahl beim Ziehen von einem Anschluss. Auf schmalen Fenstern öffnet das «?» an der Zeile dieselbe Hilfe.</li>
+<li><strong>Auf der Karte:</strong> Das «?» im Kopf einer Karte öffnet die Hilfe in einem kleinen Fenster. Mit einem gewählten Node öffnet auch die Taste <strong>?</strong> (oder <strong>F1</strong>) diese Hilfe. Esc oder ein Klick daneben schliesst sie.</li>
+<li><strong>Im Inspektor:</strong> Der Abschnitt «Hilfe» lässt sich auf- und zuklappen. Der Browser merkt sich, ob er offen ist.</li>
+<li><strong>Inhalt:</strong> wofür der Node gut ist, ein Beispiel, Tipps, die Ein- und Ausgänge (mit Pflicht und Anzahl), die Kosten und ob der Node auf diesem Server verfügbar ist. Fehlt zu einem Node der Erklärtext, zeigt die Hilfe nur die Ein- und Ausgänge, die Kosten und die Verfügbarkeit.</li>
+<li><strong>Einfügen:</strong> «Mit Eingängen einfügen» legt den Node samt je einem Node vor jedem Pflicht-Eingang ein, schon verbunden (im Menü «+ Node» mit Umschalt+Enter). Unter «Vorlagen mit diesem Node» stehen die passenden Vorlagen.</li>
+</ul>
+<h3>Wenn ein Node «Unvollständig» ist</h3>
+<p>Die Karte sagt, was fehlt, zum Beispiel «Eingang «HTML» fehlt». Darunter steht ein Knopf. Gibt es einen passenden Node, schaltet «… davorschalten» ihn mit seinen Pflicht-Eingängen vor, zum Beispiel den Motion-HTML-Autor vor «Motion Graphics aus HTML». Sonst öffnet «Passenden Node wählen …» die Schnellwahl für genau diesen Eingang. Beides lässt sich rückgängig machen und startet nichts.</p></section>
       <section class="card" id="de-presets" data-section="presets"><h2>Prompt-Vorlagen</h2><p>Der Funken links im Eingabefeld öffnet eine gruppierte Auswahl produktionsreifer Prompts (Casting, Serie, Branding, Motion, Social Media, Marketing). Eine Vorlage setzt ihren Text ins Eingabefeld; Platzhalter in eckigen Klammern füllst du aus. Admins legen eigene Vorlagen für das Team an.</p></section>
       <section class="card" id="de-languages" data-section="languages"><h2>Sprachen</h2><p>Die Oberfläche gibt es auf Deutsch, Englisch und Spanisch. Die Sprache wählst du im Menü unter «Sprache». Diese Hilfe teilt die Wahl mit der App und hat oben rechts denselben Umschalter. Die Wahl bleibt im Browser gespeichert.</p></section>
       <section class="card" id="de-keys" data-section="keys"><h2>Bedienung und Tastatur</h2><ul>
@@ -212,7 +231,7 @@
 <li><strong>Enter</strong> sendet, <strong>Umschalt+Enter</strong> macht einen Zeilenumbruch.</li>
 <li>Im Menü wechseln die Pfeiltasten zwischen den Einträgen.</li>
 <li>Chats im Seitenmenü: <strong>Tab</strong> zum Eintrag, <strong>Enter</strong> oder <strong>Leertaste</strong> öffnet.</li>
-<li>Node-Ansicht: <strong>V</strong> Auswahl, <strong>H</strong> Hand, <strong>N</strong> Notiz, Pfeiltasten verschieben die Auswahl.</li>
+<li>Node-Ansicht: <strong>V</strong> Auswahl, <strong>H</strong> Hand, <strong>N</strong> Notiz, <strong>?</strong> Hilfe zum gewählten Node, Pfeiltasten verschieben die Auswahl.</li>
 </ul></section>
       <section class="card" id="de-settings" data-section="settings"><h2>Einstellungen (Admins)</h2><p>Menü, Eintrag «Einstellungen». Die Einstellungen sind in Bereiche gegliedert:</p>
 <ul>
@@ -239,6 +258,7 @@
         <li><a href="#en-budget">Budget and participation</a></li>
         <li><a href="#en-account">Menu, account and costs</a></li>
         <li><a href="#en-nodes">Node view</a></li>
+        <li><a href="#en-templates">Templates and node help</a></li>
         <li><a href="#en-presets">Prompt presets</a></li>
         <li><a href="#en-languages">Languages</a></li>
         <li><a href="#en-keys">Keys and controls</a></li>
@@ -366,11 +386,29 @@
 <li><strong>Building:</strong> nodes for inputs (text, images, video, audio), language-model steps, image, video and audio generation, ffmpeg editing and results are wired together. Dragging on the empty canvas draws a selection marquee, V and H switch between select and hand, Space plus drag pans, Ctrl/Cmd plus wheel zooms.</li>
 <li><strong>Running:</strong> a single node, the selection or the whole flow. Unchanged nodes are skipped. Paid nodes carry a <code>$</code> and ask before the run.</li>
 <li><strong>Batch:</strong> a text list or media list runs the flow once per item (up to 50).</li>
-<li><strong>Templates:</strong> “From template” offers ready flows (product hero, vertical ad with voice-over, character series, motion title, lip sync and more).</li>
+<li><strong>Templates:</strong> “From template” offers ready flows (product hero, vertical ad with voice-over, character series, motion title, lip sync and more). More under “Templates and node help”.</li>
 <li><strong>Design App:</strong> a workflow can be published as a plain form with a “Run” button (<code>#app=…</code>). The values only apply to that one run.</li>
 <li><strong>Send to chat</strong> (button in the inspector and in the Design App, or the context menu of a node): the dialog first shows what will be sent: images, videos and audio with a small preview, texts with their first characters. If a result has media, only those are ticked; extra texts of the node (for example the expanded prompt of a provider) are sent only if you tick them. Then you choose the chat. The result is copied into that chat and appears there as a card “From the workflow …” with a preview, collapsible texts and the link “Open workflow” (only if you may open the workflow). The Director sees the files with their asset IDs and can continue from there. Nothing starts automatically and sending costs nothing. Afterwards a notice “Sent to “chat”” with the button “Open chat” confirms it. If the Director is still working in the target chat, try again after its answer.</li>
 <li><strong>Projects and sharing:</strong> a workflow can be assigned to a project and shared like a chat.</li>
 </ul></section>
+      <section class="card" id="en-templates" data-section="templates"><h2>Templates and node help</h2><p>Two aids in the node view: templates get you to a flow faster, the node help explains what a node does and how to connect it.</p>
+<h3>Templates</h3>
+<ul>
+<li><strong>Where:</strong> on the empty canvas of a workflow (“Start with a template”), in the “+ Node” menu under the “Templates” chip and in the workflow list under “From template…”.</li>
+<li><strong>What you see:</strong> name, description, the flow in one line, the number of nodes, what you need (for example the key of a provider) and the approximate cost. Templates with a list say “per row”. Free templates run locally.</li>
+<li><strong>Inserting:</strong> “Insert into this workflow” puts the template beside your existing content and selects the new nodes. Inserting can be undone in one step. “New workflow” creates a workflow of its own, which you can delete again if you like. Neither starts anything.</li>
+<li><strong>Participants and guests</strong> only see the templates they may use.</li>
+</ul>
+<h3>Help for a node</h3>
+<ul>
+<li><strong>In the “+ Node” menu:</strong> on wide windows the area on the right explains the highlighted entry (arrow keys or mouse), also in the quick pick when you drag from a port. On narrow windows the “?” on the row opens the same help.</li>
+<li><strong>On the card:</strong> the “?” in the header of a card opens the help in a small window. With one node selected, the <strong>?</strong> key (or <strong>F1</strong>) opens this help too. Esc or a click beside it closes it.</li>
+<li><strong>In the inspector:</strong> the “Help” section can be opened and closed. The browser remembers whether it is open.</li>
+<li><strong>Content:</strong> what the node is for, an example, tips, the inputs and outputs (required or not, how many), the cost and whether the node is available on this server. If a node has no explanatory text yet, the help shows only the inputs and outputs, the cost and the availability.</li>
+<li><strong>Inserting:</strong> “Insert with inputs” puts in the node together with a node in front of each required input, already connected (in the “+ Node” menu with Shift+Enter). “Templates with this node” lists the templates that fit.</li>
+</ul>
+<h3>When a node is “Incomplete”</h3>
+<p>The card says what is missing, for example “Input “HTML” is missing”. A button sits below it. If a suitable node exists, “Put … in front” inserts it with its required inputs, for example the Motion HTML writer in front of “Motion graphics from HTML”. Otherwise “Choose a suitable node…” opens the quick pick for exactly that input. Both can be undone and start nothing.</p></section>
       <section class="card" id="en-presets" data-section="presets"><h2>Prompt presets</h2><p>The sparkle icon left of the input opens a grouped choice of production-ready prompts (casting, series, branding, motion, social media, marketing). A preset puts its text into the input; placeholders in square brackets are yours to fill. Admins add their own presets for the team.</p></section>
       <section class="card" id="en-languages" data-section="languages"><h2>Languages</h2><p>The interface comes in German, English and Spanish. Pick the language in the menu under “Language”. This help shares the choice with the app and has the same switch at the top right. The choice is stored in your browser.</p></section>
       <section class="card" id="en-keys" data-section="keys"><h2>Keys and controls</h2><ul>
@@ -378,7 +416,7 @@
 <li><strong>Enter</strong> sends, <strong>Shift+Enter</strong> starts a new line.</li>
 <li>In the menu the arrow keys move between the entries.</li>
 <li>Chats in the side menu: <strong>Tab</strong> to the entry, <strong>Enter</strong> or <strong>Space</strong> opens it.</li>
-<li>Node view: <strong>V</strong> select, <strong>H</strong> hand, <strong>N</strong> note, arrow keys move the selection.</li>
+<li>Node view: <strong>V</strong> select, <strong>H</strong> hand, <strong>N</strong> note, <strong>?</strong> help for the selected node, arrow keys move the selection.</li>
 </ul></section>
       <section class="card" id="en-settings" data-section="settings"><h2>Settings (admins)</h2><p>Menu, entry “Settings”. The settings are divided into sections:</p>
 <ul>
@@ -405,6 +443,7 @@
         <li><a href="#es-budget">Presupuesto y participación</a></li>
         <li><a href="#es-account">Menú, cuenta y costes</a></li>
         <li><a href="#es-nodes">Vista de nodos</a></li>
+        <li><a href="#es-templates">Plantillas y ayuda de nodos</a></li>
         <li><a href="#es-presets">Plantillas de prompt</a></li>
         <li><a href="#es-languages">Idiomas</a></li>
         <li><a href="#es-keys">Manejo y teclado</a></li>
@@ -532,11 +571,29 @@
 <li><strong>Construir:</strong> se conectan nodos de entrada (texto, imágenes, vídeo, audio), pasos de modelo de lenguaje, generación de imagen, vídeo y audio, edición con ffmpeg y resultados. Arrastrar sobre el lienzo vacío dibuja un marco de selección, V y H alternan selección y mano, Espacio más arrastrar desplaza, Ctrl/Cmd más rueda hace zoom.</li>
 <li><strong>Ejecutar:</strong> un nodo, la selección o todo el flujo. Los nodos sin cambios se omiten. Los nodos de pago llevan un <code>$</code> y preguntan antes de ejecutarse.</li>
 <li><strong>Lote:</strong> una lista de textos o de medios ejecuta el flujo una vez por elemento (hasta 50).</li>
-<li><strong>Plantillas:</strong> «Desde plantilla» ofrece flujos listos (hero de producto, anuncio vertical con locución, serie de personajes, título animado, sincronización labial y más).</li>
+<li><strong>Plantillas:</strong> «Desde plantilla» ofrece flujos listos (hero de producto, anuncio vertical con locución, serie de personajes, título animado, sincronización labial y más). Más en «Plantillas y ayuda de nodos».</li>
 <li><strong>Design App:</strong> un workflow se puede publicar como un formulario sencillo con el botón «Ejecutar» (<code>#app=…</code>). Los valores solo valen para esa ejecución.</li>
 <li><strong>Enviar al chat</strong> (botón en el inspector y en la Design App, o el menú contextual de un nodo): el diálogo muestra primero lo que se enviará: imágenes, vídeos y audio con una vista previa pequeña, textos con sus primeros caracteres. Si un resultado tiene medios, solo estos vienen marcados; los textos adicionales del nodo (por ejemplo el prompt ampliado de un proveedor) solo se envían si los marcas. Después eliges el chat. El resultado se copia a ese chat y aparece allí como una tarjeta «Del workflow …» con vista previa, textos plegables y el enlace «Abrir workflow» (solo si puedes abrir el workflow). El Director ve los archivos con sus ID de asset y puede continuar desde allí. No se inicia nada automáticamente y enviar no cuesta nada. Después un aviso «Enviado a «chat»» con el botón «Abrir chat» lo confirma. Si el Director sigue trabajando en el chat de destino, inténtalo de nuevo tras su respuesta.</li>
 <li><strong>Proyectos y compartir:</strong> un workflow se puede asignar a un proyecto y compartir como un chat.</li>
 </ul></section>
+      <section class="card" id="es-templates" data-section="templates"><h2>Plantillas y ayuda de nodos</h2><p>Dos ayudas en la vista de nodos: las plantillas te llevan antes a un flujo y la ayuda de nodos explica qué hace un nodo y cómo conectarlo.</p>
+<h3>Plantillas</h3>
+<ul>
+<li><strong>Dónde:</strong> en el lienzo vacío de un workflow («Empezar con una plantilla»), en el menú «+ Nodo» con el chip «Plantillas» y en la lista de workflows con «Desde plantilla…».</li>
+<li><strong>Qué ves:</strong> nombre, descripción, el flujo en una línea, el número de nodos, lo que necesitas (por ejemplo la clave de un proveedor) y el coste aproximado. En las plantillas con una lista pone «por fila». Las plantillas gratuitas se ejecutan en local.</li>
+<li><strong>Insertar:</strong> «Insertar en este workflow» coloca la plantilla junto a tu contenido y selecciona los nodos nuevos. La inserción se deshace en un solo paso. «Nuevo workflow» crea un workflow propio, que puedes borrar de nuevo si quieres. Ninguna de las dos opciones inicia nada.</li>
+<li><strong>Participantes e invitados</strong> solo ven las plantillas que pueden usar.</li>
+</ul>
+<h3>Ayuda sobre un nodo</h3>
+<ul>
+<li><strong>En el menú «+ Nodo»:</strong> en ventanas anchas, el área de la derecha explica la entrada marcada (teclas de flecha o ratón), también en la selección rápida al arrastrar desde un conector. En ventanas estrechas, el «?» de la fila abre la misma ayuda.</li>
+<li><strong>En la tarjeta:</strong> el «?» de la cabecera de una tarjeta abre la ayuda en una ventana pequeña. Con un nodo seleccionado, la tecla <strong>?</strong> (o <strong>F1</strong>) abre también esta ayuda. Esc o un clic fuera la cierra.</li>
+<li><strong>En el inspector:</strong> la sección «Ayuda» se puede abrir y cerrar. El navegador recuerda si está abierta.</li>
+<li><strong>Contenido:</strong> para qué sirve el nodo, un ejemplo, consejos, las entradas y salidas (obligatorias o no, cuántas), el coste y si el nodo está disponible en este servidor. Si un nodo aún no tiene texto explicativo, la ayuda muestra solo las entradas y salidas, el coste y la disponibilidad.</li>
+<li><strong>Insertar:</strong> «Insertar con entradas» coloca el nodo junto con un nodo delante de cada entrada obligatoria, ya conectados (en el menú «+ Nodo» con Mayús+Intro). En «Plantillas con este nodo» aparecen las plantillas adecuadas.</li>
+</ul>
+<h3>Cuando un nodo está «Incompleto»</h3>
+<p>La tarjeta dice qué falta, por ejemplo «Falta la entrada «HTML»». Debajo hay un botón. Si existe un nodo adecuado, «Añadir … delante» lo inserta con sus entradas obligatorias, por ejemplo el autor de HTML de motion delante de «Motion graphics desde HTML». Si no, «Elegir un nodo adecuado…» abre la selección rápida para esa entrada. Las dos opciones se pueden deshacer y no inician nada.</p></section>
       <section class="card" id="es-presets" data-section="presets"><h2>Plantillas de prompt</h2><p>El icono de destellos a la izquierda del campo de texto abre una selección agrupada de prompts listos para producir (casting, serie, branding, motion, redes sociales, marketing). Una plantilla pone su texto en el campo; los marcadores entre corchetes los rellenas tú. Los administradores añaden plantillas propias para el equipo.</p></section>
       <section class="card" id="es-languages" data-section="languages"><h2>Idiomas</h2><p>La interfaz existe en alemán, inglés y español. El idioma se elige en el menú, en «Idioma». Esta ayuda comparte la elección con la app y tiene el mismo selector arriba a la derecha. La elección queda guardada en el navegador.</p></section>
       <section class="card" id="es-keys" data-section="keys"><h2>Manejo y teclado</h2><ul>
@@ -544,7 +601,7 @@
 <li><strong>Intro</strong> envía, <strong>Mayús+Intro</strong> hace un salto de línea.</li>
 <li>En el menú, las flechas cambian entre las entradas.</li>
 <li>Chats del menú lateral: <strong>Tab</strong> hasta la entrada, <strong>Intro</strong> o <strong>Espacio</strong> la abre.</li>
-<li>Vista de nodos: <strong>V</strong> selección, <strong>H</strong> mano, <strong>N</strong> nota, las flechas mueven la selección.</li>
+<li>Vista de nodos: <strong>V</strong> selección, <strong>H</strong> mano, <strong>N</strong> nota, <strong>?</strong> ayuda del nodo seleccionado, las flechas mueven la selección.</li>
 </ul></section>
       <section class="card" id="es-settings" data-section="settings"><h2>Ajustes (administradores)</h2><p>Menú, entrada «Ajustes». Los ajustes se dividen en apartados:</p>
 <ul>

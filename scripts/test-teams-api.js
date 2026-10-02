@@ -720,6 +720,30 @@ async function testRulesTable(ctx) {
   assert.deepEqual((await call(P1, 'GET', '/api/roles')).body.roles, []);
   assert.equal((await call(P1, 'GET', '/api/roles/default')).status, 200);
   assert.equal((await call(P1, 'GET', '/api/workflow-templates')).status, 200);
+
+  // starter templates: none that needs Higgsfield for participants and guests (list, single document and creation)
+  const staffTemplates = (await api('/api/workflow-templates', { as: STAFF })).body.templates;
+  assert.ok(staffTemplates.some((template) => template.id === 'dub-clip'), 'internal people see every template');
+  assert.equal((await api('/api/workflow-templates/dub-clip', { as: STAFF })).status, 200);
+  for (const email of [P1, GUEST]) {
+    const listed = await call(email, 'GET', '/api/workflow-templates');
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.templates.length, staffTemplates.length - 1, `${email}: only the Higgsfield template is missing`);
+    assert.ok(!listed.body.templates.some((template) => template.id === 'dub-clip'));
+    assert.ok(listed.body.templates.every((template) => !template.nodeTypes.some((type) => type.startsWith('hf.'))));
+    const single = await call(email, 'GET', '/api/workflow-templates/dub-clip');
+    assert.equal(single.status, 403, `${email}: single template with Higgsfield nodes`);
+    assert.equal(single.body.code, 'FORBIDDEN_FOR_ROLE');
+    assert.equal((await call(email, 'GET', '/api/workflow-templates/photo-slideshow?lang=de')).body.document.name, 'Fotoshow (lokal)');
+    assert.equal((await call(email, 'GET', '/api/workflow-templates/nicht-da')).status, 404);
+    const refused = await call(email, 'POST', '/api/workflows', { templateId: 'dub-clip' });
+    assert.equal(refused.status, 403, `${email}: no workflow from a Higgsfield template`);
+    assert.equal(refused.body.code, 'FORBIDDEN_FOR_ROLE');
+    const made = await call(email, 'POST', '/api/workflows', { templateId: 'image-formats', lang: 'de' });
+    assert.equal(made.status, 201, `${email}: a template without Higgsfield works`);
+    assert.equal(made.body.workflow.graph.nodes.length, 5);
+  }
+  assert.equal((await api('/api/workflows', { method: 'POST', as: STAFF, json: { templateId: 'dub-clip' } })).status, 201, 'internal people may use it');
   assert.equal((await call(P1, 'GET', '/refs/nichts', undefined, { raw: true })).status, 404);
 
   // the chat of a participant knows neither the role nor a branding

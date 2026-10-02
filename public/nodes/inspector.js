@@ -147,6 +147,12 @@
         body.append(box, retry);
       } else if ((info.status === 'invalid' || info.status === 'unavailable' || info.status === 'skipped' || info.status === 'cancelled') && info.message) {
         body.append(el('div', { class: 'nv-notice is-warn' }, ui.icon('warning', 14), el('span', { class: 'nv-notice-text', text: info.message })));
+        // the remedy of the card ("Put the Motion HTML writer in front", "Choose a suitable node …") as a button here too
+        if (info.status === 'invalid' && info.fix && cb.onFix) {
+          const fix = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-insp-fix', title: info.fix.title || '', dataset: { fix: info.fix.id } }, ui.icon(info.fix.icon || 'sparkle', 13), el('span', { text: info.fix.label }));
+          fix.addEventListener('click', () => cb.onFix(nodeId, info.fix.id, info.fix));
+          body.append(fix);
+        }
       } else if (info.status === 'invalid') {
         body.append(el('div', { class: 'nv-notice is-warn' }, ui.icon('warning', 14), el('span', { class: 'nv-notice-text', text: ui.T('nodes.statusHint.invalid') })));
       }
@@ -539,6 +545,9 @@
         frag.append(section(ui.T('nodes.inspector.params'), fields.children.length ? fields : el('div', { class: 'nv-hint', text: ui.T('nodes.inspector.noParams') })));
 
         if (cb.app && node.type === 'output.result') frag.append(appOutputSection(node));
+
+        // What the node is for, an example, tips, ports and cost (node-help.js); collapsible, the state is remembered.
+        if (cb.help) frag.append(cb.help.section(node.type));
 
         const conn = connectionRows(node, ctx, reg);
         if (conn) frag.append(section(ui.T('nodes.inspector.inputs'), conn));

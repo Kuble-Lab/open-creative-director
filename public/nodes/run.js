@@ -355,6 +355,7 @@
       const shown = { status: 'invalid', message: planNode.reason || null };
       if (planNode.reasonCode) shown.code = planNode.reasonCode;
       if (planNode.reasonData) shown.data = planNode.reasonData;
+      if (planNode.reasonPort) shown.port = planNode.reasonPort;
       return shown;
     }
     if (planStatus === 'unavailable') return { status: 'unavailable', message: planNode.reason || null };
@@ -476,18 +477,68 @@
       return message || T(`nodes.statusHint.${status}`) || '';
     }
 
+    // What to show for a node. The plan lags behind an edit by the autosave and a second: a "missing input" it still
+    // reports, but the graph has already filled (a node put in front, a value typed), shows as not run yet instead of
+    // as a stale complaint; the next plan confirms.
+    function shownFor(node, def, run, planNode, hasResults) {
+      const shown = displayStatus({ run, planNode, hasResults, category: def && def.category });
+      const st = S();
+      if (shown.status === 'invalid' && shown.code === 'missing_input' && st.reg && !graphLib.missingInputs(st.reg, st.graph, node.id).length) {
+        return { status: hasResults ? 'stale' : 'notrun' };
+      }
+      return shown;
+    }
+
+    // Text and one-click remedy of an invalid node. The cause has a translated text (nodes.issue.<code>) when it comes
+    // with a code. Free text in the HTML field of a Motion graphics node offers the conversion (when it is possible);
+    // a missing required input is named by its label and gets a button: the node named by the input's `suggest` hint
+    // goes in front of it (one undo step), else the quick pick opens for exactly that input.
+    function invalidInfo(node, shown) {
+      const st = S();
+      const fallback = { message: shown.message || null, fix: null };
+      if (!ui.hasIssueText(shown.code)) return fallback;
+      const data = { ...(shown.data || {}) };
+      let variant;
+      let fix = null;
+      if (shown.code === 'not_html') {
+        const offer = graphLib.canConvertMotionHtml(st.reg, st.graph, node.id);
+        if (!offer) variant = 'plain';
+        else fix = { id: 'motion-html', label: T('nodes.motion.convert'), title: T('nodes.motion.convertTitle'), icon: 'sparkle' };
+      } else if (shown.code === 'missing_input') {
+        // the graph is always newer than the plan: name what is missing now, not what the plan saw
+        const missing = graphLib.missingInputs(st.reg, st.graph, node.id);
+        if (missing.length) {
+          data.port = missing.map((port) => ui.portLabel(port.id)).join(', ');
+          if (missing.length > 1) variant = 'many';
+          else if (missing[0].param && ['text', 'number'].includes(graphLib.parseType(missing[0].type)?.base)) variant = 'param';
+          const hinted = missing.find((port) => {
+            const source = graphLib.sourceFor(st.reg, port);
+            return source && source.hinted;
+          });
+          if (hinted) {
+            const name = ui.typeLabel(st.reg.types.get(graphLib.sourceFor(st.reg, hinted).type));
+            fix = { id: 'add-input', port: hinted.id, label: T('nodes.fix.addInput', { name }), title: T('nodes.fix.addInputTitle', { name, port: ui.portLabel(hinted.id) }), icon: 'plus' };
+          } else {
+            fix = { id: 'pick-input', port: missing[0].id, label: T('nodes.fix.pickInput'), title: T('nodes.fix.pickInputTitle', { port: ui.portLabel(missing[0].id) }), icon: 'search' };
+          }
+        } else if (shown.port) {
+          data.port = ui.portLabel(shown.port);
+        }
+      }
+      return { message: ui.issueText({ code: shown.code, data, message: shown.message }, variant), fix };
+    }
+
     function slotFor(node) {
       const st = S();
       const def = st.reg.types.get(node.type) || null;
       const run = runState.nodes[node.id];
       const info = variantInfo(st.results, node.id);
       const planNode = plan && plan.nodes ? plan.nodes[node.id] : null;
-      const shown = displayStatus({ run, planNode, hasResults: Boolean(info), category: def && def.category });
+      const shown = shownFor(node, def, run, planNode, Boolean(info));
       const status = shown.status;
-      // Invalid nodes whose cause has a translated text (nodes.issue.<code>) show it on the card.
-      // free text in the HTML field of a Motion graphics node: offer the one-click conversion (when it is possible)
-      const offerConvert = status === 'invalid' && shown.code === 'not_html' && graphLib.canConvertMotionHtml(st.reg, st.graph, node.id);
-      const translated = status === 'invalid' && ui.hasIssueText(shown.code) ? ui.issueText({ code: shown.code, data: shown.data, message: shown.message }, shown.code === 'not_html' && !offerConvert ? 'plain' : undefined) : null;
+      // Invalid nodes whose cause has a translated text (nodes.issue.<code>) show it on the card, with a remedy button.
+      const invalid = status === 'invalid' ? invalidInfo(node, shown) : null;
+      const translated = invalid && ui.hasIssueText(shown.code) ? invalid.message : null;
       if (translated) shown.message = translated;
       const slot = {
         status: status || '',
@@ -504,9 +555,7 @@
       if (status === 'error') slot.message = shown.message || T('nodes.run.failedNode');
       if (translated) {
         slot.message = translated;
-        if (offerConvert) {
-          slot.fix = { id: 'motion-html', label: T('nodes.motion.convert'), title: T('nodes.motion.convertTitle'), icon: 'sparkle' };
-        }
+        slot.fix = invalid.fix;
       }
       if (status === 'skipped') {
         const blocked = /^blocked by (\S+)$/.exec(shown.message || '');
@@ -1105,14 +1154,14 @@
         const run = runState.nodes[nodeId];
         const planNode = plan && plan.nodes ? plan.nodes[nodeId] : null;
         const results = nodeResults(st.results, nodeId);
-        const shown = displayStatus({ run, planNode, hasResults: Boolean(selectedEntry(st.results, nodeId)), category: def && def.category });
-        const plainText = shown.code === 'not_html' && !graphLib.canConvertMotionHtml(st.reg, st.graph, nodeId);
-        const message = shown.status === 'invalid' && ui.hasIssueText(shown.code) ? ui.issueText({ code: shown.code, data: shown.data, message: shown.message }, plainText ? 'plain' : undefined) : shown.message;
+        const shown = shownFor(node, def, run, planNode, Boolean(selectedEntry(st.results, nodeId)));
+        const invalid = shown.status === 'invalid' ? invalidInfo(node, shown) : null;
         return {
           node,
           def,
           status: shown.status,
-          message: message || null,
+          message: (invalid ? invalid.message : shown.message) || null,
+          fix: invalid ? invalid.fix : null,
           run: run || null,
           log: runState.logs[nodeId] || [],
           plan: planNode,
@@ -1187,8 +1236,11 @@
       bus.on('selection', () => updateTopbar());
       bus.on('graph', (graph) => {
         // Only cards without slot state yet (new or restored nodes) are painted; the plan refreshes the rest after autosave.
+        // Cards the plan calls invalid are painted too: the edit may have removed the cause (an input filled), which
+        // the card shows at once instead of with the next plan.
+        const invalid = (graph.nodes || []).map((node) => node.id).filter((id) => plan && plan.nodes && plan.nodes[id] && plan.nodes[id].status === 'invalid');
         const fresh = (graph.nodes || []).map((node) => node.id).filter((id) => !painted.has(id));
-        if (fresh.length) schedulePaint(fresh);
+        if (fresh.length || invalid.length) schedulePaint([...fresh, ...invalid]);
       });
       bus.on('saved', ({ rev }) => {
         if (rev !== planRev) schedulePlan(1000);

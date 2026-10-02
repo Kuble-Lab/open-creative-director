@@ -119,6 +119,22 @@ function testSourceKeys() {
     dynamic.push(`nodes.picker.title.${kind}`, `nodes.picker.none.${kind}`);
   }
   for (const mark of ['input', 'output', 'both']) dynamic.push(`nodes.app.mark.${mark}`);
+  for (const cost of ['estimate', 'estimateRow', 'from', 'fromRow', 'free', 'unknown']) dynamic.push(`nodes.template.cost.${cost}`);
+  for (const code of ['empty', 'too_many', 'unknown_type']) dynamic.push(`nodes.insert.${code}`);
+  for (const kind of ['free', 'usd', 'credits', 'external']) dynamic.push(`nodes.help.cost.${kind}`);
+  // every issue the engine reports (code in lib/nodes/engine.js and in the validate of the node types) has a text in the card
+  const issueCodes = new Set();
+  for (const file of ['lib/nodes/engine.js', 'lib/nodes/nodes-basic.js']) {
+    for (const match of fs.readFileSync(path.join(root, file), 'utf8').matchAll(/code: '([a-z_]+)'/g)) issueCodes.add(match[1]);
+  }
+  for (const code of ['missing_input', 'unknown_type', 'cycle', 'bad_port', 'too_many_edges', 'dangling', 'incompatible', 'invalid_param', 'invalid', 'validate_failed', 'no_asset', 'asset_lost']) {
+    assert.ok(issueCodes.has(code), `the engine no longer reports ${code}: drop its text`);
+  }
+  for (const code of issueCodes) {
+    if (code === 'ok') continue;
+    dynamic.push(`nodes.issue.${code}`);
+    if (code !== 'invalid' && code !== 'validate_failed' && code !== 'invalid_param') dynamic.push(`nodes.issue.${code}.app`);
+  }
   for (const key of dynamic) assert.ok(window.I18N.de[key], `missing dynamic key ${key}`);
 
   // every connection error code the graph can produce has a message
@@ -298,7 +314,7 @@ function testHtmlWiring() {
   assert.ok(html.indexOf('id="nodesBtn"') < html.indexOf('</header>'), 'the view switch sits in the header');
   assert.ok(html.includes('id="nodeApp"'), 'node view container missing');
   assert.ok(html.includes('nodes/nodes.css'), 'stylesheet missing');
-  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
+  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/templates-ui.js', 'nodes/node-help.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
   let last = -1;
   for (const file of order) {
     const index = html.indexOf(`<script src="${file}"></script>`);

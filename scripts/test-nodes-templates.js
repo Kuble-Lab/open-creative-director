@@ -1,6 +1,6 @@
 'use strict';
 
-// Starter templates of the node view (SPEC §15): all eight load and validate against the registry, texts
+// Starter templates of the node view (SPEC §15): all of them load and validate against the registry, texts
 // exist in de/en/es (Swiss spelling), `requires` covers the node types, the localized documents create
 // workflows through the real routes, and the batch template maps a text list through the engine (with
 // fake executors derived from the real node definitions, so no provider is contacted).
@@ -25,20 +25,39 @@ const { registerNodeRoutes } = require('../lib/nodes/routes');
 const nodesBasic = require('../lib/nodes/nodes-basic');
 const { textValue, listValue } = require('../lib/nodes/types');
 
-const EXPECTED = ['dub-clip', 'frame-chain', 'hero-variants', 'image-to-ad', 'masked-edit', 'motion-title', 'series-shots', 'talking-portrait'];
+const EXPECTED = [
+  'dub-clip',
+  'frame-chain',
+  'hero-variants',
+  'image-formats',
+  'image-to-ad',
+  'image-to-video',
+  'masked-edit',
+  'motion-title',
+  'photo-slideshow',
+  'series-shots',
+  'storyboard-clips',
+  'talking-portrait',
+  'text-on-video',
+  'video-to-post'
+];
+// the ones that work without Higgsfield (credits): what participants and guests get
+const FOR_PARTICIPANTS = EXPECTED.filter((id) => id !== 'dub-clip');
+const FREE = ['image-formats', 'photo-slideshow', 'text-on-video'];
 
-// requirement key that a node type needs (mirrors the availability predicates of the node modules)
-function requirementOf(type) {
-  if (type.startsWith('llm.')) return 'openrouter';
-  if (['image.generate', 'image.edit', 'image.relight', 'video.seedance'].includes(type)) return 'openrouter';
-  if (type === 'audio.tts') return 'elevenlabs';
-  if (type.startsWith('fal.')) return 'fal';
-  if (type === 'video.motion_graphics') return 'rendernode';
-  if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) return 'higgsfield';
+// requirement keys that a node type needs (mirrors the availability predicates of the node modules)
+function requirementsOf(type) {
+  const keys = [];
+  if (type.startsWith('llm.')) keys.push('openrouter');
+  else if (['image.generate', 'image.edit', 'image.relight', 'video.seedance'].includes(type)) keys.push('openrouter');
+  else if (type === 'audio.tts') keys.push('elevenlabs');
+  else if (type.startsWith('fal.')) keys.push('fal');
+  else if (type === 'video.motion_graphics') keys.push('rendernode');
+  else if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) keys.push('higgsfield');
   const def = nodeRegistry.get(type);
-  if (def && ['edit-image', 'edit-video', 'edit-audio'].includes(def.category)) return 'ffmpeg';
-  if (['video.concat'].includes(type)) return 'ffmpeg';
-  return null;
+  if (def && ['edit-image', 'edit-video', 'edit-audio'].includes(def.category)) keys.push('ffmpeg');
+  if (['video.concat', 'llm.video_describer'].includes(type)) keys.push('ffmpeg');
+  return keys;
 }
 
 function get(port, method, url, body) {
@@ -73,19 +92,19 @@ async function main() {
   let server = null;
 
   try {
-    /* ----- the eight templates exist, load and validate ----- */
+    /* ----- the templates exist, load and validate ----- */
     const all = templates.loadTemplates();
     assert.deepEqual(all.map((template) => template.id).sort(), EXPECTED);
     for (const template of all) {
       const result = templates.validateTemplate(template);
-      assert.ok(result.graph.nodes.length >= 5, `${template.id} has a real graph`);
+      assert.ok(result.graph.nodes.length >= 4, `${template.id} has a real graph`);
       assert.ok(result.app.enabled && result.app.inputs.length && result.app.outputs.length, `${template.id} ships a Design App`);
       assert.ok(result.graph.nodes.some((node) => node.type === 'output.result'), `${template.id} has an output node`);
       assert.ok(result.graph.notes.length >= 1, `${template.id} explains itself with a note`);
       assert.ok(template.description.length > 20);
 
       // every node type of the template is covered by `requires`
-      const needed = new Set(result.graph.nodes.map((node) => requirementOf(node.type)).filter(Boolean));
+      const needed = new Set(result.graph.nodes.flatMap((node) => requirementsOf(node.type)));
       for (const key of needed) assert.ok(template.requires.includes(key), `${template.id}: requires must include ${key}`);
       for (const key of template.requires) assert.ok(needed.has(key), `${template.id}: requires lists ${key} but no node needs it`);
 
@@ -225,6 +244,166 @@ async function main() {
       for (const item of templates.listTemplates()) assert.ok(typeof item.available === 'boolean');
     }
 
+    /* ----- order, new templates, participants, cost, flow ----- */
+    {
+      assert.deepEqual([...templates.ORDER].sort(), EXPECTED, 'ORDER lists every template once and nothing else');
+      assert.deepEqual(all.map((template) => template.id), [...templates.ORDER], 'templates are loaded in the order of ORDER');
+      assert.equal(new Set(templates.ORDER).size, templates.ORDER.length);
+
+      // the new ones: shapes, cheap defaults, usable for participants (no Higgsfield, no credits)
+      assert.deepEqual(types('image-to-video'), ['input.image', 'input.prompt', 'video.seedance', 'output.result']);
+      assert.deepEqual(types('text-on-video'), ['input.video', 'input.text', 'image.text_render', 'video.overlay_image', 'output.result']);
+      assert.deepEqual(types('storyboard-clips'), ['input.text', 'llm.chat', 'text.split', 'video.seedance', 'video.concat', 'output.result']);
+      assert.deepEqual(types('image-formats'), ['input.image', 'image.resize', 'image.resize', 'image.resize', 'output.result']);
+      assert.deepEqual(types('video-to-post'), ['input.video', 'llm.video_describer', 'input.text', 'text.template', 'llm.chat', 'output.result']);
+      assert.deepEqual(types('photo-slideshow'), ['input.media_list', 'image.to_video', 'video.concat', 'output.result']);
+      for (const id of ['image-to-video', 'storyboard-clips']) {
+        for (const node of byId[id].graph.nodes.filter((item) => item.type === 'video.seedance')) {
+          assert.ok(node.params.duration <= 4 && node.params.resolution === '480p', `${id}: a first run is short and small`);
+        }
+      }
+      assert.ok(byId['storyboard-clips'].graph.nodes.find((node) => node.type === 'text.split').params.max <= 3, 'few shots by default');
+      assert.deepEqual(
+        byId['image-formats'].graph.nodes.filter((node) => node.type === 'image.resize').map((node) => `${node.params.width}x${node.params.height}`),
+        ['1920x1080', '1080x1920', '1080x1080']
+      );
+      const noRestricted = all.filter((template) => !templates.usesRestrictedNodes(template.graph)).map((template) => template.id);
+      assert.deepEqual(noRestricted.sort(), FOR_PARTICIPANTS);
+      assert.ok(FOR_PARTICIPANTS.length - 7 >= 4, 'at least four of the new templates are for participants');
+      assert.ok(FREE.length >= 2 && FREE.every((id) => FOR_PARTICIPANTS.includes(id)), 'at least two are free and local');
+      assert.ok(templates.usesRestrictedNodes(byId['dub-clip'].graph), 'Higgsfield nodes are restricted');
+      assert.ok(templates.usesRestrictedNodes(templates.resolveTemplate('dub-clip')), 'a document works as well as a graph');
+      assert.equal(templates.usesRestrictedNodes({ nodes: [] }), false);
+      // motion-title also serves as the lower third
+      assert.match(byId['motion-title'].description, /lower third/i);
+      assert.match(byId['motion-title'].graph.nodes[0].params.text, /Head of Marketing/);
+
+      // the participant filter of the list; internal people (no filter) get everything
+      const allOn = Object.fromEntries(templates.REQUIREMENTS.map((key) => [key, () => true]));
+      assert.deepEqual(templates.listTemplates({ checks: allOn }).map((item) => item.id), [...templates.ORDER]);
+      assert.deepEqual(templates.listTemplates({ checks: allOn, hideRestricted: true }).map((item) => item.id), FOR_PARTICIPANTS.slice().sort((a, b) => templates.ORDER.indexOf(a) - templates.ORDER.indexOf(b)));
+
+      // the summary carries what the gallery needs
+      const summary = Object.fromEntries(templates.listTemplates({ lang: 'de', checks: allOn }).map((item) => [item.id, item]));
+      assert.deepEqual(summary['image-to-video'].nodeTypes, ['input.image', 'input.prompt', 'video.seedance', 'output.result']);
+      assert.equal(summary['image-to-video'].nodeCount, 4);
+      assert.deepEqual(summary['image-to-video'].flow, [[{ type: 'input.image', count: 1 }, { type: 'input.prompt', count: 1 }], [{ type: 'video.seedance', count: 1 }], [{ type: 'output.result', count: 1 }]]);
+      assert.deepEqual(summary['dub-clip'].flow, [[{ type: 'input.video', count: 1 }], [{ type: 'hf.dubbing', count: 3 }], [{ type: 'output.result', count: 1 }]], 'equal types of one step are counted');
+      assert.equal(summary['storyboard-clips'].batch, false, 'one idea goes in, the three shots are made inside: no Batch mark');
+      assert.equal(summary['photo-slideshow'].batch, true);
+      assert.equal(summary['image-formats'].batch, false);
+      // the inputs stand together in the first step: "what you give -> what happens -> result"
+      assert.deepEqual(summary['text-on-video'].flow[0].map((entry) => entry.type).sort(), ['input.text', 'input.video']);
+      for (const id of EXPECTED) {
+        const later = summary[id].flow.slice(1).flat().map((entry) => entry.type);
+        assert.ok(!later.some((type) => type.startsWith('input.')), `${id}: every input stands in the first step`);
+      }
+      // the limit of the Concatenate node is named where the photos are uploaded
+      const toolsLib = require('../lib/tools');
+      for (const lang of ['en', 'de', 'es']) {
+        const strings = templates.loadTemplates().find((item) => item.id === 'photo-slideshow').i18n[lang] || {};
+        const texts = lang === 'en' ? [byId['photo-slideshow'].app.description, byId['photo-slideshow'].app.inputs[0].label] : [strings['app.description'], strings['app.input.n1.assets']];
+        for (const text of texts) assert.match(text, new RegExp(`\\b${toolsLib.MAX_CONCAT_ASSETS}\\b`), `photo-slideshow ${lang}: the limit of ${toolsLib.MAX_CONCAT_ASSETS} photos is named`);
+      }
+
+      // cost: computed from the nodes, local = free, unknown is marked, never invented
+      for (const id of EXPECTED) {
+        const cost = summary[id].cost;
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : 'unknown', `${id}: the shipped nodes have no price table`);
+        assert.equal(cost.paidNodes > 0, !FREE.includes(id));
+        assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
+        if (FREE.includes(id)) assert.deepEqual(cost.providers, [], `${id}: nothing is billed`);
+      }
+      assert.deepEqual(summary['image-to-ad'].cost.providers, ['openrouter', 'elevenlabs']);
+      assert.deepEqual(summary['dub-clip'].cost.providers, ['higgsfield']);
+
+      const priced = createRegistry();
+      nodesBasic.registerAll(priced);
+      const paid = (type, estimate, unit = 'usd') =>
+        priced.register({
+          type,
+          category: 'utility',
+          label: type,
+          inputs: [{ id: 'text', type: 'text' }],
+          outputs: [{ id: 'text', type: 'text' }],
+          params: [{ id: 'size', kind: 'integer', default: 2 }],
+          paid: true,
+          cost: { unit, estimate },
+          execute: async () => ({ variants: [{ text: textValue('x') }] })
+        });
+      paid('test.priced', (params) => ({ usd: 0.1 * params.size }));
+      paid('test.credits', () => ({ credits: 12 }), 'credits');
+      paid('test.vague', null);
+      const chain = (...nodeTypes) => ({
+        id: 'cost-demo',
+        requires: ['openrouter', 'ffmpeg', 'fal'],
+        graph: {
+          nodes: [{ id: 'n0', type: 'input.text', params: { text: 'hi' }, x: 0, y: 0 }, ...nodeTypes.map((type, index) => ({ id: `n${index + 1}`, type, params: {}, x: 0, y: 0 }))],
+          edges: nodeTypes.map((_type, index) => ({ id: `e${index}`, from: { node: `n${index}`, port: index ? 'text' : 'text' }, to: { node: `n${index + 1}`, port: 'text' } }))
+        }
+      });
+      assert.deepEqual(templates.costSummary(chain('text.split'), { registry: priced }), { kind: 'free', usd: 0, credits: 0, paidNodes: 0, providers: [] }, 'a local chain is free');
+      assert.deepEqual(templates.costSummary(chain('test.priced'), { registry: priced }), { kind: 'estimate', usd: 0.2, credits: 0, paidNodes: 1, providers: ['openrouter', 'fal'] });
+      assert.deepEqual(templates.costSummary(chain('test.priced', 'test.priced'), { registry: priced }).usd, 0.4, 'the estimates add up');
+      assert.deepEqual(templates.costSummary(chain('test.credits'), { registry: priced }), { kind: 'estimate', usd: 0, credits: 12, paidNodes: 1, providers: ['openrouter', 'fal'] });
+      const partial = templates.costSummary(chain('test.priced', 'test.vague'), { registry: priced });
+      assert.equal(partial.kind, 'partial');
+      assert.equal(partial.usd, 0.2, 'what is known is the lower bound');
+      assert.equal(templates.costSummary(chain('test.vague'), { registry: priced }).kind, 'unknown');
+      assert.equal(templates.costSummary(chain('test.vague'), { registry: priced }).usd, 0);
+
+      // a split of fixed size: one idea in, the list is made inside. Every paid node behind it runs once per part, so
+      // the price is multiplied (no Batch mark); a list INPUT counts one entry ("per row")
+      const splitGraph = (source, max) => ({
+        id: 'split-demo',
+        requires: ['openrouter'],
+        graph: {
+          nodes: [
+            { id: 'a', type: source, params: source === 'input.text' ? { text: 'x' } : { text: 'x\ny' }, x: 0, y: 0 },
+            ...(source === 'input.text' ? [{ id: 's', type: 'text.split', params: { max }, x: 0, y: 0 }] : []),
+            { id: 'p', type: 'test.priced', params: {}, x: 0, y: 0 }
+          ],
+          edges: source === 'input.text'
+            ? [{ id: 'e1', from: { node: 'a', port: 'text' }, to: { node: 's', port: 'text' } }, { id: 'e2', from: { node: 's', port: 'items' }, to: { node: 'p', port: 'text' } }]
+            : [{ id: 'e1', from: { node: 'a', port: 'items' }, to: { node: 'p', port: 'text' } }]
+        }
+      });
+      assert.equal(templates.costSummary(splitGraph('input.text', 3), { registry: priced }).usd, 0.6, 'three shots are paid three times');
+      assert.equal(templates.costSummary(splitGraph('input.text', 1), { registry: priced }).usd, 0.2);
+      assert.equal(templates.costSummary(splitGraph('input.text_list'), { registry: priced }).usd, 0.2, 'a list input counts one entry');
+      assert.equal(templates.costSummary(chain('test.priced'), { registry: priced }).usd, 0.2, 'no list: unchanged');
+      assert.equal(templates.listTemplates({ lang: 'en' }).find((item) => item.id === 'storyboard-clips').batch, false);
+
+      // the engine helper behind it: availability never hides a price
+      const engineLib = require('../lib/nodes/engine');
+      const gated = createRegistry();
+      nodesBasic.registerAll(gated);
+      gated.register({ ...priced.get('test.priced'), type: 'test.gated', available: () => 'KEY is not set' });
+      assert.equal(engineLib.estimateGraph(chain('test.gated').graph, { registry: gated }).usd, 0.2);
+
+      // reading order of a graph
+      const flow = templates.flowOf({
+        nodes: [{ id: 'a', type: 'input.text' }, { id: 'b', type: 'text.join' }, { id: 'c', type: 'output.result' }, { id: 'd', type: 'input.text' }, { id: 'x', type: 'input.image' }],
+        edges: [
+          { id: 'e1', from: { node: 'a', port: 'text' }, to: { node: 'b', port: 'items' } },
+          { id: 'e2', from: { node: 'b', port: 'text' }, to: { node: 'c', port: 'inputs' } },
+          { id: 'e3', from: { node: 'd', port: 'text' }, to: { node: 'c', port: 'inputs' } }
+        ]
+      });
+      // inputs all stand in the first step, even when they feed a later node
+      assert.deepEqual(flow.map((step) => step.map((entry) => `${entry.count}x${entry.type}`)), [['2xinput.text', '1xinput.image'], ['1xtext.join'], ['1xoutput.result']]);
+      // another node without a predecessor still moves up to just before its first consumer
+      const lone = templates.flowOf({
+        nodes: [{ id: 'a', type: 'input.text' }, { id: 'b', type: 'text.join' }, { id: 'c', type: 'text.join' }, { id: 'k', type: 'util.pick' }],
+        edges: [
+          { id: 'e1', from: { node: 'a', port: 'text' }, to: { node: 'b', port: 'items' } },
+          { id: 'e2', from: { node: 'b', port: 'text' }, to: { node: 'c', port: 'items' } },
+          { id: 'e3', from: { node: 'k', port: 'out' }, to: { node: 'c', port: 'items' } }
+        ]
+      });
+      assert.deepEqual(lone.map((step) => step.map((entry) => entry.type)), [['input.text'], ['text.join', 'util.pick'], ['text.join']]);
+    }
+
     /* ----- creation through the real routes: every template becomes a workflow ----- */
     {
       const app = express();
@@ -241,6 +420,19 @@ async function main() {
       assert.equal(listed.status, 200);
       assert.deepEqual(listed.json.templates.map((item) => item.id).sort(), EXPECTED);
       assert.ok(listed.json.templates.every((item) => item.name && item.description && Array.isArray(item.requires)));
+      assert.ok(listed.json.templates.every((item) => Array.isArray(item.nodeTypes) && Array.isArray(item.flow) && item.cost && item.cost.kind), 'node types, flow and cost travel with the list');
+
+      // one template as a localized document (what the editor inserts into an open workflow)
+      const one = await get(port, 'GET', '/api/workflow-templates/photo-slideshow?lang=de');
+      assert.equal(one.status, 200);
+      assert.equal(one.json.document.name, 'Fotoshow (lokal)');
+      assert.equal(one.json.document.graph.nodes.length, 4);
+      assert.equal(one.json.document.graph.nodes[0].title, 'Fotos');
+      assert.ok(one.json.document.app && one.json.document.app.enabled, 'the document keeps its app section');
+      assert.equal(one.json.document.i18n, undefined);
+      assert.equal((await get(port, 'GET', '/api/workflow-templates/photo-slideshow?lang=xx')).json.document.name, 'Photo slideshow (local)');
+      assert.equal((await get(port, 'GET', '/api/workflow-templates/nope')).status, 404);
+      assert.equal((await get(port, 'GET', '/api/workflow-templates/..%2F..%2Fpackage')).status, 404);
 
       for (const id of EXPECTED) {
         const created = await get(port, 'POST', '/api/workflows', { templateId: id, lang: 'de' });

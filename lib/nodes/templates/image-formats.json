@@ -1,0 +1,73 @@
+{
+  "id": "image-formats",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "One image, three formats",
+  "description": "Cut one image to landscape, vertical and square in one go, ready for video platforms, stories and feeds. Runs locally with ffmpeg, no AI model, no cost.",
+  "requires": ["ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 200, "title": "Image", "params": { "asset": null } },
+      { "id": "n2", "type": "image.resize", "typeVersion": 1, "x": 520, "y": 100, "title": "16:9 landscape", "params": { "width": 1920, "height": 1080, "fit": "cover", "background": "#000000", "transparent": false } },
+      { "id": "n3", "type": "image.resize", "typeVersion": 1, "x": 520, "y": 420, "title": "9:16 vertical", "params": { "width": 1080, "height": 1920, "fit": "cover", "background": "#000000", "transparent": false } },
+      { "id": "n4", "type": "image.resize", "typeVersion": 1, "x": 520, "y": 740, "title": "1:1 square", "params": { "width": 1080, "height": 1080, "fit": "cover", "background": "#000000", "transparent": false } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 960, "y": 420, "params": { "label": "Three formats" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "image" }, "to": { "node": "n2", "port": "image" } },
+      { "id": "e2", "from": { "node": "n1", "port": "image" }, "to": { "node": "n3", "port": "image" } },
+      { "id": "e3", "from": { "node": "n1", "port": "image" }, "to": { "node": "n4", "port": "image" } },
+      { "id": "e4", "from": { "node": "n2", "port": "image" }, "to": { "node": "n5", "port": "inputs" } },
+      { "id": "e5", "from": { "node": "n3", "port": "image" }, "to": { "node": "n5", "port": "inputs" } },
+      { "id": "e6", "from": { "node": "n4", "port": "image" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [
+      { "id": "g1", "title": "Formats", "x": 480, "y": 40, "w": 380, "h": 1000, "color": "blue" }
+    ],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 480, "w": 340, "h": 170, "text": "Cover fills the format and crops the edges. To keep the whole image and add bars instead, set Fit to Contain on each resize node." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "One image, three formats",
+    "description": "Upload an image and get it as landscape, vertical and square.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Image" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Three formats" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Ein Bild in drei Formaten",
+      "description": "Schneide ein Bild in einem Zug auf Querformat, Hochformat und Quadrat zu, bereit für Videoplattformen, Stories und Feeds. Läuft lokal mit ffmpeg, ohne KI-Modell und ohne Kosten.",
+      "node.n1": "Bild",
+      "node.n2": "16:9 Querformat",
+      "node.n3": "9:16 Hochformat",
+      "node.n4": "1:1 Quadrat",
+      "group.g1": "Formate",
+      "note.t1": "«Füllen» füllt das Format und schneidet die Ränder ab. Wenn das ganze Bild bleiben soll und stattdessen Balken entstehen, stelle bei jedem Skalierschritt «Anpassung» auf «Einpassen».",
+      "app.title": "Ein Bild in drei Formaten",
+      "app.description": "Lade ein Bild hoch und erhalte es als Querformat, Hochformat und Quadrat.",
+      "app.input.n1.asset": "Bild",
+      "app.output.n5": "Drei Formate"
+    },
+    "es": {
+      "name": "Una imagen en tres formatos",
+      "description": "Recorta una imagen en horizontal, vertical y cuadrado de una sola vez, lista para plataformas de vídeo, stories y feeds. Se ejecuta en local con ffmpeg, sin modelo de IA y sin coste.",
+      "node.n1": "Imagen",
+      "node.n2": "16:9 horizontal",
+      "node.n3": "9:16 vertical",
+      "node.n4": "1:1 cuadrado",
+      "group.g1": "Formatos",
+      "note.t1": "«Cubrir» llena el formato y recorta los bordes. Si prefieres conservar toda la imagen con barras, pon «Ajuste» en «Contener» en cada paso de escalado.",
+      "app.title": "Una imagen en tres formatos",
+      "app.description": "Sube una imagen y recíbela en horizontal, vertical y cuadrado.",
+      "app.input.n1.asset": "Imagen",
+      "app.output.n5": "Tres formatos"
+    }
+  }
+}

@@ -106,6 +106,7 @@ const ROUTE_RULES = {
   'GET /api/nodes/options/:source': 'open',
   'GET /api/nodes/higgsfield-models/:modelId': 'open',
   'GET /api/workflow-templates': 'public',
+  'GET /api/workflow-templates/:id': 'open', // the document of one template
   'GET /api/workflows': 'workflow', // filtered list
   'POST /api/workflows': 'workflow', // creates a private workflow
   'POST /api/workflows/import': 'workflow',
@@ -229,7 +230,8 @@ const PARTICIPANT_RULES = {
   'GET /api/nodes/registry': 'filtered', // Higgsfield nodes marked as not available
   'GET /api/nodes/options/:source': 'filtered', // Higgsfield sources 403, models without ChatGPT, library voices only
   'GET /api/nodes/higgsfield-models/:modelId': 'forbidden',
-  'GET /api/workflow-templates': 'public',
+  'GET /api/workflow-templates': 'filtered', // no template with Higgsfield nodes
+  'GET /api/workflow-templates/:id': 'filtered', // 403 for such a template
   'GET /api/workflows': 'same',
   'POST /api/workflows': 'same',
   'POST /api/workflows/import': 'same',

@@ -307,8 +307,9 @@ function testI18n() {
   vm.runInNewContext(fs.readFileSync(path.join(root, 'public', 'nodes', 'node-ui.js'), 'utf8'), { ...sandbox, window: sandbox.window, document: { createElement() { return {}; } } }, { filename: 'node-ui.js' });
   const ui = sandbox.window.OCDNodes.ui;
   assert.equal(ui.hasIssueText('not_html'), true);
-  assert.equal(ui.hasIssueText('missing_input'), false);
-  assert.equal(ui.issueText({ code: 'missing_input', message: 'input html is not connected' }), 'input html is not connected', 'no translation: the message stays');
+  assert.equal(ui.hasIssueText('missing_input'), true, 'a missing input has a translated text since WP23');
+  assert.equal(ui.hasIssueText('no_such_code'), false);
+  assert.equal(ui.issueText({ code: 'no_such_code', message: 'something is off' }), 'something is off', 'no translation: the message stays');
   assert.equal(ui.issueText({ code: 'not_html', message: 'x', data: { format: 'landscape', width: 1920, height: 1080 } }), dict.de['nodes.issue.not_html']);
   const sized = ui.issueText({ code: 'composition_size', message: 'x', data: { format: 'portrait', width: 1080, height: 1920, foundWidth: '1920', foundHeight: '?' } });
   assert.match(sized, /data-width="1080"/);
@@ -459,7 +460,7 @@ function testWiring() {
   assert.match(main, /fixId === 'motion-html'/);
   assert.match(main, /onConvertMotionHtml: convertMotionHtml/);
   const run = fs.readFileSync(path.join(root, 'public', 'nodes', 'run.js'), 'utf8');
-  assert.match(run, /slot\.fix = \{ id: 'motion-html'/);
+  assert.match(run, /fix = \{ id: 'motion-html'/);
   assert.match(run, /canConvertMotionHtml/);
   assert.match(main, /syncAppRemaps\(\);\s*pruneApp\(\)/, 'undo / redo carry the Design App exposure of a conversion along');
   for (const [fn, next] of [['extractPrompt', 'convertMotionHtml'], ['convertMotionHtml', 'renameNode']]) {

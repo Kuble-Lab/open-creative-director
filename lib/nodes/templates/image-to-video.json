@@ -1,0 +1,71 @@
+{
+  "id": "image-to-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Image to video",
+  "description": "Bring a still to life: upload an image, describe the movement and Seedance turns it into a short clip. Short and low resolution on purpose, so the first run stays cheap.",
+  "requires": ["openrouter"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 60, "title": "Start image", "params": { "asset": null } },
+      { "id": "n2", "type": "input.prompt", "typeVersion": 1, "x": 80, "y": 380, "title": "Movement", "params": { "prompt": "Slow push-in, soft light, a gentle breeze moves the scene" } },
+      { "id": "n3", "type": "video.seedance", "typeVersion": 1, "x": 500, "y": 120, "title": "Animate image", "params": { "prompt": "", "duration": 4, "aspect_ratio": "16:9", "resolution": "480p" } },
+      { "id": "n4", "type": "output.result", "typeVersion": 1, "x": 920, "y": 160, "params": { "label": "Clip" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "image" }, "to": { "node": "n3", "port": "first_frame" } },
+      { "id": "e2", "from": { "node": "n2", "port": "prompt" }, "to": { "node": "n3", "port": "prompt" } },
+      { "id": "e3", "from": { "node": "n3", "port": "video" }, "to": { "node": "n4", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 500, "y": 440, "w": 320, "h": 130, "text": "The start image sets subject and format. Duration and resolution are small on purpose; raise them on the Animate image node once the movement looks right." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Image to video",
+    "description": "Upload an image and describe the movement. You get a short clip.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Start image" },
+      { "node": "n2", "param": "prompt", "label": "Movement" },
+      { "node": "n3", "param": "duration", "label": "Seconds" }
+    ],
+    "outputs": [
+      { "node": "n4", "label": "Clip" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Bild zu Video",
+      "description": "Erwecke ein Standbild zum Leben: Bild hochladen, die Bewegung beschreiben, und Seedance macht daraus einen kurzen Clip. Bewusst kurz und niedrig aufgelöst, damit der erste Lauf günstig bleibt.",
+      "node.n1": "Startbild",
+      "node.n2": "Bewegung",
+      "node.n3": "Bild animieren",
+      "note.t1": "Das Startbild bestimmt Motiv und Format. Dauer und Auflösung sind bewusst klein; erhöhe sie im Node «Bild animieren», sobald die Bewegung passt.",
+      "param.n2.prompt": "Langsame Kamerafahrt nach vorn, weiches Licht, ein leichter Wind bewegt die Szene",
+      "app.title": "Bild zu Video",
+      "app.description": "Lade ein Bild hoch und beschreibe die Bewegung. Du erhältst einen kurzen Clip.",
+      "app.input.n1.asset": "Startbild",
+      "app.input.n2.prompt": "Bewegung",
+      "app.input.n3.duration": "Sekunden",
+      "app.output.n4": "Clip"
+    },
+    "es": {
+      "name": "Imagen a vídeo",
+      "description": "Da vida a una imagen fija: sube la imagen, describe el movimiento y Seedance la convierte en un clip corto. Corto y con poca resolución a propósito, para que la primera ejecución salga barata.",
+      "node.n1": "Imagen inicial",
+      "node.n2": "Movimiento",
+      "node.n3": "Animar imagen",
+      "note.t1": "La imagen inicial define el motivo y el formato. La duración y la resolución son pequeñas a propósito; auméntalas en el nodo «Animar imagen» cuando el movimiento te convenza.",
+      "param.n2.prompt": "Travelling lento hacia delante, luz suave, una brisa ligera mueve la escena",
+      "app.title": "Imagen a vídeo",
+      "app.description": "Sube una imagen y describe el movimiento. Obtienes un clip corto.",
+      "app.input.n1.asset": "Imagen inicial",
+      "app.input.n2.prompt": "Movimiento",
+      "app.input.n3.duration": "Segundos",
+      "app.output.n4": "Clip"
+    }
+  }
+}

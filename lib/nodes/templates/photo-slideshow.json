@@ -1,0 +1,66 @@
+{
+  "id": "photo-slideshow",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Photo slideshow (local)",
+  "description": "Turn several photos into one video: every photo becomes a short clip with a slow zoom, then the clips are joined. Runs locally with ffmpeg, no AI model, no cost.",
+  "requires": ["ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.media_list", "typeVersion": 1, "x": 80, "y": 100, "title": "Photos", "params": { "kind": "image", "assets": [] } },
+      { "id": "n2", "type": "image.to_video", "typeVersion": 1, "x": 480, "y": 60, "title": "Zoom clip per photo", "params": { "duration": 3, "match_audio": false, "fps": 30, "zoom": "in" } },
+      { "id": "n3", "type": "video.concat", "typeVersion": 1, "x": 880, "y": 100, "title": "Join clips", "params": { "label": "Slideshow" } },
+      { "id": "n4", "type": "output.result", "typeVersion": 1, "x": 1280, "y": 140, "params": { "label": "Slideshow" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "items" }, "to": { "node": "n2", "port": "image" } },
+      { "id": "e2", "from": { "node": "n2", "port": "video" }, "to": { "node": "n3", "port": "clips" } },
+      { "id": "e3", "from": { "node": "n3", "port": "video" }, "to": { "node": "n4", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 480, "y": 420, "w": 340, "h": 150, "text": "The photos play in the order of the list (up to 20). Put music under the slideshow afterwards with a Merge audio into video node." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Photo slideshow",
+    "description": "Upload up to 20 photos and get one video with a slow zoom on every photo.",
+    "inputs": [
+      { "node": "n1", "param": "assets", "label": "Photos (up to 20)" },
+      { "node": "n2", "param": "duration", "label": "Seconds per photo" }
+    ],
+    "outputs": [
+      { "node": "n4", "label": "Slideshow" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Fotoshow (lokal)",
+      "description": "Mach aus mehreren Fotos ein Video: Jedes Foto wird zu einem kurzen Clip mit langsamem Zoom, danach werden die Clips aneinandergehängt. Läuft lokal mit ffmpeg, ohne KI-Modell und ohne Kosten.",
+      "node.n1": "Fotos",
+      "node.n2": "Zoom-Clip pro Foto",
+      "node.n3": "Clips verbinden",
+      "note.t1": "Die Fotos laufen in der Reihenfolge der Liste (bis zu 20). Musik legst du danach mit einem Node «Audio ins Video mischen» unter die Fotoshow.",
+      "app.title": "Fotoshow",
+      "app.description": "Lade bis zu 20 Fotos hoch und erhalte ein Video mit langsamem Zoom auf jedem Foto.",
+      "app.input.n1.assets": "Fotos (bis zu 20)",
+      "app.input.n2.duration": "Sekunden pro Foto",
+      "app.output.n4": "Fotoshow"
+    },
+    "es": {
+      "name": "Presentación de fotos (local)",
+      "description": "Convierte varias fotos en un vídeo: cada foto pasa a ser un clip corto con un zoom lento y después se unen los clips. Se ejecuta en local con ffmpeg, sin modelo de IA y sin coste.",
+      "node.n1": "Fotos",
+      "node.n2": "Clip con zoom por foto",
+      "node.n3": "Unir clips",
+      "note.t1": "Las fotos se reproducen en el orden de la lista (hasta 20). La música se añade después con un nodo «Mezclar audio en el vídeo».",
+      "app.title": "Presentación de fotos",
+      "app.description": "Sube hasta 20 fotos y obtén un vídeo con un zoom lento en cada foto.",
+      "app.input.n1.assets": "Fotos (hasta 20)",
+      "app.input.n2.duration": "Segundos por foto",
+      "app.output.n4": "Presentación"
+    }
+  }
+}

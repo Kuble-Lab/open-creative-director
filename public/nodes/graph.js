@@ -16,6 +16,9 @@
   const ZOOM_MIN = 0.1;
   const ZOOM_MAX = 2.5;
   const MAX_NODES = 500;
+  // Inserting a sub graph: gap to the existing content, and the width from which it goes below instead of beside.
+  const SUBGRAPH_GAP = 120;
+  const SUBGRAPH_WIDE = 2400;
   const ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
   const GROUP_COLORS = Object.freeze(['amber', 'blue', 'green', 'violet', 'rose', 'grey']);
   const PROMPT_TYPE = 'input.prompt';
@@ -34,6 +37,18 @@
   const WRITER_NODE_WIDTH = 340;
   const WRITER_NODE_HEIGHT = 260;
   const CONVERT_NODE_HEIGHT = 200;
+  // Sources for missing inputs ("insert with inputs", the fix button of an incomplete card): the node that hands over a
+  // value of a base type when the input carries no `suggest` hint, and the footprint used to lay the new cards out.
+  const SOURCE_TYPES = Object.freeze({ image: 'input.image', video: 'input.video', audio: 'input.audio', text: PROMPT_TYPE });
+  const SOURCE_NODE_WIDTH = 340;
+  const SOURCE_NODE_GAP = 56;
+  const SOURCE_ROW_GAP = 24;
+  const SOURCE_NODE_HEIGHT = 220;
+  // A multiple input with a `min` gets that many sources, at most this many (a minimum is a floor, not a plan).
+  const MAX_MIN_SOURCES = 4;
+  const SOURCE_HEIGHTS = Object.freeze({ [PROMPT_TYPE]: CONVERT_NODE_HEIGHT, [MOTION_WRITER_TYPE]: WRITER_NODE_HEIGHT });
+  // A node that was asked for (hint of the input) ranks above every other candidate in the quick pick.
+  const PREFER_BOOST = 20;
   // Quick pick from an unconnected multi-input of a media type: the media list node and the single
   // input node of that kind lead (the list first: it is the way to hand over several files at once).
   const MEDIA_BASES = Object.freeze(['image', 'video', 'audio']);
@@ -648,7 +663,7 @@
         notes: [...graph.notes, ...notes],
         groups: [...graph.groups, ...groups]
       },
-      ids: { nodes: nodes.map((n) => n.id), notes: notes.map((n) => n.id), groups: groups.map((g) => g.id) },
+      ids: { nodes: nodes.map((n) => n.id), notes: notes.map((n) => n.id), groups: groups.map((g) => g.id), edges: edges.map((e) => e.id) },
       idMap
     };
   }
@@ -658,6 +673,78 @@
     const clip = copySelection(graph, selection);
     if (!clip) return { graph, ids: { nodes: [], notes: [], groups: [] }, idMap: {} };
     return paste(graph, clip, { x: clip.origin.x + offset, y: clip.origin.y + offset }, options);
+  }
+
+  /* ---------- insert a sub graph (templates, "insert with inputs", the assistant) ---------- */
+
+  // Top-left corner for a sub graph of `size` that does not touch what is there: right of the existing content, or
+  // below it when that content is already very wide; on an empty canvas centred on `center` (a world point).
+  function freeSpotFor(graph, size, options = {}) {
+    const taken = boundsOf(graph, options.sizes);
+    if (!taken) {
+      const center = options.center || { x: 0, y: 0 };
+      return { x: snap(center.x - size.w / 2, 8), y: snap(center.y - size.h / 2, 8) };
+    }
+    if (taken.w <= SUBGRAPH_WIDE) return { x: snap(taken.x + taken.w + SUBGRAPH_GAP, 8), y: snap(taken.y, 8) };
+    return { x: snap(taken.x, 8), y: snap(taken.y + taken.h + SUBGRAPH_GAP, 8) };
+  }
+
+  // Inserts a sub graph ({ nodes, edges, notes, groups }, the shape of a template graph) into `graph` with fresh ids:
+  // nodes, edges between them, notes and groups. The caller makes it one undo step; nothing is run.
+  //   options.at       world point where the top-left corner of the inserted items lands
+  //   options.center   without `at`: centre of the visible area, used when the canvas is empty (otherwise the sub
+  //                    graph goes to the right of, or below, the existing content)
+  //   options.avoid    with `at`: move down while the items would overlap existing ones (default off)
+  //   options.reg      registry index: unknown node types are refused, params get their defaults
+  //   options.sizes    measured card sizes of the existing nodes; options.reserved ids not to be reused
+  // Returns { graph, ids: { nodes, notes, groups, edges }, idMap (old node id -> new), at, bounds } or
+  // { graph, error: { reason: 'empty' | 'too_many' | 'unknown_type', type? } }.
+  function insertSubgraph(graph, sub, options = {}) {
+    const source = isPlainObject(sub) ? sub : {};
+    const nodes = Array.isArray(source.nodes) ? source.nodes : [];
+    const notes = Array.isArray(source.notes) ? source.notes : [];
+    const groups = Array.isArray(source.groups) ? source.groups : [];
+    if (!nodes.length && !notes.length && !groups.length) return { graph, error: { reason: 'empty' } };
+    if (graph.nodes.length + nodes.length > MAX_NODES) return { graph, error: { reason: 'too_many' } };
+    if (options.reg) {
+      const unknown = nodes.find((node) => !options.reg.types.has(node.type));
+      if (unknown) return { graph, error: { reason: 'unknown_type', type: unknown.type } };
+    }
+    const prepared = nodes.map((node) => {
+      const def = options.reg ? options.reg.types.get(node.type) : null;
+      const params = { ...(def ? paramDefaults(def) : {}), ...(isPlainObject(node.params) ? clone(node.params) : {}) };
+      return { ...clone(node), typeVersion: node.typeVersion || def?.version || 1, params };
+    });
+    const clip = copySelection(
+      { nodes: prepared, edges: Array.isArray(source.edges) ? source.edges : [], notes, groups },
+      { nodes: prepared.map((node) => node.id), notes: notes.map((note) => note.id), groups: groups.map((group) => group.id) }
+    );
+    const rects = [
+      ...prepared.map((node) => ({ x: node.x, y: node.y, ...DEFAULT_NODE_SIZE })),
+      ...notes.map((note) => ({ x: note.x, y: note.y, w: finiteOr(note.w, 240), h: finiteOr(note.h, 140) })),
+      ...groups.map((group) => ({ x: group.x, y: group.y, w: finiteOr(group.w, 400), h: finiteOr(group.h, 240) }))
+    ].map((rect) => ({ ...rect, x: finiteOr(rect.x, 0), y: finiteOr(rect.y, 0) }));
+    const box = unionRect(rects);
+    let at = options.at && Number.isFinite(options.at.x) && Number.isFinite(options.at.y) ? { x: options.at.x, y: options.at.y } : null;
+    if (!at) at = freeSpotFor(graph, box, options);
+    else if (options.avoid) {
+      const others = [
+        ...graph.nodes.map((node) => nodeRect(node, options.sizes)),
+        ...graph.notes.map((note) => ({ x: note.x, y: note.y, w: note.w, h: note.h })),
+        ...graph.groups.map((group) => ({ x: group.x, y: group.y, w: group.w, h: group.h }))
+      ];
+      for (let guard = 0; guard < 60; guard += 1) {
+        const rect = { x: at.x + box.x - clip.origin.x, y: at.y + box.y - clip.origin.y, w: box.w, h: box.h };
+        if (!others.some((other) => rectsIntersect(rect, other))) break;
+        at = { x: at.x, y: at.y + 48 };
+      }
+    }
+    const result = paste(graph, clip, at, { reserved: options.reserved });
+    return {
+      ...result,
+      at,
+      bounds: { x: at.x + box.x - clip.origin.x, y: at.y + box.y - clip.origin.y, w: box.w, h: box.h }
+    };
   }
 
   // Deletes a whole selection { nodes, notes, groups }.
@@ -995,11 +1082,13 @@
   // dragging from an unconnected TEXT input puts the Prompt node on top (it is the natural source).
   // options.multiple: the drag starts on a multi-input; for a media type the Media list node and the matching
   // single input node (Image / Video / Audio input) go on top, so handing over several references is one click.
+  // options.prefer: a node type to put above everything (the `suggest` hint of an input that is asked for).
   // Dragging an image OUTPUT puts the nodes that turn it into a video first: the generators, then the local ones
   // (a zoom over a still image), before the many image editors that also take an image. Dragging a text OUTPUT puts
   // the generators of media (video and image alike) ahead of the helpers that merely take text.
   function quickPickTargets(reg, dir, portType, options = {}) {
     const targets = compatibleTargets(reg, dir, portType);
+    const prefer = typeof options.prefer === 'string' ? options.prefer : null;
     const source = parseType(portType);
     const boost = dir === 'in' && source && source.base === 'text' && reg.types.has(PROMPT_TYPE);
     const mediaBoost = Boolean(dir === 'in' && options.multiple === true && source && MEDIA_BASES.includes(source.base));
@@ -1008,6 +1097,7 @@
     const fromText = Boolean(source && source.base === 'text');
     return targets
       .map((target) => {
+        if (prefer && target.type === prefer) return { ...target, rank: target.rank + PREFER_BOOST };
         if (boost && target.type === PROMPT_TYPE) return { ...target, rank: target.rank + PROMPT_BOOST };
         if (mediaBoost && target.type === MEDIA_LIST_TYPE) return { ...target, rank: target.rank + MEDIA_LIST_BOOST };
         if (mediaBoost && target.type === single) return { ...target, rank: target.rank + MEDIA_SINGLE_BOOST };
@@ -1048,7 +1138,7 @@
     let list = entries;
     let compat = null;
     if (filter) {
-      compat = new Map(quickPickTargets(reg, filter.dir, filter.type, { multiple: filter.multiple === true }).map((item) => [item.type, item]));
+      compat = new Map(quickPickTargets(reg, filter.dir, filter.type, { multiple: filter.multiple === true, prefer: filter.prefer }).map((item) => [item.type, item]));
       list = list.filter((entry) => compat.has(entry.type));
     }
     if (category !== 'all') list = list.filter((entry) => entry.category === category);
@@ -1326,6 +1416,185 @@
     return { graph: next, prompt: addedPrompt.node, writer: addedWriter.node, edges };
   }
 
+  /* ---------- sources for missing inputs: "insert with inputs" and the fix of an incomplete card ---------- */
+
+  function isBlankValue(value) {
+    return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+  }
+
+  // The visible output of a node type that can feed an input of `targetType`, the one of the same base type first.
+  function bestOutputFor(reg, def, targetType) {
+    const wanted = parseType(targetType);
+    let best = null;
+    for (const port of def.outputs || []) {
+      if (port.hidden || !canConnectTypes(reg, port.type, targetType)) continue;
+      const rank = parseType(port.type)?.base === wanted?.base ? 2 : 1;
+      if (!best || rank > best.rank) best = { rank, port };
+    }
+    return best ? best.port : null;
+  }
+
+  // The node that should sit in front of the input `port`: the type named by the port's `suggest` hint (registry), else
+  // the input node of its base type (image / video / audio input, Prompt for text). Types of this account that may not
+  // be used (restricted) are skipped. Returns { type, port, hinted } (`port` = its output) or null, e.g. for `any`.
+  function sourceFor(reg, port) {
+    const make = (type, hinted) => {
+      const def = reg.types.get(type);
+      const out = def && def.restricted !== true ? bestOutputFor(reg, def, port.type) : null;
+      return out ? { type, port: out.id, hinted } : null;
+    };
+    const hinted = typeof port.suggest === 'string' ? make(port.suggest, true) : null;
+    if (hinted) return hinted;
+    const parsed = parseType(port.type);
+    const type = parsed && !parsed.list ? SOURCE_TYPES[parsed.base] : null;
+    return type ? make(type, false) : null;
+  }
+
+  // Required inputs of a node that are neither connected nor filled (the rule of the engine's validation: a text or
+  // number input backed by a param counts as given while the param holds a value). Ports in definition order.
+  function missingInputs(reg, graph, nodeId) {
+    const node = getNode(graph, nodeId);
+    const def = node ? reg.types.get(node.type) : null;
+    if (!def) return [];
+    const params = effectiveParams(def, node);
+    return portsFor(reg, node).inputs.filter((port) => {
+      if (port.hidden || !port.required || incomingEdges(graph, nodeId, port.id).length) return false;
+      const base = parseType(port.type)?.base;
+      return !(port.param && (base === 'text' || base === 'number') && !isBlankValue(params[port.param]));
+    });
+  }
+
+  // Sources for the missing inputs of a type that is not on the canvas yet: [{ port, source, children }] with the
+  // missing inputs of every source one level deeper (`levels` = how many levels of sources behind sources).
+  function planSources(reg, node, ports, levels) {
+    const plan = [];
+    for (const port of ports) {
+      const source = sourceFor(reg, port);
+      if (!source) continue;
+      let children = [];
+      if (levels > 0) {
+        const probe = addNode(reg, emptyGraph(), source.type, { id: 'probe' });
+        children = planSources(reg, probe.node, missingInputs(reg, probe.graph, 'probe'), levels - 1);
+      }
+      // a multiple input that needs several connections (Concatenate videos: 2 clips) gets that many sources
+      const copies = port.multiple === true && Number.isInteger(port.min) ? Math.min(port.min, MAX_MIN_SOURCES) : 1;
+      for (let copy = 0; copy < copies; copy += 1) plan.push({ port, source, children });
+    }
+    return plan;
+  }
+
+  // Layout of the plan to the left of x (column per level): { type, x, y, children }. Returns the height of the block.
+  function layoutSources(plan, right, top, out) {
+    let cursor = top;
+    for (const item of plan) {
+      const x = right - SOURCE_NODE_WIDTH - SOURCE_NODE_GAP;
+      const own = SOURCE_HEIGHTS[item.source.type] || SOURCE_NODE_HEIGHT;
+      const placed = { item, x, y: cursor, children: [] };
+      const below = layoutSources(item.children, x, cursor, placed.children);
+      out.push(placed);
+      cursor += Math.max(own, below) + SOURCE_ROW_GAP;
+    }
+    return Math.max(0, cursor - top - SOURCE_ROW_GAP);
+  }
+
+  function flattenPlaced(placed) {
+    return placed.flatMap((entry) => [entry, ...flattenPlaced(entry.children)]);
+  }
+
+  // Params a new source takes over from the node it feeds: a select param of the same id whose value is an option
+  // there too (the Motion HTML writer gets the "format" of the Motion graphics node).
+  function inheritedParams(sourceDef, targetDef, targetParams) {
+    const out = {};
+    for (const param of sourceDef.params || []) {
+      if (param.kind !== 'select' || !Array.isArray(param.options)) continue;
+      const mine = (targetDef.params || []).find((item) => item.id === param.id && item.kind === 'select');
+      const value = mine ? targetParams[param.id] : undefined;
+      const options = param.options.map((option) => (option && typeof option === 'object' ? option.value : option));
+      if (value !== undefined && value !== '' && options.some((option) => String(option) === String(value))) out[param.id] = value;
+    }
+    return out;
+  }
+
+  // Puts a source in front of each missing required input of a node (or of options.ports) and connects it: the input
+  // node of the port's base type, or the node named by the port's `suggest` hint, whose own missing required inputs
+  // are supplied one level deeper (Motion HTML writer <- Prompt). The new cards stand left of the node, stepping down
+  // while they would cover another card. A source also takes over what the node already has for inputs of the same id
+  // (the assets on a Motion graphics node go to the writer too, so it knows the file names) and its "format".
+  // Nothing is run. Returns { graph, nodes, edges, supplied: [{ port, node }] } or { graph, error: { reason } } with
+  // reason 'unknown_node' | 'no_source' (nothing to supply). One call = one undo step for the caller.
+  // options: { ports: [port ids] (default all missing), levels (default 1), sizes, reserved, at: { x, y } (top of the block) }
+  function addInputSources(reg, graph, nodeId, options = {}) {
+    const target = getNode(graph, nodeId);
+    const targetDef = target ? reg.types.get(target.type) : null;
+    if (!targetDef) return { graph, error: { reason: 'unknown_node' } };
+    const only = Array.isArray(options.ports) ? new Set(options.ports) : null;
+    const ports = missingInputs(reg, graph, nodeId).filter((port) => !only || only.has(port.id));
+    const plan = planSources(reg, target, ports, Number.isInteger(options.levels) ? options.levels : 1);
+    if (!plan.length) return { graph, error: { reason: 'no_source' } };
+
+    const placed = [];
+    const top = options.at && Number.isFinite(options.at.y) ? options.at.y : snap(target.y, 8);
+    const right = options.at && Number.isFinite(options.at.x) ? options.at.x : target.x;
+    layoutSources(plan, snap(right, 8), snap(top, 8), placed);
+    let shift = 0;
+    const flat = flattenPlaced(placed);
+    for (let guard = 0; guard < 60; guard += 1) {
+      const clash = flat.some((entry) => {
+        const rect = { x: entry.x, y: entry.y + shift, w: SOURCE_NODE_WIDTH, h: SOURCE_HEIGHTS[entry.item.source.type] || SOURCE_NODE_HEIGHT };
+        return graph.nodes.some((other) => other.id !== nodeId && rectsIntersect(rect, nodeRect(other, options.sizes)));
+      });
+      if (!clash) break;
+      shift += 48;
+    }
+
+    let next = graph;
+    const nodes = [];
+    const edges = [];
+    const supplied = [];
+    const link = (from, to) => {
+      const result = connect(reg, next, from, to, { reserved: options.reserved });
+      if (result.error) return null;
+      next = result.graph;
+      edges.push(result.edge);
+      return result.edge;
+    };
+    const build = (entries, parentId, parentDef, level) => {
+      for (const entry of entries) {
+        const { source, port } = entry.item;
+        const sourceDef = reg.types.get(source.type);
+        const parent = getNode(next, parentId);
+        const params = level === 0 ? inheritedParams(sourceDef, parentDef, effectiveParams(parentDef, parent)) : {};
+        const added = addNode(reg, next, source.type, { x: entry.x, y: entry.y + shift, params, reserved: options.reserved });
+        next = added.graph;
+        nodes.push(added.node);
+        const edge = link({ node: added.node.id, port: source.port }, { node: parentId, port: port.id });
+        if (!edge) continue;
+        if (level === 0) supplied.push({ port: port.id, node: added.node.id });
+        // What the node already has on an input the source has as well (same id): the same sources, in the same order.
+        if (level === 0) {
+          const mine = new Set(portsFor(reg, added.node).inputs.filter((item) => !item.hidden).map((item) => item.id));
+          for (const incoming of graph.edges.filter((item) => item.to.node === parentId && item.to.port !== port.id && mine.has(item.to.port))) {
+            link(incoming.from, { node: added.node.id, port: incoming.to.port });
+          }
+        }
+        build(entry.children, added.node.id, sourceDef, level + 1);
+      }
+    };
+    build(placed, nodeId, targetDef, 0);
+    return { graph: next, nodes, edges, supplied };
+  }
+
+  // A node of `type` with a source in front of each of its required inputs, as a sub graph for insertSubgraph ("insert
+  // with inputs"): { nodes, edges, target } with the node at (0, 0) and the sources to its left, or
+  // { error: { reason: 'unknown_type' } }. Without any source to add it is the single node.
+  function inputsSubgraph(reg, type, options = {}) {
+    if (!reg.types.has(type)) return { error: { reason: 'unknown_type', type } };
+    const added = addNode(reg, emptyGraph(), type, { id: 'n1', x: 0, y: 0, params: options.params });
+    const result = addInputSources(reg, added.graph, 'n1', { levels: options.levels });
+    const built = result.error ? added.graph : result.graph;
+    return { nodes: built.nodes, edges: built.edges, target: 'n1' };
+  }
+
   /* ---------- port descriptions (hover help) ---------- */
 
   // i18n keys of the description of a port. Lookup order (the caller uses the first key that has a text):
@@ -1524,11 +1793,13 @@
     copySelection,
     isClipboard,
     paste,
+    insertSubgraph,
     duplicate,
     removeSelection,
     normalizeLoaded,
     validate,
     normalizeSearch,
+    parseSearchQuery,
     fuzzyScore,
     nodeRole,
     paletteEntry,
@@ -1544,6 +1815,10 @@
     motionHtmlConversionIssue,
     canConvertMotionHtml,
     convertMotionHtmlToWriter,
+    sourceFor,
+    missingInputs,
+    addInputSources,
+    inputsSubgraph,
     portDescriptionKeys,
     portDescriptionChain,
     describePort,

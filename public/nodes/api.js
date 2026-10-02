@@ -104,6 +104,8 @@
     options: (source) => request('GET', `/api/nodes/options/${enc(source)}`),
     higgsfieldModel: (id) => request('GET', `/api/nodes/higgsfield-models/${enc(id)}`),
     config: () => request('GET', '/api/config'),
+    templates: (lang) => request('GET', `/api/workflow-templates?lang=${enc(lang)}`),
+    template: (id, lang) => request('GET', `/api/workflow-templates/${enc(id)}?lang=${enc(lang)}`),
     listWorkflows: (q) => request('GET', `/api/workflows${q ? `?q=${enc(q)}` : ''}`),
     createWorkflow: (body) => request('POST', '/api/workflows', body || {}),
     getWorkflow: (id) => request('GET', `/api/workflows/${enc(id)}`),

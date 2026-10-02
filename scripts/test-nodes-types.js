@@ -121,6 +121,27 @@ function testRegistry() {
   assert.throws(() => registry.register({ ...base, type: 'x.b', inputs: [{ id: 'in', type: 'text', param: 'zzz' }] }), /unknown param/);
   assert.throws(() => registry.register({ ...base, type: 'x.b', outputs: [{ id: 'o', type: 'text' }, { id: 'o', type: 'text' }] }), /duplicate/);
   assert.throws(() => registry.register({ ...base, type: 'x.b', params: [{ id: 'p', kind: 'weird' }] }), /unknown kind/);
+  // `suggest`: which node type the "put a node in front" button offers for an input (WP23)
+  assert.throws(() => registry.register({ ...base, type: 'x.b', inputs: [{ id: 'in', type: 'text', suggest: 'Not A Type' }] }), /bad suggest hint/);
+  assert.throws(() => registry.register({ ...base, type: 'x.b', inputs: [{ id: 'in', type: 'text', suggest: 5 }] }), /bad suggest hint/);
+  assert.throws(() => registry.register({ ...base, type: 'x.b', outputs: [{ id: 'o', type: 'text', suggest: 'x.thing' }] }), /bad suggest hint/);
+  const hinted = registry.register({ ...base, type: 'x.hinted', inputs: [{ id: 'in', type: 'text', suggest: 'x.thing' }] });
+  assert.equal(registry.publicDescriptor(hinted).inputs[0].suggest, 'x.thing');
+  // `min`: connections a multiple input needs at run time ("insert with inputs" supplies that many sources)
+  assert.throws(() => registry.register({ ...base, type: 'x.c', inputs: [{ id: 'in', type: 'text', min: 2 }] }), /bad min/, 'only multiple inputs');
+  assert.throws(() => registry.register({ ...base, type: 'x.c', inputs: [{ id: 'in', type: 'text', multiple: true, min: 0 }] }), /bad min/);
+  assert.throws(() => registry.register({ ...base, type: 'x.c', inputs: [{ id: 'in', type: 'text', multiple: true, max: 2, min: 3 }] }), /bad min/, 'not above the maximum');
+  assert.throws(() => registry.register({ ...base, type: 'x.c', outputs: [{ id: 'o', type: 'text', multiple: true, min: 1 }] }), /bad min/);
+  const minimal = registry.register({ ...base, type: 'x.minimal', inputs: [{ id: 'in', type: 'text', multiple: true, min: 2, max: 5 }] });
+  assert.equal(registry.publicDescriptor(minimal).inputs[0].min, 2);
+  assert.equal(registryModule.get('video.concat').inputs[0].min, 2, 'Concatenate videos needs two clips');
+  // provider: who bills a paid node (a label in the help); explicit wins, else derived from unit and category
+  assert.equal(registryModule.providerOf({ paid: false, category: 'utility' }), null);
+  assert.equal(registryModule.providerOf({ paid: true, category: 'llm' }), 'llm', 'a language model: OpenRouter or the ChatGPT subscription');
+  assert.equal(registryModule.providerOf({ paid: true, category: 'image' }), 'openrouter');
+  assert.equal(registryModule.providerOf({ paid: true, cost: { unit: 'credits' } }), 'higgsfield');
+  assert.equal(registryModule.providerOf({ paid: true, category: 'fal' }), 'fal');
+  assert.equal(registryModule.providerOf({ paid: true, category: 'audio', provider: 'elevenlabs' }), 'elevenlabs');
 
   assert.equal(registry.availability(def), 'OPENROUTER_API_KEY missing');
   const descriptor = registry.publicDescriptor(def);
@@ -251,8 +272,8 @@ async function testBasicNodes() {
 
   // media inputs need an asset
   const image = registry.get('input.image');
-  assert.deepEqual(image.validate({ asset: null }), ['image: no asset selected']);
-  assert.deepEqual(image.validate({ asset: { assetId: 'upload-001', missing: true } }), ['image: asset is missing, upload it again']);
+  assert.deepEqual(image.validate({ asset: null }), [{ code: 'no_asset', message: 'image: no asset selected' }]);
+  assert.deepEqual(image.validate({ asset: { assetId: 'upload-001', missing: true } }), [{ code: 'asset_lost', message: 'image: asset is missing, upload it again' }]);
   assert.deepEqual(image.validate({ asset: { assetId: 'upload-001' } }), []);
   await assert.rejects(exec('input.image', {}, { asset: null }), /No asset selected/);
   await assert.rejects(exec('input.image', {}, { asset: { assetId: 'upload-001', missing: true } }), /missing/);

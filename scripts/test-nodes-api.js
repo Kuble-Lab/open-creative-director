@@ -1057,6 +1057,7 @@ async function main() {
         ['/api/nodes/options/:source', 'get'],
         ['/api/nodes/higgsfield-models/:modelId', 'get'],
         ['/api/workflow-templates', 'get'],
+        ['/api/workflow-templates/:id', 'get'],
         ['/api/workflows/:id/send-to-chat/plan', 'get'],
         ['/api/workflows/:id/send-to-chat', 'post'],
         ['/api/workflows', 'get'],

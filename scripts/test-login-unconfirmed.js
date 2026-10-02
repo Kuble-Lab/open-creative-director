@@ -352,7 +352,10 @@ async function testApp() {
     const registry = await api('/api/nodes/registry');
     assert.equal(registry.status, 200);
     assert.ok(registry.body.nodeTypes.filter((type) => type.category === 'higgsfield').every((type) => type.restricted === true), 'Higgsfield marked as not available');
-    assert.equal((await api('/api/workflow-templates')).status, 200);
+    const templates = await api('/api/workflow-templates');
+    assert.equal(templates.status, 200);
+    assert.ok(templates.body.templates.length > 0 && !templates.body.templates.some((template) => template.id === 'dub-clip'), 'no Higgsfield template while the login is unconfirmed');
+    assert.equal((await api('/api/workflow-templates/photo-slideshow')).status, 401, 'a single template is not one of the exceptions');
     assert.equal((await api('/api/roles/default')).status, 200);
     assert.equal((await api('/refs/nothing', { raw: true })).status, 404, 'the public reference route is not blocked (just unknown)');
 

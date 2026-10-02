@@ -1,0 +1,76 @@
+{
+  "id": "video-to-post",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Video to social post",
+  "description": "Upload a video: an LLM looks at it and writes a ready-to-post text in the tone and length you describe.",
+  "requires": ["openrouter", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.video", "typeVersion": 1, "x": 80, "y": 60, "title": "Video", "params": { "asset": null } },
+      { "id": "n2", "type": "llm.video_describer", "typeVersion": 1, "x": 480, "y": 60, "title": "Describe video", "params": { "model": "", "focus": "full", "language": "en" } },
+      { "id": "n3", "type": "input.text", "typeVersion": 1, "x": 480, "y": 380, "title": "Post brief", "params": { "text": "LinkedIn post, friendly and concrete, about 80 words, one call to action, three hashtags." } },
+      { "id": "n4", "type": "text.template", "typeVersion": 1, "x": 880, "y": 140, "title": "Combine", "params": { "template": "Video description:\n{{a}}\n\nWrite the post as follows: {{b}}" } },
+      { "id": "n5", "type": "llm.chat", "typeVersion": 1, "x": 1280, "y": 100, "title": "Write post", "params": { "model": "", "system": "You write social media posts. Use only what the video description says; invent no facts, names or numbers. Write in the language of the brief. Reply with the post text only.", "prompt": "" } },
+      { "id": "n6", "type": "output.result", "typeVersion": 1, "x": 1680, "y": 160, "params": { "label": "Post text" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "video" }, "to": { "node": "n2", "port": "video" } },
+      { "id": "e2", "from": { "node": "n2", "port": "text" }, "to": { "node": "n4", "port": "a" } },
+      { "id": "e3", "from": { "node": "n3", "port": "text" }, "to": { "node": "n4", "port": "b" } },
+      { "id": "e4", "from": { "node": "n4", "port": "text" }, "to": { "node": "n5", "port": "prompt" } },
+      { "id": "e5", "from": { "node": "n5", "port": "text" }, "to": { "node": "n6", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 380, "w": 340, "h": 150, "text": "The describer looks at three frames (start, middle, end) and does not listen to the sound. Add facts the picture cannot show to the brief, for example the product name." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Video to social post",
+    "description": "Upload a video and say what kind of post you want. You get the text.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Video" },
+      { "node": "n3", "param": "text", "label": "Post brief" }
+    ],
+    "outputs": [
+      { "node": "n6", "label": "Post text" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Video zu Social-Post",
+      "description": "Lade ein Video hoch: Ein LLM schaut es an und schreibt einen fertigen Beitragstext in Ton und Länge nach deinem Briefing.",
+      "node.n1": "Video",
+      "node.n2": "Video beschreiben",
+      "node.n3": "Post-Briefing",
+      "node.n4": "Zusammenführen",
+      "node.n5": "Post schreiben",
+      "note.t1": "Die Beschreibung stützt sich auf drei Bilder (Anfang, Mitte, Ende) und hört den Ton nicht ab. Ergänze im Briefing, was das Bild nicht zeigt, zum Beispiel den Produktnamen.",
+      "param.n3.text": "LinkedIn-Beitrag, freundlich und konkret, etwa 80 Wörter, ein Aufruf zum Handeln, drei Hashtags.",
+      "app.title": "Video zu Social-Post",
+      "app.description": "Lade ein Video hoch und sage, welchen Beitrag du möchtest. Du erhältst den Text.",
+      "app.input.n1.asset": "Video",
+      "app.input.n3.text": "Post-Briefing",
+      "app.output.n6": "Beitragstext"
+    },
+    "es": {
+      "name": "Vídeo a publicación social",
+      "description": "Sube un vídeo: un LLM lo analiza y escribe un texto listo para publicar con el tono y la longitud que describas.",
+      "node.n1": "Vídeo",
+      "node.n2": "Describir vídeo",
+      "node.n3": "Briefing de la publicación",
+      "node.n4": "Combinar",
+      "node.n5": "Escribir publicación",
+      "note.t1": "La descripción se basa en tres imágenes (inicio, mitad y final) y no escucha el sonido. Añade al briefing lo que la imagen no muestra, por ejemplo el nombre del producto.",
+      "param.n3.text": "Publicación para LinkedIn, cercana y concreta, unas 80 palabras, una llamada a la acción, tres hashtags.",
+      "app.title": "Vídeo a publicación social",
+      "app.description": "Sube un vídeo e indica qué tipo de publicación quieres. Obtienes el texto.",
+      "app.input.n1.asset": "Vídeo",
+      "app.input.n3.text": "Briefing de la publicación",
+      "app.output.n6": "Texto de la publicación"
+    }
+  }
+}

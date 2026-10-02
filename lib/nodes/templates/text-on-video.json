@@ -1,0 +1,75 @@
+{
+  "id": "text-on-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Text on video (local)",
+  "description": "Put a title or caption on your video, rendered and laid over it locally with ffmpeg. No AI model, no cost.",
+  "requires": ["ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.video", "typeVersion": 1, "x": 80, "y": 60, "title": "Video", "params": { "asset": null } },
+      { "id": "n2", "type": "input.text", "typeVersion": 1, "x": 80, "y": 380, "title": "Text", "params": { "text": "Summer Sale\nUp to 40% off" } },
+      { "id": "n3", "type": "image.text_render", "typeVersion": 1, "x": 500, "y": 380, "title": "Render text", "params": { "text": "", "font_family": "Helvetica", "font_size": 72, "font_weight": "800", "color": "#ffffff", "width": 1280, "height": 0, "align": "center", "line_height": 1.2 } },
+      { "id": "n4", "type": "video.overlay_image", "typeVersion": 1, "x": 920, "y": 120, "title": "Place on video", "params": { "x": 50, "y": 85, "unit": "percent", "anchor": "center", "scale": 100, "opacity": 1, "start": 0, "end": 0 } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1340, "y": 160, "params": { "label": "Video with text" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n2", "port": "text" }, "to": { "node": "n3", "port": "text" } },
+      { "id": "e2", "from": { "node": "n1", "port": "video" }, "to": { "node": "n4", "port": "video" } },
+      { "id": "e3", "from": { "node": "n3", "port": "image" }, "to": { "node": "n4", "port": "image" } },
+      { "id": "e4", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 500, "y": 640, "w": 340, "h": 150, "text": "The text is white and has no background; on a bright video change the colour on Render text. Position, size and the time range (start and end in seconds) are set on Place on video." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Text on video",
+    "description": "Upload a video and type the text. You get the video with the text laid over it.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Video" },
+      { "node": "n2", "param": "text", "label": "Text" },
+      { "node": "n4", "param": "y", "label": "Vertical position (%)" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Video with text" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Text auf Video (lokal)",
+      "description": "Setze einen Titel oder eine Bildunterschrift auf dein Video, lokal mit ffmpeg gerendert und darübergelegt. Kein KI-Modell, keine Kosten.",
+      "node.n1": "Video",
+      "node.n2": "Text",
+      "node.n3": "Text rendern",
+      "node.n4": "Auf Video legen",
+      "note.t1": "Der Text ist weiss und hat keinen Hintergrund; bei hellem Video änderst du die Farbe im Node «Text rendern». Position, Grösse und Zeitraum (Start und Ende in Sekunden) stellst du im Node «Auf Video legen» ein.",
+      "param.n2.text": "Sommer-Sale\nBis zu 40 % Rabatt",
+      "app.title": "Text auf Video",
+      "app.description": "Lade ein Video hoch und tippe den Text. Du erhältst das Video mit dem Text darüber.",
+      "app.input.n1.asset": "Video",
+      "app.input.n2.text": "Text",
+      "app.input.n4.y": "Vertikale Position (%)",
+      "app.output.n5": "Video mit Text"
+    },
+    "es": {
+      "name": "Texto sobre vídeo (local)",
+      "description": "Coloca un título o un rótulo sobre tu vídeo, renderizado y superpuesto en local con ffmpeg. Sin modelo de IA y sin coste.",
+      "node.n1": "Vídeo",
+      "node.n2": "Texto",
+      "node.n3": "Renderizar texto",
+      "node.n4": "Colocar sobre el vídeo",
+      "note.t1": "El texto es blanco y no tiene fondo; con un vídeo claro cambia el color en «Renderizar texto». La posición, el tamaño y el intervalo (inicio y fin en segundos) se ajustan en «Colocar sobre el vídeo».",
+      "param.n2.text": "Rebajas de verano\nHasta un 40 % de descuento",
+      "app.title": "Texto sobre vídeo",
+      "app.description": "Sube un vídeo y escribe el texto. Obtienes el vídeo con el texto superpuesto.",
+      "app.input.n1.asset": "Vídeo",
+      "app.input.n2.text": "Texto",
+      "app.input.n4.y": "Posición vertical (%)",
+      "app.output.n5": "Vídeo con texto"
+    }
+  }
+}

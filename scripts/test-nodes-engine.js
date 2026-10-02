@@ -424,6 +424,8 @@ async function main() {
       const plan = await engine.plan(wf2.id, { mode: 'all' });
       assert.equal(plan.valid, false);
       assert.equal(plan.nodes.u.status, 'invalid');
+      assert.equal(plan.nodes.u.reasonCode, 'missing_input');
+      assert.equal(plan.nodes.u.reasonPort, 'in', 'the plan names the input that is missing (the fix button needs it)');
       // unknown node types are kept but not executable
       const wf3 = await makeWorkflow([node('a', 't.src'), node('x', 'no.such_type')], []);
       const record = await run(engine, wf3.id, { mode: 'all' });

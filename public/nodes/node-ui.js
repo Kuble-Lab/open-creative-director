@@ -64,9 +64,10 @@
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
   const optionLabel = (value) => tr(`nodes.option.${value}`, String(value));
 
-  // Translated text of a plan / validation issue { code, data?, message }: nodes.issue.<code> with the placeholders of
-  // `data` (width -> {w}, height -> {h}, foundWidth -> {foundW}, foundHeight -> {foundH}, format -> its option label);
-  // without such a key the engine's own (English) message is shown as before.
+  // Translated text of a plan / validation issue { code, data?, port?, message }: nodes.issue.<code> with the
+  // placeholders of `data` (width -> {w}, height -> {h}, foundWidth -> {foundW}, foundHeight -> {foundH}, format -> its
+  // option label), {port} (the label of the input) and {message} (the engine's English wording of the detail); without
+  // such a key the engine's own (English) message is shown as before.
   function hasIssueText(code) {
     return Boolean(code) && T(`nodes.issue.${code}`) !== `nodes.issue.${code}`;
   }
@@ -80,6 +81,10 @@
     if (!hasIssueText(item.code)) return item.message || item.code || '';
     const vars = { ...data, w: data.width, h: data.height, foundW: data.foundWidth, foundH: data.foundHeight };
     if (data.format) vars.format = optionLabel(data.format);
+    // The input an issue is about, by its label; the engine's own (English) message for the codes that have no more
+    // specific wording (a setting that does not fit).
+    if (vars.port === undefined && item.port) vars.port = portLabel(item.port);
+    if (vars.message === undefined && item.message) vars.message = item.message;
     const key = variant && hasIssueText(`${item.code}.${variant}`) ? `nodes.issue.${item.code}.${variant}` : `nodes.issue.${item.code}`;
     return T(key, vars);
   }
@@ -165,6 +170,7 @@
     app: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     send: 'M21 3L3 10.5l7 2.5 2.5 7zM21 3L10 13',
     template: 'M4 4h16v6H4zM4 14h7v6H4zM15 14h5v6h-5z',
+    help: 'M12 4a8 8 0 100 16 8 8 0 000-16zM9.8 9.6a2.3 2.3 0 114.2 1.3c-.6.8-1.9 1.1-1.9 2.4M12 16.6h.01',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     arrowUp: 'M12 19V5m0 0l-5 5m5-5l5 5',
     arrowDown: 'M12 5v14m0 0l-5-5m5 5l5-5',
@@ -995,7 +1001,9 @@
     const title = el('span', { class: 'nv-node-title' });
     const badges = el('span', { class: 'nv-node-badges' });
     const runBtn = el('button', { type: 'button', class: 'nv-node-run', title: T('nodes.card.run'), 'aria-label': T('nodes.card.run') }, icon('play', 11));
-    head.append(iconWrap, title, badges, runBtn);
+    // "?": the help of the node type in a popover (main.js -> node-help.js); the title keeps its double click to rename.
+    const helpBtn = el('button', { type: 'button', class: 'nv-node-help', title: `${T('nodes.help.open')} (?)`, 'aria-label': T('nodes.help.open'), 'aria-haspopup': 'dialog', 'aria-keyshortcuts': '?' }, icon('help', 13));
+    head.append(iconWrap, title, badges, helpBtn, runBtn);
     const status = el('div', { class: 'nv-node-status', dataset: { slot: 'status' } });
     const message = el('div', { class: 'nv-node-msg nv-scroll' });
     // One-click remedy for an issue shown in `message` (slot.fix), e.g. "Convert to HTML with AI".
@@ -1009,7 +1017,7 @@
     card.append(head, status, message, fix, ports, params, preview, foot);
     const state = {
       el: card,
-      refs: { head, iconWrap, title, badges, runBtn, status, message, fix, ports, params, preview, pager, cost, foot },
+      refs: { head, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, params, preview, pager, cost, foot },
       widgets: new Map(),
       sig: null,
       node: null,
@@ -1027,6 +1035,10 @@
     runBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       if (cardActions.run && state.node) cardActions.run(state.node.id);
+    });
+    helpBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (cardActions.help && state.node) cardActions.help(state.node.id, helpBtn);
     });
     return state;
   }
@@ -1195,6 +1207,9 @@
       state.sig = signature;
       refs.runBtn.title = T('nodes.card.run');
       refs.runBtn.setAttribute('aria-label', T('nodes.card.run'));
+      refs.helpBtn.title = `${T('nodes.help.open')} (?)`;
+      refs.helpBtn.setAttribute('aria-label', T('nodes.help.open'));
+      refs.helpBtn.classList.toggle('hidden', !def);
       refs.iconWrap.textContent = '';
       refs.iconWrap.append(categoryIcon(def ? def.category : 'unknown'));
       buildBadges(state, def);
@@ -1224,7 +1239,7 @@
     state.el.dataset.status = info.status || '';
     state.el.classList.toggle('is-working', Boolean(info.working));
 
-    const statusKey = [info.status || '', info.label || '', info.since || '', info.progress ? `${info.progress.done}/${info.progress.total}` : '', info.message || '', info.fix ? info.fix.id : ''].join('|');
+    const statusKey = [info.status || '', info.label || '', info.since || '', info.progress ? `${info.progress.done}/${info.progress.total}` : '', info.message || '', info.fix ? `${info.fix.id}:${info.fix.port || ''}:${info.fix.label}` : ''].join('|');
     if (statusKey !== state.slotKey) {
       state.slotKey = statusKey;
       status.textContent = '';
@@ -1243,7 +1258,7 @@
         const button = el('button', { type: 'button', class: 'nv-node-fix-btn nv-nodrag', title: info.fix.title || '' }, icon(info.fix.icon || 'sparkle', 12), el('span', { text: info.fix.label }));
         button.addEventListener('click', (event) => {
           event.stopPropagation();
-          if (cardActions.fix && state.node) cardActions.fix(state.node.id, info.fix.id);
+          if (cardActions.fix && state.node) cardActions.fix(state.node.id, info.fix.id, info.fix);
         });
         fix.append(button);
       }

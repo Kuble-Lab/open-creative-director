@@ -1,0 +1,76 @@
+{
+  "id": "storyboard-clips",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Storyboard to clips to cut",
+  "description": "Describe an idea: an LLM writes a three-shot storyboard, Seedance films every shot and the clips are joined into one video. Short clips at low resolution keep the first run cheap.",
+  "requires": ["openrouter", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.text", "typeVersion": 1, "x": 80, "y": 120, "title": "Idea", "params": { "text": "A small bakery opens at dawn: the baker shapes the first loaf, steam rises from the oven, the first customer smiles." } },
+      { "id": "n2", "type": "llm.chat", "typeVersion": 1, "x": 480, "y": 80, "title": "Storyboard", "params": { "model": "", "system": "You are a storyboard writer for short video clips. Turn the idea into exactly 3 shots. Reply with one line per shot and nothing else: no numbering, no headings, no empty lines. Each line describes one continuous shot (subject, action, camera movement, light) in one or two sentences, in English.", "prompt": "" } },
+      { "id": "n3", "type": "text.split", "typeVersion": 1, "x": 880, "y": 140, "title": "One shot per line", "params": { "separator": "\n", "trim": true, "max": 3 } },
+      { "id": "n4", "type": "video.seedance", "typeVersion": 1, "x": 1280, "y": 80, "title": "Film shot", "params": { "prompt": "", "duration": 4, "aspect_ratio": "16:9", "resolution": "480p" } },
+      { "id": "n5", "type": "video.concat", "typeVersion": 1, "x": 1680, "y": 140, "title": "Cut together", "params": { "label": "Storyboard" } },
+      { "id": "n6", "type": "output.result", "typeVersion": 1, "x": 2080, "y": 180, "params": { "label": "Film" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "text" }, "to": { "node": "n2", "port": "prompt" } },
+      { "id": "e2", "from": { "node": "n2", "port": "text" }, "to": { "node": "n3", "port": "text" } },
+      { "id": "e3", "from": { "node": "n3", "port": "items" }, "to": { "node": "n4", "port": "prompt" } },
+      { "id": "e4", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "clips" } },
+      { "id": "e5", "from": { "node": "n5", "port": "video" }, "to": { "node": "n6", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 480, "y": 440, "w": 380, "h": 170, "text": "Three shots of 4 seconds at low resolution. For more shots change the number in the LLM instruction and the maximum on One shot per line; every shot is paid separately." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Storyboard to film",
+    "description": "Describe your idea and get a short film made of three shots.",
+    "inputs": [
+      { "node": "n1", "param": "text", "label": "Idea" },
+      { "node": "n4", "param": "duration", "label": "Seconds per shot" }
+    ],
+    "outputs": [
+      { "node": "n6", "label": "Film" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Storyboard zu Clips zu Schnitt",
+      "description": "Beschreibe eine Idee: Ein LLM schreibt ein Storyboard mit drei Einstellungen, Seedance filmt jede Einstellung und die Clips werden zu einem Video zusammengefügt. Kurze Clips in niedriger Auflösung halten den ersten Lauf günstig.",
+      "node.n1": "Idee",
+      "node.n2": "Storyboard",
+      "node.n3": "Eine Einstellung pro Zeile",
+      "node.n4": "Einstellung filmen",
+      "node.n5": "Zusammenschneiden",
+      "note.t1": "Drei Einstellungen zu je 4 Sekunden in niedriger Auflösung. Für mehr Einstellungen änderst du die Zahl in der LLM-Anweisung und das Maximum im Node «Eine Einstellung pro Zeile»; jede Einstellung wird einzeln berechnet.",
+      "param.n1.text": "Eine kleine Bäckerei öffnet im Morgengrauen: Der Bäcker formt das erste Brot, Dampf steigt aus dem Ofen, die erste Kundin lächelt.",
+      "app.title": "Storyboard zu Film",
+      "app.description": "Beschreibe deine Idee und erhalte einen kurzen Film aus drei Einstellungen.",
+      "app.input.n1.text": "Idee",
+      "app.input.n4.duration": "Sekunden pro Einstellung",
+      "app.output.n6": "Film"
+    },
+    "es": {
+      "name": "Storyboard a clips a montaje",
+      "description": "Describe una idea: un LLM escribe un storyboard de tres planos, Seedance rueda cada plano y los clips se unen en un solo vídeo. Clips cortos y de poca resolución mantienen barata la primera ejecución.",
+      "node.n1": "Idea",
+      "node.n2": "Storyboard",
+      "node.n3": "Un plano por línea",
+      "node.n4": "Rodar plano",
+      "node.n5": "Montar",
+      "note.t1": "Tres planos de 4 segundos con poca resolución. Para más planos cambia el número en la instrucción del LLM y el máximo en «Un plano por línea»; cada plano se cobra por separado.",
+      "param.n1.text": "Una pequeña panadería abre al amanecer: el panadero da forma a la primera hogaza, sube el vapor del horno, la primera clienta sonríe.",
+      "app.title": "Storyboard a película",
+      "app.description": "Describe tu idea y obtén una película corta de tres planos.",
+      "app.input.n1.text": "Idea",
+      "app.input.n4.duration": "Segundos por plano",
+      "app.output.n6": "Película"
+    }
+  }
+}

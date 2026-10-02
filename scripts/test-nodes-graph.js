@@ -559,6 +559,116 @@ function testQuickPick() {
   assert.deepEqual(graphLib.quickPickTargets(reg, 'in', 'bogus'), []);
 }
 
+// "Put a node in front" / "insert with inputs" (WP23): which source an input gets, what is missing, how the block is laid out.
+function testInputSources() {
+  const typeOf = (graph, id) => graph.nodes.find((node) => node.id === id).type;
+  const portOf = (type, id) => reg.types.get(type).inputs.find((port) => port.id === id);
+
+  // sourceFor: the hint of the registry first, else the input node of the base type
+  assert.deepEqual(graphLib.sourceFor(reg, portOf('video.motion_graphics', 'html')), { type: 'llm.motion_html', port: 'html', hinted: true });
+  assert.deepEqual(graphLib.sourceFor(reg, portOf('image.edit', 'prompt')), { type: 'input.prompt', port: 'prompt', hinted: false });
+  assert.equal(graphLib.sourceFor(reg, portOf('image.edit', 'images')).type, 'input.image');
+  assert.equal(graphLib.sourceFor(reg, { id: 'x', type: 'any' }), null, 'no source for any');
+  assert.equal(graphLib.sourceFor(reg, { id: 'x', type: 'image[]' }), null, 'no single input node makes a list');
+  assert.equal(graphLib.sourceFor(reg, { id: 'x', type: 'text', suggest: 'no.such_type' }).type, 'input.prompt', 'a hint to an unknown type falls back');
+
+  // the case: a video on "Assets" of "Motion graphics from HTML", the HTML field empty
+  const b = build();
+  const video = b.add('input.video', 0, 0);
+  const writerless = b.add('video.motion_graphics', 500, 0, { html: '' });
+  b.graph = graphLib.connect(reg, b.graph, { node: video, port: 'video' }, { node: writerless, port: 'assets' }).graph;
+  assert.deepEqual(graphLib.missingInputs(reg, b.graph, writerless).map((port) => port.id), ['html']);
+  assert.deepEqual(graphLib.missingInputs(reg, b.graph, 'nope'), []);
+  const filled = graphLib.setParams(b.graph, writerless, { html: '<div></div>' });
+  assert.deepEqual(graphLib.missingInputs(reg, filled, writerless), [], 'a typed value fills a text input');
+
+  const fix = graphLib.addInputSources(reg, b.graph, writerless);
+  assert.ok(!fix.error);
+  assert.deepEqual(fix.nodes.map((node) => node.type), ['llm.motion_html', 'input.prompt'], 'writer, and the prompt it needs');
+  const [writer, prompt] = fix.nodes;
+  assert.deepEqual(fix.supplied, [{ port: 'html', node: writer.id }]);
+  const pairs = fix.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`).sort();
+  assert.deepEqual(pairs, [`${prompt.id}.prompt>${writer.id}.brief`, `${video}.video>${writer.id}.assets`, `${writer.id}.html>${writerless}.html`].sort(), 'the assets go to the writer too');
+  assert.equal(fix.graph.edges.length, b.graph.edges.length + 3);
+  assert.equal(graphLib.missingInputs(reg, fix.graph, writerless).length, 0, 'the node is complete afterwards');
+  assert.equal(graphLib.missingInputs(reg, fix.graph, writer.id).length, 0);
+  assert.equal(new Set(fix.graph.nodes.map((node) => node.id)).size, fix.graph.nodes.length, 'unique ids');
+  assert.deepEqual(graphLib.validate(reg, fix.graph), [], 'typed edges stay valid');
+  for (const edge of fix.edges) assert.equal(graphLib.checkConnection(reg, { ...fix.graph, edges: fix.graph.edges.filter((item) => item.id !== edge.id) }, edge.from, edge.to), null, `${edge.id} is an allowed connection`);
+  // laid out to the left of the node, not on top of anything
+  assert.ok(fix.nodes.every((node) => node.x < fix.graph.nodes.find((item) => item.id === writerless).x));
+  const boxes = fix.graph.nodes.map((node) => ({ id: node.id, x: node.x, y: node.y, w: graphLib.DEFAULT_NODE_SIZE.w, h: graphLib.DEFAULT_NODE_SIZE.h }));
+  for (const first of boxes) for (const second of boxes) {
+    if (first.id >= second.id) continue;
+    assert.ok(first.x + first.w <= second.x || second.x + second.w <= first.x || first.y + first.h <= second.y || second.y + second.h <= first.y, `${first.id} and ${second.id} overlap`);
+  }
+  // the original graph is untouched (immutability)
+  assert.equal(b.graph.nodes.length, 2);
+  // only the asked ports
+  assert.equal(graphLib.addInputSources(reg, b.graph, writerless, { ports: ['assets'] }).error.reason, 'no_source', 'assets are connected already');
+  assert.deepEqual(graphLib.addInputSources(reg, b.graph, writerless, { ports: ['html'] }).supplied.map((item) => item.port), ['html']);
+
+  // errors
+  assert.equal(graphLib.addInputSources(reg, b.graph, 'zz').error.reason, 'unknown_node');
+  const lone = build();
+  const result = lone.add('output.result', 0, 0);
+  assert.equal(graphLib.addInputSources(reg, lone.graph, result).error.reason, 'no_source', 'nothing to supply: any is not a source');
+
+  // no hint: the input node of the base type, and a second call has nothing left to do
+  const c = build();
+  const edit = c.add('image.edit', 400, 100);
+  const both = graphLib.addInputSources(reg, c.graph, edit);
+  assert.deepEqual(both.nodes.map((node) => node.type).sort(), ['input.image', 'input.prompt']);
+  assert.equal(graphLib.addInputSources(reg, both.graph, edit).error.reason, 'no_source');
+  const onlyPrompt = graphLib.addInputSources(reg, c.graph, edit, { ports: ['prompt'] });
+  assert.deepEqual(onlyPrompt.nodes.map((node) => node.type), ['input.prompt']);
+  assert.equal(typeOf(onlyPrompt.graph, onlyPrompt.nodes[0].id), 'input.prompt');
+  // reserved ids are not reused
+  const reserved = graphLib.addInputSources(reg, c.graph, edit, { reserved: ['n2', 'n3', 'n4'] });
+  assert.ok(reserved.nodes.every((node) => !['n1', 'n2', 'n3', 'n4'].includes(node.id)));
+
+  // inputsSubgraph: "insert with inputs"
+  const sub = graphLib.inputsSubgraph(reg, 'image.edit');
+  assert.equal(sub.target, 'n1');
+  assert.deepEqual(sub.nodes.map((node) => node.type), ['image.edit', 'input.prompt', 'input.image']);
+  assert.equal(sub.nodes[0].x, 0);
+  assert.ok(sub.nodes.slice(1).every((node) => node.x < 0), 'the sources stand to the left');
+  assert.equal(sub.edges.length, 2);
+  const inserted = graphLib.insertSubgraph(graphLib.emptyGraph(), sub, { reg, center: { x: 0, y: 0 } });
+  assert.ok(!inserted.error);
+  assert.equal(inserted.graph.nodes.length, 3);
+  assert.equal(inserted.graph.edges.length, 2);
+  const lonely = graphLib.inputsSubgraph(reg, 'input.prompt');
+  assert.equal(lonely.nodes.length, 1, 'nothing to supply: the node alone');
+  assert.equal(graphLib.inputsSubgraph(reg, 'no.such_type').error.reason, 'unknown_type');
+  const motion = graphLib.inputsSubgraph(reg, 'video.motion_graphics');
+  assert.deepEqual(motion.nodes.map((node) => node.type), ['video.motion_graphics', 'llm.motion_html', 'input.prompt'], 'the writer and its prompt');
+  // a multiple input with a minimum gets that many sources: Concatenate videos needs two clips to run
+  const concat = graphLib.inputsSubgraph(reg, 'video.concat');
+  assert.deepEqual(concat.nodes.map((node) => node.type), ['video.concat', 'input.video', 'input.video'], 'two video inputs, not one');
+  assert.equal(concat.edges.length, 2);
+  assert.ok(concat.edges.every((edge) => edge.to.node === 'n1' && edge.to.port === 'clips' && edge.from.port === 'video'));
+  assert.equal(new Set(concat.nodes.map((node) => `${node.x},${node.y}`)).size, 3, 'the cards do not stand on each other');
+  const placedConcat = graphLib.insertSubgraph(graphLib.emptyGraph(), concat, { reg, center: { x: 0, y: 0 } });
+  assert.ok(!placedConcat.error);
+  assert.equal(graphLib.missingInputs(reg, placedConcat.graph, placedConcat.graph.nodes.find((node) => node.type === 'video.concat').id).length, 0, 'nothing is missing afterwards');
+  const ownConcat = build();
+  const concatId = ownConcat.add('video.concat', 400, 100);
+  assert.equal(graphLib.addInputSources(reg, ownConcat.graph, concatId).supplied.length, 2, 'the fix of an empty Concatenate node supplies two clips');
+  // the types with required inputs all produce a valid block
+  for (const [type] of reg.types) {
+    const block = graphLib.inputsSubgraph(reg, type);
+    if (block.error) continue;
+    const placed = graphLib.insertSubgraph(graphLib.emptyGraph(), block, { reg, center: { x: 0, y: 0 } });
+    assert.ok(!placed.error, `${type}: ${JSON.stringify(placed.error)}`);
+    assert.equal(placed.graph.edges.length, block.edges.length, `${type}: every edge survives`);
+  }
+
+  // the quick pick puts the hinted type first
+  assert.equal(graphLib.quickPickTargets(reg, 'in', 'text', { prefer: 'llm.motion_html' })[0].type, 'llm.motion_html');
+  assert.equal(graphLib.quickPickTargets(reg, 'in', 'text')[0].type, 'input.prompt');
+}
+
 // Media values the way the engine hands them around: assetId names the producing node, so the order is checkable.
 function mediaValue(type, id) {
   return { type, sessionId: 's1', assetId: id, file: `${id}.png` };
@@ -863,6 +973,105 @@ function testEveryTypeCanBePlaced() {
   assert.deepEqual(graphLib.validate(reg, graph), []);
 }
 
+// Sub graphs (templates, "insert with inputs", the assistant): fresh ids, free place, edges/notes/groups carried over.
+function testInsertSubgraph() {
+  const templates = require('../lib/nodes/templates');
+  const doc = templates.resolveTemplate('image-formats', { lang: 'en' });
+  const itemRects = (graph, ids) => [
+    ...graph.nodes.filter((node) => ids.nodes.includes(node.id)).map((node) => graphLib.nodeRect(node)),
+    ...graph.notes.filter((note) => ids.notes.includes(note.id)).map((note) => ({ x: note.x, y: note.y, w: note.w, h: note.h })),
+    ...graph.groups.filter((group) => ids.groups.includes(group.id)).map((group) => ({ x: group.x, y: group.y, w: group.w, h: group.h }))
+  ];
+
+  // empty canvas: centred on the middle of the view
+  const empty = graphLib.insertSubgraph(graphLib.emptyGraph(), doc.graph, { reg, center: { x: 600, y: 400 } });
+  assert.equal(empty.error, undefined);
+  assert.equal(empty.graph.nodes.length, 5);
+  assert.equal(empty.graph.edges.length, 6);
+  assert.equal(empty.graph.notes.length, 1);
+  assert.equal(empty.graph.groups.length, 1);
+  assert.deepEqual(empty.ids.nodes, ['n1', 'n2', 'n3', 'n4', 'n5']);
+  assert.equal(empty.ids.edges.length, 6);
+  assert.ok(Math.abs(empty.bounds.x + empty.bounds.w / 2 - 600) <= 8, 'centred horizontally (on the 8 px grid)');
+  assert.ok(Math.abs(empty.bounds.y + empty.bounds.h / 2 - 400) <= 8, 'centred vertically');
+  assert.deepEqual(graphLib.validate(reg, empty.graph), [], 'the inserted graph is valid');
+  assert.equal(empty.graph.nodes[0].params.asset, null);
+  assert.equal(empty.graph.nodes[1].params.fit, 'cover', 'template params are kept');
+  assert.equal(empty.graph.nodes[1].params.transparent, false);
+  // the template document itself is untouched
+  assert.equal(doc.graph.nodes[0].id, 'n1');
+  assert.equal(doc.graph.nodes[1].x, 520);
+
+  // beside existing content: new unique ids, right of everything, nothing overlaps
+  const b = build();
+  const text = b.add('input.text', 40, 40);
+  const gen = b.add('image.generate', 400, 40);
+  b.graph = graphLib.connect(reg, b.graph, { node: text, port: 'text' }, { node: gen, port: 'prompt' }).graph;
+  b.graph = graphLib.addNote(b.graph, { x: 40, y: 400, w: 200, h: 100 }).graph;
+  b.graph = graphLib.addGroup(b.graph, { x: 20, y: 20, w: 900, h: 300 }).graph;
+  const before = graphLib.boundsOf(b.graph);
+  const beside = graphLib.insertSubgraph(b.graph, doc.graph, { reg, center: { x: 0, y: 0 }, reserved: new Set(['n7']) });
+  assert.deepEqual(beside.ids.nodes, ['n8', 'n9', 'n10', 'n11', 'n12'], 'reserved ids stay unused');
+  assert.equal(beside.ids.notes[0], 't2');
+  assert.equal(beside.ids.groups[0], 'g2');
+  const all = graphLib.allIds(beside.graph);
+  assert.equal(all.size, b.graph.nodes.length + b.graph.edges.length + b.graph.notes.length + b.graph.groups.length + 5 + 6 + 1 + 1, 'no id is used twice');
+  assert.ok(beside.bounds.x >= before.x + before.w, 'right of the existing content');
+  const placed = itemRects(beside.graph, beside.ids);
+  const others = itemRects(beside.graph, { nodes: [text, gen], notes: ['t1'], groups: ['g1'] });
+  for (const rect of placed) for (const other of others) assert.equal(graphLib.rectsIntersect(rect, other), false, 'nothing overlaps');
+  // edges connect the new nodes with the mapped ids and keep their ports
+  const mapped = beside.graph.edges.slice(-6);
+  assert.deepEqual(mapped.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`), ['n8.image>n9.image', 'n8.image>n10.image', 'n8.image>n11.image', 'n9.image>n12.inputs', 'n10.image>n12.inputs', 'n11.image>n12.inputs']);
+  assert.deepEqual(beside.idMap, { n1: 'n8', n2: 'n9', n3: 'n10', n4: 'n11', n5: 'n12' });
+  assert.deepEqual(graphLib.validate(reg, beside.graph), []);
+  // the old part is the same objects (structural sharing for the canvas)
+  assert.equal(beside.graph.nodes[0], b.graph.nodes[0]);
+  // inserted twice: again free and unique
+  const twice = graphLib.insertSubgraph(beside.graph, doc.graph, { reg });
+  assert.ok(twice.bounds.x >= beside.bounds.x + beside.bounds.w);
+  assert.equal(new Set(twice.graph.nodes.map((node) => node.id)).size, 12);
+
+  // very wide content: below instead of beside
+  const wide = graphLib.addNode(reg, graphLib.addNode(reg, graphLib.emptyGraph(), 'input.text', { x: 0, y: 0 }).graph, 'input.text', { x: 3000, y: 0 }).graph;
+  const below = graphLib.insertSubgraph(wide, doc.graph, { reg });
+  assert.ok(below.bounds.y >= 160 && below.bounds.x <= 8, 'content wider than 2400 px: the new part goes below, at the left edge');
+
+  // explicit place; `avoid` moves down while the items would sit on others
+  const at = graphLib.insertSubgraph(b.graph, { nodes: [{ id: 'a', type: 'input.text', x: 10, y: 10, params: { text: 'x' } }], edges: [] }, { reg, at: { x: 400, y: 40 } });
+  assert.deepEqual({ x: at.graph.nodes[2].x, y: at.graph.nodes[2].y }, { x: 400, y: 40 }, 'an explicit place is taken as given');
+  const avoided = graphLib.insertSubgraph(b.graph, { nodes: [{ id: 'a', type: 'input.text', x: 0, y: 0, params: { text: 'x' } }], edges: [] }, { reg, at: { x: 400, y: 40 }, avoid: true });
+  const moved = avoided.graph.nodes[2];
+  assert.ok(moved.y > 40 && moved.x === 400, 'moved down, not sideways');
+  assert.equal(graphLib.rectsIntersect(graphLib.nodeRect(moved), graphLib.nodeRect(gen)), false);
+
+  // connecting to what was there works with the id map (the "insert with inputs" case)
+  const linked = graphLib.insertSubgraph(b.graph, { nodes: [{ id: 'up', type: 'input.text', x: 0, y: 0, params: { text: 'a prompt' } }], edges: [] }, { reg, at: { x: -400, y: 400 } });
+  const fixed = graphLib.connect(reg, linked.graph, { node: linked.idMap.up, port: 'text' }, { node: 'n2', port: 'prompt' }, { reserved: new Set() });
+  assert.equal(fixed.error, undefined);
+
+  // defaults are filled from the registry; node types the view does not know are refused
+  const filled = graphLib.insertSubgraph(graphLib.emptyGraph(), { nodes: [{ id: 'a', type: 'image.generate', x: 0, y: 0 }], edges: [] }, { reg });
+  assert.deepEqual(filled.graph.nodes[0].params, { prompt: '', aspect_ratio: '1:1', count: 1 });
+  assert.equal(filled.graph.nodes[0].typeVersion, 1);
+  const unknown = graphLib.insertSubgraph(b.graph, { nodes: [{ id: 'a', type: 'nope.unknown', x: 0, y: 0 }] }, { reg });
+  assert.deepEqual(unknown.error, { reason: 'unknown_type', type: 'nope.unknown' });
+  assert.equal(unknown.graph, b.graph, 'nothing changed');
+  assert.equal(graphLib.insertSubgraph(b.graph, { nodes: [], edges: [] }, { reg }).error.reason, 'empty');
+  assert.equal(graphLib.insertSubgraph(b.graph, null, { reg }).error.reason, 'empty');
+  const crowded = graphLib.emptyGraph();
+  crowded.nodes = Array.from({ length: 498 }, (_unused, index) => ({ id: `n${index + 1}`, type: 'input.text', typeVersion: 1, x: index, y: 0, params: {} }));
+  assert.equal(graphLib.insertSubgraph(crowded, doc.graph, { reg }).error.reason, 'too_many', 'at most 500 nodes in a workflow');
+
+  // every shipped template goes in cleanly and stays valid on top of existing content
+  for (const template of templates.loadTemplates()) {
+    const result = graphLib.insertSubgraph(beside.graph, templates.resolveTemplate(template.id, { lang: 'en' }).graph, { reg });
+    assert.equal(result.error, undefined, template.id);
+    assert.equal(result.ids.nodes.length, template.graph.nodes.length, template.id);
+    assert.deepEqual(graphLib.validate(reg, result.graph), [], `${template.id} inserts into a graph that already has content`);
+  }
+}
+
 const tests = [
   testRegistryIndex,
   testTypeCompat,
@@ -873,6 +1082,7 @@ const tests = [
   testGroupsAndNotes,
   testGeometry,
   testClipboard,
+  testInsertSubgraph,
   testNormalizeLoaded,
   testContentSnapshots,
   testFuzzyAndPalette,
@@ -886,7 +1096,8 @@ const tests = [
   testExtractPrompt,
   testQuickPickCreatesConnectedNode,
   testShowIf,
-  testEveryTypeCanBePlaced
+  testEveryTypeCanBePlaced,
+  testInputSources
 ];
 
 for (const test of tests) {
