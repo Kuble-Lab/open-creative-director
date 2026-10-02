@@ -767,12 +767,12 @@ async function main() {
       assert.deepEqual(detailRequests, []);
     }
 
-    console.log('test-nodes-image-models.js: ok');
   } finally {
     restoreAll();
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
+  console.log('test-nodes-image-models.js: ok');
 }
 
 main().catch((err) => {

@@ -393,6 +393,7 @@ async function main() {
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
   console.log('ChatGPT-Ersatz: Ersatz pro Modellaufruf bei 401, 429, 5xx, Netzwerkfehler und Timeout, keiner bei 400 oder nach Ausgabe, kein doppelter Werkzeug-Aufruf, Kosten mit openai/-Modell, Hinweis, 10-Minuten-Pause, Nodes mit derselben Funktion.');
+  console.log('test-chatgpt-fallback.js: ok');
 }
 
 async function run(iso, guard, logged) {

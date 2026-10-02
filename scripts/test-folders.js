@@ -83,6 +83,7 @@ async function main() {
       }
     }
   }
+  console.log('test-folders.js: ok');
 }
 
 main().catch((err) => {

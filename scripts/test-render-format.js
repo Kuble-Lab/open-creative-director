@@ -83,6 +83,7 @@ async function main() {
     costs.recordCost = originalRecordCost;
     await store.deleteSession(session.id).catch(() => {});
   }
+  console.log('test-render-format.js: ok');
 }
 
 main().catch((err) => {

@@ -72,6 +72,7 @@ async function main() {
     if (previousBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
     else process.env.PUBLIC_BASE_URL = previousBaseUrl;
   }
+  console.log('test-publicrefs.js: ok');
 }
 
 main().catch((err) => {

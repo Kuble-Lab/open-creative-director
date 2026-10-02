@@ -75,6 +75,7 @@ async function main() {
   } finally {
     await store.deleteSession(session.id);
   }
+  console.log('test-inline-images.js: ok');
 }
 
 main().catch((err) => {

@@ -315,4 +315,4 @@ for (const test of [testReading, testDurations, testEscapes, testRoundTrip, test
   test();
   console.log(`ok ${test.name}`);
 }
-console.log('music plan ok');
+console.log('test-music-plan.js: ok');

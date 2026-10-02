@@ -185,6 +185,7 @@ async function main() {
   } else {
     console.log('  ohne Einstellung: alles wie bisher.');
   }
+  console.log('test-restricted-models.js: ok');
 }
 
 async function setup(iso) {

@@ -133,6 +133,7 @@ async function main() {
   } finally {
     await fsp.rm(directory, { recursive: true, force: true });
   }
+  console.log('test-prompt-presets.js: ok');
 }
 
 main().catch((err) => {

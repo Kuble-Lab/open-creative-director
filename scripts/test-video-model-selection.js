@@ -157,6 +157,7 @@ async function main() {
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
   console.log('Video-Modellwahl: wartende Karte, Halt des Zugs, ein Job pro Klick, Fehler und Abbruch, Kompatibilitaet und Preis, Budget-Sperre und Reservierung, Merken pro Chat, Admin-Schalter, Prompt-Regeln und Modell auf Job und Asset sind korrekt.');
+  console.log('test-video-model-selection.js: ok');
 }
 
 async function run(iso) {

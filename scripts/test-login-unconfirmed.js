@@ -34,6 +34,7 @@ async function main() {
   await testApp();
   await testLocalMode();
   console.log('Unbestätigte Anmeldung: Einschränkung aktiv (Teams, unlesbare Datei, Domains), 401 LOGIN_UNCONFIRMED auf jeder nicht-öffentlichen Route, Ausnahmen, Budget-Ablehnung, Whoami-Cache 2 s / 10 s und das unveränderte Verhalten ohne Einschränkung und lokal sind korrekt.');
+  console.log('test-login-unconfirmed.js: ok');
 }
 
 /* ---------- the rule ---------- */

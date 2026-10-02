@@ -1173,12 +1173,12 @@ async function main() {
       assert.ok(rows.filter((row) => /video\.generate|VIDEO_|last_frame|\.cap\./.test(row[0])).length > 25, 'the texts of the node are there');
     }
 
-    console.log('test-nodes-video-generate.js: ok');
   } finally {
     restoreAll();
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
+  console.log('test-nodes-video-generate.js: ok');
 }
 
 main().catch((err) => {

@@ -45,6 +45,7 @@ async function main() {
   await testActiveMode();
   await testLocalMode();
   console.log('User management: Identitaet, Sessions, Assets, Workflows (Lauf, SSE, ZIP), Ordner, Admin-Routen, Team-Liste, Kosten, Monitoring, anonyme Zugriffe und der unveraenderte lokale Modus sind korrekt.');
+  console.log('test-user-management.js: ok');
 }
 
 /* ---------- active mode ---------- */

@@ -1022,11 +1022,11 @@ async function main() {
   await testRunProcessAbort();
   if (!ffmpeg.binaries().available) {
     console.log('SKIP ffmpeg fehlt (nur reine Builder-Tests gelaufen)');
-    console.log('test-nodes-ffmpeg: ok (ohne ffmpeg)');
+    console.log('test-nodes-ffmpeg.js: ok');
     return;
   }
   await testWithFfmpeg();
-  console.log('test-nodes-ffmpeg: ok');
+  console.log('test-nodes-ffmpeg.js: ok');
 }
 
 main().catch((err) => {

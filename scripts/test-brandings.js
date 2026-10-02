@@ -87,6 +87,7 @@ async function main() {
   } finally {
     if (branding) await brandings.deleteBranding(branding.id).catch(() => {});
   }
+  console.log('test-brandings.js: ok');
 }
 
 main().catch((err) => {

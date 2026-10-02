@@ -63,6 +63,7 @@ async function main() {
       else process.env[name] = originals[name];
     }
   }
+  console.log('test-minimal-config.js: ok');
 }
 
 main().catch((err) => {

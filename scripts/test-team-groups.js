@@ -54,6 +54,7 @@ async function main() {
   testWorkflowListClient();
   testSources();
   console.log('Team-Gruppen: Zuordnungsregeln, Gruppenköpfe, Seiten, Vertraulichkeit, Team neuer Einträge, Workflows, lokaler Modus und Browser-Helfer sind korrekt.');
+  console.log('test-team-groups.js: ok');
 }
 
 /* ---------- where an entry belongs ---------- */

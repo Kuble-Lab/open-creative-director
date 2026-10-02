@@ -245,7 +245,7 @@ async function main() {
     for (const sessionId of created.sessions) await store.deleteSession(sessionId).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
-  console.log('test-nodes-app ok');
+  console.log('test-nodes-app.js: ok');
 }
 
 main().catch((err) => {

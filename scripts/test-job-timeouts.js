@@ -83,6 +83,7 @@ async function main() {
     rendernode.jobStatus = originalJobStatus;
     await store.deleteSession(session.id);
   }
+  console.log('test-job-timeouts.js: ok');
 }
 
 main().catch((err) => {

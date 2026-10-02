@@ -135,6 +135,7 @@ async function main() {
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
   console.log('Teams-API: Team-Verwaltung, Rollen, Freigabe mit Teams, Regeltabelle, Budget an jeder bezahlten Stelle, Sammel-Hinzufuegen, Freigabelisten-Sync, Monitoring-Filter und der unveraenderte lokale Modus sind korrekt.');
+  console.log('test-teams-api.js: ok');
 }
 
 /* ---------- active mode ---------- */

@@ -144,6 +144,7 @@ async function main() {
       await store.deleteFolder(name).catch(() => {});
     }
   }
+  console.log('test-project-memory.js: ok');
 }
 
 main().catch((err) => {

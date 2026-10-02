@@ -19,6 +19,7 @@ async function main() {
     /maximal 30 reference_asset_ids/
   );
   console.log('Video-Referenzen: Schema und Executor begrenzen auf 30 Assets.');
+  console.log('test-video-reference-limit.js: ok');
 }
 
 main().catch((err) => {

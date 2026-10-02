@@ -2807,12 +2807,12 @@ async function main() {
       catalogLib.clearCache();
     }
 
-    console.log('test-nodes-generate: ok');
   } finally {
     restoreAll();
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
+  console.log('test-nodes-generate.js: ok');
 }
 
 main().catch((err) => {

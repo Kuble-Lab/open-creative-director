@@ -217,7 +217,7 @@ function testWiring() {
   await testStore();
   testServerFields();
   testWiring();
-  console.log('test-nodes-templates-ui ok');
+  console.log('test-nodes-templates-ui.js: ok');
 })().catch((err) => {
   console.error(err);
   process.exit(1);

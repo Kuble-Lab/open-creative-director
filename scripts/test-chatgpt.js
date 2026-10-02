@@ -294,6 +294,7 @@ async function main() {
     await fsp.rm(directory, { recursive: true, force: true });
   }
   console.log('chatgpt ok: Store, JWT, Adapter, Modell-Gating und Responses-SSE ohne Netz');
+  console.log('test-chatgpt.js: ok');
 }
 
 main().catch((err) => {

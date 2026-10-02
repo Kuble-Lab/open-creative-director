@@ -393,7 +393,7 @@ async function testSpeechUnchanged() {
       await test();
       console.log(`ok ${test.name}`);
     }
-    console.log('elevenlabs music ok');
+    console.log('test-elevenlabs-music.js: ok');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

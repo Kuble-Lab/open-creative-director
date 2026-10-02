@@ -42,6 +42,7 @@ async function main() {
   });
   assert.equal(await runMiddleware(failing, 'session=def'), 'lokal');
   console.log('Whoami-Middleware: ohne Env, mit Stub, Cookie-Weitergabe, Cache und Fehler-Fallback sind korrekt.');
+  console.log('test-whoami.js: ok');
 }
 
 main().catch((err) => {

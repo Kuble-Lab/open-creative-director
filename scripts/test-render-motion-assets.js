@@ -114,6 +114,7 @@ async function main() {
     else process.env.RENDER_NODE_TOKEN = originalRenderNodeToken;
     await store.deleteSession(session.id);
   }
+  console.log('test-render-motion-assets.js: ok');
 }
 
 main().catch((err) => {

@@ -118,6 +118,7 @@ async function main() {
     else process.env.ADMIN_EMAILS = originalEnv.admins;
     await fsp.rm(directory, { recursive: true, force: true });
   }
+  console.log('test-admins.js: ok');
 }
 
 main().catch((err) => {

@@ -42,6 +42,7 @@ async function main() {
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
+  console.log('test-video-frames.js: ok');
 }
 
 main().catch((err) => {

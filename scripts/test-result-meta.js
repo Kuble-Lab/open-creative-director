@@ -96,6 +96,7 @@ async function main() {
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
   runClient();
   console.log('Preis und Modell am Ergebnis: Modell am Ledger-Eintrag, Anzeigenamen, Schaetzung am Video-Job, Higgsfield in Credits, alte Eintraege ohne Modell, Meta-Zeile fuer Bild/Video/Audio und Texte sind korrekt.');
+  console.log('test-result-meta.js: ok');
 }
 
 async function runServer(iso) {

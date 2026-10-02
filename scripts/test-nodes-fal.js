@@ -896,13 +896,13 @@ async function main() {
       void jobs;
     }
 
-    console.log('test-nodes-fal: ok');
   } finally {
     restoreAll();
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
     for (const id of sessions) await store.deleteSession(id).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
+  console.log('test-nodes-fal.js: ok');
 }
 
 main().catch((err) => {

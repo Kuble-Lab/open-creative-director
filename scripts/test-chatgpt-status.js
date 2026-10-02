@@ -76,6 +76,7 @@ async function main() {
     if (originalWhoami === undefined) delete process.env.AUTH_WHOAMI_URL;
     else process.env.AUTH_WHOAMI_URL = originalWhoami;
   }
+  console.log('test-chatgpt-status.js: ok');
 }
 
 main().catch((err) => {

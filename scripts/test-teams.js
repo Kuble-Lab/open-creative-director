@@ -1245,6 +1245,7 @@ async function main() {
   await testAccessSync();
   await testAccessSyncRecord();
   console.log('Teams: Team-Datei, Rollen (Teilnehmer, Intern, Gast), Zugriffsregeln, Freigabe mit Teams, Kosten-Index, Budget mit Reservierungen und der Freigabelisten-Sync sind korrekt.');
+  console.log('test-teams.js: ok');
 }
 
 main().catch((error) => {

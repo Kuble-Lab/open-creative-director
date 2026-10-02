@@ -161,6 +161,7 @@ async function main() {
     await service.close();
     await fsp.rm(base, { recursive: true, force: true });
   }
+  console.log('test-render-streaming.js: ok');
 }
 
 main().catch((error) => {

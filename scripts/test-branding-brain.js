@@ -63,6 +63,7 @@ async function main() {
     await brandings.deleteBranding(first.id).catch(() => {});
     await brandings.deleteBranding(second.id).catch(() => {});
   }
+  console.log('test-branding-brain.js: ok');
 }
 
 main().catch((err) => {

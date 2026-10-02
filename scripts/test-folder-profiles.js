@@ -35,6 +35,7 @@ async function main() {
   } finally {
     await store.writeFolderProfile(folder, {});
   }
+  console.log('test-folder-profiles.js: ok');
 }
 
 main().catch((err) => {

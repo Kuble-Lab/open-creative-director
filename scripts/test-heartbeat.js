@@ -87,6 +87,7 @@ async function main() {
   }
 
   console.log('heartbeat ok: sichtbare Poller-Meldung und erweiterte /jobs-Payload');
+  console.log('test-heartbeat.js: ok');
 }
 
 main().catch((err) => {

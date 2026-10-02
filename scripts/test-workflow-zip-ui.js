@@ -469,7 +469,7 @@ async function main() {
   testWiring();
   testKeys();
   testDocs();
-  console.log('test-workflow-zip-ui ok');
+  console.log('test-workflow-zip-ui.js: ok');
 }
 
 main().catch((error) => {

@@ -37,6 +37,7 @@ async function main() {
   assert.deepEqual(second, first);
   assert.equal(calls, 1, 'Der 15-Sekunden-Cache muss den zweiten Healthcheck verhindern');
   console.log('Render-Node: Healthcheck ohne Auth und 15-Sekunden-Cache sind korrekt.');
+  console.log('test-rendernode-status.js: ok');
 }
 
 main().catch((err) => {

@@ -164,3 +164,4 @@ testClassify();
 testScale();
 testBrowserLoad();
 console.log('E-Mail-Liste: Zeilen, Komma, Semikolon, Tabs (Excel), Outlook-Namen, CSV, ungueltige Stuecke, Doppelte und der Einsatz im Browser sind korrekt.');
+console.log('test-email-list.js: ok');

@@ -850,13 +850,13 @@ async function main() {
       env.state.failItem = null;
     }
 
-    console.log('test-nodes-engine: ok');
   } finally {
     for (const id of created) {
       await wfStore.deleteWorkflow(id).catch(() => {});
     }
     await fsp.rm(dir, { recursive: true, force: true });
   }
+  console.log('test-nodes-engine.js: ok');
 }
 
 main().catch((err) => {

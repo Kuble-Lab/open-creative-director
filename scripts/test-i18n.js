@@ -51,3 +51,4 @@ for (const key of referencedKeys) {
 }
 
 console.log(`i18n ok: ${baseKeys.length} identische Keys in DE/EN/ES, ${referencedKeys.size} HTML-Referenzen geprueft`);
+console.log('test-i18n.js: ok');

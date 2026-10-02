@@ -363,13 +363,13 @@ async function main() {
       assert.equal(graphEstimate.unknownNodes, 0);
     }
 
-    console.log('test-nodes-remove-background.js: ok');
   } finally {
     restoreAll();
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
     for (const id of [...new Set(sessions)]) await store.deleteSession(id).catch(() => {});
     await fsp.rm(tmpDir, { recursive: true, force: true });
   }
+  console.log('test-nodes-remove-background.js: ok');
 }
 
 main().catch((err) => {

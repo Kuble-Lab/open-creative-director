@@ -37,6 +37,7 @@ async function main() {
     if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = originalKey;
   }
+  console.log('test-brain-usage.js: ok');
 }
 
 main().catch((err) => {

@@ -131,6 +131,7 @@ async function main() {
     await store.deleteFolder(renamedFolder).catch(() => {});
     await store.deleteFolder(originalFolder).catch(() => {});
   }
+  console.log('test-cast.js: ok');
 }
 
 main().catch((err) => {
