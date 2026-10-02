@@ -22,6 +22,9 @@
     let current = null;
     let runRefs = null; // { nodeId?, runEl, histEl? } containers refreshed by refreshRun() without rebuilding the form
     let lengthRefs = null; // { nodeId, el }: the line about the song length of a music node, refreshed by refreshRun()
+    // Fields whose visibility follows the value of another param (showIf on a param): they stay in the form and are shown or
+    // hidden in place by applyGates(), so typing never builds the form again. { el, showIf, inverse }
+    let gates = [];
     // Model descriptions are shared with the limits of the inputs (ui.modelDetail); when the one of the selected model
     // arrives, the form is built again.
     const stopModelWatch = ui.onModelChange((modelId) => {
@@ -33,6 +36,7 @@
 
     function clearWidgets() {
       lengthRefs = null;
+      gates = [];
       for (const widget of widgets.values()) widget.dispose && widget.dispose();
       for (const widget of dynamicWidgets) widget.dispose && widget.dispose();
       widgets = new Map();
@@ -486,6 +490,14 @@
       return wrap;
     }
 
+    // Shows or hides the fields whose visibility follows the value of another param (see `gates`), without building anything.
+    function applyGates(graph, node, def, connectedPorts) {
+      for (const gate of gates) {
+        const visible = graphLib.isVisible(gate.showIf, node, def, connectedPorts);
+        gate.el.hidden = gate.inverse ? visible : !visible;
+      }
+    }
+
     function nodeView(ctx, refresh) {
       const reg = getReg();
       const node = ctx.graph.nodes.find((n) => n.id === [...ctx.selection.nodes][0]);
@@ -537,19 +549,32 @@
         const useDynamic = Boolean(model && model.state === 'ready' && model.data);
 
         lengthRefs = null;
+        gates = [];
+        // The line that stands in for the hidden "Length" of a music node: where the length comes from.
+        const addLengthNote = () => {
+          const noteEl = el('div', { class: 'nv-field-hint nv-length-note', role: 'status' });
+          lengthRefs = { nodeId: node.id, el: noteEl };
+          const noteField = ui.field(ui.paramLabel('length'), noteEl);
+          fields.append(noteField);
+          // typing in the song text field changes the line at once
+          const planWidget = widgets.get('plan');
+          if (planWidget && planWidget.el) planWidget.el.addEventListener('input', () => paintLengthNote(planWidget.get()));
+          paintLengthNote();
+          return noteField;
+        };
         for (const param of def.params) {
-          if (!graphLib.isVisible(param.showIf, node, def, connectedPorts)) {
+          // Hidden by a connection only: no field. Hidden by the value of another param (the song text, a mode): the field is
+          // built anyway and shown or hidden in place (applyGates), so that typing does not build the form again.
+          const structural = graphLib.isVisible(param.showIf, node, def, connectedPorts, { ignoreParams: true });
+          const gated = structural && graphLib.dependsOnParam(param.showIf);
+          if (!structural) {
             // "Generate music" without its own length: the line says where the length comes from instead of a hidden field.
-            if (param.id === 'length' && node.type === 'audio.music' && cb.run && cb.run.lengthNote) {
-              const noteEl = el('div', { class: 'nv-field-hint nv-length-note', role: 'status' });
-              lengthRefs = { nodeId: node.id, el: noteEl };
-              fields.append(ui.field(ui.paramLabel('length'), noteEl));
-              // typing in the song text field changes the line at once
-              const planWidget = widgets.get('plan');
-              if (planWidget && planWidget.el) planWidget.el.addEventListener('input', () => paintLengthNote(planWidget.get()));
-              paintLengthNote();
-            }
+            if (param.id === 'length' && node.type === 'audio.music' && cb.run && cb.run.lengthNote) addLengthNote();
             continue;
+          }
+          if (gated && param.id === 'length' && node.type === 'audio.music' && cb.run && cb.run.lengthNote) {
+            // the song text hides the length: the line takes its place
+            gates.push({ el: addLengthNote(), showIf: param.showIf, inverse: true });
           }
           if (param.dynamic === DYNAMIC && useDynamic) continue;
           if (param.dynamic === DYNAMIC && param.id === 'extra_params' && modelId && !useDynamic && model && model.state === 'loading') continue;
@@ -603,7 +628,9 @@
           // The song length of "Song text and structure" reaches 10 minutes: the range stands under the field.
           if (param.id === 'length' && node.type === 'audio.music_plan') fieldEl.append(el('div', { class: 'nv-field-hint', text: ui.T('nodes.music.lengthRange') }));
           fields.append(fieldEl);
+          if (gated) gates.push({ el: fieldEl, showIf: param.showIf, inverse: false });
         }
+        applyGates(ctx.graph, node, def, connectedPorts);
 
         if (hasDynamic && modelId) {
           const block = el('div', { class: 'nv-insp-model' });
@@ -811,7 +838,7 @@
         if (node) {
           const def = reg.types.get(node.type);
           const connected = graphLib.incomingEdges(ctx.graph, node.id).map((edge) => `${edge.to.port}<${edge.from.node}.${edge.from.port}`).sort();
-          const visible = def ? def.params.filter((p) => graphLib.isVisible(p.showIf, node, def, new Set(connected.map((c) => c.split('<')[0])))).map((p) => p.id) : [];
+          const visible = def ? def.params.filter((p) => graphLib.isVisible(p.showIf, node, def, new Set(connected.map((c) => c.split('<')[0])), { ignoreParams: true })).map((p) => p.id) : [];
           const model = def && def.params.some((p) => p.dynamic === DYNAMIC) ? node.params.model : '';
           const variant = def?.portVariants ? node.params[def.portVariants.param] : '';
           const titleOf = (id) => {
@@ -850,6 +877,7 @@
           if (id === '__title') widget.set(node.title);
           else widget.set(effective[id]);
         }
+        if (gates.length) applyGates(ctx.graph, node, def, new Set(graphLib.incomingEdges(ctx.graph, node.id).map((edge) => edge.to.port)));
         const convert = host.querySelector('[data-motion-convert]');
         if (convert) convert.hidden = !graphLib.canConvertMotionHtml(reg, ctx.graph, node.id);
         const model = def && def.params.some((p) => p.dynamic === DYNAMIC) ? ui.peekModelDetail(String(effective.model || '')) : null;
@@ -867,6 +895,59 @@
       }
     }
 
+    // Which view the inspector shows (workflow, node, note, group or connection): focus and scroll position are only carried
+    // over to a rebuilt form of the same view, never into another selection.
+    function viewId(ctx) {
+      const sel = ctx.selection;
+      return [ctx.workflow?.id || '', [...sel.nodes].join(','), [...sel.notes].join(','), [...sel.groups].join(','), sel.edge || ''].join('|');
+    }
+
+    const FIELD_TAGS = 'input, textarea, select';
+
+    // The field of the inspector that has the focus, so that it can be found again in a rebuilt form: its label and its place
+    // among the fields with that label, the cursor or selection and the scroll position of the field and of the inspector.
+    function captureFocus() {
+      const active = document.activeElement;
+      if (!active || active === document.body || !host.contains(active) || !active.matches(FIELD_TAGS)) return null;
+      const label = active.getAttribute('aria-label') || '';
+      const same = [...host.querySelectorAll(active.tagName)].filter((item) => (item.getAttribute('aria-label') || '') === label);
+      let start = null;
+      let end = null;
+      let direction = 'none';
+      try {
+        start = active.selectionStart;
+        end = active.selectionEnd;
+        direction = active.selectionDirection || 'none';
+      } catch (_) {
+        /* not a text field (number, checkbox ...) */
+      }
+      return { tag: active.tagName, label, index: Math.max(0, same.indexOf(active)), start, end, direction, scrollTop: active.scrollTop, hostScroll: host.scrollTop };
+    }
+
+    function restoreFocus(saved) {
+      if (!saved) return;
+      const same = [...host.querySelectorAll(saved.tag.toLowerCase())].filter((item) => (item.getAttribute('aria-label') || '') === saved.label && !item.closest('[hidden]'));
+      const target = same[saved.index] || same[0];
+      host.scrollTop = saved.hostScroll;
+      if (!target || target.disabled) return;
+      try {
+        target.focus({ preventScroll: true });
+      } catch (_) {
+        target.focus();
+      }
+      if (saved.start !== null && saved.start !== undefined) {
+        try {
+          target.setSelectionRange(saved.start, saved.end, saved.direction);
+        } catch (_) {
+          /* the field has no cursor */
+        }
+      }
+      target.scrollTop = saved.scrollTop;
+      host.scrollTop = saved.hostScroll;
+    }
+
+    let lastViewId = null;
+
     function render(ctx, options = {}) {
       current = { ...ctx, node: ctx.graph.nodes.find((n) => n.id === [...ctx.selection.nodes][0]) };
       if (!getReg()) return;
@@ -876,20 +957,26 @@
         return;
       }
       lastKey = key;
+      // A rebuild while someone types (a connection arrived, the model description came in ...) keeps the field, the cursor
+      // and the scroll position of the same view.
+      const view = viewId(ctx);
+      const saved = view === lastViewId ? captureFocus() : null;
+      lastViewId = view;
       clearWidgets();
       actionsSlot = null;
       runRefs = null;
       host.textContent = '';
       const sel = ctx.selection;
       const refresh = () => render(current, { force: true });
-      let view;
-      if (sel.edge && !sel.nodes.size && !sel.notes.size && !sel.groups.size && ctx.graph.edges.some((e) => e.id === sel.edge)) view = edgeView(ctx);
-      else if (sel.nodes.size === 1 && !sel.notes.size && !sel.groups.size) view = nodeView(ctx, refresh);
-      else if (sel.notes.size === 1 && !sel.nodes.size && !sel.groups.size) view = noteView(ctx);
-      else if (sel.groups.size === 1 && !sel.nodes.size && !sel.notes.size) view = groupView(ctx);
-      else if (sel.nodes.size + sel.notes.size + sel.groups.size > 1) view = multiView(ctx);
-      else view = workflowView(ctx);
-      host.append(view);
+      let built;
+      if (sel.edge && !sel.nodes.size && !sel.notes.size && !sel.groups.size && ctx.graph.edges.some((e) => e.id === sel.edge)) built = edgeView(ctx);
+      else if (sel.nodes.size === 1 && !sel.notes.size && !sel.groups.size) built = nodeView(ctx, refresh);
+      else if (sel.notes.size === 1 && !sel.nodes.size && !sel.groups.size) built = noteView(ctx);
+      else if (sel.groups.size === 1 && !sel.nodes.size && !sel.notes.size) built = groupView(ctx);
+      else if (sel.nodes.size + sel.notes.size + sel.groups.size > 1) built = multiView(ctx);
+      else built = workflowView(ctx);
+      host.append(built);
+      restoreFocus(saved);
       if (callbacksRendered) callbacksRendered(actionsSlot, ctx);
     }
 
