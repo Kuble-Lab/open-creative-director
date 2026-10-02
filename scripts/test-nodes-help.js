@@ -25,6 +25,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const LANGS = ['de', 'en', 'es'];
 const SAMPLE_TYPES = ['video.motion_graphics', 'llm.motion_html', 'video.seedance', 'input.image', 'image.edit', 'video.concat'];
 const LIMITS = { help: 320, example: 260, tip: 240 };
+// Types with a fourth tip: real persons (Seedance), the cost of the speech, the points of the music nodes.
+const FOURTH_TIP = ['video.seedance', 'audio.tts', 'audio.music', 'audio.music_plan'];
 
 const payload = JSON.parse(JSON.stringify(registryModule.publicRegistry()));
 const reg = graphLib.indexRegistry(payload);
@@ -83,7 +85,7 @@ function testKeysBelongToTypes() {
       assert.ok(typeIds.includes(type), `${lang}: help text for unknown node type ${type}`);
       const sorted = [...entry.tips].sort((a, b) => a - b);
       assert.deepEqual(sorted, sorted.map((_, index) => index + 1), `${lang} ${type}: tips are numbered 1, 2, 3 without gaps`);
-      assert.ok(sorted.length <= 4 && (sorted.length <= 3 || type === 'video.seedance'), `${lang} ${type}: at most 3 tips (video.seedance has a fourth about real persons)`);
+      assert.ok(sorted.length <= 4 && (sorted.length <= 3 || FOURTH_TIP.includes(type)), `${lang} ${type}: at most 3 tips (${FOURTH_TIP.join(', ')} have a fourth)`);
       assert.ok(entry.help, `${lang} ${type}: tips or an example without the help text`);
     }
   }
@@ -164,10 +166,12 @@ function testDescribe() {
   assert.equal(kinds.get('fal.h3_video'), 'usd');
   assert.equal(kinds.get('llm.motion_html'), 'llm', 'a language model: OpenRouter, or the ChatGPT subscription');
   assert.equal(kinds.get('video.concat'), 'free');
-  assert.equal(kinds.get('audio.tts'), 'external', 'billed by a service outside the app');
+  assert.equal(kinds.get('audio.tts'), 'usd', 'billed per character, the card shows the estimate');
+  assert.equal(kinds.get('audio.music'), 'usd');
+  assert.equal(kinds.get('audio.music_plan'), 'freecall', 'ElevenLabs is called, free of credits: neither local nor billed');
   assert.equal(kinds.get('input.image'), 'free');
   for (const [type, kind] of kinds) {
-    assert.ok(['free', 'usd', 'llm', 'credits', 'external'].includes(kind), `${type}: ${kind}`);
+    assert.ok(['free', 'usd', 'llm', 'credits', 'external', 'freecall'].includes(kind), `${type}: ${kind}`);
     if (kind === 'usd' || kind === 'llm' || kind === 'credits') assert.ok(defOfPaid(type), `${type}: a paid node`);
   }
   function defOfPaid(type) {

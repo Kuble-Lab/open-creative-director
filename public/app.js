@@ -1710,7 +1710,9 @@ const COST_TYPE_KEYS = {
   video: 'costs.videos',
   motion: 'costs.motion',
   brain: 'costs.brain',
-  higgsfield: 'costs.higgsfield'
+  higgsfield: 'costs.higgsfield',
+  speech: 'costs.speech',
+  music: 'costs.music'
 };
 
 function monthLabel(month) {

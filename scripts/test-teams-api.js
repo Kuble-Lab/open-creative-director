@@ -1077,10 +1077,87 @@ async function testBudgetTools(ctx) {
   const tooLong = await errorOf(run(PAB, 'generate_speech', { text: 'x'.repeat(2000) }));
   assert.equal(tooLong.code, 'BUDGET_INSUFFICIENT');
   assert.equal(speechCalls, 1, 'the provider was not called');
-  // internal people are not charged and nothing is journaled for them
+  // internal people have no budget, but the estimate is booked for them, too: the cost overview shows what ElevenLabs costs
   const staffSpeech = await run(STAFF, 'generate_speech', { text: 'Hallo' });
-  assert.equal(staffSpeech.asset.cost, null);
-  assert.equal((await costsLib.readCosts()).filter((row) => row.user === STAFF && row.type === 'speech').length, 0);
+  assert.equal(staffSpeech.asset.cost, 0.0015);
+  const staffRows = (await costsLib.readCosts()).filter((row) => row.user === STAFF && row.type === 'speech');
+  assert.equal(staffRows.length, 1);
+  assert.deepEqual([staffRows[0].cost, staffRows[0].billing], [0.0015, 'Schaetzung (Zeichen)']);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0, 'and nothing is reserved for them');
+
+  // music is priced by the minute (ELEVENLABS_MUSIC_USD_PER_MIN, default 0.20): the estimate is reserved before the call,
+  // booked as music with the person, and the tool is for the node view only. The song plan is free and never booked.
+  let musicCalls = 0;
+  let planCalls = 0;
+  patch(elevenlabs, 'composeMusic', async () => {
+    musicCalls += 1;
+    return Buffer.from('mp3');
+  });
+  patch(elevenlabs, 'planMusic', async () => {
+    planCalls += 1;
+    return { chunks: [{ text: '[Verse]\nla la', duration_ms: 10000, positive_styles: ['pop'] }] };
+  });
+  const musicArgs = { prompt: 'calm piano', length_seconds: 30 };
+  const nodeView = { nodeView: true };
+  // the Director does not get it, whoever asks
+  for (const name of ['generate_music', 'plan_music']) {
+    assert.match((await errorOf(run(PAB, name, musicArgs))).message, /nur in der Node-Ansicht/);
+    assert.ok(!definitions(PAB).includes(name) && !definitions(STAFF).includes(name));
+  }
+  // a small rest does not buy music: refused with the estimate, before ElevenLabs is called, nothing reserved
+  const tooSmall = await errorOf(run(PAB, 'generate_music', musicArgs, nodeView));
+  assert.equal(tooSmall.code, 'BUDGET_INSUFFICIENT');
+  assert.ok(Math.abs(tooSmall.estimateUsd - 0.1) < 1e-9, '30 s at 0.20 USD per minute');
+  assert.equal(musicCalls, 0, 'ElevenLabs was not called');
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  await sleep(1100);
+  teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
+  // the estimate is reserved while ElevenLabs works and booked afterwards
+  let reservedDuring = null;
+  patch(elevenlabs, 'composeMusic', async () => {
+    musicCalls += 1;
+    reservedDuring = (await budgetLib.statusOfEmail(PAB)).reservedUsd;
+    return Buffer.from('mp3');
+  });
+  const song = await run(PAB, 'generate_music', musicArgs, nodeView);
+  assert.match(song.toolResult, /Musik erzeugt/);
+  assert.ok(Math.abs(reservedDuring - 0.1) < 1e-9, 'reserved during the call');
+  assert.equal(song.asset.cost, 0.1);
+  const musicRows = (await costsLib.readCosts()).filter((row) => row.user === PAB && row.type === 'music');
+  assert.equal(musicRows.length, 1);
+  assert.deepEqual([musicRows[0].cost, musicRows[0].billing, musicRows[0].model, musicRows[0].assetId], [0.1, 'Schaetzung (Dauer)', 'elevenlabs/music_v2_5', song.asset.id]);
+  assert.ok(Math.abs((await budgetLib.statusOfEmail(PAB)).spentUsd - 0.1) < 1e-9, 'it counts against the budget');
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  // a plan from the song text sets the price (35 s), a failing call leaves nothing behind
+  const planArgs = { plan_text: '[Verse | 20 s]\nla\n\n[Chorus | 15 s]\nla la', model_id: 'music_v1' };
+  assert.ok(Math.abs(tools.toolEstimateUsd('generate_music', planArgs) - 0.116667) < 1e-9);
+  assert.equal(tools.toolEstimateUsd('generate_music', { prompt: 'x' }), null, 'no length: unknown');
+  assert.equal(tools.toolEstimateUsd('plan_music', { prompt: 'x' }), null, 'the plan is not priced');
+  patch(elevenlabs, 'composeMusic', async () => {
+    throw new Error('provider hiccup');
+  });
+  assert.match((await errorOf(run(PAB, 'generate_music', planArgs, nodeView))).message, /provider hiccup/);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0, 'a failed call releases its reservation');
+  assert.equal((await costsLib.readCosts()).filter((row) => row.user === PAB && row.type === 'music').length, 1, 'and books nothing');
+  // the song plan: allowed, not reserved, not booked
+  const spentBeforePlan = (await budgetLib.statusOfEmail(PAB)).spentUsd;
+  const outline = await run(PAB, 'plan_music', { prompt: 'a calm song', length_seconds: 20 }, nodeView);
+  assert.equal(outline.planText, '[Verse | 10 s]\n+ pop\nla la');
+  assert.equal(planCalls, 1);
+  assert.equal((await budgetLib.statusOfEmail(PAB)).spentUsd, spentBeforePlan);
+  assert.equal((await costsLib.readCosts()).filter((row) => row.user === PAB && row.type === 'music').length, 1);
+  // internal people: booked without a budget, nothing reserved
+  patch(elevenlabs, 'composeMusic', async () => {
+    musicCalls += 1;
+    return Buffer.from('mp3');
+  });
+  const staffSong = await run(STAFF, 'generate_music', { prompt: 'x', length_seconds: 60 }, nodeView);
+  assert.equal(staffSong.asset.cost, 0.2);
+  assert.deepEqual((await costsLib.readCosts()).filter((row) => row.user === STAFF && row.type === 'music').map((row) => row.cost), [0.2]);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  // guests have no budget: no music, but the free plan works
+  assert.equal((await errorOf(run(GUEST, 'generate_music', musicArgs, nodeView))).code, 'BUDGET_EXHAUSTED');
+  assert.equal((await run(GUEST, 'plan_music', { prompt: 'a calm song' }, nodeView)).planText.startsWith('[Verse'), true);
   restoreAll();
   patch(or, 'createVideo', async () => ({ id: 'job-x', polling_url: 'http://127.0.0.1:1/x', status: 'pending' }));
   teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
@@ -1267,6 +1344,64 @@ async function testBudgetNodes(ctx) {
   assert.equal(hfRun.body.code, 'FORBIDDEN_FOR_ROLE');
   assert.equal(hfRun.body.feature, 'higgsfield');
   assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+  restoreAll();
+
+  // speech and music in one run: the plan counts both, the run reserves ONCE (run key) and every booking is settled against it
+  const elevenlabs = ctx.iso.load('lib/elevenlabs');
+  patch(elevenlabs, 'hasKey', () => true);
+  const reservedAt = [];
+  let reservationsAt = [];
+  patch(elevenlabs, 'composeMusic', async () => {
+    reservationsAt.push(ctx.budget.defaultBudget.reservationCount());
+    reservedAt.push((await ctx.budget.statusOfEmail(person)).reservedUsd);
+    return Buffer.from('mp3');
+  });
+  patch(elevenlabs, 'tts', async () => {
+    await sleep(400); // the music is booked by now
+    reservationsAt.push(ctx.budget.defaultBudget.reservationCount());
+    reservedAt.push((await ctx.budget.statusOfEmail(person)).reservedUsd);
+    return Buffer.from('mp3');
+  });
+  const audioFlow = (await call(person, 'POST', '/api/workflows', { name: 'Ton' })).body.workflow;
+  const audioGraph = {
+    nodes: [
+      node('txt', 'input.text', { text: 'Willkommen zu unserem Film' }, 0, 0),
+      node('say', 'audio.tts', {}, 300, 0),
+      node('song', 'audio.music', { prompt: 'ruhiges Klavier', length: 60 }, 300, 200),
+      node('o1', 'output.result', { label: 'Sprache' }, 600, 0),
+      node('o2', 'output.result', { label: 'Musik' }, 600, 200)
+    ],
+    edges: [
+      { id: 'e1', from: { node: 'txt', port: 'text' }, to: { node: 'say', port: 'text' } },
+      { id: 'e2', from: { node: 'say', port: 'audio' }, to: { node: 'o1', port: 'inputs' } },
+      { id: 'e3', from: { node: 'song', port: 'audio' }, to: { node: 'o2', port: 'inputs' } }
+    ],
+    groups: [],
+    notes: []
+  };
+  assert.equal((await call(person, 'PUT', `/api/workflows/${audioFlow.id}`, { baseRev: 1, graph: audioGraph })).status, 200);
+  const audioPlan = (await call(person, 'POST', `/api/workflows/${audioFlow.id}/runs/plan`, { mode: 'all' })).body;
+  assert.equal(audioPlan.totals.paidNodes, 2, 'speech and music are paid nodes now');
+  assert.equal(audioPlan.nodes.say.paid, true);
+  assert.equal(audioPlan.nodes.say.estimate, null, 'the text comes through a connection: unknown');
+  assert.deepEqual(audioPlan.nodes.song.estimate, { usd: 0.2 });
+  assert.equal(audioPlan.totals.unknownNodes, 1);
+  assert.equal(audioPlan.totals.usd, 0.2);
+  const spentBefore = (await ctx.budget.statusOfEmail(person)).spentUsd;
+  const audioRun = await call(person, 'POST', `/api/workflows/${audioFlow.id}/runs`, { mode: 'all' });
+  assert.equal(audioRun.status, 202, audioRun.text);
+  const audioDone = await finish(audioFlow.id, audioRun.body.runId, person);
+  assert.equal(audioDone.status, 'completed', JSON.stringify(audioDone).slice(0, 400));
+  assert.deepEqual(reservationsAt, [1, 1], 'one reservation for the whole run, none per call');
+  assert.ok(Math.abs(reservedAt[0] - 0.2) < 1e-9, 'the plan amount is reserved');
+  assert.ok(reservedAt[1] < 1e-9, 'the booking of the music is settled against it');
+  const audioRows = (await costsLib.readCosts()).filter((row) => row.user === person && ['speech', 'music'].includes(row.type));
+  assert.deepEqual(audioRows.map((row) => row.type).sort(), ['music', 'speech']);
+  assert.ok(audioRows.every((row) => row.sessionId === audioFlow.sessionId && row.assetId));
+  assert.equal(ctx.budget.defaultBudget.reservationCount(), 0, 'the reservation ends with the run');
+  const booked = audioRows.reduce((sum, row) => sum + row.cost, 0);
+  assert.ok(Math.abs((await ctx.budget.statusOfEmail(person)).spentUsd - spentBefore - booked) < 1e-9);
+  assert.ok(Math.abs(audioDone.cost.usd - booked) < 1e-9, 'the run reports what the nodes cost');
   restoreAll();
 
   // a cancelled run: the provider job goes on and is billed later, so its share stays reserved (no way to start the

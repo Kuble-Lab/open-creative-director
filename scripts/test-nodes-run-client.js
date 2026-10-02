@@ -348,6 +348,53 @@ function testDisplayStatus() {
   assert.deepEqual(d({}), { status: null });
 }
 
+// The values behind a failed node (WP30): the engine sends err.data with the stable code; the card shows the translated text.
+function testErrorData() {
+  const rejected = { type: 'node_status', runId: 'r1', nodeId: 'a', status: 'error', message: 'Rejected', code: 'MUSIC_PROMPT_REJECTED', data: { suggestion: 'calm piano' } };
+  let state = run.reduce(run.createRunState(), { type: 'run_started', runId: 'r1', mode: 'all', targets: ['a'], plan: { a: 'stale' } }, T0);
+  state = run.reduce(state, rejected, T0 + 10);
+  assert.equal(state.nodes.a.code, 'MUSIC_PROMPT_REJECTED');
+  assert.deepEqual(state.nodes.a.data, { suggestion: 'calm piano' });
+  // the display status carries the data on to the translated text
+  assert.deepEqual(run.displayStatus({ run: state.nodes.a }), { status: 'error', message: 'Rejected', code: 'MUSIC_PROMPT_REJECTED', data: { suggestion: 'calm piano' } });
+  const texts = [];
+  const ui = { hasIssueText: (code) => code === 'MUSIC_PROMPT_REJECTED', issueText: (issue) => { texts.push(issue); return `text of ${issue.code}`; } };
+  const localized = run.localizeError(run.displayStatus({ run: state.nodes.a }), ui);
+  assert.equal(localized.message, 'text of MUSIC_PROMPT_REJECTED');
+  assert.deepEqual(texts[0].data, { suggestion: 'calm piano' }, 'the values reach issueText');
+  // data without a code, a code without data, and data that is no object are not kept
+  const noCode = run.reduce(state, { type: 'node_status', runId: 'r1', nodeId: 'a', status: 'error', message: 'x', data: { a: 1 } }, T0 + 20);
+  assert.equal(noCode.nodes.a.data, undefined);
+  const noData = run.reduce(state, { type: 'node_status', runId: 'r1', nodeId: 'a', status: 'error', message: 'x', code: 'ELEVENLABS_TIMEOUT' }, T0 + 20);
+  assert.equal(noData.nodes.a.data, undefined);
+  assert.equal(run.displayStatus({ run: noData.nodes.a }).data, undefined);
+  const bad = run.reduce(state, { ...rejected, data: 'text' }, T0 + 20);
+  assert.equal(bad.nodes.a.data, undefined);
+  // a new attempt clears the cause with the rest
+  const again = run.reduce(state, { type: 'node_status', runId: 'r1', nodeId: 'a', status: 'running' }, T0 + 30);
+  assert.equal(again.nodes.a.code, undefined);
+  assert.equal(again.nodes.a.data, undefined);
+}
+
+// "Use as text": which result the command can take over, and why not (WP30).
+function testTextResultOf() {
+  const text = (value) => ({ type: 'text', value });
+  const outputs = [{ id: 'plan' }, { id: 'extra' }];
+  assert.deepEqual(run.textResultOf({ plan: text('[A | 10 s]') }, outputs), { reason: 'ok', port: 'plan', text: '[A | 10 s]' });
+  assert.deepEqual(run.textResultOf(null, outputs), { reason: 'none' }, 'no result yet');
+  assert.deepEqual(run.textResultOf({ plan: { type: 'audio', url: '/a.mp3' } }, outputs), { reason: 'none' }, 'media is no text');
+  assert.deepEqual(run.textResultOf({ plan: text('a'), extra: text('b') }, outputs), { reason: 'multiple' }, 'two text results');
+  assert.deepEqual(run.textResultOf({ plan: text('a'), extra: { type: 'image', url: '/i.png' } }, outputs), { reason: 'ok', port: 'plan', text: 'a' }, 'other media beside the one text do not count');
+  assert.deepEqual(run.textResultOf({ plan: { type: 'list', of: 'text', items: [text('a')] } }, outputs), { reason: 'list' });
+  assert.deepEqual(run.textResultOf({ plan: { type: 'list', of: 'text', items: [text('a'), text('b')] } }, outputs), { reason: 'multiple' });
+  assert.deepEqual(run.textResultOf({ plan: text('a'), extra: { type: 'list', of: 'text', items: [text('b')] } }, outputs), { reason: 'multiple' });
+  assert.deepEqual(run.textResultOf({ plan: text('  \n') }, outputs), { reason: 'empty', port: 'plan' });
+  assert.deepEqual(run.textResultOf({ plan: text('') }, outputs), { reason: 'empty', port: 'plan' });
+  assert.deepEqual(run.textResultOf({ hidden: text('secret'), plan: text('shown') }, outputs), { reason: 'ok', port: 'plan', text: 'shown' }, 'only the visible outputs count');
+  assert.deepEqual(run.textResultOf({ plan: text('x') }, []), { reason: 'none' });
+  assert.deepEqual(run.textResultOf({ plan: text('x') }, undefined), { reason: 'none' });
+}
+
 function testRunRequest() {
   assert.deepEqual(run.buildRunRequest({ mode: 'all', force: false, rev: 4 }), { mode: 'all', force: false, rev: 4 });
   assert.deepEqual(run.buildRunRequest({ mode: 'node', nodeIds: ['n1'], force: true }), { mode: 'node', force: true, nodeIds: ['n1'] });
@@ -369,6 +416,16 @@ function testWiring() {
   // the app chat script and the styles of the chat stay untouched by the node view
   const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
   assert.ok(!/OCDNodes|nv-run|outputs\.zip/.test(app));
+
+  // WP30: "Use as text" is offered in the menu and in the inspector, and main.js provides what they call
+  const runSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'run.js'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'main.js'), 'utf8');
+  const inspectorSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'inspector.js'), 'utf8');
+  assert.ok(/OCD\.editor\.adoptTextResult\(/.test(runSource) && /adoptTextResult,/.test(mainSource), 'run.js calls the function main.js exports');
+  assert.ok(/nodes\.run\.menu\.useAsText/.test(runSource) && /nodes\.run\.menu\.useAsText/.test(inspectorSource), 'menu and inspector offer the command');
+  assert.ok(/graphLib\.adoptTextAsPrompt\(/.test(mainSource) && /history: 'use-as-text'/.test(mainSource), 'one undo step through the graph function');
+  assert.ok(html.indexOf('nodes/music-plan.js') > 0 && html.indexOf('nodes/music-plan.js') < html.indexOf('nodes/inspector.js'), 'the plan check of the inspector can use music-plan.js');
+  assert.ok(/OCD\.musicPlan/.test(inspectorSource), 'the inspector checks the song text with the shared module');
 
   // no native browser dialogs anywhere in the node view
   for (const file of fs.readdirSync(path.join(root, 'public', 'nodes')).filter((name) => name.endsWith('.js'))) {
@@ -443,6 +500,8 @@ const tests = [
   testFormatting,
   testDescribePlan,
   testDisplayStatus,
+  testErrorData,
+  testTextResultOf,
   testRunRequest,
   testWiring,
   testPortTip

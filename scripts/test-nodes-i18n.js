@@ -121,7 +121,7 @@ function testSourceKeys() {
   for (const mark of ['input', 'output', 'both']) dynamic.push(`nodes.app.mark.${mark}`);
   for (const cost of ['estimate', 'estimateRow', 'from', 'fromRow', 'free', 'unknown']) dynamic.push(`nodes.template.cost.${cost}`);
   for (const code of ['empty', 'too_many', 'unknown_type']) dynamic.push(`nodes.insert.${code}`);
-  for (const kind of ['free', 'usd', 'credits', 'external']) dynamic.push(`nodes.help.cost.${kind}`);
+  for (const kind of ['free', 'usd', 'credits', 'external', 'freecall']) dynamic.push(`nodes.help.cost.${kind}`);
   // every issue the engine reports (code in lib/nodes/engine.js and in the validate of the node types) has a text in the card
   const issueCodes = new Set();
   for (const file of ['lib/nodes/engine.js', 'lib/nodes/nodes-basic.js']) {
@@ -209,7 +209,7 @@ function testPortDescriptions() {
 
   // generic texts for all port ids, and the last-resort texts for all six base types on both sides
   const ids = new Set(ports.map((p) => p.port));
-  assert.equal(ids.size, 43, 'the registry has 43 port ids');
+  assert.equal(ids.size, 45, 'the registry has 45 port ids');
   for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
   for (const base of ['text', 'number', 'image', 'video', 'audio', 'any']) {
     for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);
@@ -314,7 +314,7 @@ function testHtmlWiring() {
   assert.ok(html.indexOf('id="nodesBtn"') < html.indexOf('</header>'), 'the view switch sits in the header');
   assert.ok(html.includes('id="nodeApp"'), 'node view container missing');
   assert.ok(html.includes('nodes/nodes.css'), 'stylesheet missing');
-  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/templates-ui.js', 'nodes/node-help.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/archive-ui.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
+  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/music-plan.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/templates-ui.js', 'nodes/node-help.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/archive-ui.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
   let last = -1;
   for (const file of order) {
     const index = html.indexOf(`<script src="${file}"></script>`);

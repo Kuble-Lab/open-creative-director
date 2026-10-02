@@ -5,7 +5,7 @@
 (() => {
   const el = (id) => document.getElementById(id);
   const T = (key, vars) => window.t(`monitor.${key}`, vars);
-  const COST_TYPES = { brain: 'costs.brain', image: 'costs.images', video: 'costs.videos', motion: 'costs.motion', higgsfield: 'costs.higgsfield' };
+  const COST_TYPES = { brain: 'costs.brain', image: 'costs.images', video: 'costs.videos', motion: 'costs.motion', higgsfield: 'costs.higgsfield', speech: 'costs.speech', music: 'costs.music' };
 
   let report = null;
   let request = null;

@@ -64,6 +64,9 @@
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
   const optionLabel = (value) => tr(`nodes.option.${value}`, String(value));
 
+  // Longest suggestion of a provider that is shown on one line behind an error text.
+  const SUGGESTION_SHORT = 280;
+
   // Translated text of a plan / validation issue { code, data?, port?, message }: nodes.issue.<code> with the
   // placeholders of `data` (width -> {w}, height -> {h}, foundWidth -> {foundW}, foundHeight -> {foundH}, format -> its
   // option label), {port} (the label of the input) and {message} (the engine's English wording of the detail); without
@@ -89,7 +92,12 @@
     // A text about a number of connections has its own wording for "none" and "one" (nodes.issue.<code>.none / .one).
     const form = data.max === 0 ? 'none' : data.max === 1 ? 'one' : '';
     if (form && key === `nodes.issue.${item.code}` && hasIssueText(`${item.code}.${form}`)) key = `nodes.issue.${item.code}.${form}`;
-    return T(key, vars);
+    const text = T(key, vars);
+    // A provider that refuses an input and offers another one (a music prompt with an artist name): the suggestion follows
+    // the text, on one line and cut short; the inspector shows it in full.
+    const suggestion = typeof data.suggestion === 'string' ? data.suggestion.replace(/\s+/g, ' ').trim() : '';
+    if (!suggestion) return text;
+    return `${text} ${T('nodes.music.suggestion', { suggestion: suggestion.length > SUGGESTION_SHORT ? `${suggestion.slice(0, SUGGESTION_SHORT - 1)}…` : suggestion })}`;
   }
 
   // Text of a refused connection { code, data? }. Over the limit of a model it names the model and the limit
@@ -364,10 +372,17 @@
       const row = el('button', {
         type: 'button',
         role: 'menuitem',
-        class: `nv-menu-item ${item.danger ? 'is-danger' : ''}`.trim(),
-        disabled: item.disabled
+        class: `nv-menu-item ${item.danger ? 'is-danger' : ''} ${item.hint ? 'has-hint' : ''}`.trim(),
+        disabled: item.disabled,
+        title: item.hint
       });
-      row.append(item.icon ? icon(item.icon, 14) : el('span', { class: 'nv-menu-icon' }), el('span', { class: 'nv-menu-label', text: item.label }));
+      // item.hint: a short line under the label, e.g. why the entry is not available
+      row.append(
+        item.icon ? icon(item.icon, 14) : el('span', { class: 'nv-menu-icon' }),
+        item.hint
+          ? el('span', { class: 'nv-menu-text' }, el('span', { class: 'nv-menu-label', text: item.label }), el('span', { class: 'nv-menu-hint', text: item.hint }))
+          : el('span', { class: 'nv-menu-label', text: item.label })
+      );
       if (item.shortcut) row.append(el('kbd', { class: 'nv-kbd', text: item.shortcut }));
       row.addEventListener('click', () => {
         closeMenu();
@@ -879,6 +894,8 @@
     // The HTML field of the Motion graphics node holds code, not an instruction: say so in the empty field.
     if (param && param.kind === 'code' && param.id === 'html' && node && node.type === 'video.motion_graphics') return { placeholder: T('nodes.motion.htmlPlaceholder') };
     if (!param || param.kind !== 'textarea') return {};
+    // The song text of the music node is written in a format of its own: the empty field shows it.
+    if (node && node.type === 'audio.music' && param.id === 'plan') return { placeholder: T('nodes.music.planPlaceholder'), rows: 9 };
     if (node && node.type === 'input.prompt') return { large: true, rows: 5, maxHeight: 360, placeholder: T('nodes.prompt.placeholder') };
     if (param.id === 'prompt' && (inputs || []).some((port) => port.param === param.id && port.type === 'text')) {
       return { placeholder: T('nodes.prompt.embeddedPlaceholder') };
@@ -1404,6 +1421,11 @@
     if (!def) return;
     if (def.experimental) badges.append(el('span', { class: 'nv-badge is-experimental', title: T('nodes.badge.experimentalHint'), text: T('nodes.badge.experimental') }));
     if (def.paid) badges.append(el('span', { class: 'nv-badge is-paid', title: T('nodes.badge.paidHint'), text: '$' }));
+    // A service that is called but charges nothing (the song text of ElevenLabs): not "local", and not paid.
+    else if (def.cost && def.cost.unit === 'free' && def.provider) {
+      const named = global.OCDNodes.templatesUi && global.OCDNodes.templatesUi.requirementLabel;
+      badges.append(el('span', { class: 'nv-badge is-free', title: T('nodes.help.cost.freecall', { provider: named ? named(def.provider) : def.provider }), text: T('nodes.badge.free') }));
+    }
     if (def.available !== true) {
       const warn = el('span', { class: 'nv-badge is-warn', title: typeof def.available === 'string' ? availabilityReason(def.available) : T('nodes.badge.unavailable') });
       warn.append(icon('warning', 12));

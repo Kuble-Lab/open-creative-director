@@ -1,0 +1,79 @@
+{
+  "id": "video-with-music",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Video with music",
+  "description": "Add music to a video: ElevenLabs makes music as long as the video from your description, and ffmpeg mixes it quietly under the original sound.",
+  "requires": ["elevenlabs", "ffmpeg"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.video", "typeVersion": 1, "x": 80, "y": 60, "title": "Video", "params": { "asset": null } },
+      { "id": "n2", "type": "input.prompt", "typeVersion": 1, "x": 80, "y": 360, "title": "Music description", "params": { "prompt": "Calm, warm background music with soft piano and a gentle beat, light and friendly" } },
+      { "id": "n3", "type": "audio.music", "typeVersion": 1, "x": 520, "y": 220, "title": "Music", "params": { "prompt": "", "plan": "", "length": 30, "instrumental": true, "model": "music_v2_5" } },
+      { "id": "n4", "type": "video.merge_audio", "typeVersion": 1, "x": 960, "y": 100, "title": "Mix music under the video", "params": { "mode": "mix", "audio_volume": 0.3, "video_volume": 1, "length": "video" } },
+      { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1400, "y": 140, "params": { "label": "Video with music" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n2", "port": "prompt" }, "to": { "node": "n3", "port": "prompt" } },
+      { "id": "e2", "from": { "node": "n1", "port": "video" }, "to": { "node": "n3", "port": "match" } },
+      { "id": "e3", "from": { "node": "n1", "port": "video" }, "to": { "node": "n4", "port": "video" } },
+      { "id": "e4", "from": { "node": "n3", "port": "audio" }, "to": { "node": "n4", "port": "audio" } },
+      { "id": "e5", "from": { "node": "n4", "port": "video" }, "to": { "node": "n5", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 640, "w": 380, "h": 210, "text": "The music is as long as the video (rounded up to whole seconds, 3 to 600). Describe style and mood in your own words: ElevenLabs rejects artist names and protected lyrics. The music costs money by the minute and needs a paid ElevenLabs plan, so the run asks for confirmation first. The volume of the music is set on Mix music under the video." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Video with music",
+    "description": "Upload a video and describe the music. You get the video with music mixed quietly under the original sound.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Video" },
+      { "node": "n2", "param": "prompt", "label": "Music description" },
+      { "node": "n3", "param": "instrumental", "label": "Without vocals" },
+      { "node": "n4", "param": "audio_volume", "label": "Volume of the music" }
+    ],
+    "outputs": [
+      { "node": "n5", "label": "Video with music" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Video mit Musik",
+      "description": "Lege Musik unter ein Video: ElevenLabs erzeugt aus deiner Beschreibung Musik in der Länge des Videos, ffmpeg mischt sie leise unter den Originalton.",
+      "node.n1": "Video",
+      "node.n2": "Musikbeschreibung",
+      "node.n3": "Musik",
+      "node.n4": "Musik unter das Video mischen",
+      "param.n2.prompt": "Ruhige, warme Hintergrundmusik mit sanftem Klavier und einem leichten Beat, hell und freundlich",
+      "note.t1": "Die Musik ist so lang wie das Video (aufgerundet auf ganze Sekunden, 3 bis 600). Beschreibe Stil und Stimmung mit eigenen Worten: ElevenLabs lehnt Künstlernamen und geschützte Songtexte ab. Die Musik kostet pro Minute Geld und braucht ein bezahltes ElevenLabs-Abo, der Lauf fragt deshalb vorher nach der Bestätigung. Die Lautstärke der Musik stellst du bei «Musik unter das Video mischen» ein.",
+      "app.title": "Video mit Musik",
+      "app.description": "Lade ein Video hoch und beschreibe die Musik. Du erhältst das Video mit Musik, die leise unter den Originalton gemischt ist.",
+      "app.input.n1.asset": "Video",
+      "app.input.n2.prompt": "Musikbeschreibung",
+      "app.input.n3.instrumental": "Ohne Gesang",
+      "app.input.n4.audio_volume": "Lautstärke der Musik",
+      "app.output.n5": "Video mit Musik"
+    },
+    "es": {
+      "name": "Vídeo con música",
+      "description": "Añade música a un vídeo: ElevenLabs crea a partir de tu descripción una música tan larga como el vídeo y ffmpeg la mezcla en voz baja bajo el sonido original.",
+      "node.n1": "Vídeo",
+      "node.n2": "Descripción de la música",
+      "node.n3": "Música",
+      "node.n4": "Mezclar la música bajo el vídeo",
+      "param.n2.prompt": "Música de fondo tranquila y cálida, con piano suave y un ritmo ligero, luminosa y amable",
+      "note.t1": "La música dura lo mismo que el vídeo (redondeado hacia arriba a segundos enteros, de 3 a 600). Describe el estilo y el ambiente con tus propias palabras: ElevenLabs rechaza nombres de artistas y letras protegidas. La música cuesta dinero por minuto y requiere un plan de pago de ElevenLabs, por eso la ejecución pide confirmación antes de empezar. El volumen de la música se ajusta en «Mezclar la música bajo el vídeo».",
+      "app.title": "Vídeo con música",
+      "app.description": "Sube un vídeo y describe la música. Recibes el vídeo con la música mezclada en voz baja bajo el sonido original.",
+      "app.input.n1.asset": "Vídeo",
+      "app.input.n2.prompt": "Descripción de la música",
+      "app.input.n3.instrumental": "Sin voz",
+      "app.input.n4.audio_volume": "Volumen de la música",
+      "app.output.n5": "Vídeo con música"
+    }
+  }
+}

@@ -30,7 +30,7 @@
       targets: [],
       active: false,
       status: 'idle', // idle | running | completed | failed | cancelled | interrupted | finished
-      nodes: {}, // nodeId -> { status, message?, code?, progress?, startedAt?, endedAt?, entryId? }
+      nodes: {}, // nodeId -> { status, message?, code?, data?, progress?, startedAt?, endedAt?, entryId? }
       logs: {}, // nodeId -> [label]
       cost: { usd: 0, credits: 0 },
       error: null,
@@ -89,6 +89,9 @@
     // The stable error code of a failed node (nodes.issue.<code> shows its cause in the interface language).
     if (status === 'error' && typeof event.code === 'string' && event.code) next.code = event.code;
     else delete next.code;
+    // The values of that cause (the suggestion of a refused music prompt, a line number …) for the translated text.
+    if (status === 'error' && next.code && event.data && typeof event.data === 'object' && !Array.isArray(event.data)) next.data = event.data;
+    else delete next.data;
     if (event.progress && isNumber(event.progress.done) && isNumber(event.progress.total)) next.progress = { done: event.progress.done, total: event.progress.total };
     else if (isFinal(status)) delete next.progress;
     return { ...base, active: base.active || !isFinal(status), status: base.status === 'idle' ? 'running' : base.status, nodes: { ...base.nodes, [event.nodeId]: next } };
@@ -282,6 +285,29 @@
     return out;
   }
 
+  // The text result "Use as text" can take over, from the selected variant and the visible outputs of the node:
+  //   { reason: 'ok', port, text }  exactly one plain text result
+  //   { reason: 'none' }            no text result (the entry is not offered)
+  //   { reason: 'multiple' }        several text results (texts on several outputs, or a list of texts and more)
+  //   { reason: 'list' }            the one text result is a list of texts
+  //   { reason: 'empty', port }     the text is empty
+  function textResultOf(variant, outputs) {
+    if (!variant) return { reason: 'none' };
+    const plain = [];
+    let listed = 0;
+    for (const port of outputs || []) {
+      const value = variant[port.id];
+      if (!value || typeof value !== 'object') continue;
+      if (value.type === 'text') plain.push({ port: port.id, text: String(value.value ?? '') });
+      else if (value.type === 'list') listed += flattenValues(value).filter((item) => item.type === 'text').length;
+    }
+    if (plain.length + listed === 0) return { reason: 'none' };
+    if (plain.length > 1 || listed > 1 || (plain.length && listed)) return { reason: 'multiple' };
+    if (listed) return { reason: 'list' };
+    if (!plain[0].text.trim()) return { reason: 'empty', port: plain[0].port };
+    return { reason: 'ok', port: plain[0].port, text: plain[0].text };
+  }
+
   /* ---------- plan helpers ---------- */
 
   // Summary of a plan for the confirmation dialog. titleOf(nodeId) provides display names.
@@ -352,7 +378,7 @@
     const runStatus = run && run.status;
     if (isActive(runStatus)) return { status: runStatus };
     if (runStatus === 'error' || runStatus === 'skipped' || runStatus === 'cancelled') {
-      return { status: runStatus, message: run.message || null, ...(runStatus === 'error' && run.code ? { code: run.code } : {}) };
+      return { status: runStatus, message: run.message || null, ...(runStatus === 'error' && run.code ? { code: run.code } : {}), ...(runStatus === 'error' && run.code && run.data ? { data: run.data } : {}) };
     }
     const planStatus = planNode && planNode.status;
     if (planStatus === 'invalid') {
@@ -375,7 +401,7 @@
   // the interface language; any other error keeps the engine's message.
   function localizeError(shown, ui) {
     if (shown && shown.status === 'error' && shown.code && ui.hasIssueText(shown.code)) {
-      return { ...shown, message: ui.issueText({ code: shown.code, message: shown.message }) };
+      return { ...shown, message: ui.issueText({ code: shown.code, data: shown.data, message: shown.message }) };
     }
     return shown;
   }
@@ -415,6 +441,7 @@
     entryCost,
     previewItems,
     flattenValues,
+    textResultOf,
     describePlan,
     gateOf,
     budgetLine,
@@ -1152,6 +1179,24 @@
       return st.graph.nodes.some((node) => node.type === 'output.result' && Boolean(selectedEntry(st.results, node.id)));
     }
 
+    // "Use as text": the text result of a node as the state of its menu entry { reason, port?, text? } (see textResultOf), or null
+    // for nodes that have none (and for inputs and outputs, whose text is their own setting).
+    function adoptState(nodeId) {
+      const st = S();
+      const node = nodeOf(nodeId);
+      const def = defOf(nodeId);
+      if (!node || !def || def.category === 'input' || def.category === 'output') return null;
+      const outputs = graphLib.portsFor(st.reg, node).outputs.filter((port) => !port.hidden);
+      const found = textResultOf(selectedVariant(st.results, nodeId), outputs);
+      return found.reason === 'none' ? null : found;
+    }
+
+    function adoptText(nodeId) {
+      const found = adoptState(nodeId);
+      if (!found || found.reason !== 'ok') return;
+      OCD.editor.adoptTextResult(nodeId, found.port, found.text);
+    }
+
     async function copyResultUrl(nodeId) {
       const media = viewerItems(nodeId).find((item) => OCD.preview.isMedia(item.value));
       if (!media) return;
@@ -1188,7 +1233,8 @@
           canRun: Boolean(def) && def.available === true,
           hiddenPorts: def ? hiddenPorts(node) : new Set(),
           outputOrder: def ? outputOrder(node) : [],
-          isOutput: Boolean(def) && def.category === 'output'
+          isOutput: Boolean(def) && def.category === 'output',
+          adopt: adoptState(nodeId)
         };
       },
       workflow() {
@@ -1209,6 +1255,7 @@
       openResult,
       downloadResult,
       downloadZip,
+      adoptText,
       cancel: cancelRun,
       costText,
       formatDuration,
@@ -1231,7 +1278,8 @@
         const def = defOf(nodeId);
         const busy = runState.active || starting;
         const hasResult = viewerItems(nodeId).length > 0;
-        return [
+        const adopt = adoptState(nodeId);
+        const items = [
           { label: T('nodes.run.menu.run'), icon: 'play', shortcut: '', disabled: busy || !def || def.available !== true, onClick: () => runNode(nodeId) },
           { label: T('nodes.run.menu.runFrom'), icon: 'skip', disabled: busy || !def || def.available !== true, onClick: () => runFrom(nodeId) },
           { separator: true },
@@ -1239,6 +1287,17 @@
           { label: T('nodes.run.menu.download'), icon: 'download', disabled: !viewerItems(nodeId).some((item) => OCD.preview.isMedia(item.value)), onClick: () => downloadResult(nodeId) },
           { label: T('nodes.run.menu.copyUrl'), icon: 'link', disabled: !viewerItems(nodeId).some((item) => OCD.preview.isMedia(item.value)), onClick: () => copyResultUrl(nodeId) }
         ];
+        // The text result as an editable Prompt node. Several text results: the entry is there, disabled, and says why.
+        if (adopt) {
+          items.push({
+            label: T('nodes.run.menu.useAsText'),
+            icon: 'extract',
+            disabled: adopt.reason !== 'ok',
+            hint: adopt.reason === 'ok' ? T('nodes.run.menu.useAsTextHint') : T(`nodes.run.menu.useAsText.${adopt.reason}`),
+            onClick: () => adoptText(nodeId)
+          });
+        }
+        return items;
       });
       OCD.extensions.workflowMenu.push(() => [
         { label: T('nodes.run.menu.zip'), icon: 'zip', disabled: !hasOutputResults(), onClick: () => downloadZip() }

@@ -146,7 +146,18 @@ const GOLDEN = [
   ['es', 'participant', 0, 'prompt', (r) => assert.equal(r[0].type, 'input.prompt')],
   ['es', 'participant', 0, 'imagen a vídeo', (r) => {
     assert.ok(indexOfType(r, 'video.seedance') >= 0 && indexOfType(r, 'video.seedance') <= 2, `Seedance among the first 3: ${types(r, 4)}`);
-  }]
+  }],
+  // WP30: the words of a song find the song text node first, the words of the sound find the music node first
+  ['de', 'participant', 0, 'strophe', (r) => assert.deepEqual(types(r, 2), ['audio.music_plan', 'audio.music'])],
+  ['de', 'participant', 0, 'refrain', (r) => assert.equal(r[0].type, 'audio.music_plan')],
+  ['de', 'participant', 0, 'songtext', (r) => assert.equal(r[0].type, 'audio.music_plan')],
+  ['en', 'participant', 0, 'verse', (r) => assert.equal(r[0].type, 'audio.music_plan')],
+  ['es', 'participant', 0, 'estrofa', (r) => assert.equal(r[0].type, 'audio.music_plan')],
+  ['de', 'participant', 0, 'musik', (r) => assert.equal(r[0].type, 'audio.music')],
+  ['de', 'participant', 0, 'jingle', (r) => assert.equal(r[0].type, 'audio.music')],
+  ['de', 'participant', 0, 'hintergrundmusik', (r) => assert.equal(r[0].type, 'audio.music')],
+  ['en', 'participant', 0, 'music', (r) => assert.equal(r[0].type, 'audio.music')],
+  ['es', 'participant', 0, 'música', (r) => assert.equal(r[0].type, 'audio.music')]
 ];
 
 function testGoldenQueries() {
@@ -159,7 +170,7 @@ function testGoldenQueries() {
       throw error;
     }
   }
-  assert.equal(GOLDEN.length, 17, 'the table lists the golden queries (the quick pick has its own test)');
+  assert.equal(GOLDEN.length, 27, 'the table lists the golden queries (the quick pick has its own test)');
 }
 
 function testAllVideoNodesSurviveManyModels() {
@@ -540,7 +551,9 @@ function testImageEditingSynonyms() {
   assert.equal(first('de', 'vergrössern')[0], 'image.resize');
   assert.equal(first('de', 'freistellen')[0], 'image.chroma_key');
   assert.equal(first('de', 'hintergrund entfernen')[0], 'image.chroma_key');
-  assert.equal(first('de', 'hintergrund')[0], 'image.chroma_key');
+  // "Hintergrundmusik" (music nodes) starts with the same word: both rank at the top, the editor behind the generators.
+  assert.ok(first('de', 'hintergrund').slice(0, 3).includes('image.chroma_key'));
+  assert.equal(first('de', 'hintergrund entfernen')[0], 'image.chroma_key');
   assert.equal(first('de', 'überblenden')[0], 'image.composite');
   assert.equal(first('de', 'zusammenführen')[0], 'image.composite');
   assert.ok(first('de', 'heller').includes('image.adjust'));

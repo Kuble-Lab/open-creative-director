@@ -1315,6 +1315,28 @@
     applyGraph(result.graph, { history: 'extract-prompt' });
   }
 
+  // "Use as text": puts the text result of an output into a new Prompt node and moves the connections of that output to it
+  // (one undo step). The person edits the text there; nothing is run. Takes any node with one text result (the song text of
+  // the music nodes, a language-model answer …); run.js offers it in the menu of the node and in the inspector.
+  function adoptTextResult(nodeId, portId, text) {
+    if (!state.workflow || !state.reg) return null;
+    const result = graphLib.adoptTextAsPrompt(state.reg, state.graph, nodeId, portId, text, { sizes: canvas.getSizes(), reserved: state.reserved });
+    if (result.error) {
+      ui.toast(ui.T('nodes.adopt.failed'), { kind: 'warn' });
+      return null;
+    }
+    reserveId(result.node.id);
+    // The new Prompt node drives the target now, so what fed the source no longer reaches the result. Design App inputs
+    // that were in that part of the graph stop working: say so instead of leaving the app with the frozen text.
+    const cutOff = graphLib.appInputsCutOff(state.graph, result.graph, currentApp());
+    applyGraph(result.graph, { history: 'use-as-text' });
+    setSelection({ nodes: [result.node.id], notes: [], groups: [], edge: null });
+    revealBounds(graphLib.nodeRect(result.node, canvas.getSizes()));
+    ui.toast(ui.T(result.edges.length ? 'nodes.adopt.done' : 'nodes.adopt.doneUnconnected'));
+    if (cutOff.length) ui.toast(ui.T('nodes.adopt.appCutOff', { count: cutOff.length }), { kind: 'warn', timeout: 9000 });
+    return result;
+  }
+
   // Turns free text in the HTML field of a Motion graphics node into Prompt -> Motion HTML writer -> Motion graphics
   // (one undo step). Nothing is run: the writer is a paid node and asks for confirmation when the user starts the run.
   function convertMotionHtml(nodeId) {
@@ -2703,6 +2725,7 @@
     redo,
     addNodeAt,
     insertSubgraph,
+    adoptTextResult,
     insertTemplate,
     insertWithInputs,
     addInputFor,

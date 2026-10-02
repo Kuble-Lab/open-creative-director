@@ -131,6 +131,17 @@
         const retry = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: info.busy }, ui.icon('refresh', 13), el('span', { text: ui.T('nodes.common.retry') }));
         retry.addEventListener('click', () => cb.run.runNode(nodeId));
         body.append(box, retry);
+        // A refused music prompt or song text comes with ElevenLabs' own suggestion: the card shows it cut short, a longer one
+        // (a whole song text) is shown here in full, with a button to copy it.
+        const suggestion = info.run && info.run.data && typeof info.run.data.suggestion === 'string' ? info.run.data.suggestion.trim() : '';
+        if (suggestion && (suggestion.length > 280 || suggestion.includes('\n'))) {
+          const copy = el('button', { type: 'button', class: 'nv-btn nv-btn-sm' }, ui.icon('copy', 13), el('span', { text: ui.T('nodes.preview.copy') }));
+          copy.addEventListener('click', async () => {
+            const ok = await OCD.preview.copyText(suggestion);
+            ui.toast(ok ? ui.T('nodes.preview.copied') : ui.T('nodes.preview.copyFailed'), { kind: ok ? undefined : 'warn' });
+          });
+          body.append(el('div', { class: 'nv-suggestion' }, el('div', { class: 'nv-field-label', text: ui.T('nodes.music.suggestionTitle') }), el('pre', { class: 'nv-suggestion-text nv-scroll', text: suggestion }), copy));
+        }
       } else if ((info.status === 'invalid' || info.status === 'unavailable' || info.status === 'skipped' || info.status === 'cancelled') && info.message) {
         body.append(el('div', { class: 'nv-notice is-warn' }, ui.icon('warning', 14), el('span', { class: 'nv-notice-text', text: info.message })));
         // the remedy of the card ("Put the Motion HTML writer in front", "Choose a suitable node …") as a button here too
@@ -148,6 +159,44 @@
         body.append(log);
       }
       container.append(body);
+    }
+
+    // "1:05" for 65 seconds (the length of a song text as people read it)
+    function clock(ms) {
+      const seconds = Math.round(ms / 1000);
+      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    // The line under the song text field: the first problem with its line number, or the number of sections and the length.
+    // Follows the field while typing and when the text changes from outside; empty while the field is empty.
+    function planCheck(widget, initial, model) {
+      const musicPlan = OCD.musicPlan;
+      const hint = el('div', { class: 'nv-field-hint nv-plan-check', role: 'status' });
+      const show = (text) => {
+        const value = String(text || '');
+        hint.classList.remove('is-error', 'is-ok');
+        if (!value.trim()) {
+          hint.textContent = ui.T('nodes.music.planFormat');
+          return;
+        }
+        const { plan, errors } = musicPlan.parse(value, { model });
+        const problem = errors[0];
+        if (problem) {
+          hint.classList.add('is-error');
+          hint.textContent = ui.issueText({ code: problem.code, data: problem.data, message: problem.message });
+        } else {
+          hint.classList.add('is-ok');
+          hint.textContent = ui.T('nodes.music.planOk', { count: plan.sections.length, duration: clock(musicPlan.totalMs(plan)) });
+        }
+      };
+      widget.el.addEventListener('input', () => show(widget.get()));
+      const baseSet = widget.set;
+      widget.set = (next) => {
+        baseSet(next);
+        show(next);
+      };
+      show(initial);
+      return hint;
     }
 
     function entryPrompt(entry) {
@@ -183,6 +232,12 @@
         const save = el('button', { type: 'button', class: 'nv-btn nv-btn-sm' }, ui.icon('download', 13), el('span', { text: ui.T('nodes.preview.download') }));
         save.addEventListener('click', () => cb.run.downloadResult(nodeId));
         tools.append(open, save);
+        // a text result as an editable Prompt node (the menu of the node has the same entry; here it states why it is off)
+        if (info.adopt) {
+          const adopt = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: info.adopt.reason !== 'ok', title: info.adopt.reason === 'ok' ? ui.T('nodes.run.menu.useAsTextHint') : ui.T(`nodes.run.menu.useAsText.${info.adopt.reason}`), dataset: { adopt: info.adopt.reason } }, ui.icon('extract', 13), el('span', { text: ui.T('nodes.run.menu.useAsText') }));
+          adopt.addEventListener('click', () => cb.run.adoptText(nodeId));
+          tools.append(adopt);
+        }
         if (cb.run.sendToChat) {
           const send = el('button', { type: 'button', class: 'nv-btn nv-btn-sm' }, ui.icon('send', 13), el('span', { text: ui.T('nodes.send.button') }));
           send.addEventListener('click', () => cb.run.sendToChat(nodeId));
@@ -351,6 +406,12 @@
       sub.append(el('span', { text: kind === 'inputs' ? `${title} · ${ui.paramLabel(entry.param)}` : title }));
       const batch = kind === 'inputs' && def && (node.type === 'input.text_list' || node.type === 'input.media_list');
       if (batch) sub.append(el('span', { class: 'nv-badge is-batch', title: ui.T('nodes.app.batchHint'), text: ui.T('nodes.app.batch') }));
+      // An input that reaches no app output changes nothing in the result (for example after "Use as text"): mark it.
+      const cut = kind === 'inputs' && node && ctx.deadAppInputs && ctx.deadAppInputs.has(`${entry.node}\u0000${entry.param}`);
+      if (cut) {
+        row.classList.add('is-dead');
+        sub.append(el('span', { class: 'nv-badge is-warn', title: ui.T('nodes.app.noOutputReach'), text: ui.T('nodes.app.noOutputReachBadge') }));
+      }
       const tools = el('div', { class: 'nv-app-row-tools' });
       const up = el('button', { type: 'button', class: 'nv-icon-btn', title: ui.T('nodes.app.moveUp'), 'aria-label': ui.T('nodes.app.moveUp'), disabled: index === 0 }, ui.icon('arrowUp', 13));
       const down = el('button', { type: 'button', class: 'nv-icon-btn', title: ui.T('nodes.app.moveDown'), 'aria-label': ui.T('nodes.app.moveDown'), disabled: index === total - 1 }, ui.icon('arrowDown', 13));
@@ -381,6 +442,8 @@
       description.addEventListener('change', () => cb.app.setMeta({ description: description.value }, { commit: true }));
       wrap.append(el('div', { class: 'nv-insp-fields nv-app-meta' }, ui.field(ui.T('nodes.app.title'), title), ui.field(ui.T('nodes.app.description'), description)));
 
+      const dead = new Set(graphLib.appInputsWithoutOutput(ctx.graph, app).map((entry) => `${entry.node}\u0000${entry.param}`));
+      ctx = { ...ctx, deadAppInputs: dead };
       const block = (kind, headingKey, emptyKey) => {
         const list = el('div', { class: 'nv-app-list' });
         const entries = app[kind] || [];
@@ -500,7 +563,10 @@
               hidden: !graphLib.canConvertMotionHtml(reg, ctx.graph, node.id)
             };
           }
-          fields.append(ui.field(ui.paramLabel(param.id), widget.el, fieldOptions));
+          const fieldEl = ui.field(ui.paramLabel(param.id), widget.el, fieldOptions);
+          // Song text of the music node: the check of the format while typing (the same module the server checks with)
+          if (param.id === 'plan' && node.type === 'audio.music' && OCD.musicPlan) fieldEl.append(planCheck(widget, effective.plan, effective.model));
+          fields.append(fieldEl);
         }
 
         if (hasDynamic && modelId) {

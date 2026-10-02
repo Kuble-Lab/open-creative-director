@@ -34,7 +34,7 @@ function edges(...specs) {
 
 function buildEnvironment() {
   const calls = [];
-  const state = { active: 0, peak: 0, counts: {}, startOrder: [], finishOrder: [] };
+  const state = { active: 0, peak: 0, counts: {}, startOrder: [], finishOrder: [], estimateContexts: [] };
 
   async function tracked(ctx, work) {
     state.counts[ctx.nodeId] = (state.counts[ctx.nodeId] || 0) + 1;
@@ -129,6 +129,48 @@ function buildEnvironment() {
           variants: Array.from({ length: params.count }, (_v, i) => ({ out: textValue(`${inputs.in.value}#${i + 1}`) })),
           cost: { usd: 0.01 * params.count }
         };
+      })
+  });
+  // A price that depends on a field: known from the field, unknown (and never a guess from an earlier result) when the
+  // input arrives through a connection. The estimate gets the connected ports.
+  registry.register({
+    type: 't.sized',
+    category: 'text',
+    inputs: [{ id: 'in', type: 'text', param: 'text' }],
+    outputs: [{ id: 'out', type: 'text' }],
+    params: [{ id: 'text', kind: 'text', default: 'abc' }],
+    paid: true,
+    cost: {
+      unit: 'usd',
+      history: false,
+      estimate: (params, context) => {
+        state.estimateContexts.push({ nodeId: context.nodeId, connected: [...context.connected] });
+        return context.connected.has('in') ? null : params.text.length * 0.01;
+      }
+    },
+    execute: (ctx, inputs) =>
+      tracked(ctx, async () => ({ variants: [{ out: textValue(inputs.in.value) }], cost: { usd: 0.5 } }))
+  });
+  registry.register({
+    type: 't.freecall',
+    category: 'text',
+    inputs: [{ id: 'in', type: 'text', required: true }],
+    outputs: [{ id: 'out', type: 'text' }],
+    cost: { unit: 'free' },
+    execute: (ctx, inputs) => tracked(ctx, async () => ({ variants: [{ out: textValue(inputs.in.value) }] }))
+  });
+  // an error with a stable code and values for its translated text
+  registry.register({
+    type: 't.coded',
+    category: 'text',
+    inputs: [{ id: 'in', type: 'text' }],
+    outputs: [{ id: 'out', type: 'text' }],
+    execute: (ctx) =>
+      tracked(ctx, async () => {
+        const err = new Error('Line 3: no');
+        err.code = 'T_CODED_FAILURE';
+        err.data = { line: 3, suggestion: 'x'.repeat(9000), nested: { no: true }, flag: true };
+        throw err;
       })
   });
   registry.register({
@@ -227,6 +269,7 @@ async function main() {
     env.state.counts = {};
     env.state.startOrder = [];
     env.state.finishOrder = [];
+    env.state.estimateContexts = [];
     env.calls.length = 0;
   }
 
@@ -614,6 +657,50 @@ async function main() {
       const forcedPlan = await engine.plan(wf.id, { mode: 'node', nodeIds: ['c'], force: true });
       assert.equal(forcedPlan.nodes.c.status, 'forced');
       assert.ok(forcedPlan.nodes.c.lastCost.usd > 0);
+    }
+
+    /* ----- costs: an estimate that knows the connections, no guess from history, the free unit, coded errors with values ----- */
+    {
+      resetState();
+      const wf = await makeWorkflow(
+        [node('a', 't.src', { text: 'hello' }), node('typed', 't.sized', { text: 'abcd' }), node('wired', 't.sized'), node('free', 't.freecall'), node('bad', 't.coded')],
+        edges('a.out>wired.in', 'a.out>free.in')
+      );
+      const engine = makeEngine();
+      assert.equal(env.registry.get('t.freecall').cost.unit, 'free');
+      assert.equal(env.registry.get('t.freecall').paid, false);
+      assert.equal(env.registry.publicDescriptor(env.registry.get('t.freecall')).cost.unit, 'free');
+      assert.equal(env.registry.get('t.sized').cost.history, false);
+      assert.equal(env.registry.get('t.counted').cost.history, true, 'the guess from history stays the default');
+      const first = await engine.plan(wf.id, { mode: 'all' });
+      assert.ok(Math.abs(first.nodes.typed.estimate.usd - 0.04) < 1e-9, 'from its own field');
+      assert.equal(first.nodes.wired.estimate, null, 'the input is connected: unknown');
+      assert.equal(first.nodes.free.paid, false);
+      assert.equal(first.nodes.free.estimate, null);
+      assert.deepEqual(first.totals, { paidNodes: 2, usd: 0.04, credits: 0, unknownNodes: 1 });
+      const seen = Object.fromEntries(env.state.estimateContexts.map((entry) => [entry.nodeId, entry.connected]));
+      assert.deepEqual(seen, { typed: [], wired: ['in'] }, 'the estimate is told which inputs are connected and which node it is');
+      // after a real run the plan still does not guess from the last result
+      const record = await run(engine, wf.id, { mode: 'node', nodeIds: ['typed', 'wired'] });
+      assert.ok(Math.abs(record.cost.usd - 1) < 1e-9);
+      const again = await engine.plan(wf.id, { mode: 'node', nodeIds: ['typed', 'wired'], force: true });
+      assert.equal(again.nodes.wired.estimate, null, 'no earlier cost is used: the length stays unknown');
+      assert.ok(Math.abs(again.nodes.typed.estimate.usd - 0.04) < 1e-9);
+      assert.equal(again.totals.unknownNodes, 1);
+
+      // a failing node with a stable code hands its values to the interface: flat, numbers and strings, cut to a size
+      const events = [];
+      bus.subscribe(wf.id, (event) => events.push(event));
+      const failed = await run(engine, wf.id, { mode: 'node', nodeIds: ['bad'] });
+      const stored = await wfStore.readRun(wf.id, failed.id);
+      const status = events.find((event) => event.type === 'node_status' && event.nodeId === 'bad' && event.status === 'error');
+      assert.equal(status.code, 'T_CODED_FAILURE');
+      assert.equal(status.data.line, 3);
+      assert.equal(status.data.flag, true);
+      assert.equal(status.data.suggestion.length, 8000);
+      assert.equal('nested' in status.data, false);
+      assert.deepEqual(stored.nodes.bad.data, status.data, 'the run record keeps them');
+      assert.equal(stored.nodes.bad.code, 'T_CODED_FAILURE');
     }
 
     /* ----- waitForSessionJob and the job context ----- */

@@ -925,6 +925,121 @@ function testExtractPrompt() {
   assert.equal(graphLib.sameContent(redone, result.graph), true);
 }
 
+// "Use as text" (WP30): the text result of an output becomes a Prompt node, the connections of that output move to it.
+function testAdoptText() {
+  const b = build();
+  const planner = b.add('audio.music_plan', 100, 100, { prompt: 'a summer song' });
+  const music = b.add('audio.music', 900, 100);
+  const image = b.add('image.generate', 900, 500);
+  let graph = b.graph;
+  for (const [to, port] of [[music, 'plan'], [image, 'prompt']]) {
+    const linked = graphLib.connect(reg, graph, { node: planner, port: 'plan' }, { node: to, port });
+    assert.ok(!linked.error, `${to}.${port}`);
+    graph = linked.graph;
+  }
+  const before = graph;
+  const edgeIds = before.edges.map((edge) => edge.id);
+  const songText = '+ indie pop\n\n[Verse | 20 s]\nA line';
+
+  assert.equal(graphLib.adoptTextIssue(reg, before, planner, 'plan', songText), null);
+  const result = graphLib.adoptTextAsPrompt(reg, before, planner, 'plan', songText);
+  assert.ok(!result.error);
+  assert.equal(result.node.type, 'input.prompt');
+  assert.equal(result.node.params.prompt, songText, 'the text is taken over unchanged');
+  assert.equal(result.graph.nodes.length, before.nodes.length + 1, 'one new node');
+  assert.equal(result.graph.edges.length, before.edges.length, 'no edge is added or lost');
+  assert.deepEqual(result.graph.edges.map((edge) => edge.id), edgeIds, 'same edges in the same order');
+  assert.deepEqual(result.edges, edgeIds.filter((id) => before.edges.find((edge) => edge.id === id).from.node === planner), 'the moved edges are named');
+  assert.equal(result.edges.length, 2);
+  for (const edge of result.graph.edges.filter((item) => result.edges.includes(item.id))) {
+    assert.deepEqual(edge.from, { node: result.node.id, port: 'prompt' }, 'now leaves the Prompt node');
+    const was = before.edges.find((item) => item.id === edge.id);
+    assert.deepEqual(edge.to, was.to, 'the target keeps its input');
+  }
+  assert.equal(result.graph.edges.some((edge) => edge.from.node === planner), false, 'the source output keeps no connection');
+  assert.deepEqual(graphLib.getNode(result.graph, planner), graphLib.getNode(before, planner), 'the source node is untouched');
+  assert.deepEqual(graphLib.validate(reg, result.graph), []);
+  // below the source node, without covering another card
+  const sourceRect = graphLib.nodeRect(graphLib.getNode(before, planner));
+  assert.ok(result.node.y >= sourceRect.y + sourceRect.h, 'below the node');
+  assert.equal(result.node.x, graphLib.snap(100, 8), 'in line with the node (on the grid)');
+  for (const node of before.nodes) {
+    assert.equal(graphLib.rectsIntersect(graphLib.nodeRect(result.node), graphLib.nodeRect(node)), false, `does not cover ${node.id}`);
+  }
+  // an occupied spot is avoided
+  const crowded = build();
+  const src = crowded.add('audio.music_plan', 100, 100);
+  const blocker = crowded.add('input.text', 100, 100 + graphLib.nodeRect({ x: 0, y: 0, id: 'x' }).h + 48);
+  const nudged = graphLib.adoptTextAsPrompt(reg, crowded.graph, src, 'plan', 'x');
+  assert.equal(graphLib.rectsIntersect(graphLib.nodeRect(nudged.node), graphLib.nodeRect(graphLib.getNode(crowded.graph, blocker))), false);
+  // a note in the way is avoided as well
+  const noted = { ...crowded.graph, notes: [{ id: 't1', x: 90, y: 100 + graphLib.nodeRect({ x: 0, y: 0, id: 'x' }).h + 40, w: 380, h: 120, text: 'note' }] };
+  const aroundNote = graphLib.adoptTextAsPrompt(reg, noted, src, 'plan', 'x');
+  assert.equal(graphLib.rectsIntersect(graphLib.nodeRect(aroundNote.node), { x: 90, y: noted.notes[0].y, w: 380, h: 120 }), false, 'does not land on a note');
+  // explicit id and position are honoured; an output without connections still gives the node
+  const custom = graphLib.adoptTextAsPrompt(reg, crowded.graph, src, 'plan', 'x', { newNodeId: 'p7', position: { x: 8, y: 16 } });
+  assert.equal(custom.node.id, 'p7');
+  assert.deepEqual([custom.node.x, custom.node.y], [8, 16]);
+  assert.deepEqual(custom.edges, []);
+  // refused cases leave the graph untouched
+  const refuse = (nodeId, port, text, reason) => {
+    const refused = graphLib.adoptTextAsPrompt(reg, before, nodeId, port, text);
+    assert.equal(refused.error.reason, reason);
+    assert.equal(refused.graph, before, 'the graph is returned unchanged');
+  };
+  refuse(planner, 'plan', '   ', 'empty');
+  refuse(planner, 'plan', undefined, 'empty');
+  refuse(planner, 'nope', 'x', 'unknown_port');
+  refuse('zz', 'plan', 'x', 'unknown_node');
+  refuse(image, 'image', 'x', 'not_text');
+  const noPrompt = { ...reg, types: new Map([...reg.types].filter(([type]) => type !== 'input.prompt')) };
+  assert.equal(graphLib.adoptTextIssue(noPrompt, before, planner, 'plan', 'x'), 'no_prompt_type');
+  // text of a language-model node works the same (a general command)
+  const chat = build();
+  const llm = chat.add('llm.chat', 100, 100);
+  const outPort = graphLib.portsFor(reg, graphLib.getNode(chat.graph, llm)).outputs.find((port) => port.type === 'text');
+  assert.ok(outPort, 'llm.chat has a text output');
+  assert.equal(graphLib.adoptTextIssue(reg, chat.graph, llm, outPort.id, 'answer'), null);
+  // one undo step restores everything
+  const history = require('../public/nodes/history').createHistory({ now: () => 0 });
+  history.reset(graphLib.content(before));
+  history.commit(graphLib.content(result.graph), { label: 'use-as-text' });
+  assert.equal(history.size, 2, 'a single history entry');
+  const undone = graphLib.withContent(result.graph, history.undo());
+  assert.equal(graphLib.sameContent(undone, before), true);
+  assert.equal(graphLib.sameContent(graphLib.withContent(undone, history.redo()), result.graph), true);
+}
+
+// "Use as text" cuts off what fed the source: Design App inputs there stop reaching an app output. They are found, before
+// and after, so the interface can warn; inputs that still reach an output are not named.
+function testAppInputsCutOff() {
+  const template = require('../lib/nodes/templates').loadTemplates().find((item) => item.id === 'song-from-idea');
+  const graph = template.graph;
+  const app = template.app;
+  assert.deepEqual(graphLib.appInputsWithoutOutput(graph, app), [], 'the template as shipped: every app input reaches the result');
+  const adopted = graphLib.adoptTextAsPrompt(reg, graph, 'n2', 'plan', '[Verse | 20 s]\nla');
+  assert.ok(!adopted.error);
+  const cut = graphLib.appInputsCutOff(graph, adopted.graph, app);
+  assert.deepEqual(cut.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n2.length'], 'the idea and the length are cut off');
+  assert.deepEqual(graphLib.appInputsWithoutOutput(adopted.graph, app).map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n2.length'], 'the app panel marks the same');
+  // the new Prompt node is not exposed, so nothing else is named; an input that stays connected is not reported
+  const withNew = { ...app, inputs: [...app.inputs, { node: adopted.node.id, param: 'prompt', label: 'Song text' }] };
+  assert.deepEqual(graphLib.appInputsCutOff(graph, adopted.graph, withNew), cut);
+  assert.deepEqual(graphLib.appInputsWithoutOutput(adopted.graph, withNew).map((entry) => entry.node), ['n1', 'n2']);
+  // without app output or inputs there is nothing to reach
+  assert.deepEqual(graphLib.appInputsCutOff(graph, adopted.graph, { ...app, outputs: [] }), []);
+  assert.deepEqual(graphLib.appInputsCutOff(graph, adopted.graph, { ...app, inputs: [] }), []);
+  assert.deepEqual(graphLib.appInputsCutOff(graph, adopted.graph, undefined), []);
+  // an input that was already cut off before the step is not blamed on it; one on a node that is gone is ignored
+  assert.deepEqual(graphLib.appInputsCutOff(adopted.graph, adopted.graph, app), []);
+  assert.deepEqual(graphLib.appInputsWithoutOutput(graph, { ...app, inputs: [{ node: 'zz', param: 'x' }] }), []);
+  // an input on the output node itself reaches it
+  assert.deepEqual(graphLib.appInputsWithoutOutput(graph, { enabled: true, inputs: [{ node: 'n4', param: 'label' }], outputs: [{ node: 'n4' }] }), []);
+  // a node that is not upstream of any app output is marked even before any command
+  const stray = { ...graph, nodes: [...graph.nodes, { id: 'n9', type: 'input.prompt', typeVersion: 1, x: 0, y: 0, params: { prompt: 'x' } }] };
+  assert.deepEqual(graphLib.appInputsWithoutOutput(stray, { ...app, inputs: [{ node: 'n9', param: 'prompt' }] }).map((entry) => entry.node), ['n9']);
+}
+
 function testQuickPickCreatesConnectedNode() {
   // What main.js does after a pick: add the node and connect it to the first compatible port, as one graph.
   const b = build();
@@ -957,6 +1072,23 @@ function testShowIf() {
   assert.equal(graphLib.isVisible(width.showIf, { type: 'image.crop', params: { mode: 'pixels' } }, crop, new Set()), true);
   assert.equal(graphLib.isVisible(width.showIf, { type: 'image.crop', params: { mode: 'aspect' } }, crop, new Set()), false);
   assert.equal(graphLib.isVisible(undefined, node, def, new Set()), true);
+  // {all} and {param, empty} (the music node: length and vocals only matter without a plan and without a video)
+  const music = reg.types.get('audio.music');
+  const length = music.params.find((param) => param.id === 'length');
+  const instrumental = music.params.find((param) => param.id === 'instrumental');
+  const musicNode = (params) => ({ type: 'audio.music', params });
+  const visible = (param, params, connected) => graphLib.isVisible(param.showIf, musicNode(params), music, new Set(connected));
+  assert.equal(visible(length, {}, []), true, 'nothing set: the length counts');
+  assert.equal(visible(length, { plan: '' }, []), true);
+  assert.equal(visible(length, { plan: '   \n' }, []), true, 'blank text is no plan');
+  assert.equal(visible(length, { plan: '[A | 10 s]' }, []), false, 'a plan in the field: hidden');
+  assert.equal(visible(length, {}, ['plan']), false, 'a connected plan: hidden');
+  assert.equal(visible(length, {}, ['match']), false, 'a connected video: hidden');
+  assert.equal(visible(length, {}, ['prompt']), true, 'a connected prompt does not matter');
+  assert.equal(visible(instrumental, {}, ['match']), true, 'the video sets the length only, not the vocals');
+  assert.equal(visible(instrumental, { plan: 'x' }, []), false, 'a plan in the field decides the vocals');
+  assert.equal(visible(instrumental, {}, ['plan']), false);
+  assert.equal(graphLib.isVisible({ param: 'a', empty: false }, { params: { a: 'x' } }, { params: [{ id: 'a', default: '' }] }, new Set()), true, 'empty: false = holds text');
 }
 
 function testEveryTypeCanBePlaced() {
@@ -1094,6 +1226,8 @@ const tests = [
   testDescribePortTruncationAndVariants,
   testQuickPickMultiMedia,
   testExtractPrompt,
+  testAdoptText,
+  testAppInputsCutOff,
   testQuickPickCreatesConnectedNode,
   testShowIf,
   testEveryTypeCanBePlaced,

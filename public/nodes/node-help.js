@@ -48,11 +48,12 @@
   }
 
   // How the node is paid, from the descriptor: 'free' (local), 'usd' or 'credits' (paid, the card shows the cost),
-  // 'llm' (usd, a ChatGPT model runs through the subscription instead) or 'external' (free of cost in this app, a
-  // service bills it elsewhere).
+  // 'llm' (usd, a ChatGPT model runs through the subscription instead), 'freecall' (the service is called and charges
+  // nothing, cost unit 'free': the song plan) or 'external' (free of cost in this app, a service bills it elsewhere).
   function costKey(def) {
     const unit = def.cost && def.cost.unit;
     if (def.paid === true) return unit === 'credits' ? 'credits' : def.provider === 'llm' ? 'llm' : 'usd';
+    if (unit === 'free' && def.provider) return 'freecall';
     return def.provider ? 'external' : 'free';
   }
 

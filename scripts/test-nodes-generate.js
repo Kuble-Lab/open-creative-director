@@ -306,7 +306,7 @@ async function main() {
       const expected = [
         'llm.chat', 'llm.prompt_enhancer', 'llm.image_describer', 'llm.video_describer', 'llm.motion_html',
         'image.generate', 'image.edit', 'image.relight', 'image.higgsfield',
-        'video.seedance', 'video.higgsfield', 'video.motion_graphics', 'video.concat', 'audio.tts',
+        'video.seedance', 'video.higgsfield', 'video.motion_graphics', 'video.concat', 'audio.tts', 'audio.music', 'audio.music_plan',
         'hf.remove_background', 'hf.upscale_image', 'hf.upscale_video', 'hf.outpaint_image', 'hf.reframe_video',
         'hf.dubbing', 'hf.voice_change', 'hf.motion_control', 'hf.speech'
       ];
@@ -864,21 +864,242 @@ async function main() {
     /* ----- audio.tts ----- */
     {
       resetMocks();
+      withEnv('ELEVENLABS_USD_PER_1K_CHARS', undefined);
       patch(elevenlabs, 'hasKey', () => true);
       const requests = [];
       patch(elevenlabs, 'tts', async (request) => {
         requests.push(request);
         return Buffer.from('fake-mp3');
       });
+      const journalBefore = journal.length;
       const result = await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { voice_id: 'voice-9' });
       assert.deepEqual(requests[0], { text: 'Hallo Welt', voiceId: 'voice-9', modelId: 'eleven_multilingual_v2' });
       assert.equal(result.variants[0].audio.type, 'audio');
       assert.match(result.variants[0].audio.file, /\.mp3$/);
+      // paid, with the estimate by character; the run reports it and the tool journals it (for everybody)
+      assert.deepEqual(result.cost, { usd: 0.003 }, '10 characters at 0.30 USD per 1000');
+      assert.equal(journal.length, journalBefore + 1);
+      assert.equal(journal.at(-1).type, 'speech');
+      assert.equal(journal.at(-1).cost, 0.003);
+      // without a login (local mode) the speech is booked for 'lokal' like every other cost, not for a user of its own
+      const anonymous = makeCtx(sessionId);
+      anonymous.user = undefined;
+      anonymous.toolCtx.user = undefined;
+      await execute(registry, 'audio.tts', anonymous, { text: text('Ohne Login') }, { voice_id: 'voice-9' });
+      assert.equal(journal.at(-1).type, 'speech');
+      assert.equal(journal.at(-1).user, 'lokal');
+      requests.pop();
       await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hi') }, { voice_id: '' });
       assert.equal(requests[1].voiceId, '21m00Tcm4TlvDq8ikWAM', 'blank voice falls back to the default voice');
       await assert.rejects(execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('x'.repeat(2501)) }), /at most 2500/);
       assert.equal(issuesOf(registry, 'audio.tts', { text: 'x'.repeat(2501) }, { text: { connected: false, count: 0 } }).length, 1);
       assert.equal(requests.length, 2);
+
+      const tts = oneOf(registry, 'audio.tts');
+      assert.equal(tts.paid, true);
+      assert.equal(tts.cost.unit, 'usd');
+      assert.equal(tts.cost.history, false, 'no guess from an earlier result');
+      const estimate = (params, connected = []) => tts.cost.estimate(registry.normalizeParams(tts, params), { connected: new Set(connected) });
+      assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.3);
+      withEnv('ELEVENLABS_USD_PER_1K_CHARS', '0.5');
+      assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.5);
+      assert.equal(estimate({ text: 'x'.repeat(5000) }), 1.25, 'capped at 2500 characters, as the tool is');
+      assert.equal(estimate({ text: 'x'.repeat(1000) }, ['text']), null, 'a text through a connection: unknown, not 0');
+      assert.equal(estimate({ text: '' }), null);
+      assert.equal(registry.publicDescriptor(tts).provider, 'elevenlabs');
+      assert.equal(registry.publicDescriptor(tts).paid, true);
+    }
+
+    /* ----- audio.music and audio.music_plan ----- */
+    {
+      resetMocks();
+      withEnv('ELEVENLABS_MUSIC_USD_PER_MIN', undefined);
+      patch(elevenlabs, 'hasKey', () => true);
+      const composed = [];
+      patch(elevenlabs, 'composeMusic', async (request) => {
+        composed.push(request);
+        return Buffer.from('fake-mp3');
+      });
+      const planned = [];
+      let planAnswer;
+      patch(elevenlabs, 'planMusic', async (request) => {
+        planned.push(request);
+        return planAnswer;
+      });
+      const music = oneOf(registry, 'audio.music');
+      const planNode = oneOf(registry, 'audio.music_plan');
+      const musicPlan = require('../public/nodes/music-plan');
+
+      // definitions: ports, params, cost, availability for everybody with a key
+      assert.deepEqual([music.inputs.map((p) => `${p.id}:${p.type}${p.required ? '!' : ''}`), music.outputs.map((p) => `${p.id}:${p.type}`)], [['prompt:text', 'plan:text', 'match:video'], ['audio:audio']]);
+      assert.deepEqual([planNode.inputs.map((p) => `${p.id}:${p.type}${p.required ? '!' : ''}`), planNode.outputs.map((p) => `${p.id}:${p.type}`)], [['prompt:text!'], ['plan:text']]);
+      assert.equal(music.paid, true);
+      assert.deepEqual([music.cost.unit, music.cost.history], ['usd', false]);
+      assert.equal(planNode.paid, false);
+      assert.equal(planNode.cost.unit, 'free', 'ElevenLabs is called, free of credits: not local');
+      assert.equal(registry.publicDescriptor(planNode).cost.unit, 'free');
+      assert.equal(registry.publicDescriptor(planNode).provider, 'elevenlabs');
+      assert.equal(require('../lib/nodes/registry').isRestricted(registry.publicDescriptor(music)), false, 'music is for participants and guests, too');
+      const defaults = registry.normalizeParams(music, {});
+      assert.deepEqual([defaults.length, defaults.instrumental, defaults.model], [30, false, 'music_v2_5']);
+      assert.deepEqual(registry.normalizeParams(music, { length: 2 }).length, 3, 'clamped to 3 s');
+      assert.deepEqual(registry.normalizeParams(music, { length: 9999 }).length, 600, 'clamped to 600 s');
+      assert.deepEqual(music.params.find((p) => p.id === 'model').options, ['music_v2_5', 'music_v2', 'music_v1']);
+      assert.equal(registry.normalizeParams(planNode, {}).length, 60);
+      patch(elevenlabs, 'hasKey', () => false);
+      assert.match(registry.availability(music), /ELEVENLABS/);
+      assert.match(registry.availability(planNode), /ELEVENLABS/);
+      patch(elevenlabs, 'hasKey', () => true);
+      assert.equal(registry.availability(music), true);
+
+      // description mode: the length of the field, instrumental, the model; booked as music for everybody
+      const journalBefore = journal.length;
+      const described = await execute(registry, 'audio.music', makeCtx(sessionId), { prompt: text('calm piano') }, { length: 45, instrumental: true });
+      assert.deepEqual(composed[0], { prompt: 'calm piano', lengthMs: 45000, instrumental: true, modelId: 'music_v2_5' });
+      assert.equal(described.variants[0].audio.type, 'audio');
+      assert.match(described.variants[0].audio.file, /\.mp3$/);
+      assert.deepEqual(described.cost, { usd: 0.15 }, '45 s at 0.20 USD per minute');
+      const row = journal.at(-1);
+      assert.equal(journal.length, journalBefore + 1);
+      assert.deepEqual([row.type, row.model, row.cost, row.billing, row.user], ['music', 'elevenlabs/music_v2_5', 0.15, 'Schaetzung (Dauer)', 'tester']);
+      assert.equal(row.assetId, described.variants[0].audio.assetId);
+      const ledgerEntry = (await store.readLedger(sessionId)).find((entry) => entry.id === described.variants[0].audio.assetId);
+      assert.deepEqual([ledgerEntry.kind, ledgerEntry.model, ledgerEntry.cost, ledgerEntry.costEstimated], ['audio', 'elevenlabs/music_v2_5', 0.15, true]);
+      withEnv('ELEVENLABS_MUSIC_USD_PER_MIN', '0.6');
+      assert.deepEqual((await execute(registry, 'audio.music', makeCtx(sessionId), { prompt: text('x') }, { length: 30, model: 'music_v1' })).cost, { usd: 0.3 });
+      assert.equal(composed[1].modelId, 'music_v1');
+      assert.equal(composed[1].instrumental, false);
+      withEnv('ELEVENLABS_MUSIC_USD_PER_MIN', undefined);
+
+      // plan mode: the plan text becomes the composition plan of the model, the length comes from the sections
+      const planText = '+ indie pop, warm female vocals\n- autotune\n\n[Verse 1 | 20 s]\n+ soft guitar\nFirst line\nSecond line\n\n[Chorus | 0:15]\nLa la la';
+      const planned1 = await execute(registry, 'audio.music', makeCtx(sessionId), { plan: text(planText), prompt: text('ignored') }, { length: 999, instrumental: true });
+      assert.deepEqual(Object.keys(composed[2]).sort(), ['compositionPlan', 'modelId'], 'no prompt, length or instrumental next to a plan');
+      assert.deepEqual(composed[2].compositionPlan, {
+        chunks: [
+          { text: '[Verse 1]\nFirst line\nSecond line', duration_ms: 20000, positive_styles: ['indie pop', 'warm female vocals', 'soft guitar'], negative_styles: ['autotune'] },
+          { text: '[Chorus]\nLa la la', duration_ms: 15000, positive_styles: [], negative_styles: [] }
+        ]
+      });
+      assert.deepEqual(planned1.cost, { usd: 0.116667 }, '35 s from the sections');
+      await execute(registry, 'audio.music', makeCtx(sessionId), { plan: text(planText) }, { model: 'music_v1' });
+      assert.deepEqual(composed[3].compositionPlan.positive_global_styles, ['indie pop', 'warm female vocals']);
+      assert.equal(composed[3].compositionPlan.sections[0].section_name, 'Verse 1');
+      assert.equal(composed[3].modelId, 'music_v1');
+      // a bad plan at run time stops before ElevenLabs is called, with the code, the line and the values for the text
+      const calls = composed.length;
+      const badRun = await execute(registry, 'audio.music', makeCtx(sessionId), { plan: text('[Intro | 2 s]\nla') }).catch((error) => error);
+      assert.equal(badRun.code, 'MUSIC_PLAN_DURATION_RANGE');
+      assert.equal(badRun.data.line, 1);
+      assert.match(badRun.message, /^Line 1:/);
+      assert.equal(composed.length, calls);
+      await assert.rejects(execute(registry, 'audio.music', makeCtx(sessionId), {}), (error) => error.code === 'MUSIC_SOURCE_MISSING');
+
+      // length like the video: rounded up, between 3 and 600 s
+      const ctxMatch = makeCtx(sessionId);
+      let duration = 12.2;
+      patch(ffmpeg, 'binaries', () => ({ ffmpeg: '/x/ffmpeg', ffprobe: '/x/ffprobe', available: true }));
+      patch(ffmpeg, 'probeVideo', async () => ({ duration, video: { width: 1280, height: 720 } }));
+      const matched = await execute(registry, 'audio.music', ctxMatch, { prompt: text('upbeat'), match: video1 }, { length: 99 });
+      assert.equal(composed.at(-1).lengthMs, 13000);
+      assert.deepEqual(matched.cost, { usd: 0.043333 });
+      assert.ok(ctxMatch.logs.some((line) => /13 s/.test(line)));
+      duration = 1.5;
+      await execute(registry, 'audio.music', makeCtx(sessionId), { prompt: text('upbeat'), match: video1 });
+      assert.equal(composed.at(-1).lengthMs, 3000, 'at least 3 s');
+      duration = 700;
+      await execute(registry, 'audio.music', makeCtx(sessionId), { prompt: text('upbeat'), match: video1 });
+      assert.equal(composed.at(-1).lengthMs, 600000, 'at most 600 s');
+      duration = 0;
+      await assert.rejects(execute(registry, 'audio.music', makeCtx(sessionId), { prompt: text('upbeat'), match: video1 }), /length of the video/);
+      // a plan wins over the video
+      const calls2 = composed.length;
+      await execute(registry, 'audio.music', makeCtx(sessionId), { plan: text(planText), match: video1 });
+      assert.equal(composed.length, calls2 + 1);
+      assert.ok(composed.at(-1).compositionPlan, 'the plan, not the video');
+
+      // validation: something to make music from, a plan in the field is checked with its line, a plan wins (warning)
+      const ports = (connected = []) => Object.fromEntries(['prompt', 'plan', 'match'].map((id) => [id, { connected: connected.includes(id), count: connected.includes(id) ? 1 : 0 }]));
+      const issues = (params, connected) => issuesOf(registry, 'audio.music', params, ports(connected));
+      assert.deepEqual(issues({}, []).map((i) => i.code), ['MUSIC_SOURCE_MISSING']);
+      assert.deepEqual(issues({ prompt: 'x' }, []), []);
+      assert.deepEqual(issues({}, ['prompt']), []);
+      assert.deepEqual(issues({}, ['plan']), []);
+      assert.deepEqual(issues({ plan: planText }, []), []);
+      const lineIssue = issues({ plan: '[Verse | 20 s]\nok\n[Chorus | 400 s]' }, [])[0];
+      assert.deepEqual([lineIssue.code, lineIssue.level], ['MUSIC_PLAN_DURATION_RANGE', 'error']);
+      assert.match(lineIssue.message, /Line 3/);
+      assert.equal(issues({ plan: 'First\n[Verse | 20 s]' }, [])[0].code, 'MUSIC_PLAN_TEXT_OUTSIDE');
+      const warned = issues({ prompt: 'x', instrumental: true }, ['plan']);
+      assert.deepEqual(warned.map((i) => [i.code, i.level]), [['MUSIC_PLAN_WINS', 'warning']]);
+      assert.deepEqual(issues({ prompt: 'x' }, ['match']), [], 'a video without a plan is fine');
+      assert.deepEqual(issues({ prompt: 'x' }, ['plan', 'match']).map((i) => i.code), ['MUSIC_PLAN_WINS']);
+      // a description next to a plan is ignored, and the node says so (field or connection, plan in the field or connected)
+      const bothInFields = issues({ prompt: 'calm lofi', plan: planText }, []);
+      assert.deepEqual(bothInFields.map((i) => [i.code, i.level]), [['MUSIC_PLAN_WINS', 'warning']]);
+      assert.match(bothInFields[0].message, /description/);
+      assert.deepEqual(issues({ plan: planText }, []), [], 'a plan alone: no warning');
+      assert.deepEqual(issues({ prompt: 'calm lofi' }, ['plan']).map((i) => i.code), ['MUSIC_PLAN_WINS']);
+      assert.deepEqual(issues({}, ['prompt', 'plan']).map((i) => i.code), ['MUSIC_PLAN_WINS'], 'a connected description, too');
+      // the limits of the chunk models are checked in the node, with the line number
+      const thirty = `[Verse | 20 s]\n${Array(30).fill('la').join('\n')}`;
+      const chunkIssue = issues({ plan: thirty, model: 'music_v2_5' }, [])[0];
+      assert.deepEqual([chunkIssue.code, chunkIssue.level], ['MUSIC_PLAN_LINES_MAX_CHUNK', 'error']);
+      assert.match(chunkIssue.message, /Line 1/);
+      assert.deepEqual(issues({ plan: thirty, model: 'music_v1' }, []), [], 'music_v1: 30 song lines are fine');
+      assert.equal(issues({ plan: '[| 10 s]\n\\[Intro]\nla', model: 'music_v2' }, [])[0].code, 'MUSIC_PLAN_NAME_NEEDED');
+
+      // estimates: from the length, from a plan in the field; unknown (never 0) when the length arrives through a connection
+      const estimate = (params, connected = []) => music.cost.estimate(registry.normalizeParams(music, params), { connected: new Set(connected) });
+      assert.equal(estimate({ prompt: 'x' }), 0.1, '30 s');
+      assert.equal(estimate({ length: 600 }), 2);
+      assert.equal(estimate({ length: 90 }), 0.3);
+      assert.equal(estimate({ plan: planText, length: 600 }), 0.116667, 'the plan in the field decides');
+      assert.equal(estimate({ plan: '[Verse | 2 s]' }), null, 'a plan that is not valid has no price');
+      assert.equal(estimate({ length: 90 }, ['match']), null);
+      assert.equal(estimate({ length: 90 }, ['plan']), null);
+      assert.equal(estimate({ plan: planText }, ['plan']), null);
+      withEnv('ELEVENLABS_MUSIC_USD_PER_MIN', '0.15');
+      assert.equal(estimate({ length: 60 }), 0.15);
+      withEnv('ELEVENLABS_MUSIC_USD_PER_MIN', 'abc');
+      assert.equal(estimate({ length: 60 }), 0.2, 'a bad value falls back to the default');
+      withEnv('ELEVENLABS_MUSIC_USD_PER_MIN', undefined);
+
+      // the song plan: a v2.5 answer (chunks) and a v1 answer (sections) both become the readable text; nothing is booked
+      planAnswer = {
+        chunks: [
+          { text: '[Verse 1]\nWe ride the morning train', duration_ms: 20000, positive_styles: ['indie pop', 'warm vocals'], negative_styles: ['autotune'] },
+          { text: '[Chorus]\nTo the sea, to the sea\n{guitar solo}', duration_ms: 25000, positive_styles: ['uplifting'] }
+        ]
+      };
+      const journalCount = journal.length;
+      const song = await execute(registry, 'audio.music_plan', makeCtx(sessionId), { prompt: text('summer song about a train to the sea') }, { length: 45 });
+      assert.deepEqual(planned[0], { prompt: 'summer song about a train to the sea', lengthMs: 45000, modelId: 'music_v2_5' });
+      assert.equal(song.variants[0].plan.type, 'text');
+      assert.equal(song.variants[0].plan.value, '[Verse 1 | 20 s]\n+ indie pop, warm vocals\n- autotune\nWe ride the morning train\n\n[Chorus | 25 s]\n+ uplifting\nTo the sea, to the sea\n{guitar solo}');
+      assert.equal(song.cost, undefined, 'free of credits');
+      assert.equal(journal.length, journalCount, 'nothing is booked for a plan');
+      // the text goes straight into the music node and gives the same plan back
+      assert.equal(musicPlan.stringify(musicPlan.parse(song.variants[0].plan.value).plan), song.variants[0].plan.value);
+      planAnswer = {
+        positive_global_styles: ['rock', 'energetic'],
+        negative_global_styles: [],
+        sections: [{ section_name: 'Intro', positive_local_styles: [], negative_local_styles: ['vocals'], duration_ms: 8000, lines: [] }]
+      };
+      const v1 = await execute(registry, 'audio.music_plan', makeCtx(sessionId), { prompt: text('rock') }, { model: 'music_v1' });
+      assert.equal(v1.variants[0].plan.value, '+ rock, energetic\n\n[Intro | 8 s]\n- vocals');
+      assert.equal(planned.at(-1).modelId, 'music_v1');
+      planAnswer = { nothing: true };
+      await assert.rejects(execute(registry, 'audio.music_plan', makeCtx(sessionId), { prompt: text('x') }), (error) => error.code === 'MUSIC_PLAN_SHAPE');
+
+      // the tools are for the node view only
+      const names = tools.toolDefinitions().map((definition) => definition.function.name);
+      assert.ok(!names.includes('generate_music') && !names.includes('plan_music'));
+      const composedBefore = composed.length;
+      for (const name of ['generate_music', 'plan_music']) {
+        await assert.rejects(tools.executeTool({ sessionId, config: {}, user: 'tester', emit() {} }, name, { prompt: 'x', length_seconds: 30 }), /nur in der Node-Ansicht/);
+      }
+      assert.equal(composed.length, composedBefore, 'the rejected calls reached ElevenLabs never');
     }
 
     /* ----- video.concat (real ffmpeg when available) ----- */
@@ -2341,7 +2562,14 @@ async function main() {
         const slowEngine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { jobPollMs: 20, prepareTimeoutMs: 40 } });
         patch(higgsfield, 'mcpCall', () => new Promise(() => {}));
         const started = Date.now();
-        assert.equal((await slowEngine.plan(limited.id, { mode: 'all' })).nodes.v1.status, 'stale');
+        // The timer of the preparation is unref'd and the answer never comes: without a handle of its own the process would
+        // end here, quietly and with exit code 0 (and every check below would not run).
+        const keepAlive = setInterval(() => {}, 20);
+        try {
+          assert.equal((await slowEngine.plan(limited.id, { mode: 'all' })).nodes.v1.status, 'stale');
+        } finally {
+          clearInterval(keepAlive);
+        }
         assert.ok(Date.now() - started < 2000, 'a slow catalogue does not hold the plan');
         patch(higgsfield, 'mcpCall', async (name, args) => {
           calls.push({ name, args });

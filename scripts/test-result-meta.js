@@ -155,8 +155,9 @@ async function runServer(iso) {
   const speech = ledger.find((entry) => entry.kind === 'audio');
   assert.equal(speech.model, 'elevenlabs/eleven_multilingual_v2');
   assert.equal(spoken.events.find((event) => event.type === 'asset').asset.modelName, 'ElevenLabs Multilingual v2');
-  assert.equal(speech.costEstimated, undefined, 'no budget booking, no price, so nothing to mark');
-  // a participant pays an estimate per character: the card must not show it as the price the provider charged
+  // the estimate per character is booked for everybody (internal people included): the card must not show it as the price the provider charged
+  assert.equal(speech.costEstimated, true);
+  assert.ok(speech.cost > 0);
   const paid = await call(chat.id, 'generate_speech', { text: 'Mit Budget.' }, { budgetGrant: { applies: true } });
   const paidEntry = (await store.readLedger(chat.id)).find((entry) => entry.id === paid.asset.id);
   assert.ok(paidEntry.cost > 0);

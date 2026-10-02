@@ -183,7 +183,7 @@ async function main() {
       assert.ok(defaultRegistry.CATEGORIES.includes('fal'));
       assert.ok(defaultRegistry.publicRegistry().categories.includes('fal'));
       for (const type of types) assert.ok(defaultRegistry.get(type), `${type} in the default registry`);
-      assert.equal(defaultRegistry.list().length, 72, '62 + 9 fal.ai node types + the Prompt node');
+      assert.equal(defaultRegistry.list().length, 74, '62 + 9 fal.ai node types + the Prompt node + the two music nodes');
       assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 9);
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });

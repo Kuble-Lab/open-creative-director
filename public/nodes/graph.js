@@ -1399,6 +1399,77 @@
     return { graph: cleared, node: added.node, edge: linked.edge };
   }
 
+  /* ---------- take a text result over as a Prompt node ("Use as text") ---------- */
+
+  // Why the text result at output port `portId` cannot become a Prompt node, or null when it can. `text` is the result.
+  function adoptTextIssue(reg, graph, nodeId, portId, text) {
+    if (!reg.types.has(PROMPT_TYPE)) return 'no_prompt_type';
+    const node = getNode(graph, nodeId);
+    if (!node) return 'unknown_node';
+    const port = findPort(reg, node, 'out', portId);
+    if (!port || port.hidden) return 'unknown_port';
+    const parsed = parseType(port.type);
+    if (!parsed || parsed.base !== 'text' || parsed.list) return 'not_text';
+    if (typeof text !== 'string' || !text.trim()) return 'empty';
+    return null;
+  }
+
+  // Puts the text result of an output into a new Prompt node below the node and moves the connections that leave this
+  // output to the new node (same targets, same order, same edge ids): the person edits the text there and what used the
+  // result now reads the edited text. The output itself keeps no connection, nothing is run. Returns
+  // { graph, node, edges } (edges = ids of the moved connections) or { graph, error: { reason } }.
+  // One call = one undo step for the caller. options: { newNodeId, position, sizes, reserved }.
+  function adoptTextAsPrompt(reg, graph, nodeId, portId, text, options = {}) {
+    const reason = adoptTextIssue(reg, graph, nodeId, portId, text);
+    if (reason) return { graph, error: { reason } };
+    const source = getNode(graph, nodeId);
+    let position = options.position && Number.isFinite(options.position.x) && Number.isFinite(options.position.y) ? { x: options.position.x, y: options.position.y } : null;
+    if (!position) {
+      const x = snap(source.x, 8);
+      let y = snap(source.y + nodeRect(source, options.sizes).h + 48, 8);
+      // Step down while the spot overlaps another card or a note (bounded, the canvas can always be tidied up).
+      for (let guard = 0; guard < 40; guard += 1) {
+        const rect = { x, y, w: PROMPT_NODE_WIDTH, h: CONVERT_NODE_HEIGHT };
+        const clash = graph.nodes.some((other) => rectsIntersect(rect, nodeRect(other, options.sizes))) || (graph.notes || []).some((note) => rectsIntersect(rect, { x: note.x, y: note.y, w: note.w, h: note.h }));
+        if (!clash) break;
+        y += 48;
+      }
+      position = { x, y };
+    }
+    const added = addNode(reg, graph, PROMPT_TYPE, { id: options.newNodeId, x: position.x, y: position.y, params: { prompt: text }, reserved: options.reserved });
+    const promptPort = portsFor(reg, added.node).outputs.find((port) => !port.hidden && port.type === 'text');
+    if (!promptPort) return { graph, error: { reason: 'no_prompt_type' } };
+    const moved = [];
+    const edges = added.graph.edges.map((edge) => {
+      if (edge.from.node !== nodeId || edge.from.port !== portId) return edge;
+      moved.push(edge.id);
+      return { ...edge, from: { node: added.node.id, port: promptPort.id } };
+    });
+    return { graph: { ...added.graph, edges }, node: added.node, edges: moved };
+  }
+
+  // Design App inputs ({ node, param }) whose node cannot reach any app output: changing them changes nothing in what the
+  // app returns. Empty while the app has no output (nothing to reach yet) or nothing to check.
+  function appInputsWithoutOutput(graph, app) {
+    const inputs = Array.isArray(app?.inputs) ? app.inputs : [];
+    const outputs = new Set((Array.isArray(app?.outputs) ? app.outputs : []).map((entry) => entry.node).filter((id) => getNode(graph, id)));
+    if (!inputs.length || !outputs.size) return [];
+    const cache = new Map();
+    return inputs.filter((entry) => {
+      if (!getNode(graph, entry.node)) return false;
+      if (outputs.has(entry.node)) return false;
+      if (!cache.has(entry.node)) cache.set(entry.node, descendants(graph, [entry.node]));
+      return ![...outputs].some((id) => cache.get(entry.node).has(id));
+    });
+  }
+
+  // The app inputs that reached an app output in `before` and no longer do in `after` (for example after "Use as text":
+  // the new Prompt node drives the target, so the nodes that fed the source are cut off).
+  function appInputsCutOff(before, after, app) {
+    const already = new Set(appInputsWithoutOutput(before, app).map((entry) => `${entry.node}\u0000${entry.param}`));
+    return appInputsWithoutOutput(after, app).filter((entry) => !already.has(`${entry.node}\u0000${entry.param}`));
+  }
+
   /* ---------- Motion graphics: instruction in the HTML field -> Prompt + Motion HTML writer ---------- */
 
   // Why the HTML field of a Motion graphics node cannot be converted, or null when it can. Only an unconnected HTML
@@ -1802,12 +1873,15 @@
     };
   }
 
-  // Conditional param visibility (registry showIf): { param, equals }, { port, connected } or { ports: [...], connected }
-  // (connected false = none of the ports is connected, true = at least one).
+  // Conditional param visibility (registry showIf): { param, equals }, { param, empty } (empty true = the field holds no text),
+  // { port, connected } or { ports: [...], connected } (connected false = none of the ports is connected, true = at
+  // least one), and { all: [...] } when several of these must hold.
   function isVisible(showIf, node, def, connectedPorts) {
     if (!showIf) return true;
+    if (Array.isArray(showIf.all)) return showIf.all.every((item) => isVisible(item, node, def, connectedPorts));
     if (showIf.param !== undefined) {
       const params = effectiveParams(def, node);
+      if (showIf.empty !== undefined) return !String(params[showIf.param] ?? '').trim() === Boolean(showIf.empty);
       return String(params[showIf.param]) === String(showIf.equals);
     }
     if (showIf.port !== undefined) {
@@ -1907,6 +1981,10 @@
     extractTextParamIssue,
     canExtractTextParam,
     extractTextParamToNode,
+    adoptTextIssue,
+    adoptTextAsPrompt,
+    appInputsWithoutOutput,
+    appInputsCutOff,
     motionHtmlConversionIssue,
     canConvertMotionHtml,
     convertMotionHtmlToWriter,

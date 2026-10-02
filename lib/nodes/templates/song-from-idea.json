@@ -1,0 +1,68 @@
+{
+  "id": "song-from-idea",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Song from an idea",
+  "description": "Turn an idea into a song: ElevenLabs writes a song text with verses and chorus, then makes the music from it. You can edit the text before the music is made.",
+  "requires": ["elevenlabs"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.prompt", "typeVersion": 1, "x": 80, "y": 120, "title": "Idea", "params": { "prompt": "A warm summer song about a train ride to the sea, sung in English" } },
+      { "id": "n2", "type": "audio.music_plan", "typeVersion": 1, "x": 520, "y": 120, "title": "Song text", "params": { "prompt": "", "length": 60, "model": "music_v2_5" } },
+      { "id": "n3", "type": "audio.music", "typeVersion": 1, "x": 960, "y": 120, "title": "Music", "params": { "prompt": "", "plan": "", "length": 30, "instrumental": false, "model": "music_v2_5" } },
+      { "id": "n4", "type": "output.result", "typeVersion": 1, "x": 1400, "y": 160, "params": { "label": "Song" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "prompt" }, "to": { "node": "n2", "port": "prompt" } },
+      { "id": "e2", "from": { "node": "n2", "port": "plan" }, "to": { "node": "n3", "port": "plan" } },
+      { "id": "e3", "from": { "node": "n3", "port": "audio" }, "to": { "node": "n4", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 80, "y": 520, "w": 400, "h": 220, "text": "Run Song text first and read the result. To change the text, open the menu of Song text (right click) and choose Use as text: a Prompt node with the text appears and takes over the connection to Music. Edit it there, then run Music (the Design App then returns your edited text: the idea and the length stop working). The song text is free of credits, the music costs money by the minute and needs a paid ElevenLabs plan, so the run asks for confirmation first. Write the idea in the language that should be sung and leave out artist names." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Song from an idea",
+    "description": "Write your idea and choose how long the song text should be. You get a finished song.",
+    "inputs": [
+      { "node": "n1", "param": "prompt", "label": "Idea" },
+      { "node": "n2", "param": "length", "label": "Length (seconds)" }
+    ],
+    "outputs": [
+      { "node": "n4", "label": "Song" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Song aus einer Idee",
+      "description": "Mache aus einer Idee einen Song: ElevenLabs schreibt einen Songtext mit Strophen und Refrain und erzeugt daraus die Musik. Den Text kannst du vor dem Erzeugen bearbeiten.",
+      "node.n1": "Idee",
+      "node.n2": "Songtext",
+      "node.n3": "Musik",
+      "param.n1.prompt": "Ein warmes Sommerlied über eine Zugfahrt ans Meer, auf Deutsch gesungen",
+      "note.t1": "Führe zuerst «Songtext» aus und lies das Ergebnis. Um den Text zu ändern, öffne das Menü von «Songtext» (Rechtsklick) und wähle «Als Text übernehmen»: Ein Prompt-Node mit dem Text erscheint und übernimmt die Verbindung zu «Musik». Bearbeite ihn dort und führe dann «Musik» aus (die Design App liefert dann deinen bearbeiteten Text: Idee und Länge wirken nicht mehr). Der Songtext kostet keine Credits, die Musik kostet pro Minute Geld und braucht ein bezahltes ElevenLabs-Abo, der Lauf fragt deshalb vorher nach der Bestätigung. Schreibe die Idee in der Sprache, die gesungen werden soll, und lass Künstlernamen weg.",
+      "app.title": "Song aus einer Idee",
+      "app.description": "Schreibe deine Idee und wähle, wie lang der Songtext sein soll. Du erhältst einen fertigen Song.",
+      "app.input.n1.prompt": "Idee",
+      "app.input.n2.length": "Länge (Sekunden)",
+      "app.output.n4": "Song"
+    },
+    "es": {
+      "name": "Canción a partir de una idea",
+      "description": "Convierte una idea en una canción: ElevenLabs escribe una letra con estrofas y estribillo y crea la música a partir de ella. Puedes editar el texto antes de crear la música.",
+      "node.n1": "Idea",
+      "node.n2": "Letra",
+      "node.n3": "Música",
+      "param.n1.prompt": "Una canción veraniega y cálida sobre un viaje en tren hasta el mar, cantada en español",
+      "note.t1": "Ejecuta primero «Letra» y lee el resultado. Para cambiar el texto, abre el menú de «Letra» (clic derecho) y elige «Usar como texto»: aparece un nodo Prompt con el texto, que asume la conexión con «Música». Edítalo allí y ejecuta después «Música» (la Design App devuelve entonces tu texto editado: la idea y la duración dejan de tener efecto). La letra no cuesta créditos; la música cuesta dinero por minuto y requiere un plan de pago de ElevenLabs, por eso la ejecución pide confirmación antes de empezar. Escribe la idea en el idioma que se debe cantar y deja fuera los nombres de artistas.",
+      "app.title": "Canción a partir de una idea",
+      "app.description": "Escribe tu idea y elige la duración de la letra. Recibes una canción terminada.",
+      "app.input.n1.prompt": "Idea",
+      "app.input.n2.length": "Duración (segundos)",
+      "app.output.n4": "Canción"
+    }
+  }
+}

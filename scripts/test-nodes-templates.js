@@ -36,10 +36,12 @@ const EXPECTED = [
   'motion-title',
   'photo-slideshow',
   'series-shots',
+  'song-from-idea',
   'storyboard-clips',
   'talking-portrait',
   'text-on-video',
-  'video-to-post'
+  'video-to-post',
+  'video-with-music'
 ];
 // the ones that work without Higgsfield (credits): what participants and guests get
 const FOR_PARTICIPANTS = EXPECTED.filter((id) => id !== 'dub-clip');
@@ -50,7 +52,7 @@ function requirementsOf(type) {
   const keys = [];
   if (type.startsWith('llm.')) keys.push('openrouter');
   else if (['image.generate', 'image.edit', 'image.relight', 'video.seedance'].includes(type)) keys.push('openrouter');
-  else if (type === 'audio.tts') keys.push('elevenlabs');
+  else if (['audio.tts', 'audio.music', 'audio.music_plan'].includes(type)) keys.push('elevenlabs');
   else if (type.startsWith('fal.')) keys.push('fal');
   else if (type === 'video.motion_graphics') keys.push('rendernode');
   else if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) keys.push('higgsfield');
@@ -152,6 +154,32 @@ async function main() {
     assert.equal(templates.resolveTemplate('talking-portrait', { lang: 'de' }).name, 'Sprechendes Porträt (H3 Max Lip Sync)');
     assert.equal(templates.resolveTemplate('talking-portrait', { lang: 'en' }).name, 'Talking portrait (H3 Max lip sync)');
     assert.ok(/Retrato parlante/.test(templates.resolveTemplate('talking-portrait', { lang: 'es' }).name));
+    // video-with-music: the video sets the length of the music, the music is mixed quietly under the original sound
+    assert.deepEqual(types('video-with-music'), ['input.video', 'input.prompt', 'audio.music', 'video.merge_audio', 'output.result']);
+    assert.deepEqual(byId['video-with-music'].requires, ['elevenlabs', 'ffmpeg']);
+    assert.deepEqual(
+      byId['video-with-music'].graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`),
+      ['n2.prompt>n3.prompt', 'n1.video>n3.match', 'n1.video>n4.video', 'n3.audio>n4.audio', 'n4.video>n5.inputs']
+    );
+    const mix = byId['video-with-music'].graph.nodes.find((node) => node.type === 'video.merge_audio').params;
+    assert.equal(mix.mode, 'mix');
+    assert.ok(mix.audio_volume < mix.video_volume, 'the music is quieter than the original sound');
+    assert.deepEqual(byId['video-with-music'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.prompt', 'n3.instrumental', 'n4.audio_volume']);
+    assert.equal(templates.resolveTemplate('video-with-music', { lang: 'de' }).name, 'Video mit Musik');
+    // song-from-idea: idea -> song text -> music; the song text is the plan of the music node
+    assert.deepEqual(types('song-from-idea'), ['input.prompt', 'audio.music_plan', 'audio.music', 'output.result']);
+    assert.deepEqual(byId['song-from-idea'].requires, ['elevenlabs']);
+    assert.deepEqual(
+      byId['song-from-idea'].graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`),
+      ['n1.prompt>n2.prompt', 'n2.plan>n3.plan', 'n3.audio>n4.inputs']
+    );
+    assert.deepEqual(byId['song-from-idea'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n2.length']);
+    assert.equal(templates.resolveTemplate('song-from-idea', { lang: 'es' }).name, 'Canción a partir de una idea');
+    // the note of the song template names the command by its words in every language
+    const songNote = (lang) => (lang === 'en' ? byId['song-from-idea'].graph.notes[0].text : byId['song-from-idea'].i18n[lang]['note.t1']);
+    assert.match(songNote('en'), /Use as text/);
+    assert.match(songNote('de'), /Als Text übernehmen/);
+    assert.match(songNote('es'), /Usar como texto/);
     // frame-chain: the clip edges into concat are in playback order
     const concatEdges = byId['frame-chain'].graph.edges.filter((edge) => edge.to.port === 'clips');
     assert.deepEqual(concatEdges.map((edge) => edge.from.node), ['n2', 'n5']);
@@ -200,7 +228,10 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea'].includes(item.id)).every((item) => item.available));
+      // the music templates need the ElevenLabs key, and ffmpeg where the video is mixed
+      assert.deepEqual(noAudio.find((item) => item.id === 'song-from-idea').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
+      assert.deepEqual(noAudio.find((item) => item.id === 'video-with-music').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'talking-portrait').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       // Higgsfield is a requirement of its own: a template with hf.* nodes is available exactly when Higgsfield is connected
       const noHiggsfield = templates.listTemplates({ lang: 'en', checks: { ...allOn, higgsfield: () => 'Higgsfield is not connected' } });
@@ -316,6 +347,9 @@ async function main() {
       }
       assert.deepEqual(summary['image-to-ad'].cost.providers, ['openrouter', 'elevenlabs']);
       assert.deepEqual(summary['dub-clip'].cost.providers, ['higgsfield']);
+      // music: the length comes through a connection (the video, the song text), so the price is unknown, never 0
+      assert.deepEqual(summary['video-with-music'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 1, providers: ['elevenlabs'] });
+      assert.deepEqual(summary['song-from-idea'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 1, providers: ['elevenlabs'] });
 
       const priced = createRegistry();
       nodesBasic.registerAll(priced);

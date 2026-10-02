@@ -167,7 +167,7 @@ Key decision: **one hidden backing session per workflow.** It makes every existi
 
 ## 5. Node type catalogue
 
-Notation: ports `id:type` (`[]` = list, `*` = accepts multiple edges, `?` = optional). Params list `id (kind, default)`. "Backing" names the existing file and function the executor adapts. Cost: `usd` = actual cost journaled from provider usage; `credits` = Higgsfield credits (journal records 0); `local` = no provider cost.
+Notation: ports `id:type` (`[]` = list, `*` = accepts multiple edges, `?` = optional). Params list `id (kind, default)`. "Backing" names the existing file and function the executor adapts. Cost: `usd` = actual cost journaled from provider usage; `credits` = Higgsfield credits (journal records 0); `local` = no provider cost; `free` = a provider is called but charges nothing (`audio.music_plan`).
 
 Availability predicates reuse existing checks: `or.hasKey()`, `elevenlabs.hasKey()`, `higgsfield.status().connected`, `rendernode.enabled()`, `ffmpeg.binaries().available`, `publicBaseUrl()` (from `lib/config.js`), `chatgpt.status().connected`.
 
@@ -230,7 +230,9 @@ Notes and groups are not nodes; they are `graph.notes[]` / `graph.groups[]` (§7
 
 | ID | Ports | Params | Backing | Cost |
 | --- | --- | --- | --- | --- |
-| `audio.tts` | `text?:text` → `audio:audio` | `text` (≤2500 chars), `voice_id` (options source `elevenlabs-voices`, default `21m00Tcm4TlvDq8ikWAM`), `model_id` (default `eleven_multilingual_v2`) | `executeTool('generate_speech', {text, voice_id, model_id})` | ElevenLabs plan (not journaled today) |
+| `audio.tts` | `text?:text` → `audio:audio` | `text` (≤2500 chars), `voice_id` (options source `elevenlabs-voices`, default `21m00Tcm4TlvDq8ikWAM`), `model_id` (default `eleven_multilingual_v2`) | `executeTool('generate_speech', {text, voice_id, model_id})` | usd (paid: estimate by character, `ELEVENLABS_USD_PER_1K_CHARS`; unknown while the text comes through a connection) |
+| `audio.music` | `prompt?:text`, `plan?:text`, `match?:video` → `audio:audio` | `prompt` (text), `plan` (text, song text with structure), `length` (3–600 s, default 30), `instrumental` (off), `model` (`music_v2_5` default, `music_v2`, `music_v1`) | `executeTool('generate_music', {prompt, length_seconds, instrumental, model_id})` or `{plan_text, model_id}`. A plan (field or connection) wins: the length comes from its sections, the description, `length`, `instrumental` and `match` have no effect (warning `MUSIC_PLAN_WINS`). For `music_v2` and `music_v2_5` a named section has at most 29 song lines (the `[Name]` line counts as one of the 30 of a chunk text) and a nameless section must not start with a `[` line. The wait for a song is 90 s plus its length, at most 300 s (fetch of Node ends a request without an answer after 300 s by itself); longer waits end with `ELEVENLABS_TIMEOUT`. Without a plan `match` sets the length (ffprobe, rounded up, 3–600 s). | usd (paid: estimate by the minute, `ELEVENLABS_MUSIC_USD_PER_MIN` default 0.20; unknown while plan or video come through a connection) |
+| `audio.music_plan` | `prompt:text` → `plan:text` | `prompt`, `length` (3–600 s, default 60), `model` | `executeTool('plan_music', {prompt, length_seconds, model_id})`; the answer is turned into the readable plan text (`public/nodes/music-plan.js`) | `free` (ElevenLabs is called, no credits; not `local`) |
 
 ### 5.7 Editing — local ffmpeg / resvg (WP4)
 
@@ -461,7 +463,7 @@ register({
 });
 ```
 
-Param kinds: `text`, `textarea`, `code` (monospace, for HTML), `number`, `integer`, `slider` (`min`,`max`,`step`), `boolean`, `select` (`options` static or `optionsSource`: `brain-models`, `elevenlabs-voices`, `higgsfield-image-models`, `higgsfield-video-models`), `color`, `asset` (media picker), `assets` (multi), `tags` (string array). Optional `showIf: { param|port, equals|connected }` for conditional UI (e.g. hide `aspect_ratio` on Seedance when `first_frame` is connected).
+Param kinds: `text`, `textarea`, `code` (monospace, for HTML), `number`, `integer`, `slider` (`min`,`max`,`step`), `boolean`, `select` (`options` static or `optionsSource`: `brain-models`, `elevenlabs-voices`, `higgsfield-image-models`, `higgsfield-video-models`), `color`, `asset` (media picker), `assets` (multi), `tags` (string array). Optional `showIf` for conditional UI: `{ param, equals }`, `{ param, empty }` (the field holds no text), `{ port, connected }`, `{ ports: [...], connected }` and `{ all: [...] }` when several must hold (e.g. hide `aspect_ratio` on Seedance when `first_frame` is connected; hide `length` of `audio.music` while a plan, in the field or through a connection, or a video sets the length).
 
 `publicDescriptor` strips `execute`/`validate`/`estimate` functions and adds `available: true | reason`. The client auto-generates node cards and the inspector from this descriptor; most nodes need no client code.
 
@@ -668,7 +670,7 @@ A single state object in `main.js`: `{ registry, workflow, rev, results, selecti
 - Dragging from a connected input port detaches that edge (re-route or drop to delete).
 - Double-click canvas / `Tab` / `/` → palette. Double-click node title → rename.
 - Drag files from the desktop onto the canvas → creates the matching input node and uploads.
-- Right-click node → context menu (run, run from here, duplicate, delete, send to chat, copy asset URL).
+- Right-click node → context menu (run, run from here, duplicate, delete, send to chat, copy asset URL). **Use as text** (WP30) is there for a node whose selected result has exactly one plain text (any category except inputs and outputs): `graph.adoptTextAsPrompt` puts the text into a new `input.prompt` below the node and moves the connections that leave this output to it (same targets, same order, same edge ids); one undo step, nothing runs, the new node is selected. With several text results (several text outputs, a list of texts) or an empty text the entry is shown disabled with the reason as a hint line; nodes without a text result do not show it. The inspector offers the same command next to Open / Download.
 
 ### 12.5 Keyboard shortcuts
 
@@ -740,6 +742,8 @@ JSON files in `lib/nodes/templates/<id>.json` (same format as export plus `id`, 
 | `frame-chain` | Continuous shots via last frame | Seedance t2v → extract_frame(last) → Seedance i2v → concat → output | openrouter, ffmpeg |
 | `motion-title` | Motion title over footage | text brief → llm.motion_html → video.motion_graphics (with video asset) → output | openrouter, rendernode |
 | `masked-edit` | Masked edit (approximate inpainting) | image + mask upload + prompt → image.edit → image.mask_apply → image.composite onto original → output | openrouter, ffmpeg |
+| `video-with-music` | Video with music | video + prompt → `audio.music` (`match` = the video, instrumental) → `video.merge_audio` (mix, music 0.3, original 1) → output. App: video, description, vocals off/on, volume of the music | elevenlabs, ffmpeg |
+| `song-from-idea` | Song from an idea | prompt → `audio.music_plan` → `audio.music` (`plan`) → output. App: idea, length of the song text. To edit the text, "Use as text" on the plan node | elevenlabs |
 
 ---
 
