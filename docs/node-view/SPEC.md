@@ -75,7 +75,7 @@ The node view is a new *front end over the existing generation stack*. It does n
 | Sticky notes, groups/frames | Now | Graph-level `notes[]` and `groups[]`. |
 | Autosave | Now | Debounced `PUT` with optimistic `rev`. |
 | Workflow list, rename, duplicate, delete | Now | Left drawer. |
-| Import/export (JSON) | Now | Versioned format §7. Export with bundled assets (ZIP) is **later** (needs asset packing + re-import mapping; `archiver`/`yauzl` already installed). |
+| Import/export (JSON, ZIP) | Now | Versioned format §7. Export with the input files as a ZIP and its import: §7.6. |
 | Templates | Now | Six starter workflows (§15). |
 | Real-time collaboration, comments on canvas | Later | Needs presence channel, conflict-free merge, comment store. |
 
@@ -415,7 +415,21 @@ Created with `store.createSession({ folder, kind: 'workflow', title: 'Workflow: 
 
 ### 7.5 Export / import
 
-`GET /api/workflows/:id/export` returns `{ format:'ocd.workflow', version:1, exportedAt, name, description, graph, app }` (no `id`, `sessionId`, `rev`, results). Media input nodes keep their `asset` reference but it is marked `missing` after import into another workflow; the node shows "re-upload". Import (`POST /api/workflows/import`) validates `format`, runs `migrations[version]` (none yet), rejects cycles and dangling edges, keeps unknown node types, and creates a new workflow + backing session. Max import size 2 MB.
+`GET /api/workflows/:id/export` returns `{ format:'ocd.workflow', version:1, exportedAt, name, description, graph, app }` (no `id`, `sessionId`, `rev`, results). Media input nodes keep their `asset` reference but it is marked `missing` after import into another workflow; the node shows "re-upload". Import (`POST /api/workflows/import`) validates `format`, runs `migrations[version]` (none yet), rejects cycles and dangling edges, keeps unknown node types, and creates a new workflow + backing session. Max import size 2 MB. The answer of the import carries `files` (§7.6): on the same server the files of the media inputs are copied again when the importing person may see their source.
+
+### 7.6 Workflows with files (ZIP)
+
+Implemented in `lib/nodes/workflow-archive.js` (plan, directory, checks, unpacking) and `lib/nodes/routes.js`.
+
+**Export.** `GET /api/workflows/:id/export-info` answers `{ fileCount, referenceCount, missingCount, totalBytes, estimatedZipBytes, limits: { maxZipBytes, maxFiles }, exceedsImportSize, exceedsImportFiles }` (same access as the JSON export). `GET /api/workflows/:id/export.zip` streams `<name>.ocd-workflow.zip`: `workflow.json` (the document of the JSON export plus `files`, the directory `[{ node, param: 'asset'|'assets', index?, path, type, name, size }]`; an input without a file has `missing: true` and no `path`) and `files/NNN-name.ext` (one entry per distinct input asset, stored without compression). Only the media inputs of the nodes are packed, never results; files that are missing, pending, not media or from another session stay `missing`.
+
+**Import.** `POST /api/workflows/import-zip?folder=&name=` with the raw ZIP as body (`Content-Type: application/zip`, `application/x-zip-compressed` or `application/octet-stream`; any other type, above all JSON, which the body parser of the app reads first, is refused with 415 `reason: CONTENT_TYPE` before a staging folder exists), streamed to a staging folder (`.import-zip-*` in the assets folder, always removed). Limits: ZIP 500 MB, each file 500 MB unpacked, all files together twice that, 200 files, `workflow.json` 2 MB, SVG 10 MB. The ZIP is checked completely first (names without `..` / absolute paths / backslashes, no links, no encryption, no duplicates, only entries named in the directory, the unpacked size counted while unpacking, types by the rules of an upload and matching the node they feed (a video does not go into an image node), a deflated file larger than 1 MB unpacked may not grow by more than 100 times, `workflow.json` validated as in the JSON import); only then the workflow is created (owner, team and folder as in the JSON import), the files are stored in its backing session (`assets.saveUploadFile`, SVG rasterised) and the nodes are linked. A failure after the workflow exists removes it again. Answer 201: `{ workflow, results, files }`.
+
+**Files message.** Every import answers `files: { code, total, imported, missing, message }`; `code` is `IMPORT_FILES_NONE` | `IMPORT_FILES_ALL` | `IMPORT_FILES_PARTIAL` | `IMPORT_FILES_MISSING`, `message` the German sentence ("3 von 4 Dateien übernommen, 1 fehlt.", `null` for `NONE`).
+
+**JSON import on the same server.** For every media reference the server checks the importing person (`requireSessionAccess` as in `import-asset`, never anything the file says): the source session must be visible to them, the asset must exist and be finished; then `assets.copyAsset` brings it into the new backing session. The file type must also fit the node (`input.image` takes images, `input.media_list` the type of its `kind`). Otherwise the reference stays `missing`.
+
+**Errors** (`{ error, code, reason?, params? }`, `error` is a German sentence, the client translates by `code` and `reason`): `TOO_LARGE` 413 (`reason`: `archive`, `file`, `unpacked`, `workflow`, `svg`; `params.limitBytes`, `params.limitMb`), `TOO_MANY_FILES` 413 (`params.maxFiles`), `INVALID_ARCHIVE` 400 (`reason`: `NOT_A_ZIP`, `NO_WORKFLOW_JSON`, `BAD_DIRECTORY`, `UNSAFE_PATH`, `LINK_ENTRY`, `DUPLICATE_ENTRY`, `UNLISTED_ENTRY`, `MISSING_ENTRY`, `SIZE_MISMATCH`, `CORRUPT_ENTRY`, `UNSUPPORTED_COMPRESSION`, `EMPTY_FILE`, `RATIO`; `params.path`), `INVALID_WORKFLOW` 400 (`reason`: `NOT_JSON`, `INVALID_DOCUMENT`; `params.detail`), `UNSUPPORTED_MEDIA` 415 (`reason`: `TYPE`, `MISMATCH`, `CONTENT_TYPE`, `UNREADABLE`; `params.path`), `IMPORT_FAILED` 500; plus the usual `NOT_FOUND` (project) and `INVALID_REQUEST`.
 
 ---
 
@@ -566,7 +580,10 @@ All routes live in `lib/nodes/routes.js` as `registerNodeRoutes(app, { runtime, 
 | DELETE | `/api/workflows/:id` | deletes folder + backing session; 409 while a run is active |
 | POST | `/api/workflows/:id/duplicate` | new workflow (graph + app, new backing session, no results) |
 | GET | `/api/workflows/:id/export` | JSON attachment `<name>.ocd-workflow.json` |
-| POST | `/api/workflows/import` | `{ document }` → 201 |
+| GET | `/api/workflows/:id/export-info` | Size figures for the ZIP export (§7.6) |
+| GET | `/api/workflows/:id/export.zip` | ZIP attachment `<name>.ocd-workflow.zip` with the input files (§7.6) |
+| POST | `/api/workflows/import` | `{ document }` → 201 `{ workflow, results, files }` |
+| POST | `/api/workflows/import-zip` | Raw ZIP body, `?folder=&name=` → 201 `{ workflow, results, files }` (§7.6) |
 | GET | `/api/workflow-templates` | `[{ id, name, description, requires: ['openrouter','ffmpeg',…], available }]` |
 
 ### 11.3 Assets
@@ -622,7 +639,8 @@ Client uses `EventSource` (auto-reconnect); after a reconnect it calls `GET /api
 | `public/nodes/node-ui.js` | Builds node cards from registry descriptors: header, ports, inline params, preview slot, status, cost badge. |
 | `public/nodes/inspector.js` | Right panel: full param form (auto-generated), validation warnings, history/variant strip, actions. |
 | `public/nodes/palette.js` | Search palette (categories, fuzzy search, type filter, keyboard navigation). |
-| `public/nodes/workflow-list.js` | Left drawer: list, search, new, templates, rename, duplicate, delete, import/export. |
+| `public/nodes/workflow-list.js` | Left drawer: list, search, new, templates, rename, duplicate, delete, import/export (JSON and ZIP with files). |
+| `public/nodes/archive-ui.js` | Export and import with files in the browser: JSON or ZIP by extension and first bytes, size note before a ZIP download (`export-info`), upload card with progress, the "x of y files imported" note after an import and the texts for the error codes of the import routes. |
 | `public/nodes/run.js` (WP6) | Run controls, plan/confirm dialog, SSE event reducer → per-node status. Reducer is pure (UMD) for tests. |
 | `public/nodes/preview.js` (WP6) | Media previews in nodes, media viewer overlay (image zoom, video, audio), downloads. |
 | `public/nodes/asset-picker.js` (WP7) | Upload / "from chats" / "this workflow" picker. |

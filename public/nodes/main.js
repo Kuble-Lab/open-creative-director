@@ -14,6 +14,7 @@
   const historyLib = OCD.history;
   const api = OCD.api;
   const ui = OCD.ui;
+  const archiveUi = OCD.archiveUi;
   const { el } = ui;
 
   const LS_LAST = 'ocd-nodes-last';
@@ -23,7 +24,7 @@
   const SS_RETURN = 'ocd-nodes-return';
   const SAVE_DELAY = 800;
   const VIEWPORT_SAVE_DELAY = 1600;
-  const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+  const MAX_IMPORT_BYTES = archiveUi.MAX_JSON_BYTES;
   const PASTE_OFFSET = 32;
 
   /* ---------- tiny event bus (extension point) ---------- */
@@ -1533,7 +1534,74 @@
     link.remove();
   }
 
-  async function importFile(file) {
+  // "Export with files (ZIP)": asks the size first (GET export-info). A ZIP that an import with the default limits
+  // would refuse gets a dialog with the hint; the export itself stays possible. Otherwise a short note and the download.
+  async function exportWorkflowZip(workflow) {
+    if (state.workflow && state.workflow.id === workflow.id) await flushSave().catch(() => {});
+    let info;
+    try {
+      info = await api.exportInfo(workflow.id);
+    } catch (error) {
+      ui.toast(ui.T('nodes.toast.exportFailed', { error: archiveUi.errorMessage(error) }), { kind: 'error' });
+      return;
+    }
+    const note = archiveUi.exportNote(info);
+    if (note.warnings.length) {
+      const warnings = el('div', { class: 'nv-dialog-warnings' });
+      for (const text of [...note.warnings, ui.T('nodes.export.stillPossible')]) warnings.append(el('p', { class: 'nv-dialog-message is-warn', text }));
+      const confirmed = await ui.confirmDialog({
+        title: ui.T('nodes.export.bigTitle'),
+        message: note.line,
+        confirmLabel: ui.T('nodes.export.downloadAnyway'),
+        extra: warnings
+      });
+      if (!confirmed) return;
+    } else {
+      ui.toast(ui.T('nodes.export.starting', { info: note.line }));
+    }
+    const link = el('a', { href: api.exportZipUrl(workflow.id), download: '', class: 'hidden' });
+    dom.overlays.append(link);
+    link.click();
+    link.remove();
+  }
+
+  let importing = false;
+
+  // The note after an import: the name plus "x of y files imported" (a warning when files are missing).
+  function reportImport(payload) {
+    const name = ui.T('nodes.toast.imported', { name: payload.workflow.name });
+    const files = archiveUi.filesFeedback(payload.files);
+    if (!files) {
+      ui.toast(name);
+      return;
+    }
+    ui.toast(`${name} ${files.text}`, { kind: files.kind || undefined, timeout: files.kind ? 8000 : 5000 });
+  }
+
+  async function importZipFile(file) {
+    if (file.size > archiveUi.MAX_ZIP_BYTES) {
+      ui.toast(ui.T('nodes.toast.importFailed', { error: ui.T('nodes.import.tooLarge.archive', { limitMb: 500 }) }), { kind: 'error' });
+      return;
+    }
+    const controller = new AbortController();
+    const progress = archiveUi.createProgress({ host: dom.overlays, name: file.name, total: file.size, onCancel: () => controller.abort() });
+    try {
+      const payload = await api.importZip(file, {
+        signal: controller.signal,
+        onProgress: (ratio) => progress.update(ratio),
+        onUploaded: () => progress.processing()
+      });
+      progress.close();
+      await loadList();
+      reportImport(payload);
+      navigate(payload.workflow.id);
+    } catch (error) {
+      progress.close();
+      ui.toast(error.aborted ? archiveUi.errorMessage(error) : ui.T('nodes.toast.importFailed', { error: archiveUi.errorMessage(error) }), { kind: error.aborted ? 'warn' : 'error' });
+    }
+  }
+
+  async function importJsonFile(file) {
     if (file.size > MAX_IMPORT_BYTES) {
       ui.toast(ui.T('nodes.toast.importTooLarge'), { kind: 'error' });
       return;
@@ -1548,10 +1616,25 @@
     try {
       const payload = await api.importWorkflow(document);
       await loadList();
-      ui.toast(ui.T('nodes.toast.imported', { name: payload.workflow.name }));
+      reportImport(payload);
       navigate(payload.workflow.id);
     } catch (error) {
-      ui.toast(ui.T('nodes.toast.importFailed', { error: error.message }), { kind: 'error' });
+      ui.toast(ui.T('nodes.toast.importFailed', { error: archiveUi.errorMessage(error) }), { kind: 'error' });
+    }
+  }
+
+  // "Import" takes .json (the workflow only) and .zip (with files); the kind comes from the extension and the content.
+  async function importFile(file) {
+    if (importing) {
+      ui.toast(ui.T('nodes.import.busy'), { kind: 'warn' });
+      return;
+    }
+    importing = true;
+    try {
+      if ((await archiveUi.detectKind(file)) === 'zip') await importZipFile(file);
+      else await importJsonFile(file);
+    } finally {
+      importing = false;
     }
   }
 
@@ -1931,7 +2014,7 @@
   }
 
   function openImportPicker() {
-    const input = el('input', { type: 'file', accept: '.json,application/json', class: 'hidden' });
+    const input = el('input', { type: 'file', accept: archiveUi.IMPORT_ACCEPT, class: 'hidden' });
     input.addEventListener('change', () => {
       if (input.files && input.files[0]) importFile(input.files[0]);
       input.remove();
@@ -2017,6 +2100,7 @@
       manage && { label: ui.T('nodes.list.rename'), icon: 'edit', onClick: () => renameWorkflow(workflow) },
       { label: ui.T('nodes.list.duplicate'), icon: 'duplicate', onClick: () => duplicateWorkflow(workflow) },
       { label: ui.T('nodes.list.export'), icon: 'download', onClick: () => exportWorkflow(workflow) },
+      { label: ui.T('nodes.list.exportZip'), icon: 'zip', onClick: () => exportWorkflowZip(workflow) },
       { label: ui.T('nodes.list.import'), icon: 'upload', onClick: openImportPicker },
       manage && { label: ui.T('nodes.project.assign'), icon: 'folder', onClick: () => assignProject(workflow) },
       workflow.canShare === true && { label: ui.T('nodes.share.menu'), icon: 'users', onClick: () => openShareDialog(workflow) },
@@ -2483,6 +2567,7 @@
         onRename: renameWorkflow,
         onDuplicate: duplicateWorkflow,
         onExport: exportWorkflow,
+        onExportZip: exportWorkflowZip,
         onDelete: deleteWorkflow,
         onReload: loadList,
         onTemplate: openTemplateDialog,

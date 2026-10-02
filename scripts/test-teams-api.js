@@ -519,6 +519,13 @@ async function testSharing(ctx) {
   assert.equal(imported.status, 201, imported.text);
   assert.equal(imported.body.workflow.owner, P1, 'an import belongs to the person who imports it');
   assert.equal(imported.body.workflow.shareMode, 'private');
+  // the ZIP with files: the same rules (export like the JSON export, import owned by the person who imports)
+  const zipDownload = await call(P1, 'GET', `/api/workflows/${flow.id}/export.zip`, undefined, { raw: true });
+  assert.equal(zipDownload.status, 200);
+  const zipImported = await call(P1, 'POST', '/api/workflows/import-zip', undefined, { headers: { 'Content-Type': 'application/zip' }, body: Buffer.from(await zipDownload.arrayBuffer()) });
+  assert.equal(zipImported.status, 201, zipImported.text);
+  assert.equal(zipImported.body.workflow.owner, P1);
+  assert.equal(zipImported.body.workflow.shareMode, 'private');
   assert.equal((await share(api, 'workflows', flow.id, P1, { shareMode: 'team' })).body.code, 'SHARE_MODE_FORBIDDEN');
   assert.equal((await share(api, 'workflows', flow.id, P1, { shareMode: 'teams', sharedTeams: [teamB.id] })).body.code, 'UNKNOWN_TEAMS');
   const sharedFlow = await share(api, 'workflows', flow.id, P1, { shareMode: 'teams', sharedTeams: [teamA.id] });
@@ -552,6 +559,8 @@ async function testSharing(ctx) {
     ['DELETE', `/api/workflows/${id}`],
     ['POST', `/api/workflows/${id}/duplicate`, {}],
     ['GET', `/api/workflows/${id}/export`],
+    ['GET', `/api/workflows/${id}/export-info`],
+    ['GET', `/api/workflows/${id}/export.zip`],
     ['GET', `/api/workflows/${id}/assets`],
     ['POST', `/api/workflows/${id}/import-asset`, { sessionId: 'a', assetId: 'b' }],
     ['GET', `/api/workflows/${id}/send-to-chat/plan?nodeId=n`],

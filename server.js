@@ -121,6 +121,19 @@ const assetStaticPrivate = express.static(PATHS.assetsDir, {
   immutable: true,
   setHeaders: (res) => res.setHeader('Cache-Control', 'private, max-age=2592000, immutable')
 });
+// An SVG opened directly is a document of the app's origin: keep scripts in it from running (it is still shown as an
+// image wherever it is embedded), and let no response be read as another type.
+app.use('/assets', (req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  let name = String(req.path || '');
+  try {
+    name = decodeURIComponent(name);
+  } catch (_) {
+    /* an undecodable path is refused by the handlers below */
+  }
+  if (/\.svg$/i.test(name)) res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  next();
+});
 app.use('/assets', async (req, res, next) => {
   const viewer = access.viewerOf(req);
   if (!viewer.active) return assetStatic(req, res, next);

@@ -293,6 +293,8 @@ const FOREIGN_WORKFLOW_ROUTES = (id) => [
   ['DELETE', `/api/workflows/${id}`],
   ['POST', `/api/workflows/${id}/duplicate`, {}],
   ['GET', `/api/workflows/${id}/export`],
+  ['GET', `/api/workflows/${id}/export-info`],
+  ['GET', `/api/workflows/${id}/export.zip`],
   ['GET', `/api/workflows/${id}/assets`],
   ['POST', `/api/workflows/${id}/import-asset`, { sessionId: 'a', assetId: 'b' }],
   ['GET', `/api/workflows/${id}/send-to-chat/plan?nodeId=n`],

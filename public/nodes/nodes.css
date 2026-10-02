@@ -3120,6 +3120,83 @@
   background: #1a1710;
 }
 
+/* upload card of the ZIP import: name, bar, "x of y", cancel (in the place of the toasts, which follow it) */
+.nv-transfer {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: min(380px, calc(100% - 32px));
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  box-shadow: var(--nv-shadow);
+}
+
+.nv-transfer-title {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.nv-transfer-bar {
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.nv-transfer-bar i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.nv-transfer.is-processing .nv-transfer-bar i {
+  animation: nv-transfer-pulse 1.4s ease-in-out infinite;
+}
+
+.nv-transfer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  min-height: 26px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.nv-transfer-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nv-transfer-cancel {
+  flex: none;
+}
+
+@keyframes nv-transfer-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.nv-dialog-warnings {
+  margin-top: 6px;
+}
+
+.nv-dialog-message.is-warn {
+  margin: 6px 0 0;
+  color: var(--nv-status-stale);
+}
+
 @keyframes nv-toast-in {
   from {
     opacity: 0;

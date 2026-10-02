@@ -1,7 +1,7 @@
 'use strict';
 
 // Left drawer of the node view: workflow list with search, new, import and a per-item menu
-// (rename, duplicate, export, delete). With user management (AUTH_WHOAMI_URL) the server only lists what the person
+// (rename, duplicate, export as JSON or ZIP with files, delete). With user management (AUTH_WHOAMI_URL) the server only lists what the person
 // may see; a badge shows shared workflows and the owner of somebody else's workflow. Admins can switch the list to
 // "Teams" (public/team-groups.js): one group per team, the server sends every workflow with its team.
 (function (global) {
@@ -42,7 +42,7 @@
     const grouping = teams ? teams.switcher({ view: 'workflows', onChange: () => renderItems() }) : null;
     if (grouping) grouping.element.classList.add('nv-drawer-grouping');
     const items = el('div', { class: 'nv-drawer-items', role: 'list' });
-    const importInput = el('input', { type: 'file', accept: '.json,application/json', class: 'nv-file-input', tabindex: '-1' });
+    const importInput = el('input', { type: 'file', accept: OCD.archiveUi.IMPORT_ACCEPT, class: 'nv-file-input', tabindex: '-1' });
     importInput.addEventListener('change', () => {
       const file = importInput.files && importInput.files[0];
       importInput.value = '';
@@ -63,6 +63,7 @@
         manage && { label: ui.T('nodes.list.rename'), icon: 'edit', onClick: () => cb.onRename && cb.onRename(workflow) },
         { label: ui.T('nodes.list.duplicate'), icon: 'duplicate', onClick: () => cb.onDuplicate && cb.onDuplicate(workflow) },
         { label: ui.T('nodes.list.export'), icon: 'download', onClick: () => cb.onExport && cb.onExport(workflow) },
+        { label: ui.T('nodes.list.exportZip'), icon: 'zip', onClick: () => cb.onExportZip && cb.onExportZip(workflow) },
         manage && { label: ui.T('nodes.project.assign'), icon: 'folder', onClick: () => cb.onProject && cb.onProject(workflow) },
         workflow.canShare === true && { label: ui.T('nodes.share.menu'), icon: 'users', onClick: () => cb.onShare && cb.onShare(workflow) },
         manage && { separator: true },

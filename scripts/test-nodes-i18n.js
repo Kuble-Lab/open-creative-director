@@ -314,7 +314,7 @@ function testHtmlWiring() {
   assert.ok(html.indexOf('id="nodesBtn"') < html.indexOf('</header>'), 'the view switch sits in the header');
   assert.ok(html.includes('id="nodeApp"'), 'node view container missing');
   assert.ok(html.includes('nodes/nodes.css'), 'stylesheet missing');
-  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/templates-ui.js', 'nodes/node-help.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
+  const order = ['i18n.js', 'app.js', 'nodes/i18n-nodes.js', 'nodes/motion-html.js', 'nodes/graph.js', 'nodes/history.js', 'nodes/api.js', 'nodes/node-ui.js', 'nodes/port-tip.js', 'nodes/preview.js', 'nodes/canvas.js', 'nodes/templates-ui.js', 'nodes/node-help.js', 'nodes/palette.js', 'nodes/inspector.js', 'nodes/archive-ui.js', 'nodes/workflow-list.js', 'nodes/asset-picker.js', 'nodes/run.js', 'nodes/app-mode.js', 'nodes/main.js'];
   let last = -1;
   for (const file of order) {
     const index = html.indexOf(`<script src="${file}"></script>`);

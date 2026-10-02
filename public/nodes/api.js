@@ -35,6 +35,8 @@
       error.rev = payload.rev;
       error.runId = payload.runId;
       error.issues = payload.issues;
+      error.reason = payload.reason;
+      error.params = payload.params;
       error.body = payload;
     }
     return error;
@@ -42,17 +44,17 @@
 
   const enc = encodeURIComponent;
 
-  // Raw upload with progress. Resolves { value } (or { value, rasterized }) of POST /uploads.
-  function upload(workflowId, file, options = {}) {
+  // Raw body with progress (XMLHttpRequest, the only way to get upload progress). options: { headers, onProgress(ratio),
+  // onUploaded(), signal }. Resolves the JSON answer; errors carry status, code, reason and params like request().
+  function rawPost(path, file, options = {}) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const query = options.accept ? `?accept=${enc(options.accept)}` : '';
-      xhr.open('POST', rel(`/api/workflows/${enc(workflowId)}/uploads${query}`));
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.setRequestHeader('X-Filename', enc(file.name || 'upload'));
+      xhr.open('POST', rel(path));
+      for (const [name, value] of Object.entries(options.headers || {})) xhr.setRequestHeader(name, value);
       xhr.upload.onprogress = (event) => {
         if (options.onProgress && event.lengthComputable) options.onProgress(event.loaded / event.total);
       };
+      xhr.upload.onload = () => options.onUploaded && options.onUploaded();
       xhr.onerror = () => reject(Object.assign(new Error('Network error'), { status: 0 }));
       xhr.onabort = () => reject(Object.assign(new Error('Aborted'), { status: 0, aborted: true }));
       xhr.onload = () => {
@@ -69,10 +71,32 @@
         const error = new Error(payload?.error || `HTTP ${xhr.status}`);
         error.status = xhr.status;
         error.code = payload?.code;
+        error.reason = payload?.reason;
+        error.params = payload?.params;
         reject(error);
       };
       if (options.signal) options.signal.addEventListener('abort', () => xhr.abort(), { once: true });
       xhr.send(file);
+    });
+  }
+
+  // Raw upload with progress. Resolves { value } (or { value, rasterized }) of POST /uploads.
+  function upload(workflowId, file, options = {}) {
+    const query = options.accept ? `?accept=${enc(options.accept)}` : '';
+    return rawPost(`/api/workflows/${enc(workflowId)}/uploads${query}`, file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Filename': enc(file.name || 'upload') },
+      onProgress: options.onProgress,
+      signal: options.signal
+    });
+  }
+
+  // Import of an export ZIP (POST /import-zip): the raw ZIP as body. Resolves { workflow, results, files }.
+  function importZip(file, options = {}) {
+    return rawPost('/api/workflows/import-zip', file, {
+      headers: { 'Content-Type': 'application/zip' },
+      onProgress: options.onProgress,
+      onUploaded: options.onUploaded,
+      signal: options.signal
     });
   }
 
@@ -99,6 +123,7 @@
     rel,
     request,
     upload,
+    importZip,
     openEvents,
     registry: () => request('GET', '/api/nodes/registry'),
     options: (source) => request('GET', `/api/nodes/options/${enc(source)}`),
@@ -115,6 +140,8 @@
     duplicateWorkflow: (id) => request('POST', `/api/workflows/${enc(id)}/duplicate`, {}),
     exportUrl: (id) => rel(`/api/workflows/${enc(id)}/export`),
     exportWorkflow: (id) => request('GET', `/api/workflows/${enc(id)}/export`),
+    exportZipUrl: (id) => rel(`/api/workflows/${enc(id)}/export.zip`),
+    exportInfo: (id) => request('GET', `/api/workflows/${enc(id)}/export-info`),
     importWorkflow: (document) => request('POST', '/api/workflows/import', { document }),
     importAsset: (id, sessionId, assetId) => request('POST', `/api/workflows/${enc(id)}/import-asset`, { sessionId, assetId }),
     assets: (id) => request('GET', `/api/workflows/${enc(id)}/assets`),

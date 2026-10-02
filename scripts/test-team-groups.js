@@ -1069,7 +1069,7 @@ function testWorkflowListClient() {
     for (const child of children.flat()) if (child !== undefined && child !== null && child !== false) node.append(child.nodeType ? child : document.createTextNode(String(child)));
     return node;
   };
-  window.OCDNodes = { ui: { el, T: (key) => key, icon: () => document.createElement('svg'), menu: () => {} }, api: { rel: (url) => url } };
+  window.OCDNodes = { ui: { el, T: (key) => key, icon: () => document.createElement('svg'), menu: () => {} }, api: { rel: (url) => url }, archiveUi: { IMPORT_ACCEPT: '.json,.zip' } };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'public', 'nodes', 'workflow-list.js'), 'utf8'), { window, document }, { filename: 'public/nodes/workflow-list.js' });
   const host = document.createElement('div');
   document.body.appendChild(host);
