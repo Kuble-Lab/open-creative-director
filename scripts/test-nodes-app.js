@@ -211,6 +211,13 @@ function testStatic() {
   const main = read('public/nodes/main.js');
   assert.match(main, /#app=|app=/);
   assert.match(main, /is-appview/);
+
+  // the workflow share dialog offers teams like the chat dialog: it loads them and passes them to the form
+  const start = main.indexOf('async function openShareDialog');
+  assert.ok(start > 0, 'main.js has the workflow share dialog');
+  const shareDialog = main.slice(start, main.indexOf('\n  }\n', start));
+  assert.match(shareDialog, /access\.loadOwnTeams\(\{ refresh: true \}\)/, 'the share dialog loads the teams');
+  assert.match(shareDialog, /access\.shareForm\(\{ entry, members, teams \}\)/, 'the share dialog passes the teams to the form');
 }
 
 function testI18n() {

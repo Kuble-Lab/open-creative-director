@@ -1785,14 +1785,19 @@
     if (!workflow || !access || !access.isActive()) return;
     // The open workflow carries fresher fields than its list entry.
     const entry = state.workflow && state.workflow.id === workflow.id ? state.workflow : workflow;
+    // Like the chat dialog: the people to pick and, where the account may share with teams, the teams to offer.
     let members;
+    let teams;
     try {
-      members = await access.loadTeam({ refresh: true });
+      [members, teams] = await Promise.all([
+        access.loadTeam({ refresh: true }),
+        access.allowedModes().includes('teams') ? access.loadOwnTeams({ refresh: true }) : []
+      ]);
     } catch (error) {
       ui.toast(global.t('sharing.loadFailed', { error: error.message }), { kind: 'error' });
       return;
     }
-    const form = access.shareForm({ entry, members });
+    const form = access.shareForm({ entry, members, teams });
     const feedback = el('div', { class: 'share-feedback hidden', role: 'alert' });
     const body = el('div', { class: 'nv-share' }, el('p', { class: 'nv-dialog-message', text: global.t('sharing.hint') }), form.element, feedback);
     let saving = false;
@@ -1810,6 +1815,7 @@
         feedback.textContent = error.userMessage || error.message;
         feedback.classList.remove('hidden');
         if (error.reloadTeam) access.loadTeam({ refresh: true }).catch(() => {});
+        if (error.reloadTeams) access.loadOwnTeams({ refresh: true }).catch(() => {});
       } finally {
         saving = false;
       }
