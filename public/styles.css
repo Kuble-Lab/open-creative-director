@@ -341,12 +341,13 @@ code {
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.session-more:hover:not(:disabled) {
+.session-more:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--text);
   border-color: var(--accent);
 }
 
-.session-more:disabled {
+.session-more:disabled,
+.session-more[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -3245,6 +3246,110 @@ body.no-admin .admin-only {
   color: var(--accent);
   font-size: 10px;
   font-weight: 600;
+}
+
+/* Grouping by team (admins only, public/team-groups.js): the switch above the chat list and the workflow list, the
+   group headers of the chat list. */
+.sidebar-grouping {
+  padding: 0 16px 8px;
+}
+
+.team-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.team-switch-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.team-switch-btn:hover {
+  color: var(--text);
+}
+
+.team-switch-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.team-switch-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.team-group-header {
+  align-items: flex-start;
+}
+
+.team-group-header .session-folder-chevron {
+  margin-top: 1px;
+}
+
+.team-group-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.team-group-nameline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.team-group-meta {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-group-flag {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.team-group.is-archived .session-folder-name {
+  opacity: 0.7;
+}
+
+.session-team-flag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(95, 211, 162, 0.14);
+  color: #7bd9b3;
+  font-size: 10px;
+  font-weight: 600;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
 }
 
 /* Account menu (top right) */

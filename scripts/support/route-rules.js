@@ -86,6 +86,7 @@ const ROUTE_RULES = {
   'DELETE /api/folders/:name/profile/context-files/:fileId': 'admin',
   'DELETE /api/folders/:name/profile/memory/:id': 'admin',
   'GET /api/sessions': 'session', // filtered list
+  'GET /api/sessions/team-groups': 'admin', // WP22: the groups of the team view
   'POST /api/sessions': 'session', // creates a private chat
   'PATCH /api/sessions/:id': 'session',
   'PATCH /api/sessions/:id/share': 'session',
@@ -208,7 +209,8 @@ const PARTICIPANT_RULES = {
   'POST /api/folders/:name/profile/context-files': 'admin',
   'DELETE /api/folders/:name/profile/context-files/:fileId': 'admin',
   'DELETE /api/folders/:name/profile/memory/:id': 'admin',
-  'GET /api/sessions': 'same',
+  'GET /api/sessions': 'same', // ?team= is for admins (403 for everybody else)
+  'GET /api/sessions/team-groups': 'admin',
   'POST /api/sessions': 'same',
   'PATCH /api/sessions/:id': 'same',
   'PATCH /api/sessions/:id/share': 'same',

@@ -757,6 +757,7 @@ const ADMIN_ONLY_ROUTES = [
   ['GET', '/api/users'],
   ['POST', '/api/users', { email: 'x@example.com' }],
   ['DELETE', '/api/users/x%40example.com'],
+  ['GET', '/api/sessions/team-groups'],
   ['GET', '/api/teams'],
   ['POST', '/api/teams', { name: 'x', budgetUsd: 1 }],
   ['GET', '/api/teams/abc'],

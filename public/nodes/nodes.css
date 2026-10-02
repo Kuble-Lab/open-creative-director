@@ -2174,6 +2174,115 @@
   opacity: 1;
 }
 
+/* Team view of the list (admins only, public/team-groups.js): the switch and one group per team. */
+.nv-drawer .team-switch {
+  margin: 0 14px 8px;
+  width: calc(var(--nv-drawer-w) - 28px);
+}
+
+.nv-wf-group + .nv-wf-group {
+  margin-top: 4px;
+}
+
+.nv-wf-group-head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 7px 8px 5px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  text-align: left;
+}
+
+.nv-wf-group-head:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.nv-wf-group-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.nv-wf-group-chevron {
+  width: 10px;
+  margin-top: 1px;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.nv-wf-group-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nv-wf-group-nameline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nv-wf-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.nv-wf-group.is-archived .nv-wf-group-name {
+  opacity: 0.7;
+}
+
+.nv-wf-group-flag {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.nv-wf-group-meta {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nv-wf-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+}
+
+.nv-wf-team {
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(95, 211, 162, 0.14);
+  color: #7bd9b3;
+  font-size: 10.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nv-drawer-foot {
   padding: 10px 14px 14px;
   border-top: 1px solid var(--line-soft);

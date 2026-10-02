@@ -172,6 +172,8 @@ Codes: `BUDGET_EXHAUSTED` (nichts mehr übrig) und `BUDGET_INSUFFICIENT` (die Pr
 
 *Bekannte Grenze:* Wo vorab kein Preis bekannt ist (Bilder; Videos nutzen die Pauschale oben), wird nur geprüft, ob noch etwas übrig ist; einige parallele Jobs einer Person können das Budget daher um ihren eigenen Preis überschreiten. Die echten Kosten werden danach verbucht, und die nächste Aktion wird abgelehnt.
 
+**Chats und Workflows nach Team (Admins).** Admins sehen alle Chats und Workflows. Ein Umschalter «Projekte | Teams» über der Chat-Liste und der Workflow-Liste der Node-Ansicht gruppiert sie nach Team (Standard: «Projekte»; die Wahl merkt sich der Browser pro Ansicht). Jedes Team ist eine aufklappbare Gruppe mit der Anzahl Chats bzw. Workflows und Personen; archivierte Teams folgen zugeklappt, alles ohne Team (Besitzer ohne Team, Gäste, alte Daten ohne Besitzer) steht zuletzt als «Intern»; jeder Eintrag nennt seine Besitzerin oder seinen Besitzer. Alle anderen bekommen weder Umschalter noch Team-Angaben (der Server lehnt die Gruppen-Routen mit `403` ab). Welches Team gilt: Neue Chats und Workflows speichern `teamId`, das aktive Team der anlegenden Person (bei mehreren das zuletzt beigetretene); nur der Server setzt es, keine Anfrage kann es (auch nicht beim Import, wo ein `teamId` in der Datei verworfen wird, und nicht beim Duplizieren: das speichert das Team der duplizierenden Person). Einträge ohne `teamId` gehören zum Team der Besitzerin oder des Besitzers zum Zeitpunkt der Erstellung: die Mitgliedschaft mit dem spätesten `addedAt`, das nicht nach `createdAt` liegt (archivierte Teams zählen), sonst die früheste spätere, sonst «Intern». Ein gespeichertes Team, das gelöscht wurde, schickt den Eintrag nach «Intern»; wer aus einem Team entfernt wird, verliert die abgeleitete Zuordnung älterer Einträge, die gespeicherte bleibt. Die Gruppen sind vollständig, auch wenn die Chat-Liste seitenweise lädt (sie kommen aus dem Index der Session-Dateien im Speicher, keine Datei wird neu gelesen). Der Tastaturfokus bleibt auf dem Gruppenkopf oder auf «Mehr laden», wenn eine Gruppe auf- oder zugeklappt oder erweitert wird; die Antwort für eine Gruppe, die vor dem Löschen eines Chats gelesen wurde, wird verworfen und neu gelesen. In der Team-Ansicht heisst die Seitenleiste «Chats».
+
 **API** (nur Admins, sofern nicht anders vermerkt; `sync` ist der Zustand des Freigabelisten-Syncs):
 
 | Route | Zweck |
@@ -182,6 +184,9 @@ Codes: `BUDGET_EXHAUSTED` (nichts mehr übrig) und `BUDGET_INSUFFICIENT` (die Pr
 | `PATCH /api/teams/:id/members/:email` | `{ budgetOverrideUsd: Zahl oder null }` oder `{ resetBudget: true }` |
 | `DELETE /api/teams/:id/members/:email` | Person entfernen |
 | `GET /api/teams/mine` | Alle Angemeldeten: die Teams, mit denen sie teilen dürfen |
+| `GET /api/sessions/team-groups` | Die Gruppen der Chat-Liste: `{ groups: [{ id, name, archived, internal, count, people, lastActivity }], total }`, aktive Teams nach letzter Aktivität, dann archivierte, zuletzt `id: "none"` (Intern) |
+| `GET /api/sessions?team=<id\|none>&limit=&offset=` | Die Chats einer Gruppe, seitenweise; jeder Chat trägt `team: { id, name, archived }` oder `null`. Mit `q=…&teams=1` trägt auch die flache Suche das Team |
+| `GET /api/workflows` | Admins erhalten zusätzlich `team` pro Workflow und `teamGroups` (gleiche Kopfdaten); die Liste ist nicht seitenweise, der Client gruppiert |
 | `POST /api/users` | Auch `{ emails: [...] }` / `{ text }` für die Team-Liste (derselbe Parser) |
 | `GET /api/admin/monitoring?team=<id>` | Superadmins: Nutzung und Budget-Bild pro Team und Person (`teams`, `options.teams`) |
 

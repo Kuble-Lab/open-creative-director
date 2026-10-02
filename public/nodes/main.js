@@ -98,6 +98,7 @@
     history: historyLib.createHistory(),
     workflows: [],
     listLoaded: false,
+    teamGroups: [],
     listError: null,
     saveState: 'saved',
     dirtyContent: false,
@@ -587,13 +588,21 @@
     try {
       const payload = await api.listWorkflows();
       state.workflows = (payload.workflows || []).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+      // Admins also get the groups of the team view (head data: name, people); nobody else.
+      state.teamGroups = Array.isArray(payload.teamGroups) ? payload.teamGroups : [];
       state.listLoaded = true;
       state.listError = null;
     } catch (error) {
       // An unconfirmed login has its own banner (public/access-client.js): no second message in the list.
       state.listError = error.code === 'LOGIN_UNCONFIRMED' ? null : error.message;
     }
-    workflowList.setData({ workflows: state.workflows, loading: false, error: state.listError, activeId: state.workflow ? state.workflow.id : null });
+    workflowList.setData({ workflows: state.workflows, teamGroups: state.teamGroups, loading: false, error: state.listError, activeId: state.workflow ? state.workflow.id : null });
+  }
+
+  // The team view groups by the team the server sends with each workflow. A workflow added to the list here has none
+  // yet, so the list is read again (only in that view).
+  function reloadListForTeams() {
+    if (global.OCTeamGroups && global.OCTeamGroups.mode('workflows') === 'teams') loadList();
   }
 
   /* ---------- registry ---------- */
@@ -904,6 +913,7 @@
       const wf = payload.workflow;
       state.workflows.unshift({ id: wf.id, name: wf.name, folder: wf.folder || null, updatedAt: wf.updatedAt, updatedBy: wf.updatedBy || null, nodeCount: graph.nodes.length, app: { enabled: Boolean(wf.app && wf.app.enabled) }, ...sharingFields(wf) });
       workflowList.setData({ workflows: state.workflows });
+      reloadListForTeams();
     }
     workflowList.setData({ activeId: id });
     updateChrome();
@@ -1418,6 +1428,7 @@
       const payload = await api.createWorkflow({ name });
       state.workflows.unshift({ id: payload.workflow.id, name: payload.workflow.name, folder: payload.workflow.folder || null, updatedAt: payload.workflow.updatedAt, updatedBy: payload.workflow.updatedBy, nodeCount: 0, app: { enabled: false }, ...sharingFields(payload.workflow) });
       workflowList.setData({ workflows: state.workflows });
+      reloadListForTeams();
       navigate(payload.workflow.id);
       setTimeout(() => {
         dom.name.focus();
@@ -1619,6 +1630,7 @@
         ...sharingFields(payload.workflow)
       });
       workflowList.setData({ workflows: state.workflows });
+      reloadListForTeams();
       navigate(payload.workflow.id);
     } catch (error) {
       ui.toast(ui.T('nodes.template.createFailed', { error: error.message }), { kind: 'error' });

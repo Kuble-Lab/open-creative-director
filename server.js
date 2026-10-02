@@ -39,6 +39,7 @@ const admins = require('./lib/admins');
 const access = require('./lib/access');
 const users = require('./lib/users');
 const teams = require('./lib/teams');
+const teamGroups = require('./lib/team-groups');
 const budget = require('./lib/budget');
 const accessSync = require('./lib/access-sync');
 const adminMonitoring = require('./lib/admin-monitoring');
@@ -1758,8 +1759,30 @@ app.get('/api/sessions', async (req, res) => {
     const limit = clampNumber(req.query.limit, 20, 1, 100);
     const offset = clampNumber(req.query.offset, 0, 0, Number.MAX_SAFE_INTEGER);
     const folder = typeof req.query.folder === 'string' ? req.query.folder : '';
-    const { sessions, total } = await store.listSessions({ q, folder, limit, offset, viewer: access.viewerOf(req) });
+    const viewer = access.viewerOf(req);
+    // Team groups (admins only): ?team=<id|none> lists one group, ?teams=1 adds the team to every chat. Everybody else
+    // is refused for team= and gets no team information with teams=1: the team of other people is confidential.
+    const team = typeof req.query.team === 'string' ? req.query.team.trim() : '';
+    if (team) {
+      if (!requireTeamAdmin(req, res)) return;
+      if (team !== teamGroups.NONE && !store.isValidId(team)) return failWithCode(res, 400, 'INVALID_TEAM', 'Ungültiges Team.');
+    }
+    const withTeams = teamGroups.isAllowed(viewer) && req.query.teams === '1';
+    const { sessions, total } = await store.listSessions({ q, folder, limit, offset, viewer, team, withTeams });
     res.json({ sessions, total, offset, hasMore: offset + sessions.length < total });
+  } catch (err) {
+    fail(res, 500, err.message);
+  }
+});
+
+// The groups of the team view (admins only): every team with chats, archived teams after the active ones, "internal"
+// ({ id: 'none' }) last, each with the number of chats, the people and the latest activity. Complete however the
+// chat list pages; the chats of one group come from GET /api/sessions?team=<id>.
+app.get('/api/sessions/team-groups', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await store.listSessionTeamGroups({ viewer: access.viewerOf(req) }));
   } catch (err) {
     fail(res, 500, err.message);
   }
@@ -1798,7 +1821,8 @@ app.post('/api/sessions', async (req, res) => {
     const session = await store.createSession({
       folder: hasFolder ? body.folder : null,
       role: hasRole ? body.role : null,
-      owner: access.ownerForNew(viewer)
+      owner: access.ownerForNew(viewer),
+      teamId: teamGroups.teamForNew(viewer)
     });
     if (newFolderName && !folderExisted) await store.claimFolder(newFolderName, viewer.email);
     res.status(201).json({

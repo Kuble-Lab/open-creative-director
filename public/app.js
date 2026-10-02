@@ -8,6 +8,7 @@ const el = {
   currentProjectName: document.getElementById('currentProjectName'),
   sessionList: document.getElementById('sessionList'),
   sessionSearch: document.getElementById('sessionSearch'),
+  sessionGrouping: document.getElementById('sessionGrouping'),
   newSession: document.getElementById('newSession'),
   sidebarCreate: document.getElementById('sidebarCreate'),
   newFolder: document.getElementById('newFolder'),
@@ -207,6 +208,8 @@ const state = {
   sessionLoadedCount: 0,
   sessionHasMore: false,
   folderSessionsRequested: new Set(),
+  // Team view of the chat list (admins only, public/team-groups.js): the groups and, per group, the chats loaded so far.
+  teamView: { groups: null, loading: false, error: null, pages: null },
   collapsedFolders: loadCollapsedFolders(),
   mobileSidebarOpen: false,
   settingsAvailable: false,
@@ -2589,8 +2592,7 @@ function updateShareButton() {
 }
 
 function applySessionSharing(id, fields) {
-  const meta = state.sessions.find((session) => session.id === id);
-  if (meta) Object.assign(meta, fields);
+  updateSessionCopies(id, fields);
   if (state.currentId === id && state.detail?.session) Object.assign(state.detail.session, fields);
   renderSessions();
   renderSessionHeader();
@@ -2884,6 +2886,7 @@ async function patchSessionMeta(meta, changes) {
     body: JSON.stringify(changes)
   });
   Object.assign(meta, data.session);
+  updateSessionCopies(meta.id, data.session);
   if (state.currentId === meta.id && state.detail?.session) {
     Object.assign(state.detail.session, data.session);
     renderSessionHeader();
@@ -3037,7 +3040,8 @@ function openFolderPopover(meta, actions, menu) {
   actions.appendChild(popover);
 }
 
-function createSessionItem(meta) {
+// teamGroup: the item sits in a group of the team view; it then always names its owner (own chats included).
+function createSessionItem(meta, { teamGroup = false } = {}) {
   const item = document.createElement('div');
   item.className = `session-item${meta.id === state.currentId ? ' active' : ''}`;
 
@@ -3057,13 +3061,22 @@ function createSessionItem(meta) {
   date.className = 'session-item-date';
   date.textContent = formatDate(meta.updatedAt);
   // User management: somebody else's chat shows the owner (full address in the tooltip), a shared chat its badge.
-  const foreignOwner = OCAccess.ownerName(meta);
+  const foreignOwner = teamGroup ? teamGroupOwner(meta) : OCAccess.ownerName(meta);
   if (foreignOwner) {
     const owner = document.createElement('span');
     owner.className = 'session-item-owner';
     owner.textContent = foreignOwner.text;
     owner.title = foreignOwner.title;
     date.appendChild(owner);
+  }
+  // A hit of the search in the team view names its team.
+  if (!teamGroup && OCTeamGroups.available() && Object.prototype.hasOwnProperty.call(meta, 'team')) {
+    const teamName = OCTeamGroups.label(meta.team ? { name: meta.team.name, id: meta.team.id } : { internal: true });
+    const team = document.createElement('span');
+    team.className = 'session-team-flag';
+    team.textContent = teamName;
+    team.title = t('teamGroups.teamTitle', { name: teamName });
+    date.appendChild(team);
   }
   const sharedBadge = OCAccess.badge(meta);
   if (sharedBadge) {
@@ -3192,6 +3205,7 @@ function appendFolderGroup(folder, sessions) {
   header.setAttribute('role', 'button');
   header.tabIndex = 0;
   header.setAttribute('aria-expanded', String(!collapsed));
+  header.dataset.focusKey = `folder:${folder}`;
   header.innerHTML = `<span class="session-folder-chevron" aria-hidden="true">${collapsed ? '›' : '⌄'}</span>`;
   const name = document.createElement('span');
   name.className = 'session-folder-name';
@@ -3258,7 +3272,13 @@ function appendFolderGroup(folder, sessions) {
   el.sessionList.appendChild(group);
 }
 
+// The list is built anew after every change; the keyboard focus (a group head, "load more") is put back afterwards.
 function renderSessions() {
+  syncSidebarTitle();
+  OCTeamGroups.preserveFocus(el.sessionList, buildSessionList);
+}
+
+function buildSessionList() {
   el.sessionList.innerHTML = '';
 
   if (state.sessions.length === 0 && state.sessionQuery) {
@@ -3271,6 +3291,9 @@ function renderSessions() {
 
   if (state.sessionQuery) {
     for (const meta of state.sessions) el.sessionList.appendChild(createSessionItem(meta));
+  } else if (teamsViewActive()) {
+    renderTeamGroups();
+    return;
   } else {
     for (const folder of existingFolders()) {
       appendFolderGroup(folder, state.sessions.filter((meta) => sessionFolder(meta) === folder));
@@ -3283,14 +3306,17 @@ function renderSessions() {
   if (state.sessionHasMore) {
     const more = document.createElement('button');
     more.className = 'session-more';
+    more.dataset.focusKey = 'more';
     more.textContent = t('sessions.loadMore');
+    // aria-disabled instead of disabled: a disabled button would drop the keyboard focus while the page loads.
     more.addEventListener('click', async () => {
-      more.disabled = true;
+      if (more.getAttribute('aria-disabled') === 'true') return;
+      more.setAttribute('aria-disabled', 'true');
       try {
         await loadMoreSessions();
       } catch (err) {
         setStatus(err.message);
-        more.disabled = false;
+        more.removeAttribute('aria-disabled');
       }
     });
     el.sessionList.appendChild(more);
@@ -3309,11 +3335,13 @@ function clearSessionSearch() {
 function sessionsPath(offset) {
   const parts = [`limit=${SESSION_PAGE_SIZE}`, `offset=${encodeURIComponent(offset)}`];
   if (state.sessionQuery) parts.push(`q=${encodeURIComponent(state.sessionQuery)}`);
+  if (state.sessionQuery && teamsViewActive()) parts.push('teams=1'); // every hit names its team
   return `/api/sessions?${parts.join('&')}`;
 }
 
 async function loadSessions() {
-  const [data] = await Promise.all([api(sessionsPath(0)), loadFolders()]);
+  const teams = teamsViewActive() && !state.sessionQuery;
+  const [data] = await Promise.all([api(sessionsPath(0)), loadFolders(), teams ? loadTeamGroups() : null]);
   state.folderSessionsRequested.clear();
   state.sessions = data.sessions || [];
   state.sessionTotal = data.total || 0;
@@ -3341,6 +3369,199 @@ async function loadMoreSessions() {
   state.sessionLoadedCount += (data.sessions || []).length;
   state.sessionHasMore = Boolean(data.hasMore);
   renderSessions();
+}
+
+/* ---------- team view (admins) ---------- */
+
+// The list can be grouped by team instead of by project. Only admins of the user management have it
+// (public/team-groups.js); everybody else, and the local mode, keep the project view without any change.
+function teamsViewActive() {
+  return OCTeamGroups.mode('chats') === 'teams';
+}
+
+// The chats of the groups, page by page. An answer to a request that started before the heads were read again is
+// dropped and read anew (OCTeamGroups.createGroupPages), so a group never keeps a deleted chat or an old order.
+function teamPages() {
+  if (!state.teamView.pages) {
+    state.teamView.pages = OCTeamGroups.createGroupPages({
+      pageSize: SESSION_PAGE_SIZE,
+      fetchPage: (id, { offset, limit }) => api(`/api/sessions?team=${encodeURIComponent(id)}&limit=${limit}&offset=${offset}`),
+      onChange: scheduleTeamRender
+    });
+  }
+  return state.teamView.pages;
+}
+
+// Many groups answer at once; one rebuild of the list serves them all.
+const scheduleTeamRender = OCTeamGroups.coalesce(() => {
+  if (teamsViewActive()) renderSessions();
+}, 40);
+
+// The title above the list: "Projects", or a neutral "Chats" while the list is grouped by team.
+function syncSidebarTitle() {
+  const title = document.querySelector('.sidebar-head .brand-text');
+  if (!title) return;
+  const key = OCTeamGroups.sidebarTitleKey('chats');
+  if (title.dataset.i18n === key) return;
+  title.dataset.i18n = key;
+  title.textContent = t(key);
+}
+
+// The heads (name, number of chats, people) of all groups, complete however the chats page. The chats of every open
+// group are read again by the next render (loaded = false); what is shown stays until they arrive.
+async function loadTeamGroups() {
+  const view = state.teamView;
+  view.loading = true;
+  view.error = null;
+  try {
+    const data = await api('/api/sessions/team-groups');
+    view.groups = Array.isArray(data.groups) ? data.groups : [];
+    teamPages().invalidate(view.groups.map((group) => group.id));
+  } catch (err) {
+    view.error = err.message;
+  } finally {
+    view.loading = false;
+  }
+}
+
+function loadTeamGroupChats(group, options) {
+  return teamPages().load(group.id, options);
+}
+
+// The owner of a chat in a group, own chats included; entries from before the user management have none.
+function teamGroupOwner(meta) {
+  const owner = OCTeamGroups.ownerLabel(meta.owner);
+  return owner || { text: t('teamGroups.noOwner'), title: t('teamGroups.noOwner') };
+}
+
+// Every copy of a chat the lists hold (the plain list and the groups), so that a rename shows everywhere.
+function updateSessionCopies(id, fields) {
+  const copies = [...state.sessions];
+  for (const entry of teamPages().all()) copies.push(...entry.sessions);
+  for (const meta of copies) if (meta.id === id) Object.assign(meta, fields);
+}
+
+function appendTeamGroup(group) {
+  const open = OCTeamGroups.isOpen('chats', group);
+  const section = document.createElement('section');
+  section.className = `session-folder team-group${group.archived ? ' is-archived' : ''}`;
+
+  const header = document.createElement('div');
+  header.className = 'session-folder-header team-group-header';
+  header.setAttribute('role', 'button');
+  header.tabIndex = 0;
+  header.setAttribute('aria-expanded', String(open));
+  header.dataset.teamId = group.id;
+  header.dataset.focusKey = `team:${group.id}`;
+  const chevron = document.createElement('span');
+  chevron.className = 'session-folder-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = open ? '⌄' : '›';
+  const text = document.createElement('span');
+  text.className = 'team-group-text';
+  const nameLine = document.createElement('span');
+  nameLine.className = 'team-group-nameline';
+  const name = document.createElement('span');
+  name.className = 'session-folder-name';
+  name.textContent = OCTeamGroups.label(group);
+  name.title = OCTeamGroups.label(group);
+  nameLine.appendChild(name);
+  if (group.archived) {
+    const flag = document.createElement('span');
+    flag.className = 'team-group-flag';
+    flag.textContent = t('teamGroups.archived');
+    nameLine.appendChild(flag);
+  }
+  const meta = document.createElement('span');
+  meta.className = 'team-group-meta';
+  meta.textContent = OCTeamGroups.counts(group, 'chats');
+  text.append(nameLine, meta);
+  header.append(chevron, text);
+  const toggle = () => {
+    OCTeamGroups.setOpen('chats', group.id, !open);
+    renderSessions();
+  };
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', (event) => {
+    if (event.target !== header) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggle();
+  });
+  section.appendChild(header);
+
+  if (open) {
+    const entry = teamPages().entry(group.id);
+    // Starts the read before the rows are built, so the group shows "loading" instead of "empty". The answer renders again.
+    if (!entry.loaded && !entry.loading) loadTeamGroupChats(group).catch((err) => setStatus(err.message));
+    const items = document.createElement('div');
+    items.className = 'session-folder-items';
+    for (const session of entry.sessions) items.appendChild(createSessionItem(session, { teamGroup: true }));
+    if (entry.error) {
+      const failed = document.createElement('div');
+      failed.className = 'session-empty';
+      failed.textContent = t('teamGroups.loadFailed', { error: entry.error });
+      items.appendChild(failed);
+    } else if (entry.loading && !entry.sessions.length) {
+      const loading = document.createElement('div');
+      loading.className = 'session-empty';
+      loading.textContent = t('teamGroups.loading');
+      items.appendChild(loading);
+    }
+    if (entry.loaded && entry.sessions.length < entry.total) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'session-more';
+      more.dataset.focusKey = `more:${group.id}`;
+      more.dataset.focusFallback = `team:${group.id}`; // the last page was loaded: the button is gone, the head takes the focus
+      more.textContent = t('teamGroups.loadMore');
+      if (entry.loading) more.setAttribute('aria-disabled', 'true');
+      more.addEventListener('click', () => {
+        if (more.getAttribute('aria-disabled') === 'true') return;
+        more.setAttribute('aria-disabled', 'true');
+        loadTeamGroupChats(group, { more: true }).catch((err) => setStatus(err.message));
+      });
+      items.appendChild(more);
+    }
+    section.appendChild(items);
+  }
+  el.sessionList.appendChild(section);
+}
+
+function renderTeamGroups() {
+  const view = state.teamView;
+  const note = (text, { retry = false } = {}) => {
+    const box = document.createElement('div');
+    box.className = 'session-empty';
+    box.textContent = text;
+    if (retry) {
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.className = 'session-more';
+      again.textContent = t('nodes.common.retry');
+      again.addEventListener('click', () => loadTeamGroups().then(renderSessions));
+      box.appendChild(again);
+    }
+    el.sessionList.appendChild(box);
+  };
+  if (view.error) return note(t('teamGroups.loadFailed', { error: view.error }), { retry: true });
+  if (!view.groups) return note(t('teamGroups.loading'));
+  if (!view.groups.length) return note(t('teamGroups.empty'));
+  for (const group of view.groups) appendTeamGroup(group);
+}
+
+// The switch "Projects | Teams" above the list; hidden unless the person is an admin of the user management.
+function mountSessionGrouping() {
+  if (state.sessionSwitch || !OCTeamGroups.available()) return;
+  state.sessionSwitch = OCTeamGroups.switcher({
+    view: 'chats',
+    onChange: () => {
+      closeSessionMenus();
+      loadSessions().catch((err) => setStatus(err.message));
+    }
+  });
+  el.sessionGrouping.replaceChildren(state.sessionSwitch.element);
+  el.sessionGrouping.classList.remove('hidden');
 }
 
 async function createSession(folder = null) {
@@ -5779,6 +6000,7 @@ window.onLangChange = () => {
   resetPromptPresetDelete();
   renderPromptMenu();
   renderToolsMenu();
+  if (state.sessionSwitch) state.sessionSwitch.refresh();
   renderSessions();
   if (!state.streaming) renderDetail();
   renderCosts(state.costs);
@@ -5936,6 +6158,7 @@ async function init() {
 
   await OCAccess.ready;
   renderAccount();
+  mountSessionGrouping();
   // The login could not be confirmed: the banner explains it and offers a reload (public/access-client.js, which
   // reloads by itself once the login is confirmed). Nothing else is loaded, so no request fails on top of it.
   if (OCAccess.me().loginUnconfirmed) return;

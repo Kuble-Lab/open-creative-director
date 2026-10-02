@@ -172,6 +172,8 @@ Codes: `BUDGET_EXHAUSTED` (nothing left) and `BUDGET_INSUFFICIENT` (the price es
 
 *Known limit:* where no price is known in advance (images; videos use the flat reservation above) only "something is left" is checked, so a few parallel jobs of one person can still overshoot the budget by their own price; the real cost is booked afterwards and the next action is refused.
 
+**Chats and workflows by team (admins).** Admins see every chat and workflow. A switch “Projects | Teams” above the chat list and the workflow list of the node view groups them by team (default: “Projects”, the choice is remembered per view in the browser). Each team is a collapsible group with its number of chats or workflows and people; archived teams follow collapsed, everything without a team (owners without a team, guests, old data without an owner) comes last as “Internal”; every entry names its owner. Everybody else gets no switch and no team information (the server refuses the group routes with `403`). Which team an entry belongs to: new chats and workflows store `teamId`, the active team of the creator (the one joined last if there are several); only the server sets it, no request body can (also not on import, where a `teamId` in the file is dropped, and not on duplicating: that stores the team of whoever duplicates). Entries without `teamId` belong to the owner's team at the time of creation: the membership with the latest `addedAt` that is not later than `createdAt` (archived teams count), else the earliest later one, else “Internal”. A stored team that was deleted sends the entry to “Internal”; removing a person from a team drops the derived assignment of their older entries but keeps the stored one. The groups are complete however the chat list pages (they come from the in-memory index of the session files, no file is read again). The keyboard focus stays on the group head or the “Load more” button when a group is opened, closed or extended, and an answer for a group that was read before a chat was deleted is dropped and read again. In the team view the sidebar heading reads “Chats”.
+
 **API** (admin only unless noted; `sync` is the state of the allowlist sync):
 
 | Route | Purpose |
@@ -182,6 +184,9 @@ Codes: `BUDGET_EXHAUSTED` (nothing left) and `BUDGET_INSUFFICIENT` (the price es
 | `PATCH /api/teams/:id/members/:email` | `{ budgetOverrideUsd: number or null }` or `{ resetBudget: true }` |
 | `DELETE /api/teams/:id/members/:email` | Remove a person |
 | `GET /api/teams/mine` | Any logged-in person: the teams they may share with |
+| `GET /api/sessions/team-groups` | The groups of the chat list: `{ groups: [{ id, name, archived, internal, count, people, lastActivity }], total }`, active teams by latest activity, archived ones, then `id: "none"` (internal) |
+| `GET /api/sessions?team=<id\|none>&limit=&offset=` | The chats of one group, paged; every chat carries `team: { id, name, archived }` or `null`. With `q=…&teams=1` the flat search result carries the team as well |
+| `GET /api/workflows` | Admins in addition get `team` per workflow and `teamGroups` (same head data); the list is not paged, the client groups it |
 | `POST /api/users` | Also `{ emails: [...] }` / `{ text }` for the team list (same parser) |
 | `GET /api/admin/monitoring?team=<id>` | Superadmins: usage and budget picture per team and person (`teams`, `options.teams`) |
 
