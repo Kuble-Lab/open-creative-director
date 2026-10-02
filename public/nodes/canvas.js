@@ -1225,8 +1225,17 @@
 
     /* ---------- misc api ---------- */
 
+    // A new registry (availability changed on the server). Only the cards whose node type changed its availability
+    // are marked for a new build with the next render(); all others, with the field the person may be typing in,
+    // stay untouched.
     function setRegistry(nextReg) {
+      const previous = reg;
       reg = nextReg;
+      if (!previous) return;
+      for (const state of cards.values()) {
+        const type = state.node && state.node.type;
+        if (type && previous.types.get(type)?.available !== nextReg.types.get(type)?.available) state.node = null;
+      }
     }
 
     function setTool(next) {

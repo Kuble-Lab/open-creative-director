@@ -454,6 +454,59 @@ function paletteEntries() {
   }));
 }
 
+// WP21: search normal form, scattered letters only as a late fallback, stop words, structured entries.
+function testSearchRules() {
+  const norm = graphLib.normalizeSearch;
+  assert.equal(norm('KI-Video'), 'ki video');
+  assert.equal(norm('  Vídeo   Über Grösse '), 'video uber grosse', 'accents and case are gone, the rest stays');
+  assert.equal(norm('fal.ai'), 'fal ai');
+  assert.equal(norm(null), '');
+  const f = graphLib.fuzzyScore;
+  assert.equal(f('vid', 'KI-Video'), 100, 'a word start inside a hyphenated word');
+  assert.equal(f('video', 'Vídeo erzeugen'), 100, 'accents do not matter');
+  assert.equal(f('xyz', 'abc'), 0);
+  assert.equal(f('gen', 'abc'), 0);
+  assert.equal(f('ger', 'generate image'), 0, 'three scattered letters never match');
+  assert.ok(f('gnrt', 'generate image') > 0 && f('gnrt', 'generate image') < 60, 'four scattered letters from a word start still match, weakly');
+  assert.equal(f('nrte', 'generate image'), 0, 'scattered letters must start at the start of a word');
+
+  const entry = (label, keywords = [], search = '') => ({ type: 'x', category: 'video', label, labels: [label], keywords, search });
+  const rank = (entries, query) => graphLib.rankPaletteEntries(reg, entries, { query }).map((item) => item.label);
+  // names beat synonyms beat the rest
+  assert.deepEqual(rank([entry('Other', [], 'clip'), entry('Third', ['clip']), entry('Clip maker')], 'clip'), ['Clip maker', 'Third', 'Other']);
+  // the whole phrase counts: a node with "Bild zu Video" as a synonym beats one that has both words apart
+  assert.deepEqual(rank([entry('Bild aus Video'), entry('Maker', ['Bild zu Video'])], 'bild zu video'), ['Maker', 'Bild aus Video']);
+  // stop words glue the phrase but do not have to match alone
+  assert.deepEqual(rank([entry('Seedance', ['Text zu Video'])], 'text zu video'), ['Seedance']);
+  assert.deepEqual(rank([entry('Seedance', ['Text zu Video']), entry('Zoom')], 'zu'), ['Seedance'], 'a stop word alone is searched as it is');
+  // earlier synonyms count a little more
+  assert.deepEqual(rank([entry('B', ['foo', 'bar']), entry('A', ['bar', 'foo'])], 'bar baz'), [], 'every word must match');
+  assert.deepEqual(rank([entry('Late', ['x1', 'x2', 'x3', 'animieren']), entry('Early', ['animieren'])], 'animieren'), ['Early', 'Late']);
+  // scattered letters only as long as fewer than three entries match for real
+  const few = [entry('Seedance'), entry('Other')];
+  assert.deepEqual(rank(few, 'sedance'), ['Seedance']);
+  const many = [entry('Sedance one'), entry('Sedance two'), entry('Sedance three'), entry('Seedance')];
+  assert.deepEqual(rank(many, 'sedance').sort(), ['Sedance one', 'Sedance three', 'Sedance two']);
+  // old entries with a plain search text keep working
+  const plain = [{ type: 'a', category: 'x', label: 'Alpha', search: 'Alpha beta' }, { type: 'b', category: 'x', label: 'Beta', search: 'Beta' }];
+  assert.deepEqual(graphLib.rankPaletteEntries(reg, plain, { query: 'beta' }).map((item) => item.label), ['Beta', 'Alpha']);
+  assert.deepEqual(graphLib.rankPaletteEntries(reg, plain, { query: '  ' }).length, 2, 'a blank search shows everything');
+  assert.deepEqual(graphLib.rankPaletteEntries(reg, plain, { query: '-' }).length, 2, 'a search without letters shows everything');
+
+  // models: own limit, hint count, never without a search text in All
+  const nodes = [{ ...entry('Video node'), type: 'video.higgsfield' }];
+  const models = [];
+  for (let i = 0; i < 50; i += 1) models.push({ ...entry(`Video model ${i}`), model: true, type: 'video.higgsfield', category: 'higgsfield' });
+  const all = [...nodes, ...models];
+  const found = graphLib.rankPaletteEntries(reg, all, { query: 'video', modelLimit: 30 });
+  assert.equal(found.length, 31);
+  assert.equal(found.hiddenModels, 20);
+  assert.equal(found[0].label, 'Video node', 'the node leads on a tie');
+  assert.equal(graphLib.rankPaletteEntries(reg, all, {}).length, 1, 'no models in All without a search text');
+  assert.equal(graphLib.rankPaletteEntries(reg, all, { category: 'video' }).length, 1);
+  assert.equal(graphLib.rankPaletteEntries(reg, all, { category: 'higgsfield', modelLimit: 90 }).length, 50, 'their own chip lists them');
+}
+
 function testPromptNodeRegistered() {
   const def = reg.types.get('input.prompt');
   assert.ok(def, 'input.prompt is in the registry');
@@ -823,6 +876,7 @@ const tests = [
   testNormalizeLoaded,
   testContentSnapshots,
   testFuzzyAndPalette,
+  testSearchRules,
   testPromptNodeRegistered,
   testPaletteRanking,
   testQuickPick,

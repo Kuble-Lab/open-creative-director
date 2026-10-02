@@ -29,6 +29,36 @@
   }
 
   const typeLabel = (def) => tr(`nodes.type.${def.type}.label`, def.label || def.type);
+
+  // Search synonyms of a node type in the interface language (nodes.type.<type>.keywords, comma separated phrases).
+  // Types without a translation return an empty list; the registry's English keywords are searched in any case.
+  function typeKeywords(def) {
+    const text = tr(`nodes.type.${def.type}.keywords`, '');
+    return text
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  // The reasons the server gives for a node that cannot be used, in the interface language. Unknown reasons are
+  // shown as they come.
+  const AVAILABILITY_REASONS = Object.freeze({
+    'OPENROUTER_API_KEY is not set': 'nodes.reason.openrouter',
+    'OPENROUTER_API_KEY is not set and ChatGPT is not connected': 'nodes.reason.llm',
+    'Higgsfield is not connected': 'nodes.reason.higgsfield',
+    'FAL_KEY is not set': 'nodes.reason.fal',
+    'ELEVENLABS_API_KEY is not set': 'nodes.reason.elevenlabs',
+    'No render node configured': 'nodes.reason.rendernode',
+    'ffmpeg/ffprobe not found': 'nodes.reason.ffmpeg',
+    '@resvg/resvg-js is not installed': 'nodes.reason.resvg',
+    'Not available for your account': 'nodes.reason.account'
+  });
+
+  function availabilityReason(reason) {
+    if (typeof reason !== 'string') return '';
+    const key = AVAILABILITY_REASONS[reason];
+    return key ? T(key) : reason;
+  }
   const categoryLabel = (category) => tr(`nodes.category.${category}`, humanize(category));
   const portLabel = (id) => tr(`nodes.port.${id}`, humanize(id));
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
@@ -948,7 +978,7 @@
       ports.inputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}:${p.multiple ? `m${p.max ?? ''}` : ''}:${p.required ? 'r' : ''}`),
       ports.outputs.filter((p) => !p.hidden).map((p) => `${p.id}:${p.type}`),
       visible,
-      def.available === true ? 1 : 0,
+      def.available === true ? 1 : String(def.available),
       node.type === 'input.text_list' ? Number(node.params?.max) || 50 : 0
     ]);
   }
@@ -1141,7 +1171,7 @@
     if (def.experimental) badges.append(el('span', { class: 'nv-badge is-experimental', title: T('nodes.badge.experimentalHint'), text: T('nodes.badge.experimental') }));
     if (def.paid) badges.append(el('span', { class: 'nv-badge is-paid', title: T('nodes.badge.paidHint'), text: '$' }));
     if (def.available !== true) {
-      const warn = el('span', { class: 'nv-badge is-warn', title: typeof def.available === 'string' ? def.available : T('nodes.badge.unavailable') });
+      const warn = el('span', { class: 'nv-badge is-warn', title: typeof def.available === 'string' ? availabilityReason(def.available) : T('nodes.badge.unavailable') });
       warn.append(icon('warning', 12));
       badges.append(warn);
     }
@@ -1297,6 +1327,8 @@
     categoryIcon,
     humanize,
     typeLabel,
+    typeKeywords,
+    availabilityReason,
     categoryLabel,
     portLabel,
     paramLabel,

@@ -2665,6 +2665,13 @@
   color: var(--text-faint);
 }
 
+.nv-pal-more {
+  padding: 10px 10px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
 .nv-pal-item {
   display: flex;
   align-items: center;

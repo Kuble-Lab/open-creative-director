@@ -242,6 +242,56 @@ function testPortDescriptions() {
   return tiers;
 }
 
+// Search synonyms (WP21): every video, lip sync, voice, audio and video-analysis type has a translated list in all
+// three languages, with distinct phrases; the palette splits it at commas.
+function testSearchKeywords() {
+  const payload = JSON.parse(JSON.stringify(registryModule.publicRegistry()));
+  const mediaBase = (type) => graphLib.parseType(type)?.base;
+  const portsOf = (def) => {
+    const lists = [def.inputs, def.outputs];
+    for (const variant of Object.values(def.portVariants?.values || {})) lists.push(variant.inputs || [], variant.outputs || []);
+    return lists.flat();
+  };
+  const explicit = ['audio.tts', 'hf.speech', 'hf.voice_change', 'hf.dubbing', 'fal.h3_lipsync', 'llm.video_describer', 'image.to_video', 'video.seedance'];
+  const required = payload.nodeTypes.filter(
+    (def) => explicit.includes(def.type) || ['audio', 'edit-audio'].includes(def.category) || portsOf(def).some((port) => ['video', 'audio'].includes(mediaBase(port.type)))
+  );
+  assert.ok(required.length >= 35, `expected many video / audio types, got ${required.length}`);
+  const normal = graphLib.normalizeSearch;
+  for (const def of required) {
+    const key = `nodes.type.${def.type}.keywords`;
+    for (const lang of languages) {
+      const value = window.I18N[lang][key];
+      assert.ok(typeof value === 'string' && value.trim(), `${lang}.${key} is missing`);
+      const phrases = value.split(',').map((item) => item.trim());
+      assert.ok(phrases.length >= 3, `${lang}.${key} needs at least three phrases`);
+      assert.ok(phrases.every(Boolean), `${lang}.${key} has an empty phrase`);
+      assert.equal(new Set(phrases.map(normal)).size, phrases.length, `${lang}.${key} repeats a phrase`);
+      assert.equal(value.includes('ß'), false, `${lang}.${key} contains a sharp s`);
+    }
+  }
+  // every keywords row belongs to a registry type
+  const typeIds = new Set(payload.nodeTypes.map((def) => def.type));
+  for (const key of nodeKeys('de').filter((item) => item.endsWith('.keywords'))) {
+    assert.ok(typeIds.has(key.slice('nodes.type.'.length, -'.keywords'.length)), `${key} names no node type`);
+  }
+  // the examples of the order
+  const de = (type) => window.I18N.de[`nodes.type.${type}.keywords`].split(',').map((item) => item.trim());
+  for (const word of ['KI-Video', 'Video generieren', 'Text zu Video', 'Bild zu Video', 'Bild animieren', 'Clip', 'Film']) assert.ok(de('video.seedance').includes(word), `Seedance: ${word}`);
+  for (const word of ['Lippen', 'lippensynchron', 'sprechendes Porträt', 'Avatar']) assert.ok(de('fal.h3_lipsync').includes(word), `lip sync: ${word}`);
+  for (const word of ['Zeitlupe', 'Zeitraffer']) assert.ok(de('video.speed').includes(word), `speed: ${word}`);
+  for (const word of ['Video analysieren', 'Video verstehen']) assert.ok(de('llm.video_describer').includes(word), `video describer: ${word}`);
+  for (const word of ['Ken Burns', 'Diashow', 'Slideshow', 'Zoom', 'Schwenk', 'Standbild']) assert.ok(de('image.to_video').includes(word), `zoom: ${word}`);
+  // the texts for the palette hint and the unavailable reasons exist and keep their placeholders
+  for (const lang of languages) {
+    assert.match(window.I18N[lang]['nodes.palette.moreModels'], /\{count\}/);
+    assert.match(window.I18N[lang]['nodes.palette.moreModelsSearch'], /\{count\}/);
+    for (const reason of ['openrouter', 'llm', 'higgsfield', 'fal', 'elevenlabs', 'rendernode', 'ffmpeg', 'resvg', 'account']) {
+      assert.ok(window.I18N[lang][`nodes.reason.${reason}`], `${lang}: nodes.reason.${reason}`);
+    }
+  }
+}
+
 function testHtmlWiring() {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   assert.ok(html.includes('id="nodesBtn"'), 'view switch button missing in the header');
@@ -262,7 +312,7 @@ function testHtmlWiring() {
   assert.ok(!/OCDNodes|nodeApp|nodesBtn/.test(appSource), 'app.js must stay unchanged and independent of the node view');
 }
 
-const tests = [testParity, testSwissSpelling, testRegistryCoverage, testSourceKeys, testPortDescriptions, testHtmlWiring];
+const tests = [testParity, testSwissSpelling, testRegistryCoverage, testSourceKeys, testPortDescriptions, testSearchKeywords, testHtmlWiring];
 for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);

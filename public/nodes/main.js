@@ -599,9 +599,16 @@
   /* ---------- registry ---------- */
 
   let registryPromise = null;
+  let registryWatcher = null;
+  // Option lists that depend on a connection (Higgsfield) and are fetched again when the availability changes.
+  const CONNECTION_OPTION_SOURCES = ['higgsfield-image-models', 'higgsfield-video-models', 'higgsfield-voices'];
 
   function ensureRegistry() {
-    if (state.reg) return Promise.resolve(state.reg);
+    if (state.reg) {
+      // Coming back to the node view after a while: look for changed availability (throttled, see recheckRegistry).
+      recheckRegistry();
+      return Promise.resolve(state.reg);
+    }
     if (!registryPromise) {
       registryPromise = api
         .registry()
@@ -610,6 +617,8 @@
           state.reg = graphLib.indexRegistry(payload);
           state.registryError = null;
           canvas.setRegistry(state.reg);
+          registryWatcher = graphLib.createRegistryWatcher({ load: () => api.registry(), apply: applyFreshRegistry });
+          registryWatcher.prime(payload);
           return state.reg;
         })
         .catch((error) => {
@@ -619,6 +628,51 @@
         });
     }
     return registryPromise;
+  }
+
+  // The availability of nodes changed on the server (a key set up, Higgsfield connected in another tab): palette,
+  // inspector and cards show the new state and the model lists are fetched again.
+  function applyFreshRegistry(payload) {
+    const previous = state.reg;
+    state.registry = payload;
+    state.reg = graphLib.indexRegistry(payload);
+    // Only what depends on a type that changed is rebuilt: a card or the inspector the person is typing in stays.
+    const changed = new Set();
+    for (const def of state.reg.list) {
+      const before = previous && previous.types.get(def.type);
+      if (!before || before.available !== def.available || before.restricted !== def.restricted) changed.add(def.type);
+    }
+    if (canvas) {
+      canvas.setRegistry(state.reg);
+      if (state.graph) canvas.render(state.graph);
+    }
+    if (appView) appView.setRegistry(state.reg);
+    for (const source of CONNECTION_OPTION_SOURCES) ui.refreshOptions(source);
+    if (palette) palette.refresh();
+    if (runController) runController.relabel();
+    if (inspector) {
+      const selected = state.graph ? [...(state.selection?.nodes || [])].map((id) => graphLib.getNode(state.graph, id)).filter(Boolean) : [];
+      if (selected.some((node) => changed.has(node.type))) refreshInspectorWhenIdle();
+    }
+  }
+
+  // Renders the inspector again, but not under the person's cursor: while a field of the inspector has the focus
+  // it waits for the focus to leave.
+  function refreshInspectorWhenIdle() {
+    const host = dom && dom.inspectorScroll;
+    const active = document.activeElement;
+    if (!host || !active || active === document.body || !host.contains(active)) {
+      refreshInspector(true);
+      return;
+    }
+    host.addEventListener('focusout', () => setTimeout(() => refreshInspector(true), 0), { once: true });
+  }
+
+  // Only when the person comes back to the page (tab visible again, window focused) or opens the view again, never
+  // in the background; the watcher keeps at least 15 s between two requests.
+  function recheckRegistry() {
+    if (!state.active || !state.reg || !registryWatcher) return;
+    registryWatcher.check();
   }
 
   /* ---------- routing ---------- */
@@ -2282,7 +2336,9 @@
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden' && state.active && state.workflow) flushSave({ keepalive: true }).catch(() => {});
+      if (document.visibilityState === 'visible') recheckRegistry();
     });
+    global.addEventListener('focus', recheckRegistry);
     global.addEventListener('resize', () => canvas && canvas.relayout());
     global.addEventListener('hashchange', route);
 

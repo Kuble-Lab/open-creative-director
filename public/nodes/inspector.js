@@ -446,7 +446,7 @@
           refreshRun();
         }
         if (def.available !== true) {
-          frag.append(el('div', { class: 'nv-notice is-warn' }, ui.icon('warning', 14), el('span', { text: `${ui.T('nodes.inspector.unavailable')} ${typeof def.available === 'string' ? def.available : ''}`.trim() })));
+          frag.append(el('div', { class: 'nv-notice is-warn' }, ui.icon('warning', 14), el('span', { text: `${ui.T('nodes.inspector.unavailable')} ${typeof def.available === 'string' ? ui.availabilityReason(def.available) : ''}`.trim() })));
         }
         if (def.experimental) frag.append(el('div', { class: 'nv-notice' }, ui.icon('sparkle', 14), el('span', { text: ui.T('nodes.inspector.experimental') })));
 

@@ -952,7 +952,12 @@
       if (s.refs) build();
     }
 
-    return { open, close, showError, relabel };
+    // A fresh registry (availability changed): the form is kept as it is, later reads use the new definitions.
+    function setRegistry(registry) {
+      if (registry) reg = registry;
+    }
+
+    return { open, close, showError, relabel, setRegistry };
   }
 
   OCD.appMode = { createAppView, countTextItems };

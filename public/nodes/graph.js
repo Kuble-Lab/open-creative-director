@@ -23,6 +23,10 @@
   const PROMPT_NODE_WIDTH = 340;
   const PROMPT_NODE_GAP = 56;
   const PROMPT_BOOST = 10;
+  // Dragging an image or text output: nodes that make a video of it (rank on top of 2 for an exact base type).
+  const VIDEO_BOOST_CREATE = 3;
+  const VIDEO_BOOST_LOCAL = 2;
+  const VIDEO_BOOST_TEXT = 2; // from a text output: media generators (video and image alike) rank 4
   // "Convert to HTML with AI": a Motion graphics node whose HTML field holds an instruction gets a Prompt node and a
   // Motion HTML writer in front of it. Approximate card footprints for the placement.
   const MOTION_TYPE = 'video.motion_graphics';
@@ -767,40 +771,172 @@
 
   /* ---------- palette helpers ---------- */
 
-  // Normalised fuzzy score: 0 = no match. Every whitespace-separated query token must match.
-  // Word-start hits score above plain substrings, which score above scattered subsequences.
-  function fuzzyScore(query, text) {
-    const tokens = String(query || '')
+  // Search texts are compared in a normal form: lower case, no accents, every run of non-alphanumerics is one space
+  // ("KI-Video" -> "ki video", "fal.ai" -> "fal ai"). Query and searched texts both go through it.
+  function normalizeSearch(text) {
+    return String(text ?? '')
       .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
-    if (!tokens.length) return 1;
-    const haystack = String(text || '').toLowerCase();
-    if (!haystack) return 0;
-    let total = 0;
-    for (const token of tokens) {
-      const index = haystack.indexOf(token);
-      if (index >= 0) {
-        const wordStart = index === 0 || /[^a-z0-9]/.test(haystack[index - 1]);
-        total += wordStart ? 100 - Math.min(index, 40) * 0.5 : 60 - Math.min(index, 40) * 0.5;
-        continue;
-      }
-      // subsequence
-      let position = 0;
-      let matched = 0;
-      for (const char of token) {
-        const found = haystack.indexOf(char, position);
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  }
+
+  // Words that only glue a phrase together ("bild zu video"): they do not have to match on their own as long as
+  // another word of the query is left. The whole phrase still earns its bonus.
+  const SEARCH_STOP_WORDS = new Set(['zu', 'zum', 'zur', 'to', 'a', 'al', 'de', 'del', 'en', 'the', 'of', 'for', 'in', 'im', 'von', 'aus', 'und', 'and', 'y', 'o', 'or', 'oder']);
+  // Scattered letters ("sedance" for "seedance") only help with a real word of this length, only from a word start,
+  // only against labels, and only while fewer than MIN_REAL_MATCHES entries match for real.
+  const SUBSEQUENCE_MIN = 4;
+  const SUBSEQUENCE_SCORE = 20;
+  const MIN_REAL_MATCHES = 3;
+  const WEIGHT_LABEL = Object.freeze({ start: 100, inner: 60 });
+  const WEIGHT_TERM = Object.freeze({ start: 90, inner: 50 });
+  const WEIGHT_EXTRA = Object.freeze({ start: 40, inner: 20 });
+  const PHRASE_LABEL_EXACT = 100;
+  const PHRASE_LABEL_PART = 60;
+  const PHRASE_TERM_EXACT = 80;
+  const PHRASE_TERM_PART = 45;
+  const PHRASE_TERM_ORDER_STEP = 2; // keywords are listed by importance: each position costs a little
+  const PHRASE_TERM_ORDER_MAX = 10;
+  const SINGLE_TERM_BONUS = 9; // stays below the gap between a synonym hit (90) and a name hit (100)
+  const SINGLE_LABEL_EXACT = 20; // one word that IS the name ("prompt" for "Prompt"): ahead of every name that merely starts with it
+  const SINGLE_TERM_STEP = 0.5;
+
+  function parseSearchQuery(query) {
+    const all = normalizeSearch(query).split(' ').filter(Boolean);
+    const content = all.filter((word) => !SEARCH_STOP_WORDS.has(word));
+    return { phrase: all.join(' '), count: all.length, tokens: content.length ? content : all };
+  }
+
+  // 0 = no match, weights.start = the token starts a word of the text, weights.inner = it sits inside a word.
+  function matchToken(token, text, weights) {
+    let at = text.indexOf(token);
+    if (at < 0) return 0;
+    while (at >= 0) {
+      if (at === 0 || text[at - 1] === ' ') return weights.start;
+      at = text.indexOf(token, at + 1);
+    }
+    return weights.inner;
+  }
+
+  function matchSubsequence(token, text) {
+    if (token.length < SUBSEQUENCE_MIN) return false;
+    for (let start = text.indexOf(token[0]); start >= 0; start = text.indexOf(token[0], start + 1)) {
+      if (start !== 0 && text[start - 1] !== ' ') continue;
+      let position = start + 1;
+      let all = true;
+      for (let i = 1; i < token.length; i += 1) {
+        const found = text.indexOf(token[i], position);
         if (found < 0) {
-          matched = -1;
+          all = false;
           break;
         }
         position = found + 1;
-        matched += 1;
       }
-      if (matched < 0 || token.length < 3) return 0;
-      total += 20;
+      if (all) return true;
+    }
+    return false;
+  }
+
+  // Normalised fuzzy score of one text: 0 = no match. Every whitespace-separated query token must match.
+  // Word-start hits score above plain substrings, which score above scattered subsequences.
+  function fuzzyScore(query, text) {
+    const tokens = normalizeSearch(query).split(' ').filter(Boolean);
+    if (!tokens.length) return 1;
+    const haystack = normalizeSearch(text);
+    if (!haystack) return 0;
+    let total = 0;
+    for (const token of tokens) {
+      let score = matchToken(token, haystack, WEIGHT_LABEL);
+      if (!score) score = matchSubsequence(token, haystack) ? SUBSEQUENCE_SCORE : 0;
+      if (!score) return 0;
+      total += score;
     }
     return total / tokens.length;
+  }
+
+  // Searchable parts of a palette entry, normalised once:
+  //   labels   the names (translated and English): the strongest hits, and the only place scattered letters may match,
+  //   keywords translated and English synonyms, one phrase each (entry.keywords),
+  //   extra    everything else (category, type id, description; the plain entry.search of simple entries).
+  const searchFieldCache = new WeakMap();
+
+  function searchFields(entry) {
+    let fields = searchFieldCache.get(entry);
+    if (!fields) {
+      fields = {
+        labels: (Array.isArray(entry.labels) && entry.labels.length ? entry.labels : [entry.label]).map(normalizeSearch).filter(Boolean),
+        terms: (entry.keywords || []).map(normalizeSearch).filter(Boolean),
+        extra: normalizeSearch(entry.search)
+      };
+      searchFieldCache.set(entry, fields);
+    }
+    return fields;
+  }
+
+  function phraseBonus(fields, phrase) {
+    let best = 0;
+    for (const label of fields.labels) {
+      if (label === phrase) best = Math.max(best, PHRASE_LABEL_EXACT);
+      else if (matchToken(phrase, label, { start: PHRASE_LABEL_PART, inner: 0 })) best = Math.max(best, PHRASE_LABEL_PART);
+    }
+    fields.terms.forEach((term, index) => {
+      const order = Math.min(index, PHRASE_TERM_ORDER_MAX) * PHRASE_TERM_ORDER_STEP;
+      if (term === phrase) best = Math.max(best, PHRASE_TERM_EXACT - order);
+      else if (matchToken(phrase, term, { start: PHRASE_TERM_PART, inner: 0 })) best = Math.max(best, PHRASE_TERM_PART - order);
+    });
+    return best;
+  }
+
+  // null = the entry does not match; otherwise { score, real } (real = no scattered-letter hit involved).
+  function scoreEntry(entry, query) {
+    const fields = searchFields(entry);
+    let total = 0;
+    let real = true;
+    for (const token of query.tokens) {
+      let best = 0;
+      for (const label of fields.labels) best = Math.max(best, matchToken(token, label, WEIGHT_LABEL));
+      if (best < WEIGHT_TERM.start) {
+        fields.terms.forEach((term, index) => {
+          let hit = matchToken(token, term, WEIGHT_TERM);
+          // A single word that IS a synonym: the earlier in the list, the better (never as good as a name).
+          if (hit && query.count === 1 && term === token) hit += Math.max(0, SINGLE_TERM_BONUS - index * SINGLE_TERM_STEP);
+          best = Math.max(best, hit);
+        });
+      }
+      if (best < WEIGHT_EXTRA.start) best = Math.max(best, matchToken(token, fields.extra, WEIGHT_EXTRA));
+      if (!best) {
+        if (!fields.labels.some((label) => matchSubsequence(token, label))) return null;
+        best = SUBSEQUENCE_SCORE;
+        real = false;
+      }
+      total += best;
+    }
+    let score = total / query.tokens.length;
+    if (real) {
+      if (query.count > 1) score += phraseBonus(fields, query.phrase);
+      else if (fields.labels.includes(query.phrase)) score += SINGLE_LABEL_EXACT;
+    }
+    return { score, real };
+  }
+
+  // Who makes something new, who changes something, who merely helps (ties in the palette go in this order).
+  const ROLE_CREATE = 0;
+  const ROLE_EDIT = 1;
+  const ROLE_TOOL = 2;
+  const TOOL_CATEGORIES = new Set(['input', 'text', 'utility', 'output']);
+  const EDIT_CATEGORIES = new Set(['edit-image', 'edit-video', 'edit-audio']);
+
+  function nodeRole(def) {
+    if (!def) return ROLE_TOOL;
+    if (TOOL_CATEGORIES.has(def.category)) return ROLE_TOOL;
+    if (EDIT_CATEGORIES.has(def.category)) return ROLE_EDIT;
+    // A media node that needs media of its own output kind (a video in, a video out) edits; one that only needs a
+    // prompt or an image for a video generates.
+    const made = new Set((def.outputs || []).map((port) => parseType(port.type)?.base).filter((base) => MEDIA_BASES.includes(base)));
+    const needed = (def.inputs || []).filter((port) => port.required && !port.hidden).map((port) => parseType(port.type)?.base);
+    return needed.some((base) => made.has(base)) ? ROLE_EDIT : ROLE_CREATE;
   }
 
   // Node types that could take the other end of an edge dragged from a port.
@@ -859,27 +995,56 @@
   // dragging from an unconnected TEXT input puts the Prompt node on top (it is the natural source).
   // options.multiple: the drag starts on a multi-input; for a media type the Media list node and the matching
   // single input node (Image / Video / Audio input) go on top, so handing over several references is one click.
+  // Dragging an image OUTPUT puts the nodes that turn it into a video first: the generators, then the local ones
+  // (a zoom over a still image), before the many image editors that also take an image. Dragging a text OUTPUT puts
+  // the generators of media (video and image alike) ahead of the helpers that merely take text.
   function quickPickTargets(reg, dir, portType, options = {}) {
     const targets = compatibleTargets(reg, dir, portType);
     const source = parseType(portType);
     const boost = dir === 'in' && source && source.base === 'text' && reg.types.has(PROMPT_TYPE);
     const mediaBoost = Boolean(dir === 'in' && options.multiple === true && source && MEDIA_BASES.includes(source.base));
     const single = mediaBoost ? `input.${source.base}` : null;
+    const videoBoost = Boolean(dir === 'out' && source && (source.base === 'image' || source.base === 'text'));
+    const fromText = Boolean(source && source.base === 'text');
     return targets
       .map((target) => {
         if (boost && target.type === PROMPT_TYPE) return { ...target, rank: target.rank + PROMPT_BOOST };
         if (mediaBoost && target.type === MEDIA_LIST_TYPE) return { ...target, rank: target.rank + MEDIA_LIST_BOOST };
         if (mediaBoost && target.type === single) return { ...target, rank: target.rank + MEDIA_SINGLE_BOOST };
+        if (videoBoost) {
+          const def = reg.types.get(target.type);
+          // Only nodes that make the media from the dragged output (and maybe an optional extra): one that also
+          // needs a video of its own (overlay, extend, motion transfer) is an editor of videos, not a way to get one.
+          const needsVideo = def && (def.inputs || []).some((port) => port.required && parseType(port.type)?.base === 'video');
+          const makes = (base) => Boolean(def) && (def.outputs || []).some((port) => parseType(port.type)?.base === base);
+          // Optional or required input makes no difference here: a generator that takes the image only as an
+          // optional start frame is as good a pick as one that needs it.
+          if (def && !needsVideo && makes('video')) {
+            const base = Math.min(target.rank, 2);
+            // From a text a video is only one of the next steps (the image is the other common one): the generators
+            // of both share one rank, so "Generate image" is not pushed below the whole video family.
+            if (fromText) return nodeRole(def) === ROLE_CREATE ? { ...target, rank: base + VIDEO_BOOST_TEXT } : target;
+            return { ...target, rank: base + (nodeRole(def) === ROLE_CREATE ? VIDEO_BOOST_CREATE : VIDEO_BOOST_LOCAL) };
+          }
+          if (fromText && def && nodeRole(def) === ROLE_CREATE && makes('image')) return { ...target, rank: Math.min(target.rank, 2) + VIDEO_BOOST_TEXT };
+        }
         return target;
       })
       .sort((a, b) => b.rank - a.rank);
   }
 
   // Filters and orders palette entries (pure part of the command palette).
-  // entries: [{ type, category, label, search, model? }]. filter: { dir, type, multiple? } from a dragged connection.
-  // Returns the entries (with `compat` = the matching port target or null), best match first.
+  // entries: [{ type, category, label, model? }] plus the searchable parts (see searchFields) or a plain `search` text.
+  // options: query, category, filter ({ dir, type, multiple? } from a dragged connection), limit (nodes, default 150),
+  // modelLimit (Higgsfield model entries, default 30).
+  // Models need a search text (or their own category chip): without one they never crowd the nodes out. They have
+  // their own limit, so many models cannot push a node out of the list either; the number that did not fit is
+  // returned as `hiddenModels` on the array. Returns the entries (with `compat` = the matching port target or null),
+  // best match first.
   function rankPaletteEntries(reg, entries, options = {}) {
-    const { query = '', category = 'all', filter = null, limit = 90 } = options;
+    const { query = '', category = 'all', filter = null, limit = 150, modelLimit = 30 } = options;
+    const parsed = parseSearchQuery(query);
+    const hasQuery = parsed.tokens.length > 0;
     let list = entries;
     let compat = null;
     if (filter) {
@@ -887,22 +1052,144 @@
       list = list.filter((entry) => compat.has(entry.type));
     }
     if (category !== 'all') list = list.filter((entry) => entry.category === category);
-    const text = String(query).trim();
+    if (!hasQuery && (category === 'all' || filter)) list = list.filter((entry) => !entry.model);
     const categoryOrder = new Map((reg.categories || []).map((id, index) => [id, index]));
-    const scored = list
-      .map((entry) => ({ entry, score: fuzzyScore(text, entry.search), rank: compat ? compat.get(entry.type).rank : 0 }))
-      .filter((item) => item.score > 0);
+    const defOf = (entry) => entry.def || reg.types.get(entry.type);
+    let scored = [];
+    for (const entry of list) {
+      const hit = hasQuery ? scoreEntry(entry, parsed) : { score: 1, real: true };
+      if (!hit) continue;
+      const def = defOf(entry);
+      scored.push({
+        entry,
+        score: hit.score,
+        real: hit.real,
+        rank: compat ? compat.get(entry.type).rank : 0,
+        role: nodeRole(def),
+        usable: def && def.available === true ? 0 : 1,
+        model: entry.model ? 1 : 0
+      });
+    }
+    // Enough genuine hits: the scattered-letter ones were only a fallback for typos.
+    if (hasQuery && scored.filter((item) => item.real).length >= MIN_REAL_MATCHES) scored = scored.filter((item) => item.real);
     scored.sort((a, b) => {
-      if (text) return b.score - a.score || b.rank - a.rank || a.entry.label.localeCompare(b.entry.label);
+      if (hasQuery) {
+        return b.score - a.score || b.rank - a.rank || a.model - b.model || a.usable - b.usable || a.role - b.role || a.entry.label.localeCompare(b.entry.label);
+      }
       if (compat && b.rank !== a.rank) return b.rank - a.rank;
       const ca = categoryOrder.get(a.entry.category) ?? 99;
       const cb = categoryOrder.get(b.entry.category) ?? 99;
-      // The Prompt node is pinned to the top of its category ("Inputs"); the rest is alphabetical.
+      // The Prompt node is pinned to the top of its category ("Inputs"); in a block the usable nodes come first,
+      // then generators before editors before helpers, models last, the rest alphabetical.
       const pa = a.entry.type === PROMPT_TYPE ? 0 : 1;
       const pb = b.entry.type === PROMPT_TYPE ? 0 : 1;
-      return ca - cb || pa - pb || Number(Boolean(a.entry.model)) - Number(Boolean(b.entry.model)) || a.entry.label.localeCompare(b.entry.label);
+      return ca - cb || pa - pb || a.usable - b.usable || a.role - b.role || a.model - b.model || a.entry.label.localeCompare(b.entry.label);
     });
-    return scored.slice(0, limit).map((item) => ({ ...item.entry, compat: compat ? compat.get(item.entry.type) : null }));
+    const out = [];
+    let nodes = 0;
+    let models = 0;
+    let hiddenModels = 0;
+    for (const item of scored) {
+      if (item.model) {
+        if (models < modelLimit) {
+          models += 1;
+          out.push(item);
+        } else hiddenModels += 1;
+      } else if (nodes < limit) {
+        nodes += 1;
+        out.push(item);
+      }
+    }
+    const result = out.map((item) => ({ ...item.entry, compat: compat ? compat.get(item.entry.type) : null }));
+    result.hiddenModels = hiddenModels;
+    return result;
+  }
+
+  // Palette entry of a node type. text = { label(def), keywords(def) -> translated synonyms, categoryLabel(id) }.
+  // The searchable parts are kept apart (names, synonym phrases, everything else) so that a hit in a name, in a
+  // synonym and in the description each count by their own weight instead of by their place in one long text.
+  function paletteEntry(def, text) {
+    const label = text.label(def);
+    return {
+      key: def.type,
+      type: def.type,
+      params: null,
+      def,
+      category: def.category,
+      label,
+      labels: uniqueTexts([label, def.label]),
+      keywords: uniqueTexts([...(text.keywords(def) || []), ...(def.keywords || [])]),
+      search: [text.categoryLabel(def.category), def.type, def.description || ''].join(' ')
+    };
+  }
+
+  // Palette entry of one model of a node type with a model list (Higgsfield). spec = { type, kind }.
+  function paletteModelEntry(def, option, spec, text) {
+    return {
+      key: `${spec.type}:${option.value}`,
+      type: spec.type,
+      params: { model: option.value },
+      def,
+      category: 'higgsfield',
+      label: option.label,
+      labels: [option.label],
+      keywords: [],
+      model: true,
+      search: [option.value, 'higgsfield', spec.kind, text.categoryLabel('higgsfield')].join(' ')
+    };
+  }
+
+  function uniqueTexts(list) {
+    const seen = new Set();
+    const out = [];
+    for (const item of list) {
+      const text = String(item ?? '').trim();
+      const key = normalizeSearch(text);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+    }
+    return out;
+  }
+
+  // Keeps the registry in step with the server while the page stays open. The availability of nodes changes
+  // outside the page (a key set up, Higgsfield connected in another tab), so the view looks again when the person
+  // comes back, but not more often than every `minInterval` ms and never in the background.
+  //   load()    -> Promise<registry payload>,   apply(payload) is called only when the availability changed.
+  // check() resolves true when it applied a new payload, false when it skipped, found nothing new or failed.
+  function registrySignature(payload) {
+    return JSON.stringify((payload?.nodeTypes || []).map((def) => [def.type, def.available === true ? 1 : String(def.available), def.restricted === true ? 1 : 0]));
+  }
+
+  function createRegistryWatcher({ load, apply, now = Date.now, minInterval = 15000 }) {
+    let signature = null;
+    let lastAt = -Infinity;
+    let pending = null;
+    return {
+      prime(payload) {
+        signature = registrySignature(payload);
+        lastAt = now();
+      },
+      check({ force = false } = {}) {
+        if (pending) return pending;
+        if (!force && now() - lastAt < minInterval) return Promise.resolve(false);
+        lastAt = now();
+        pending = Promise.resolve()
+          .then(load)
+          .then((payload) => {
+            const next = registrySignature(payload);
+            if (next === signature) return false;
+            signature = next;
+            apply(payload);
+            return true;
+          })
+          .catch(() => false)
+          .finally(() => {
+            pending = null;
+          });
+        return pending;
+      }
+    };
   }
 
   /* ---------- extract a prompt into its own node ---------- */
@@ -1241,7 +1528,13 @@
     removeSelection,
     normalizeLoaded,
     validate,
+    normalizeSearch,
     fuzzyScore,
+    nodeRole,
+    paletteEntry,
+    paletteModelEntry,
+    registrySignature,
+    createRegistryWatcher,
     compatibleTargets,
     quickPickTargets,
     rankPaletteEntries,

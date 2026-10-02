@@ -2,14 +2,21 @@
 
 // Command palette of the node view (SPEC §12.4): centred overlay with search, category chips,
 // keyboard navigation and an optional type filter (drag-to-empty: only nodes that can take the
-// dragged port). Entries come from the registry; Higgsfield models are added dynamically.
+// dragged port). Entries come from the registry; Higgsfield models are added dynamically. Search and order live in
+// graph.js (rankPaletteEntries): names, translated synonyms (nodes.type.<type>.keywords) and English keywords are
+// searched, models never push nodes out of the list.
 (function (global) {
   const OCD = (global.OCDNodes = global.OCDNodes || {});
   const graphLib = OCD.graph;
   const ui = OCD.ui;
   const { el } = ui;
 
-  const MAX_RESULTS = 90;
+  // Nodes are all shown (there are fewer than this); the Higgsfield models have a list of their own. In their own chip
+  // there is room for more of them, because that chip is the way to browse them.
+  const MAX_NODES = 150;
+  const MAX_MODELS = 30;
+  const MAX_MODELS_IN_CHIP = 90;
+  const MODEL_CATEGORY = 'higgsfield';
   const ANCHORED_WIDTH = 380;
   const ANCHORED_MAX_HEIGHT = 440;
   const HIGGSFIELD_SOURCES = [
@@ -38,19 +45,12 @@
 
     function buildEntries() {
       const reg = getReg();
+      const text = { label: ui.typeLabel, keywords: ui.typeKeywords, categoryLabel: ui.categoryLabel };
       const entries = [];
       for (const def of reg.list) {
         // Not available for this account (participants and guests, marked by the server): no way in, no dead end.
         if (def.restricted === true) continue;
-        entries.push({
-          key: def.type,
-          type: def.type,
-          params: null,
-          def,
-          category: def.category,
-          label: ui.typeLabel(def),
-          search: [ui.typeLabel(def), def.label, ui.categoryLabel(def.category), ...(def.keywords || []), def.type].join(' ')
-        });
+        entries.push(graphLib.paletteEntry(def, text));
       }
       // One palette entry per Higgsfield model (fetched from the catalogue when connected).
       for (const spec of HIGGSFIELD_SOURCES) {
@@ -59,23 +59,20 @@
         const source = ui.optionsFor({ optionsSource: spec.source });
         for (const option of source.options) {
           if (!option.value) continue;
-          entries.push({
-            key: `${spec.type}:${option.value}`,
-            type: spec.type,
-            params: { model: option.value },
-            def,
-            category: 'higgsfield',
-            label: option.label,
-            model: true,
-            search: [option.label, option.value, 'higgsfield', spec.kind, ui.categoryLabel('higgsfield')].join(' ')
-          });
+          entries.push(graphLib.paletteModelEntry(def, option, spec, text));
         }
       }
       return entries;
     }
 
     function visibleEntries() {
-      return graphLib.rankPaletteEntries(getReg(), state.entries, { query: state.query, category: state.category, filter: state.filter, limit: MAX_RESULTS });
+      return graphLib.rankPaletteEntries(getReg(), state.entries, {
+        query: state.query,
+        category: state.category,
+        filter: state.filter,
+        limit: MAX_NODES,
+        modelLimit: state.category === MODEL_CATEGORY ? MAX_MODELS_IN_CHIP : MAX_MODELS
+      });
     }
 
     function renderChips() {
@@ -108,8 +105,10 @@
         return;
       }
       let lastCategory = null;
+      // The same test as the ranking: a text of only separators ("-", "  .") is no search.
+      const searching = Boolean(graphLib.normalizeSearch(state.query));
       results.forEach((entry, index) => {
-        if (!state.query.trim() && entry.category !== lastCategory) {
+        if (!searching && entry.category !== lastCategory) {
           lastCategory = entry.category;
           state.list.append(el('div', { class: 'nv-pal-group', text: ui.categoryLabel(entry.category) }));
         }
@@ -126,7 +125,7 @@
         text.append(el('span', { class: 'nv-pal-label', text: entry.label }));
         const meta = el('span', { class: 'nv-pal-meta' });
         meta.append(dots(def.inputs || []), el('i', { class: 'nv-pal-arrow', text: '→' }), dots(def.outputs || []));
-        if (state.query.trim()) meta.append(el('span', { class: 'nv-pal-cat', text: ui.categoryLabel(entry.category) }));
+        if (searching) meta.append(el('span', { class: 'nv-pal-cat', text: ui.categoryLabel(entry.category) }));
         text.append(meta);
         row.append(chip, text);
         const tags = el('span', { class: 'nv-pal-tags' });
@@ -134,7 +133,7 @@
         if (def.experimental) tags.append(el('span', { class: 'nv-badge is-experimental', text: ui.T('nodes.badge.experimental') }));
         if (def.paid) tags.append(el('span', { class: 'nv-badge is-paid', title: ui.T('nodes.badge.paidHint'), text: '$' }));
         if (def.available !== true) {
-          tags.append(el('span', { class: 'nv-badge is-warn', title: typeof def.available === 'string' ? def.available : '', text: ui.T('nodes.palette.unavailable') }));
+          tags.append(el('span', { class: 'nv-badge is-warn', title: typeof def.available === 'string' ? ui.availabilityReason(def.available) : '', text: ui.T('nodes.palette.unavailable') }));
         }
         row.append(tags);
         row.addEventListener('mousemove', () => {
@@ -146,6 +145,11 @@
         row.addEventListener('click', () => pick(index));
         state.list.append(row);
       });
+      // Models that did not fit: say so, and where the rest is (not an entry, the keyboard skips it).
+      if (results.hiddenModels > 0) {
+        const key = state.category === MODEL_CATEGORY ? 'nodes.palette.moreModelsSearch' : 'nodes.palette.moreModels';
+        state.list.append(el('div', { class: 'nv-pal-more', text: ui.T(key, { count: results.hiddenModels }) }));
+      }
     }
 
     function paintActive() {
@@ -285,7 +289,16 @@
       previousFocus = null;
     }
 
-    return { open, close, isOpen: () => Boolean(state) };
+    // The registry or the model lists changed under an open palette (a node became available, Higgsfield got
+    // connected in another tab): rebuild the entries, keep search text and chip.
+    function refresh() {
+      if (!state || !getReg()) return;
+      state.entries = buildEntries();
+      renderChips();
+      renderList();
+    }
+
+    return { open, close, refresh, isOpen: () => Boolean(state) };
   }
 
   OCD.palette = { createPalette };
