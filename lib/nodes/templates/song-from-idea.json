@@ -29,7 +29,7 @@
     "description": "Write your idea and choose how long the song text should be. You get a finished song.",
     "inputs": [
       { "node": "n1", "param": "prompt", "label": "Idea" },
-      { "node": "n2", "param": "length", "label": "Length (seconds)" }
+      { "node": "n2", "param": "length", "label": "Length (seconds, up to 600)" }
     ],
     "outputs": [
       { "node": "n4", "label": "Song" }
@@ -47,7 +47,7 @@
       "app.title": "Song aus einer Idee",
       "app.description": "Schreibe deine Idee und wähle, wie lang der Songtext sein soll. Du erhältst einen fertigen Song.",
       "app.input.n1.prompt": "Idee",
-      "app.input.n2.length": "Länge (Sekunden)",
+      "app.input.n2.length": "Länge (Sekunden, bis 600)",
       "app.output.n4": "Song"
     },
     "es": {
@@ -61,7 +61,7 @@
       "app.title": "Canción a partir de una idea",
       "app.description": "Escribe tu idea y elige la duración de la letra. Recibes una canción terminada.",
       "app.input.n1.prompt": "Idea",
-      "app.input.n2.length": "Duración (segundos)",
+      "app.input.n2.length": "Duración (segundos, hasta 600)",
       "app.output.n4": "Canción"
     }
   }

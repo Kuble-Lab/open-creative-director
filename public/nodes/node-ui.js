@@ -1242,14 +1242,16 @@
     const fix = el('div', { class: 'nv-node-fix is-empty' });
     const ports = el('div', { class: 'nv-node-ports' });
     const params = el('div', { class: 'nv-node-params' });
+    // A line to read under the settings (the length of a song and where it comes from), filled through the slot.
+    const note = el('div', { class: 'nv-node-note is-empty', dataset: { slot: 'note' } });
     const preview = el('div', { class: 'nv-node-preview', dataset: { slot: 'preview' } });
     const pager = el('div', { class: 'nv-node-pager' });
     const cost = el('span', { class: 'nv-node-cost', dataset: { slot: 'cost' } });
     const foot = el('div', { class: 'nv-node-foot' }, pager, cost);
-    card.append(head, status, message, fix, ports, params, preview, foot);
+    card.append(head, status, message, fix, ports, params, note, preview, foot);
     const state = {
       el: card,
-      refs: { head, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, params, preview, pager, cost, foot },
+      refs: { head, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, params, note, preview, pager, cost, foot },
       widgets: new Map(),
       sig: null,
       node: null,
@@ -1257,7 +1259,8 @@
       portRows: new Map(),
       connSig: '',
       slotKey: '',
-      previewKey: null
+      previewKey: null,
+      noteKey: ''
     };
     cardStates.set(card, state);
     title.addEventListener('dblclick', (event) => {
@@ -1392,6 +1395,8 @@
         });
         state.widgets.set(param.id, widget);
         row.append(widget.el);
+        // The song length is asked for here and reaches 10 minutes: the range stands under the field.
+        if (node.type === 'audio.music_plan' && param.id === 'length') row.append(el('div', { class: 'nv-param-hint', text: T('nodes.music.lengthRange') }));
         // "Move into a Prompt node": only for an unconnected text input backed by this textarea.
         const extractPort = param.kind === 'textarea' && ctx.onExtract && ctx.reg.types.has('input.prompt')
           ? list.inputs.find((port) => port.param === param.id && port.type === 'text' && !port.hidden && !connected.has(port.id))
@@ -1478,7 +1483,7 @@
   // Applies the persisted slot state of a card (see run.js slotFor): status row, message, preview,
   // variant pager, cost and the run button. Everything is keyed so unchanged parts are not rebuilt.
   function applySlots(state, slots) {
-    const { status, message, fix, preview, pager, cost, runBtn } = state.refs;
+    const { status, message, fix, note, preview, pager, cost, runBtn } = state.refs;
     const info = slots || {};
     state.el.dataset.status = info.status || '';
     state.el.classList.toggle('is-working', Boolean(info.working));
@@ -1515,6 +1520,27 @@
 
     runBtn.disabled = Boolean(info.busy);
     runBtn.classList.toggle('hidden', info.canRun === false);
+
+    const noteKey = info.note ? `${info.note.nodeId || ''}|${info.note.text}` : '';
+    if (noteKey !== state.noteKey) {
+      state.noteKey = noteKey;
+      note.textContent = '';
+      if (info.note) {
+        // With a node to lead to, the line is a button: one click selects that node.
+        if (info.note.nodeId && cardActions.select) {
+          const target = info.note.nodeId;
+          const button = el('button', { type: 'button', class: 'nv-note-link nv-nodrag', title: T('nodes.music.length.goTo'), text: info.note.text });
+          button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            cardActions.select(target);
+          });
+          note.append(button);
+        } else {
+          note.append(el('span', { text: info.note.text }));
+        }
+      }
+      note.classList.toggle('is-empty', !info.note);
+    }
 
     if (info.preview !== undefined && state.previewKey !== info.previewKey) {
       state.previewKey = info.previewKey;

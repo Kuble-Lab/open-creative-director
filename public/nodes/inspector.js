@@ -21,6 +21,7 @@
     let actionsSlot = null;
     let current = null;
     let runRefs = null; // { nodeId?, runEl, histEl? } containers refreshed by refreshRun() without rebuilding the form
+    let lengthRefs = null; // { nodeId, el }: the line about the song length of a music node, refreshed by refreshRun()
     // Model descriptions are shared with the limits of the inputs (ui.modelDetail); when the one of the selected model
     // arrives, the form is built again.
     const stopModelWatch = ui.onModelChange((modelId) => {
@@ -31,6 +32,7 @@
     });
 
     function clearWidgets() {
+      lengthRefs = null;
       for (const widget of widgets.values()) widget.dispose && widget.dispose();
       for (const widget of dynamicWidgets) widget.dispose && widget.dispose();
       widgets = new Map();
@@ -316,7 +318,26 @@
       container.append(wrap);
     }
 
+    // The read-only line that stands in for the hidden "Length" of a music node: where the length comes from. With a node to
+    // lead to, it is a button that selects that node. `planText`: the song text field as typed right now.
+    function paintLengthNote(planText) {
+      if (!lengthRefs || !cb.run || !cb.run.lengthNote) return;
+      const note = cb.run.lengthNote(lengthRefs.nodeId, planText === undefined ? undefined : { planText });
+      const target = lengthRefs.el;
+      target.textContent = '';
+      target.hidden = !note;
+      if (!note) return;
+      if (note.nodeId && cb.run.selectNode) {
+        const button = el('button', { type: 'button', class: 'nv-note-link', title: ui.T('nodes.music.length.goTo'), text: note.text });
+        button.addEventListener('click', () => cb.run.selectNode(note.nodeId));
+        target.append(button);
+      } else {
+        target.textContent = note.text;
+      }
+    }
+
     function refreshRun() {
+      paintLengthNote();
       if (!runRefs || !cb.run) return;
       if (runRefs.nodeId) {
         renderNodeRun(runRefs.runEl, runRefs.nodeId);
@@ -515,8 +536,21 @@
         const model = modelId ? modelState(modelId) : null;
         const useDynamic = Boolean(model && model.state === 'ready' && model.data);
 
+        lengthRefs = null;
         for (const param of def.params) {
-          if (!graphLib.isVisible(param.showIf, node, def, connectedPorts)) continue;
+          if (!graphLib.isVisible(param.showIf, node, def, connectedPorts)) {
+            // "Generate music" without its own length: the line says where the length comes from instead of a hidden field.
+            if (param.id === 'length' && node.type === 'audio.music' && cb.run && cb.run.lengthNote) {
+              const noteEl = el('div', { class: 'nv-field-hint nv-length-note', role: 'status' });
+              lengthRefs = { nodeId: node.id, el: noteEl };
+              fields.append(ui.field(ui.paramLabel('length'), noteEl));
+              // typing in the song text field changes the line at once
+              const planWidget = widgets.get('plan');
+              if (planWidget && planWidget.el) planWidget.el.addEventListener('input', () => paintLengthNote(planWidget.get()));
+              paintLengthNote();
+            }
+            continue;
+          }
           if (param.dynamic === DYNAMIC && useDynamic) continue;
           if (param.dynamic === DYNAMIC && param.id === 'extra_params' && modelId && !useDynamic && model && model.state === 'loading') continue;
           const linked = ports.inputs.find((port) => port.param === param.id && connectedPorts.has(port.id));
@@ -566,6 +600,8 @@
           const fieldEl = ui.field(ui.paramLabel(param.id), widget.el, fieldOptions);
           // Song text of the music node: the check of the format while typing (the same module the server checks with)
           if (param.id === 'plan' && node.type === 'audio.music' && OCD.musicPlan) fieldEl.append(planCheck(widget, effective.plan, effective.model));
+          // The song length of "Song text and structure" reaches 10 minutes: the range stands under the field.
+          if (param.id === 'length' && node.type === 'audio.music_plan') fieldEl.append(el('div', { class: 'nv-field-hint', text: ui.T('nodes.music.lengthRange') }));
           fields.append(fieldEl);
         }
 

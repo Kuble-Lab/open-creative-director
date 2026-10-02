@@ -413,6 +413,47 @@
     return request;
   }
 
+  /* ---------- length of the music nodes ---------- */
+
+  // The node that feeds an input and its text, from the selected result of that node: { nodeId, text } with text null
+  // where there is no result yet (or it is no plain text); null where nothing is connected to the input.
+  function connectedText(graph, results, nodeId, portId) {
+    const edge = ((graph && graph.edges) || []).find((item) => item.to.node === nodeId && item.to.port === portId);
+    if (!edge) return null;
+    const variant = selectedVariant(results, edge.from.node);
+    const value = variant ? variant[edge.from.port] : null;
+    return { nodeId: edge.from.node, text: value && value.type === 'text' && typeof value.value === 'string' ? value.value : null };
+  }
+
+  // What the card and the inspector of a music node say about the length of the song (the numbers are milliseconds, the
+  // wording is the interface's): for "Generate music" where the length comes from the song text or the video instead of
+  // its own setting, for "Song text and structure" the length of its result.
+  //   { kind: 'field' | 'plan', ms, nodeId? }   nodeId: the connected song text node (the line leads there)
+  //   { kind: 'video' }
+  //   { kind: 'result', ms, count }
+  // overrides.planText: the text of the song text field as typed right now (the saved graph lags behind while typing).
+  function musicLengthInfo(node, graph, results, musicPlan, overrides = {}) {
+    if (!node || !musicPlan) return null;
+    if (node.type === 'audio.music_plan') {
+      const variant = selectedVariant(results, node.id);
+      const value = variant ? variant.plan : null;
+      const summary = value && value.type === 'text' && typeof value.value === 'string' ? musicPlan.describe(value.value) : null;
+      return summary ? { kind: 'result', ms: summary.ms, count: summary.count } : null;
+    }
+    if (node.type !== 'audio.music') return null;
+    const plan = connectedText(graph, results, node.id, 'plan');
+    const match = connectedText(graph, results, node.id, 'match');
+    const planText = overrides.planText !== undefined ? overrides.planText : node.params && node.params.plan;
+    const source = musicPlan.lengthSource({
+      planText,
+      planConnected: Boolean(plan),
+      connectedText: plan ? plan.text : null,
+      matchConnected: Boolean(match)
+    });
+    if (!source) return null;
+    return source.kind === 'plan' ? { ...source, nodeId: plan.nodeId } : source;
+  }
+
   const pure = {
     ACTIVE_STATUSES,
     FINAL_STATUSES,
@@ -442,6 +483,8 @@
     previewItems,
     flattenValues,
     textResultOf,
+    connectedText,
+    musicLengthInfo,
     describePlan,
     gateOf,
     budgetLine,
@@ -493,6 +536,30 @@
       const def = defOf(nodeId);
       return node.title || (def ? ui.typeLabel(def) : node.type);
     };
+
+    /* ----- length of the music nodes ----- */
+
+    const clock = (ms) => {
+      const seconds = Math.round(ms / 1000);
+      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    };
+
+    // The line about the length of a music node: { text, nodeId } (nodeId: where a click leads), or null. A song text in the
+    // field is judged by the same module as on the server; overrides.planText is the field as typed right now.
+    function lengthNote(nodeId, overrides) {
+      const node = nodeOf(nodeId);
+      const st = S();
+      if (!node || !st.reg) return null;
+      const info = musicLengthInfo(node, st.graph, st.results, OCD.musicPlan, overrides);
+      if (!info) return null;
+      const duration = info.ms === null || info.ms === undefined ? '' : clock(info.ms);
+      if (info.kind === 'result') return { text: T('nodes.music.planResult', { duration, count: info.count }), nodeId: null };
+      if (info.kind === 'video') return { text: T('nodes.music.length.video'), nodeId: null };
+      if (info.kind === 'field') return { text: T(duration ? 'nodes.music.length.field' : 'nodes.music.length.fieldUnknown', { duration }), nodeId: null };
+      return { text: T(duration ? 'nodes.music.length.plan' : 'nodes.music.length.planUnknown', { duration, name: titleOf(info.nodeId) }), nodeId: info.nodeId };
+    }
+    // What the cards showed last, to paint a music card when its line changes (a song text typed in the field, a new result).
+    const lengthNotes = new Map();
 
     /* ----- formatting with i18n ----- */
 
@@ -614,6 +681,9 @@
         items = previewItems(variant, outputOrder(node), hiddenPorts(node), def.category === 'output');
       }
       slot.preview = items;
+      const note = node.type === 'audio.music' || node.type === 'audio.music_plan' ? lengthNote(node.id) : null;
+      lengthNotes.set(node.id, note ? note.text : '');
+      slot.note = note;
       slot.pager = info && info.variantCount > 1 ? { index: info.variantIndex, total: info.variantCount } : null;
 
       // cost: last actual cost of the selected result, else the plan's estimate for paid nodes
@@ -1257,6 +1327,7 @@
       downloadZip,
       adoptText,
       cancel: cancelRun,
+      lengthNote,
       costText,
       formatDuration,
       titleOf
@@ -1316,7 +1387,15 @@
         // the card shows at once instead of with the next plan.
         const invalid = (graph.nodes || []).map((node) => node.id).filter((id) => plan && plan.nodes && plan.nodes[id] && plan.nodes[id].status === 'invalid');
         const fresh = (graph.nodes || []).map((node) => node.id).filter((id) => !painted.has(id));
-        if (fresh.length || invalid.length) schedulePaint([...fresh, ...invalid]);
+        // The line about the length of a music node follows the song text typed in the field and the connections.
+        const music = (graph.nodes || [])
+          .filter((node) => (node.type === 'audio.music' || node.type === 'audio.music_plan') && painted.has(node.id))
+          .filter((node) => {
+            const note = lengthNote(node.id);
+            return (note ? note.text : '') !== lengthNotes.get(node.id);
+          })
+          .map((node) => node.id);
+        if (fresh.length || invalid.length || music.length) schedulePaint([...fresh, ...invalid, ...music]);
       });
       bus.on('saved', ({ rev }) => {
         if (rev !== planRev) schedulePlan(1000);

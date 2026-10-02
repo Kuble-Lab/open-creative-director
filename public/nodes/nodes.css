@@ -1349,6 +1349,63 @@
   flex: none;
 }
 
+.nv-param-hint {
+  flex-basis: 100%;
+  margin-top: -2px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  text-align: right;
+}
+
+.nv-param.has-label:has(> .nv-param-hint) {
+  flex-wrap: wrap;
+}
+
+/* the line about where the length of a song comes from (read only, a button where it leads to a node) */
+.nv-node-note {
+  margin: 0 11px 8px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.nv-node-note.is-empty {
+  display: none;
+}
+
+.nv-note-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 2px;
+}
+
+.nv-note-link:hover {
+  color: var(--text);
+  text-decoration-color: var(--accent);
+}
+
+.nv-note-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .nv-param-label,
 .nv-field-label {
   font-size: 11px;
@@ -2514,6 +2571,16 @@
   font-size: 11px;
   color: var(--text-faint);
   line-height: 1.45;
+}
+
+.nv-length-note {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.nv-length-note[hidden] {
+  display: none;
 }
 
 .nv-plan-check.is-error {

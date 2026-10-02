@@ -254,6 +254,29 @@
     return errors.length ? null : totalMs(plan);
   }
 
+  // Length and number of sections of a text when it is a valid plan, else null (the line under a result).
+  function describe(text) {
+    const { plan, errors } = parse(text);
+    return errors.length ? null : { ms: totalMs(plan), count: plan.sections.length };
+  }
+
+  // Where the length of the music node comes from, for the line that stands in for its hidden "Length" field.
+  // info: { planText, planConnected, connectedText, matchConnected }: the song text of the field, whether a song text
+  // is connected (and its text where the client knows it), whether a video is connected. A connection wins over the
+  // field, the song text over the video, as in the node. Returns
+  //   null                             the setting "Length" applies (and is shown)
+  //   { kind: 'field', ms }            from the song text in the field (ms null: the text is not a valid plan yet)
+  //   { kind: 'plan', ms }             from the connected song text (ms null: its text is not known here)
+  //   { kind: 'video' }                from the connected video
+  function lengthSource(info = {}) {
+    if (info.planConnected) {
+      return { kind: 'plan', ms: typeof info.connectedText === 'string' ? lengthOfText(info.connectedText) : null };
+    }
+    if (String(info.planText || '').trim()) return { kind: 'field', ms: lengthOfText(info.planText) };
+    if (info.matchConnected) return { kind: 'video' };
+    return null;
+  }
+
   /* ---------- writing ---------- */
 
   function stringify(plan) {
@@ -366,6 +389,8 @@
     stringify,
     totalMs,
     lengthOfText,
+    describe,
+    lengthSource,
     parseDuration,
     formatDuration,
     shapeOf,

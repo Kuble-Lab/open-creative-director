@@ -1906,6 +1906,14 @@
   }
 
   // The buttons of a card or of the inspector that remove the cause of an "Incomplete" status in one step.
+  // Selects a node and brings it into view (the line about the song length of "Generate music" leads to its song text).
+  function selectNodeById(nodeId) {
+    const node = graphLib.getNode(state.graph, nodeId);
+    if (!node) return;
+    setSelection({ nodes: [nodeId], notes: [], groups: [], edge: null });
+    canvas.centerOnWorld(node.x + 148, node.y + 60);
+  }
+
   function applyFix(nodeId, fixId, fix) {
     if (fixId === 'motion-html') convertMotionHtml(nodeId);
     else if (fixId === 'add-input') addInputFor(nodeId, fix && fix.port);
@@ -2588,7 +2596,8 @@
         const node = graphLib.getNode(state.graph, nodeId);
         if (node) nodeHelp.openPopover(node.type, anchor);
       },
-      fix: applyFix
+      fix: applyFix,
+      select: selectNodeById
     });
     runController = OCD.run.createController({ OCD });
     inspector = OCD.inspector.createInspector({
@@ -2614,7 +2623,7 @@
         },
         uploadFile,
         app: appApi(),
-        run: { ...runController.inspectorApi, runAll: () => runController.startRun({ mode: 'all', force: false }), sendToChat: sendNodeToChat },
+        run: { ...runController.inspectorApi, runAll: () => runController.startRun({ mode: 'all', force: false }), sendToChat: sendNodeToChat, selectNode: selectNodeById },
         onRendered: (slot, ctx) => bus.emit('inspector', { slot, selection: ctx.selection, graph: ctx.graph })
       }
     });
