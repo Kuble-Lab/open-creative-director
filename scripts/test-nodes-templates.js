@@ -35,6 +35,7 @@ const EXPECTED = [
   'masked-edit',
   'motion-title',
   'photo-slideshow',
+  'photo-to-3d',
   'series-shots',
   'song-from-idea',
   'storyboard-clips',
@@ -246,7 +247,9 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => item.id !== 'talking-portrait').every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d'].includes(item.id)).every((item) => item.available));
+      assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
+      assert.deepEqual(noFal.find((item) => item.id === 'photo-to-3d').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       const originalHasKey = falLib.hasKey;
       try {
         falLib.hasKey = () => true;
@@ -288,6 +291,16 @@ async function main() {
       assert.deepEqual(types('image-formats'), ['input.image', 'image.resize', 'image.resize', 'image.resize', 'output.result']);
       assert.deepEqual(types('video-to-post'), ['input.video', 'llm.video_describer', 'input.text', 'text.template', 'llm.chat', 'output.result']);
       assert.deepEqual(types('photo-slideshow'), ['input.media_list', 'image.to_video', 'video.concat', 'output.result']);
+      assert.deepEqual(types('photo-to-3d'), ['input.image', 'fal.remove_background', 'fal.image_to_3d', 'output.result']);
+      assert.equal(byId['photo-to-3d'].graph.nodes.find((node) => node.type === 'fal.image_to_3d').params.model, 'tripo_h31', 'Tripo with a texture');
+      assert.equal(byId['photo-to-3d'].graph.nodes.find((node) => node.type === 'fal.image_to_3d').params.texture, true);
+      // the note sits below the card of the background removal even when that card shows a result image (about 480 px high), so the text stays readable
+      const photoNote = byId['photo-to-3d'].graph.notes[0];
+      const cutOut = byId['photo-to-3d'].graph.nodes.find((node) => node.type === 'fal.remove_background');
+      assert.ok(photoNote.y >= cutOut.y + 480, `the note (y ${photoNote.y}) is under the card with its result (y ${cutOut.y})`);
+      assert.deepEqual(templates.loadTemplates().find((item) => item.id === 'photo-to-3d').requires, ['fal']);
+      assert.equal(templates.listTemplates({ lang: 'de', checks: Object.fromEntries(templates.REQUIREMENTS.map((key) => [key, () => true])) }).find((item) => item.id === 'photo-to-3d').name, 'Foto zu 3D-Modell');
+      assert.equal(templates.resolveTemplate('photo-to-3d', { lang: 'es' }).name, 'Foto a modelo 3D');
       for (const id of ['image-to-video', 'storyboard-clips']) {
         for (const node of byId[id].graph.nodes.filter((item) => item.type === 'video.seedance')) {
           assert.ok(node.params.duration <= 4 && node.params.resolution === '480p', `${id}: a first run is short and small`);
@@ -340,11 +353,15 @@ async function main() {
       // cost: computed from the nodes, local = free, unknown is marked, never invented
       for (const id of EXPECTED) {
         const cost = summary[id].cost;
-        assert.equal(cost.kind, FREE.includes(id) ? 'free' : 'unknown', `${id}: the shipped nodes have no price table`);
+        // photo-to-3d is the exception: both of its nodes (background removal, image to 3D) have a price table
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' ? 'estimate' : 'unknown', `${id}: the shipped nodes have no price table`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));
         assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
         if (FREE.includes(id)) assert.deepEqual(cost.providers, [], `${id}: nothing is billed`);
       }
+      // photo to 3D: background removal (Bria, $0.018) + Tripo H3.1 with the standard texture ($0.30), one number in the gallery
+      assert.deepEqual(summary['photo-to-3d'].cost, { kind: 'estimate', usd: 0.318, credits: 0, paidNodes: 2, providers: ['fal'] });
+      assert.deepEqual(summary['photo-to-3d'].flow.map((step) => step.map((entry) => entry.type)), [['input.image'], ['fal.remove_background'], ['fal.image_to_3d'], ['output.result']]);
       assert.deepEqual(summary['image-to-ad'].cost.providers, ['openrouter', 'elevenlabs']);
       assert.deepEqual(summary['dub-clip'].cost.providers, ['higgsfield']);
       // music: the length comes through a connection (the video, the song text), so the price is unknown, never 0

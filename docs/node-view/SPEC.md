@@ -25,7 +25,7 @@ The node view is a new *front end over the existing generation stack*. It does n
 - Real-time multi-user co-editing (presence, cursors, CRDT). v1 uses optimistic concurrency (`rev`) only.
 - Public, unauthenticated share links for Design Apps.
 - New AI providers or models beyond what Open CD already reaches (OpenRouter, ChatGPT subscription, Higgsfield MCP, ElevenLabs, render nodes, local ffmpeg/resvg).
-- Pixel-accurate mask inpainting, segmentation ("select subject"), true relighting models, 3D.
+- Pixel-accurate mask inpainting, segmentation ("select subject"), true relighting models, editing 3D models (a 3D result of fal.ai is only shown and downloaded, see §3.3).
 - A Director tool that runs or authors workflows (planned for phase 2, see §17).
 - Replacing the chat. The chat stays the default view.
 
@@ -88,7 +88,7 @@ The node view is a new *front end over the existing generation stack*. It does n
 | Cancel | Now (partial) | Stops waiting and skips pending nodes. Already submitted provider jobs continue remotely and are billed (no cancel API in the stack). |
 | Status per node (queued / running / waiting / cached / done / error / skipped / cancelled) | Now | SSE `node_status`. |
 | Caching of unchanged results, dirty propagation | Now | Cache key §9.3, plan endpoint paints "stale" badges. |
-| Previews inside the node (image, video, audio, text) | Now | Native `<img>`, `<video>`, `<audio>`, text block. |
+| Previews inside the node (image, video, audio, 3D model, text) | Now | Native `<img>`, `<video>`, `<audio>`, text block; a 3D model (GLB) in the bundled `<model-viewer>` (below). |
 | Multiple results/variants per run | Now | `count` param (1–4) on generative nodes; Higgsfield multi-result jobs become variants. |
 | Run history per node, choose version | Now | `results.json`, max 30 entries per node. |
 | Cost display | Now (actual) / estimate partly | Actual USD from OpenRouter usage; Higgsfield shows credit estimate from `credits_per_unit`; GPT Image / Seedance have no price table in the code → estimate = last actual cost of that node type in this workflow, else "unknown". Pre-run confirmation lists paid nodes. |
@@ -119,7 +119,7 @@ The node view is a new *front end over the existing generation stack*. It does n
 | Frame extraction, trim, merge audio, concat, speed, extract audio, image-to-video (Ken Burns) | Now | ffmpeg; concat reuses `concat_videos`. |
 | Segmentation / "select subject" masks | Later | No segmentation model reachable. |
 | Lip sync, motion transfer, voice change | Later | Higgsfield `dubbing`, `motion_control`, `voice_change` exist in the catalogue; wire after the experimental edit nodes are verified. |
-| 3D | Later | Higgsfield `generate_3d` returns GLB; needs a viewer (three.js from CDN) and GLB asset kind. |
+| 3D | Now (experimental) | Port type `model3d` (GLB only, compatible with itself and `any`) and the node `fal.image_to_3d` ("Image to 3D", fal.ai: Tripo H3.1, Hunyuan 3D Pro 3.1, Meshy 7.1, SAM 3D Objects): front image plus optional left / back / right views (limits per model), outputs `model` (`model3d`) and `preview` (the rendered image, none with SAM 3D). The viewer is `<model-viewer>`, shipped in `public/vendor/model-viewer/` (no CDN, no `package.json` entry) and loaded the first time a model is shown; a normal GLB makes no request to another address. A connection from an output the model never fills (`preview` of SAM 3D) is refused before the run with the code `OUTPUT_EMPTY` (a node def may list such outputs in `emptyOutputs(params)`); the run reports the same code if an optional output turns out empty. A result is stored only as a GLB without external files (`MESH_FILE_NOT_GLB`, `MESH_FILE_EXTERNAL`, `MESH_NO_GLB`, `MESH_SPLAT_ONLY`). A model cannot be sent to the chat (the preview image can); the ZIP of the outputs contains it. Higgsfield `generate_3d` is not wired. |
 | Output / export | Now | `output.result` node: marks app outputs, download, ZIP, send to chat. |
 
 ### 3.4 Design App, batch, chat
@@ -294,6 +294,7 @@ Implementation: a generic `runHiggsfieldEdit(ctx, { tool, params, sourceAssetIds
 | `image` | `{ type:'image', sessionId, assetId, file, url }` (raster: png/jpg/webp; gif treated as image for display only) | `--nv-port-image: #d8a25f` (= `--accent`) |
 | `video` | `{ type:'video', sessionId, assetId, file, url, duration? }` (mp4/webm) | `--nv-port-video: #c49bff` |
 | `audio` | `{ type:'audio', sessionId, assetId, file, url, duration? }` (mp3/wav/m4a/aac) | `--nv-port-audio: #5fd3a2` |
+| `model3d` | `{ type:'model3d', sessionId, assetId, file, url }` (glb only; compatible with `model3d` and `any`, with nothing else) | `--nv-port-model3d` |
 | `any` | any of the above | `--nv-port-any: #9aa1ab` |
 | `T[]` | `{ type:'list', of:T, items:[Value…] }` | same colour, square port glyph |
 

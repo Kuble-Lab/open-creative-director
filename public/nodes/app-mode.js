@@ -879,7 +879,7 @@
       const cell = el('div', { class: `nv-appleaf is-${leaf.type}` });
       if (OCD.preview.isMedia(leaf)) {
         const frame = el('div', { class: 'nv-appleaf-frame' });
-        frame.append(OCD.preview.mediaNode(leaf));
+        frame.append(OCD.preview.mediaNode(leaf, { scrolling: true }));
         if (leaf.type === 'image') {
           frame.classList.add('is-clickable');
           frame.addEventListener('click', () => onOpen(index));

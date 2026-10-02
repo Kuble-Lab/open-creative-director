@@ -1,0 +1,66 @@
+{
+  "id": "photo-to-3d",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Photo to 3D model",
+  "description": "Turn the photo of an object into a 3D model you can rotate: fal.ai cuts the object out of its background, then Tripo H3.1 builds a textured model as a GLB file.",
+  "requires": ["fal"],
+  "graph": {
+    "nodes": [
+      { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 80, "title": "Photo", "params": { "asset": null } },
+      { "id": "n2", "type": "fal.remove_background", "typeVersion": 1, "x": 500, "y": 80, "title": "Cut out object", "params": {} },
+      { "id": "n3", "type": "fal.image_to_3d", "typeVersion": 1, "x": 920, "y": 60, "title": "3D model", "params": { "model": "tripo_h31", "object": "", "texture": true, "pbr": false, "detail": "standard", "face_count": null, "seed": null } },
+      { "id": "n4", "type": "output.result", "typeVersion": 1, "x": 1380, "y": 120, "params": { "label": "3D model" } }
+    ],
+    "edges": [
+      { "id": "e1", "from": { "node": "n1", "port": "image" }, "to": { "node": "n2", "port": "image" } },
+      { "id": "e2", "from": { "node": "n2", "port": "image" }, "to": { "node": "n3", "port": "image" } },
+      { "id": "e3", "from": { "node": "n3", "port": "model" }, "to": { "node": "n4", "port": "inputs" } }
+    ],
+    "groups": [],
+    "notes": [
+      { "id": "t1", "x": 500, "y": 620, "w": 380, "h": 190, "text": "Use a photo of one object that fills more than half of the image. The background is removed first, which helps the model. Rotate the result in the preview and download the GLB file from the result menu. fal.ai costs money: the run asks for confirmation first. Check the provider's terms before you use a model commercially." }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Photo to 3D model",
+    "description": "Upload a photo of an object. You get a 3D model you can rotate and download as a GLB file.",
+    "inputs": [
+      { "node": "n1", "param": "asset", "label": "Photo" },
+      { "node": "n3", "param": "texture", "label": "With texture" }
+    ],
+    "outputs": [
+      { "node": "n4", "label": "3D model" }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Foto zu 3D-Modell",
+      "description": "Mache aus dem Foto eines Objekts ein drehbares 3D-Modell: fal.ai stellt das Objekt frei, danach baut Tripo H3.1 ein texturiertes Modell als GLB-Datei.",
+      "node.n1": "Foto",
+      "node.n2": "Objekt freistellen",
+      "node.n3": "3D-Modell",
+      "note.t1": "Nimm das Foto eines einzelnen Objekts, das mehr als die Hälfte des Bildes füllt. Der Hintergrund wird zuerst entfernt, das hilft dem Modell. Drehe das Ergebnis in der Vorschau und lade die GLB-Datei im Ergebnis-Menü herunter. fal.ai kostet Geld: Der Lauf fragt vorher nach der Bestätigung. Prüfe die Nutzungsbedingungen des Anbieters, bevor du ein Modell kommerziell nutzt.",
+      "app.title": "Foto zu 3D-Modell",
+      "app.description": "Lade das Foto eines Objekts hoch. Du erhältst ein drehbares 3D-Modell, das du als GLB-Datei herunterladen kannst.",
+      "app.input.n1.asset": "Foto",
+      "app.input.n3.texture": "Mit Textur",
+      "app.output.n4": "3D-Modell"
+    },
+    "es": {
+      "name": "Foto a modelo 3D",
+      "description": "Convierte la foto de un objeto en un modelo 3D giratorio: fal.ai recorta el objeto de su fondo y luego Tripo H3.1 crea un modelo con textura como archivo GLB.",
+      "node.n1": "Foto",
+      "node.n2": "Recortar objeto",
+      "node.n3": "Modelo 3D",
+      "note.t1": "Usa la foto de un solo objeto que ocupe más de la mitad de la imagen. El fondo se quita primero, lo que ayuda al modelo. Gira el resultado en la vista previa y descarga el archivo GLB desde el menú del resultado. fal.ai cuesta dinero: la ejecución pide confirmación antes. Revisa las condiciones de uso del proveedor antes de usar un modelo con fines comerciales.",
+      "app.title": "Foto a modelo 3D",
+      "app.description": "Sube la foto de un objeto. Obtienes un modelo 3D giratorio que puedes descargar como archivo GLB.",
+      "app.input.n1.asset": "Foto",
+      "app.input.n3.texture": "Con textura",
+      "app.output.n4": "Modelo 3D"
+    }
+  }
+}

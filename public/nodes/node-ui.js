@@ -150,6 +150,7 @@
     image: 'M4 5h16v14H4zM4 16l4.5-4.5L13 16l3-3 4 4M9 9.5h.01',
     video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
     audio: 'M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2',
+    cube: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
     'edit-image': 'M4 7h9M17 7h3M4 17h3M11 17h9M13 5v4M7 15v4',
     'edit-video': 'M4 5h16v14H4zM8 5v14M16 5v14M4 9h4M4 15h4M16 9h4M16 15h4',
     'edit-audio': 'M3 12h3l2-6 4 12 3-9 2 3h4',
@@ -446,6 +447,9 @@
   const optionCache = new Map();
   const optionListeners = new Set();
 
+  // The views of a 3D model besides the front image: each is an input of its own with a maximum of 0 or 1.
+  const VIEW_CAPS = Object.freeze(['left', 'back', 'right']);
+
   // Entries may carry what a model takes (`references`, `audio`, `videos`, `last_frame`, `durations`, see lib/nodes/routes.js),
   // what an image costs (`estimateUsd`) or a second of video (`perSecondUsd`) and `default: true` for the entry of the model that a node without a choice uses (value ''); they are
   // kept as they come.
@@ -462,6 +466,12 @@
       if (option.durations && typeof option.durations === 'object') out.durations = option.durations;
       if (option.perSecondUsd && typeof option.perSecondUsd === 'object') out.perSecondUsd = option.perSecondUsd;
       if (Number.isFinite(option.estimateUsd) && option.estimateUsd > 0) out.estimateUsd = option.estimateUsd;
+      // 3D models (image-to-3d-models): the views besides the front image ({ max } at left, back, right and their number), the
+      // price from (with the default options, no extra view) and what the model is good at (a key the page translates)
+      for (const view of VIEW_CAPS) if (option[view] && typeof option[view] === 'object' && Number.isFinite(option[view].max)) out[view] = { max: option[view].max };
+      if (Number.isFinite(option.views)) out.views = option.views;
+      if (Number.isFinite(option.fromUsd) && option.fromUsd > 0) out.fromUsd = option.fromUsd;
+      if (typeof option.strength === 'string' && option.strength) out.strength = option.strength;
       if (option.default === true) out.default = true;
       return out;
     });
@@ -481,7 +491,8 @@
     const options = source.options
       .filter((option) => option !== standard)
       .map((option) => (param.optionsSource && standard && option.value !== '' && option.label === standard.label ? { ...option, label: T('nodes.option.pinnedNamed', { name: option.label }) } : option));
-    if (param.optionsSource) {
+    // a list without a "default" entry (noDefaultEntry: the 3D models, the node names one of them itself) shows only its models
+    if (param.optionsSource && !param.noDefaultEntry) {
       options.unshift(standard
         ? { ...standard, value: '', label: T('nodes.option.defaultNamed', { name: standard.label }) }
         : { value: '', label: source.state === 'loading' ? T('nodes.option.loading') : source.state === 'error' ? T('nodes.option.unavailable') : T('nodes.option.default') });
@@ -629,6 +640,11 @@
         videos: (entry && entry.videos) || null,
         last_frame: (entry && entry.last_frame) || null,
         durations: (entry && entry.durations) || null,
+        left: (entry && entry.left) || null,
+        back: (entry && entry.back) || null,
+        right: (entry && entry.right) || null,
+        views: entry && Number.isFinite(entry.views) ? entry.views : null,
+        strength: (entry && entry.strength) || '',
         error: false
       };
     }
@@ -705,10 +721,22 @@
     return Number.isFinite(durations.min) && Number.isFinite(durations.max) ? T('nodes.cap.duration', { min: durations.min, max: durations.max }) : '';
   }
 
+  // 3D models: "up to 3 more views" or "no more views" (the front image is always there). '' while it is not known.
+  function viewsText(caps) {
+    if (!caps || !Number.isFinite(caps.views)) return '';
+    return caps.views > 0 ? T('nodes.cap.views.upTo', { max: caps.views }) : T('nodes.cap.views.none');
+  }
+
+  // What a 3D model is good at (nodes.model3d.strength.<key>); '' for a key that has no text.
+  function strengthText(caps) {
+    if (!caps || !caps.strength) return '';
+    return tr(`nodes.model3d.strength.${caps.strength}`, '');
+  }
+
   // What a model takes, in one line: "end frame, up to 4 images, audio, 4-30 s". '' while nothing is known.
   function capabilitiesText(caps) {
     if (!caps) return '';
-    return [lastFrameText(caps.last_frame), referencesText(caps.references), videosText(caps.videos), audioText(caps.audio), durationText(caps.durations)]
+    return [lastFrameText(caps.last_frame), referencesText(caps.references), videosText(caps.videos), audioText(caps.audio), durationText(caps.durations), viewsText(caps)]
       .filter(Boolean)
       .join(', ');
   }
@@ -733,6 +761,9 @@
     if (caps.audio && audio > caps.audio.max) {
       return caps.audio.max === 0 ? T(key('noAudio'), { count: audio }) : T(key('audio'), { max: caps.audio.max, count: audio });
     }
+    // 3D models: connections at left, back or right where the model takes no view
+    const views = VIEW_CAPS.reduce((sum, view) => sum + ((caps[view] && usage[view] > caps[view].max) ? usage[view] : 0), 0);
+    if (views > 0) return T(key('noViews'), { count: views });
     return '';
   }
 
@@ -750,6 +781,12 @@
       const decimals = second.max < 1 ? 3 : 2;
       return T('nodes.cap.priceVideo', { price: money(low, decimals) === money(second.max, decimals) ? money(second.max, decimals) : `${money(low, decimals)}–${money(second.max, decimals)}` });
     }
+    // a 3D model: the price with the default options and no extra view ("from"; texture, PBR and more cost extra)
+    if (option && Number.isFinite(option.fromUsd) && option.fromUsd > 0) {
+      // whole cents as they are ($0.30, $1.20), a third decimal only where the price has one ($0.375)
+      const cents = option.fromUsd * 100;
+      return T('nodes.cap.price3d', { price: money(option.fromUsd, Math.abs(cents - Math.round(cents)) > 1e-6 ? 3 : 2) });
+    }
     if (!option || !Number.isFinite(option.estimateUsd) || !(option.estimateUsd > 0)) return '';
     return T('nodes.cap.priceImage', { price: money(option.estimateUsd) });
   }
@@ -757,7 +794,9 @@
   // Label of an entry of the model list: the name, what it takes, what it costs and, when it does not fit the
   // connections, why.
   function modelOptionLabel(option, usage) {
-    const details = [capabilitiesText(option), priceText(option)].filter(Boolean).join(' · ');
+    // a 3D model leads with the price and the views, what it is good at comes last: the closed field of a card cuts the end off
+    const parts = option && option.strength ? [priceText(option), capabilitiesText(option), strengthText(option)] : [capabilitiesText(option), priceText(option)];
+    const details = parts.filter(Boolean).join(' · ');
     // short in the entry (the full reason is in the inspector under "does not fit the connections")
     const misfit = misfitText(option, usage, { short: true });
     return { text: `${option.label}${details ? ` · ${details}` : ''}${misfit ? ` ${misfit}` : ''}`, misfit: Boolean(misfit) };
@@ -1145,7 +1184,7 @@
         // Model lists tell what each model takes; models that do not fit the connections of the node are marked.
         const usage = param.optionsSource && typeof ctx.usage === 'function' ? ctx.usage() : null;
         for (const option of options) {
-          if (option.references || option.audio || option.videos || option.last_frame || option.durations || option.perSecondUsd || option.estimateUsd) {
+          if (option.references || option.audio || option.videos || option.last_frame || option.durations || option.perSecondUsd || option.estimateUsd || option.fromUsd || option.strength) {
             const label = modelOptionLabel(option, usage);
             select.append(el('option', { value: option.value, text: label.text, dataset: label.misfit ? { misfit: '1' } : null }));
           } else {
@@ -1738,6 +1777,8 @@
     limitsFor,
     roleLabel,
     capabilitiesText,
+    viewsText,
+    strengthText,
     misfitText,
     modelOptionLabel,
     portCountText,
