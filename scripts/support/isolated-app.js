@@ -5,6 +5,7 @@
 // symlink; everything the app writes (chats, workflows, cost journal, team files) lands in the temp directory.
 //
 //   const isolated = await createIsolatedApp();      // { root, app, listen, request, whoami, cleanup, require }
+//   createIsolatedApp({ env: {...}, config: {...} }) // environment variables / fields of the copy's config.json
 //   const { port } = await isolated.listen();        // ephemeral port on 127.0.0.1
 //   await isolated.request('/api/me', { as: 'alice@example.com' });
 //   await isolated.cleanup();
@@ -32,12 +33,17 @@ async function startWhoami() {
   return { server, url: `http://127.0.0.1:${server.address().port}/whoami` };
 }
 
-async function createIsolatedApp({ active = true, env = {} } = {}) {
+async function createIsolatedApp({ active = true, env = {}, config = null } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-isolated-'));
   await fsp.cp(path.join(REPO, 'lib'), path.join(root, 'lib'), { recursive: true });
   await fsp.cp(path.join(REPO, 'views'), path.join(root, 'views'), { recursive: true }).catch(() => {});
   for (const file of ['server.js', 'config.json', 'SystemPrompt-Video-Creativ-Director.md', 'package.json']) {
     await fsp.copyFile(path.join(REPO, file), path.join(root, file));
+  }
+  // `config`: fields merged into the copy's config.json (the repository's file stays as it is).
+  if (config) {
+    const file = path.join(root, 'config.json');
+    await fsp.writeFile(file, `${JSON.stringify({ ...JSON.parse(await fsp.readFile(file, 'utf8')), ...config }, null, 2)}\n`);
   }
   await fsp.cp(path.join(REPO, 'config'), path.join(root, 'config'), { recursive: true }).catch(() => {});
   await fsp.symlink(path.join(REPO, 'node_modules'), path.join(root, 'node_modules'), 'dir');

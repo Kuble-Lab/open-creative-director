@@ -2107,6 +2107,23 @@ code {
   color: var(--text-dim);
 }
 
+/* the provider refused the image of this request (real person): closed for it; the others are the way on */
+.vmc-option.refused {
+  border-style: dashed;
+  border-color: rgba(224, 167, 158, 0.55);
+  opacity: 0.75;
+}
+
+.vmc-option.refused .vmc-option-name,
+.vmc-option.refused .vmc-price {
+  color: var(--text-dim);
+}
+
+.vmc-option.suggested {
+  border-color: rgba(140, 201, 160, 0.7);
+  background: rgba(140, 201, 160, 0.08);
+}
+
 .vmc-option-top {
   display: flex;
   flex-wrap: wrap;

@@ -274,7 +274,7 @@
     return { remaining, exhausted, low: !exhausted && limit > 0 && fraction <= 0.15, fraction, limit };
   }
 
-  const FEATURES = ['gts', 'higgsfield', 'chatgpt', 'roles', 'context'];
+  const FEATURES = ['gts', 'higgsfield', 'chatgpt', 'roles', 'context', 'models'];
 
   // A refused paid action (402) or a feature the account does not have (403) as a sentence in the interface language.
   // `error` is an Error of request()/api() (code, body) or an event of the chat stream ({ code, message }).

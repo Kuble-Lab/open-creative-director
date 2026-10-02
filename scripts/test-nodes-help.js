@@ -1,7 +1,7 @@
 'use strict';
 
 // Help for node types (public/nodes/node-help.js, WP23): the texts written by hand (nodes.type.<type>.help / .example /
-// .tip.1 to .tip.3 in public/nodes/i18n-nodes.js), the parts generated from the registry (ports, cost, availability),
+// .tip.1 to .tip.4 in public/nodes/i18n-nodes.js), the parts generated from the registry (ports, cost, availability),
 // the fix for an incomplete node, and static checks of the wiring (no innerHTML, every CSS class defined, every
 // translation key present, script order).
 //
@@ -83,7 +83,7 @@ function testKeysBelongToTypes() {
       assert.ok(typeIds.includes(type), `${lang}: help text for unknown node type ${type}`);
       const sorted = [...entry.tips].sort((a, b) => a - b);
       assert.deepEqual(sorted, sorted.map((_, index) => index + 1), `${lang} ${type}: tips are numbered 1, 2, 3 without gaps`);
-      assert.ok(sorted.length <= 3, `${lang} ${type}: at most 3 tips`);
+      assert.ok(sorted.length <= 4 && (sorted.length <= 3 || type === 'video.seedance'), `${lang} ${type}: at most 3 tips (video.seedance has a fourth about real persons)`);
       assert.ok(entry.help, `${lang} ${type}: tips or an example without the help text`);
     }
   }
@@ -128,7 +128,7 @@ function testTypeTextsAndFallback() {
     const seedance = help.typeTexts('video.seedance');
     assert.equal(seedance.what, dict['nodes.type.video.seedance.help']);
     assert.equal(seedance.example, dict['nodes.type.video.seedance.example']);
-    assert.deepEqual([...seedance.tips], [1, 2, 3].map((n) => dict[`nodes.type.video.seedance.tip.${n}`]));
+    assert.deepEqual([...seedance.tips], [1, 2, 3, 4].map((n) => dict[`nodes.type.video.seedance.tip.${n}`]));
     // a type without texts, and one that does not exist: empty parts, never the key and never a made-up sentence
     const none = help.typeTexts('no.such_type');
     assert.deepEqual(JSON.parse(JSON.stringify(none)), { what: '', example: '', tips: [] });

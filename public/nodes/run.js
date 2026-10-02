@@ -30,7 +30,7 @@
       targets: [],
       active: false,
       status: 'idle', // idle | running | completed | failed | cancelled | interrupted | finished
-      nodes: {}, // nodeId -> { status, message?, progress?, startedAt?, endedAt?, entryId? }
+      nodes: {}, // nodeId -> { status, message?, code?, progress?, startedAt?, endedAt?, entryId? }
       logs: {}, // nodeId -> [label]
       cost: { usd: 0, credits: 0 },
       error: null,
@@ -86,6 +86,9 @@
     else delete next.endedAt;
     if (typeof event.message === 'string' && event.message) next.message = event.message;
     else if (status !== 'error' && status !== 'skipped') delete next.message;
+    // The stable error code of a failed node (nodes.issue.<code> shows its cause in the interface language).
+    if (status === 'error' && typeof event.code === 'string' && event.code) next.code = event.code;
+    else delete next.code;
     if (event.progress && isNumber(event.progress.done) && isNumber(event.progress.total)) next.progress = { done: event.progress.done, total: event.progress.total };
     else if (isFinal(status)) delete next.progress;
     return { ...base, active: base.active || !isFinal(status), status: base.status === 'idle' ? 'running' : base.status, nodes: { ...base.nodes, [event.nodeId]: next } };
@@ -348,7 +351,9 @@
   function displayStatus({ run, planNode, hasResults, category }) {
     const runStatus = run && run.status;
     if (isActive(runStatus)) return { status: runStatus };
-    if (runStatus === 'error' || runStatus === 'skipped' || runStatus === 'cancelled') return { status: runStatus, message: run.message || null };
+    if (runStatus === 'error' || runStatus === 'skipped' || runStatus === 'cancelled') {
+      return { status: runStatus, message: run.message || null, ...(runStatus === 'error' && run.code ? { code: run.code } : {}) };
+    }
     const planStatus = planNode && planNode.status;
     if (planStatus === 'invalid') {
       // reasonCode / reasonData (from an issue with a code) let the UI show a translated text.
@@ -364,6 +369,15 @@
       return { status: hasResults ? 'stale' : 'notrun' };
     }
     return { status: runStatus || null };
+  }
+
+  // A failed node whose cause has a translated text (nodes.issue.<code>, e.g. an image the provider refused) shows it in
+  // the interface language; any other error keeps the engine's message.
+  function localizeError(shown, ui) {
+    if (shown && shown.status === 'error' && shown.code && ui.hasIssueText(shown.code)) {
+      return { ...shown, message: ui.issueText({ code: shown.code, message: shown.message }) };
+    }
+    return shown;
   }
 
   function buildRunRequest({ mode, nodeIds, force, rev }) {
@@ -405,6 +419,7 @@
     gateOf,
     budgetLine,
     displayStatus,
+    localizeError,
     buildRunRequest
   };
 
@@ -486,7 +501,7 @@
       if (shown.status === 'invalid' && shown.code === 'missing_input' && st.reg && !graphLib.missingInputs(st.reg, st.graph, node.id).length) {
         return { status: hasResults ? 'stale' : 'notrun' };
       }
-      return shown;
+      return localizeError(shown, ui);
     }
 
     // Text and one-click remedy of an invalid node. The cause has a translated text (nodes.issue.<code>) when it comes

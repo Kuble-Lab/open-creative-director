@@ -399,6 +399,8 @@ function runClient() {
 
   // the builders, cut out of the app and run against a tiny DOM
   const formatCost = /function formatCost\(cost\) \{[\s\S]*?\n\}\n/.exec(appSource)[0];
+  // a failed job with a known cause (the provider refused the image after the start) says it in the interface language
+  const providerRuleMessage = /function providerRuleMessage\(code\) \{[\s\S]*?\n\}\n/.exec(appSource)[0];
   const start = appSource.indexOf('/* ---------- element builders ---------- */');
   const end = appSource.indexOf('function videoModelPriceLabel');
   assert.ok(start > 0 && end > start, 'the builders are in public/app.js');
@@ -411,9 +413,10 @@ function runClient() {
     document: { createElement: (tag) => new FakeElement(tag) },
     rel: (url) => url,
     openLightbox() {},
+    i18nHas: (key) => Object.prototype.hasOwnProperty.call(window.I18N[lang], key),
     t: (key, vars = {}) => String(window.I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '')
   };
-  vm.runInNewContext(`${formatCost}\n${section}\nthis.api = { assetMeta, jobCard, mediaCard, assetPriceLabel };`, context, { filename: 'public/app.js (builders)' });
+  vm.runInNewContext(`${formatCost}\n${providerRuleMessage}\n${section}\nthis.api = { assetMeta, jobCard, mediaCard, assetPriceLabel };`, context, { filename: 'public/app.js (builders)' });
   const { assetMeta, jobCard, mediaCard, assetPriceLabel } = context.api;
   const lineOf = (node) => node.children.map((child) => child.textContent).join(' · ');
 
@@ -460,12 +463,16 @@ function runClient() {
   assert.equal(small(jobCard({ assetId: 'vid-006', status: 'pending', kind: 'video', modelName: 'seedance_2_0', billing: 'credits', estimateUsd: 5 })).textContent, 'seedance_2_0 · Higgsfield-Credits · dauert meist 2–5 Minuten', 'Higgsfield shows credits, never USD');
   assert.equal(small(jobCard({ assetId: 'vid-007', status: 'pending', kind: 'video', modelName: 'HyperFrames' })).textContent, 'HyperFrames · dauert meist 2–5 Minuten', 'a local render has no price');
   assert.equal(small(jobCard({ assetId: 'vid-008', status: 'failed', kind: 'video', modelName: 'Kling v3.0 Standard', estimateUsd: 0.84, error: 'Boom' })).textContent, 'Boom · Kling v3.0 Standard', 'a failed job shows the reason, no estimate');
+  assert.equal(small(jobCard({ assetId: 'vid-008b', status: 'failed', kind: 'video', modelName: 'Seedance 2.5', error: 'German fallback sentence', errorCode: 'VIDEO_REAL_PERSON_JOB' })).textContent, `${window.I18N.de['videoModel.error.VIDEO_REAL_PERSON_JOB']} · Seedance 2.5`, 'a known code: the sentence of the interface language');
+  assert.equal(small(jobCard({ assetId: 'vid-008c', status: 'failed', kind: 'video', modelName: 'Seedance 2.5', error: 'Boom', errorCode: 'SOMETHING_UNKNOWN' })).textContent, 'Boom · Seedance 2.5', 'an unknown code: the stored text');
 
   // the other languages
   for (const [code, expected] of [['en', 'Kling v3.0 Standard · about $0.84 · usually takes 2–5 minutes'], ['es', 'Kling v3.0 Standard · aprox. $0.84 · suele tardar entre 2 y 5 minutos']]) {
     const localized = { ...context, t: (key, vars = {}) => String(window.I18N[code][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '') };
-    vm.runInNewContext(`${formatCost}\n${section}\nthis.api = { jobCard };`, localized, { filename: `public/app.js (${code})` });
+    vm.runInNewContext(`${formatCost}\n${providerRuleMessage}\n${section}\nthis.api = { jobCard };`, localized, { filename: `public/app.js (${code})` });
     assert.equal(small(localized.api.jobCard({ assetId: 'vid-002', status: 'pending', kind: 'video', modelName: 'Kling v3.0 Standard', estimateUsd: 0.84 })).textContent, expected);
+    localized.i18nHas = (key) => Object.prototype.hasOwnProperty.call(window.I18N[code], key);
+    assert.equal(small(localized.api.jobCard({ assetId: 'vid-008b', status: 'failed', kind: 'video', error: 'x', errorCode: 'VIDEO_REAL_PERSON_JOB' })).textContent, window.I18N[code]['videoModel.error.VIDEO_REAL_PERSON_JOB'], `${code}: the late refusal in the interface language`);
   }
 
   // the card of the model choice and the tool message use the same line

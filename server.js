@@ -17,6 +17,7 @@ const or = require('./lib/openrouter');
 const brain = require('./lib/brain');
 const tools = require('./lib/tools');
 const videoModels = require('./lib/video-models');
+const videoRefusal = require('./lib/video-refusal');
 const resultMeta = require('./lib/result-meta');
 const gts = require('./lib/gts');
 const fal = require('./lib/fal');
@@ -34,6 +35,7 @@ const { createWhoamiMiddleware } = require('./lib/whoami');
 const settings = require('./lib/settings');
 const higgsfield = require('./lib/higgsfield');
 const chatgpt = require('./lib/chatgpt');
+const chatgptFallback = require('./lib/chatgpt-fallback');
 const promptPresets = require('./lib/prompt-presets');
 const admins = require('./lib/admins');
 const access = require('./lib/access');
@@ -58,6 +60,7 @@ const runtime = {
   videoModel: fileConfig.videoModel,
   brainModels: fileConfig.brainModels,
   defaultBrain: fileConfig.defaultBrain,
+  restrictedBrainModels: fileConfig.restrictedBrainModels,
   publicBaseUrl: fileConfig.publicBaseUrl
 };
 
@@ -482,6 +485,7 @@ function jobsWithUrls(session) {
       startedAt: job.startedAt || null,
       completedAt: job.completedAt || null,
       error: job.error || null,
+      errorCode: job.errorCode || null,
       cost: typeof job.cost === 'number' ? job.cost : null,
       costEstimated: job.costEstimated === true,
       // The model with its readable name, the estimate the model card showed (video) and how the job is billed.
@@ -676,11 +680,16 @@ async function higgsfieldStatusPayload() {
   return payload;
 }
 
-// `viewer` (lib/access.js): participants and guests get no ChatGPT subscription models and no GTS.
+// `viewer` (lib/access.js): participants and guests get no ChatGPT subscription models and no GTS, and with
+// config.restrictedBrainModels only the brain models of that list.
 function publicRuntimeConfig(viewer = null) {
   // An unconfirmed caller gets what a guest gets.
   const restricted = access.isRestricted(viewer) || access.isUnconfirmed(viewer);
-  const brainModels = availableBrainModels(runtime.brainModels, chatgpt.status().connected && !restricted);
+  const brainModels = availableBrainModels(
+    runtime.brainModels,
+    chatgpt.status().connected && !restricted,
+    restricted ? runtime.restrictedBrainModels : []
+  );
   return {
     hasKey: or.hasKey(),
     brainModels,
@@ -1240,7 +1249,9 @@ app.get('/api/chatgpt/status', async (req, res) => {
 app.post('/api/chatgpt/import', async (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
   try {
-    res.json(await chatgpt.importFromCodexCli());
+    const imported = await chatgpt.importFromCodexCli();
+    chatgptFallback.resume(); // a fresh login ends the pause of the replacement through OpenRouter
+    res.json(imported);
   } catch (err) {
     fail(res, err.status || 400, err.message);
   }
@@ -2135,6 +2146,8 @@ app.post('/api/sessions/:id/video-model-requests/:requestId', async (req, res) =
   } catch (err) {
     if (failAccountRule(res, err)) return;
     if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
+    // A model whose provider already refused the image of this request: nothing starts, the reason is readable.
+    if (err.code === videoRefusal.MODEL_REFUSED_CODE) return failWithCode(res, err.status || 409, err.code, err.messageDe || err.message);
     return fail(res, err.status || 400, err.message);
   }
 
@@ -2172,6 +2185,9 @@ app.post('/api/sessions/:id/video-model-requests/:requestId', async (req, res) =
   } catch (err) {
     await videoModels.reopenRequest({ sessionId: id, requestId, error: err }).catch(() => {});
     if (failAccountRule(res, err)) return;
+    // The provider refused the image (real person): the card reopens with its models marked, the answer carries the code.
+    const refusal = videoRefusal.refusalOf(err, { model: selected.option.id });
+    if (refusal) return failWithCode(res, refusal.status, refusal.code, refusal.messageDe);
     const status = err instanceof or.OpenRouterError ? Math.min(502, Math.max(400, err.status || 502)) : 400;
     fail(res, status, err.message);
   }
@@ -2267,10 +2283,18 @@ app.post('/api/sessions/:id/message', async (req, res) => {
   const { text, brainModel, attachments, renderMode, brandingWizard } = req.body || {};
   const configPayload = publicRuntimeConfig(askingViewer);
   const requestedChatGPTModel = chatgpt.BRAIN_MODELS.includes(brainModel);
-  const model = configPayload.brainModels.includes(brainModel) ? brainModel : configPayload.defaultBrain;
+  let model = configPayload.brainModels.includes(brainModel) ? brainModel : configPayload.defaultBrain;
+  // Subscription model chosen but the login is gone: with an OpenRouter key the answer still runs, as the replacement
+  // of lib/chatgpt-fallback.js (with a notice and billed), instead of stopping with an error.
+  const replacedByOpenRouter = requestedChatGPTModel && !chatgpt.status().connected && or.hasKey();
+  if (replacedByOpenRouter) model = brainModel;
 
   try {
-    if (requestedChatGPTModel && !chatgpt.status().connected) throw new Error(chatgpt.DISCONNECTED_MESSAGE);
+    // A model outside the list for participants and guests (an old tab, a hand-made request) gets the default model.
+    if (brainModel && model !== brainModel && access.isRestricted(askingViewer) && runtime.restrictedBrainModels.length) {
+      emit({ type: 'notice', code: 'BRAIN_MODEL_REPLACED', model });
+    }
+    if (requestedChatGPTModel && !chatgpt.status().connected && !replacedByOpenRouter) throw new Error(chatgpt.DISCONNECTED_MESSAGE);
     if (!brain.isChatGPTModel(model) && !or.hasKey()) {
       throw new Error('Kein OPENROUTER_API_KEY gesetzt. Unter ⚙️ Einstellungen hinterlegen.');
     }
@@ -2288,11 +2312,14 @@ app.post('/api/sessions/:id/message', async (req, res) => {
     emit({ type: 'done' });
   } catch (err) {
     const accountRule = err instanceof budget.BudgetError || err instanceof access.RoleRestrictedError || err instanceof access.LoginUnconfirmedError;
-    if (!accountRule) console.error('[chat]', err);
+    // The subscription failed and OpenRouter cannot take over: a sentence with a code, said in the interface language.
+    const subscriptionDown = err instanceof chatgptFallback.SubscriptionUnavailableError;
+    if (!accountRule) console.error('[chat]', subscriptionDown ? `${err.message} (${err.reason})` : err);
     emit({
       type: 'error',
-      message: (accountRule && err.messageDe) || err.message || 'Unbekannter Fehler',
-      ...(accountRule ? { code: err.code } : {}),
+      message: ((accountRule || subscriptionDown) && err.messageDe) || err.message || 'Unbekannter Fehler',
+      ...(accountRule || subscriptionDown ? { code: err.code } : {}),
+      ...(accountRule && err.feature ? { feature: err.feature } : {}),
       fatal: true
     });
     emit({ type: 'done' });

@@ -1,7 +1,7 @@
 'use strict';
 
 // Help for node types (WP23): what a node is for, an example and tips, written by hand per type (i18n keys
-// nodes.type.<type>.help / .example / .tip.1 to .tip.3), plus the parts that are generated from the registry so they
+// nodes.type.<type>.help / .example / .tip.1 to .tip.4), plus the parts that are generated from the registry so they
 // cannot drift from the code: inputs and outputs, cost and availability. One presentation for every place that
 // explains a node: the detail area of the palette and the quick pick, the popover behind the "?" of a card and the
 // "Help" section of the inspector. A type without texts shows the generated parts only; nothing is made up.
@@ -13,7 +13,7 @@
   const ui = OCD.ui;
   const { el, T, tr } = ui;
 
-  const MAX_TIPS = 3;
+  const MAX_TIPS = 4;
   const LS_OPEN = 'ocd-nodes-help-open';
   const POPOVER_WIDTH = 348;
   const POPOVER_GAP = 10;

@@ -1078,7 +1078,8 @@ function jobCard(job) {
   const small = document.createElement('small');
   const modelName = String(job.modelName || '').trim();
   if (failed) {
-    const detail = job.error || t('jobs.unknownError');
+    // A known cause (the provider refused the image after the start) is said in the interface language.
+    const detail = providerRuleMessage(job.errorCode) || job.error || t('jobs.unknownError');
     small.textContent = modelName ? `${detail} · ${modelName}` : detail;
   } else {
     // "Kling v3.0 · about $0.84 · usually takes 2–5 minutes"; Higgsfield shows its credits instead of a USD estimate.
@@ -1123,9 +1124,33 @@ function videoModelBlockText(option) {
   return t('videoModel.blockedBudget', { estimate: videoModelMoney(block.needUsd), remaining: videoModelMoney(block.remainingUsd) });
 }
 
+// A refusal of the video provider (VIDEO_REAL_PERSON: the image may show a real person; VIDEO_MODEL_REFUSED: that provider
+// already refused this request) as a sentence in the interface language; null for any other code. The server sends the
+// German sentence as a fallback in the same answer.
+function providerRuleMessage(code) {
+  const key = `videoModel.error.${code}`;
+  return code && i18nHas(key) ? t(key) : null;
+}
+
+// A known failure of the chat itself (CHATGPT_UNAVAILABLE: the subscription is down and OpenRouter cannot take over) as a
+// sentence in the interface language; null for any other code.
+function chatErrorMessage(code) {
+  const key = `chat.error.${code}`;
+  return code && i18nHas(key) ? t(key) : null;
+}
+
+// A short notice of the server during an answer (a chip, no error): CHATGPT_REPLACED, BRAIN_MODEL_REPLACED.
+function chatNoticeText(notice) {
+  const key = `chat.notice.${notice.code}`;
+  if (notice.code && i18nHas(key)) return t(key, { name: brainLabel(notice.model).shortName });
+  return notice.message || '';
+}
+
 // The error a failed start left on the card, in the interface language where it is a known rule.
 function videoModelErrorText(choice) {
   if (!choice.lastError) return '';
+  const refusal = providerRuleMessage(choice.lastErrorCode);
+  if (refusal) return refusal;
   const rule = choice.lastErrorCode ? OCAccess.accountRuleMessage({ code: choice.lastErrorCode }) : null;
   return t('videoModel.startFailed', { error: rule || choice.lastError });
 }
@@ -1154,7 +1179,8 @@ async function submitVideoModelChoice(choice, option, card) {
     // The card may be out of date (budget changed, started elsewhere): show the reason, then read the chat again.
     const rule = OCAccess.accountRuleMessage(error);
     if (rule) OCAccess.refreshMe().catch(() => {});
-    status.textContent = t('videoModel.startFailed', { error: rule || error.message });
+    const refusal = providerRuleMessage(error.code);
+    status.textContent = refusal || t('videoModel.startFailed', { error: rule || error.message });
     status.classList.add('error');
     delete card.dataset.busy;
     for (const button of buttons) button.disabled = false;
@@ -1182,9 +1208,13 @@ function videoModelOptionButton(choice, option, card, locked) {
   const button = document.createElement('button');
   button.type = 'button';
   const blocked = Boolean(option.blocked);
-  button.className = `vmc-option${option.recommended ? ' recommended' : ''}${blocked ? ' blocked' : ''}`;
+  // The provider of this model refused the image of the request: the model is closed for this request. The others are
+  // highlighted as the way on.
+  const refused = Boolean(option.refused);
+  const suggested = !refused && !blocked && (choice.refusedProviders || []).length > 0;
+  button.className = `vmc-option${option.recommended ? ' recommended' : ''}${blocked ? ' blocked' : ''}${refused ? ' refused' : ''}${suggested ? ' suggested' : ''}`;
   button.dataset.videoModel = option.id;
-  button.disabled = locked || blocked;
+  button.disabled = locked || blocked || refused;
   if (locked && state.streaming) button.title = t('videoModel.waitStream');
 
   const top = document.createElement('span');
@@ -1199,7 +1229,8 @@ function videoModelOptionButton(choice, option, card, locked) {
   tradeoffs.appendChild(textNode('span', 'vmc-pro', videoModelProfileText(option.profileKey, 'pro')));
   tradeoffs.appendChild(textNode('span', 'vmc-con', videoModelProfileText(option.profileKey, 'con')));
   button.appendChild(tradeoffs);
-  if (blocked) button.appendChild(textNode('span', 'vmc-blocked', videoModelBlockText(option)));
+  if (refused) button.appendChild(textNode('span', 'vmc-blocked', t('videoModel.refusedOption')));
+  else if (blocked) button.appendChild(textNode('span', 'vmc-blocked', videoModelBlockText(option)));
   button.addEventListener('click', () => submitVideoModelChoice(choice, option, card));
   return button;
 }
@@ -1234,6 +1265,10 @@ function videoModelChoiceCard(choice) {
     if (choice.preferenceNote) {
       const key = choice.preferenceNote.reason === 'budget' ? 'videoModel.prefBudget' : 'videoModel.prefIncompatible';
       card.appendChild(textNode('p', 'vmc-note', t(key, { model: choice.preferenceNote.name })));
+    }
+    if ((choice.refusedProviders || []).length) {
+      // After a refusal: say what happened to the choice and what is left, with an idea when nothing is.
+      card.appendChild(textNode('p', 'vmc-note', t(choice.noAlternative ? 'videoModel.noAlternative' : choice.noAffordable ? 'videoModel.noAffordable' : 'videoModel.refusedLead')));
     }
     const options = document.createElement('div');
     options.className = 'vmc-options';
@@ -1607,6 +1642,13 @@ function renderDetail() {
     }
 
     if (message.role === 'assistant') {
+      // The ChatGPT subscription failed and OpenRouter answered this step: say so (and that it is billed).
+      if (message.subscriptionFallback) {
+        const notice = document.createElement('div');
+        notice.className = 'msg tool';
+        notice.appendChild(chip(chatNoticeText({ code: 'CHATGPT_REPLACED' }), false, false));
+        el.messages.appendChild(notice);
+      }
       const text = textFromContent(message.content);
       if (!text.trim()) continue;
       const { wrap, bubble } = messageShell('assistant');
@@ -1619,7 +1661,9 @@ function renderDetail() {
       const wrap = document.createElement('div');
       wrap.className = 'msg tool';
       const failed = /^Fehler bei /.test(String(message.content || ''));
-      wrap.appendChild(chip(failed ? String(message.content).slice(0, 200) : toolLabel(message), false, failed));
+      // A known cause (the provider refused the image) is said in the interface language, never as the raw tool text.
+      const known = failed ? providerRuleMessage(message.errorCode) : null;
+      wrap.appendChild(chip(known || (failed ? String(message.content).slice(0, 200) : toolLabel(message)), false, failed));
       if (message.videoModelChoice) wrap.appendChild(videoModelChoiceCard(message.videoModelChoice));
 
       const grid = document.createElement('div');
@@ -5441,6 +5485,17 @@ function handleEvent(event) {
     scrollDown();
     return;
   }
+  if (event.type === 'notice') {
+    const text = chatNoticeText(event);
+    if (!text) return;
+    finishChips();
+    live.textEl = null;
+    const node = document.createElement('div');
+    node.className = 'msg tool';
+    node.appendChild(chip(text, false, false));
+    appendLiveNode(node);
+    return;
+  }
   if (event.type === 'tool_start') {
     finishChips();
     live.textEl = null;
@@ -5533,7 +5588,7 @@ function handleEvent(event) {
     // Budget and role rules arrive with a code: say it in the interface language.
     const rule = event.code ? OCAccess.accountRuleMessage(event) : null;
     if (rule) OCAccess.refreshMe().catch(() => {});
-    const message = rule || event.message;
+    const message = rule || providerRuleMessage(event.code) || chatErrorMessage(event.code) || event.message;
     const node = document.createElement('div');
     node.className = 'msg tool';
     node.appendChild(chip(message || t('common.error'), false, true));
