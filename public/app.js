@@ -165,17 +165,19 @@ const FOLDERS_COLLAPSED_KEY = 'vcd-folders-collapsed';
 const PRESET_GROUPS_STORAGE_KEY = 'vcd-preset-groups';
 const BRAIN_STORAGE_KEY = 'vcd-brain';
 const BRAIN_LABELS = {
-  'openai/gpt-5.6-sol': { shortName: '5.6 Sol', hintKey: 'model.codexStandard' },
-  'openai/gpt-5.6-sol-pro': { shortName: '5.6 Sol Pro', hintKey: 'model.codexStronger' },
-  'openai/gpt-5.6-terra': { shortName: '5.6 Terra', hintKey: 'model.codex' },
-  'openai/gpt-5.6-terra-pro': { shortName: '5.6 Terra Pro', hintKey: 'model.codex' },
-  'openai/gpt-5.6-luna': { shortName: '5.6 Luna', hintKey: 'model.codex' },
-  'openai/gpt-5.6-luna-pro': { shortName: '5.6 Luna Pro', hintKey: 'model.codex' },
+  'openai/gpt-6.1-sol': { shortName: '6.1 Sol', hintKey: 'model.openrouter' },
+  'openai/gpt-5.6-sol': { shortName: '5.6 Sol', hintKey: 'model.openrouter' },
+  'openai/gpt-5.6-sol-pro': { shortName: '5.6 Sol Pro', hintKey: 'model.openrouter' },
+  'openai/gpt-5.6-terra': { shortName: '5.6 Terra', hintKey: 'model.openrouter' },
+  'openai/gpt-5.6-terra-pro': { shortName: '5.6 Terra Pro', hintKey: 'model.openrouter' },
+  'openai/gpt-5.6-luna': { shortName: '5.6 Luna', hintKey: 'model.openrouter' },
+  'openai/gpt-5.6-luna-pro': { shortName: '5.6 Luna Pro', hintKey: 'model.openrouter' },
   'anthropic/claude-fable-5': {
     shortName: 'Claude Fable 5',
     hintKey: 'model.fable'
   },
   'moonshotai/kimi-k3': { shortName: 'Kimi K3', hintKey: 'model.kimi' },
+  'chatgpt/gpt-6.1-sol': { shortName: 'GPT 6.1 Sol (Abo)', hintKey: 'model.chatgptSubscription' },
   'chatgpt/gpt-5.6-sol': { shortName: 'GPT 5.6 Sol (Abo)', hintKey: 'model.chatgptSubscription' },
   'chatgpt/gpt-5.6-terra': { shortName: 'GPT 5.6 Terra (Abo)', hintKey: 'model.chatgptSubscription' },
   'chatgpt/gpt-5.6-luna': { shortName: 'GPT 5.6 Luna (Abo)', hintKey: 'model.chatgptSubscription' }
