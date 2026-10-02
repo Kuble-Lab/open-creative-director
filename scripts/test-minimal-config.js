@@ -37,7 +37,9 @@ async function main() {
 
   try {
     process.env.OPENROUTER_API_KEY = 'sk-or-v1-test-key-with-enough-length';
-    for (const name of OPTIONAL_VARIABLES) delete process.env[name];
+    // Empty instead of deleted: loading .env only fills variables that are missing, so a local .env
+    // (for example with a render node) would switch these features back on.
+    for (const name of OPTIONAL_VARIABLES) process.env[name] = '';
 
     const { app, isAdmin } = require('../server');
     const config = await invoke(app, '/api/config');
