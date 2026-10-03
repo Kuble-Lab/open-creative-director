@@ -161,7 +161,9 @@ async function main() {
     config: {
       brainModels: [OPUS, 'openai/gpt-5.2', 'google/gemini-3.1-pro', 'openai/gpt-5.6-luna', FABLE],
       defaultBrain: OPUS,
-      ...(withoutSetting ? {} : { restrictedBrainModels: LIST })
+      // set in both cases, so a list in the repository's config.json does not leak in: undefined drops the key from the
+      // copy's config.json (JSON.stringify), which is "no setting"
+      restrictedBrainModels: withoutSetting ? undefined : LIST
     }
   });
   await iso.listen();
