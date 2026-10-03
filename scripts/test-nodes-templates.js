@@ -35,6 +35,7 @@ const EXPECTED = [
   'masked-edit',
   'motion-title',
   'music-video',
+  'music-video-stills',
   'photo-slideshow',
   'photo-to-3d',
   'series-shots',
@@ -200,7 +201,7 @@ async function main() {
         'n1.audio>n3.audio', 'n1.audio>n4.audio', 'n3.analysis>n5.analysis', 'n4.timing>n5.timing', 'n1.audio>n5.song',
         'n5.story_prompts>n6.a', 'n5.performance_prompts>n7.a', 'n6.text>n8.prompt', 'n2.image>n8.images', 'n7.text>n9.prompt', 'n2.image>n9.images',
         'n8.image>n10.first_frame', 'n5.story_motion>n10.prompt', 'n9.image>n11.image', 'n5.performance_audio>n11.audio',
-        'n1.audio>n12.song', 'n5.shots>n12.shots', 'n10.video>n12.story', 'n11.video>n12.performance', 'n12.video>n13.inputs'
+        'n1.audio>n12.song', 'n5.shots>n12.shots', 'n10.video>n12.story', 'n11.video>n12.performance', 'n12.video>n13.inputs', 'n4.timing>n12.captions'
       ]
     );
     {
@@ -219,7 +220,13 @@ async function main() {
       // the photo of the main person goes into both image nodes, and the text nodes say so
       assert.deepEqual(byId['music-video'].graph.edges.filter((edge) => edge.from.node === 'n2').map((edge) => `${edge.to.node}.${edge.to.port}`), ['n8.images', 'n9.images']);
       for (const id of ['n6', 'n7']) assert.match(musicNode(id).params.template, /reference photo/);
-      assert.deepEqual(byId['music-video'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n5.brief', 'n4.lyrics', 'n5.characters', 'n5.shots_per_minute', 'n5.performance_share', 'n12.transition']);
+      assert.deepEqual(byId['music-video'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n5.brief', 'n4.lyrics', 'n5.characters', 'n5.shots_per_minute', 'n5.performance_share', 'n12.transition', 'n12.captions']);
+      // karaoke captions at the bottom, from the lyric times: shipped on, the person can switch them off in the form (WP35)
+      assert.equal(musicNode('n12').params.captions, 'karaoke');
+      assert.equal(musicNode('n12').params.captions_position, 'bottom');
+      assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get('music_video.edit'), musicNode('n12').params), musicNode('n12').params, 'every param of the cut is one of the node, with a valid value');
+      assert.equal(byId['music-video'].graph.nodes.find((node) => node.id === 'n4').type, 'audio.lyrics_timing');
+      assert.equal(byId['music-video'].graph.edges.filter((edge) => edge.from.node === 'n4').length, 2, 'the times go to the plan and to the captions');
       assert.equal(musicNode('n5').params.brief, '', 'the idea is the one input only the person can give: it ships empty and the run asks for it');
       assert.match(byId['music-video'].description, /music video/i);
       assert.match(byId['music-video'].description, /US dollars/, 'the description names the cost');
@@ -238,6 +245,61 @@ async function main() {
     assert.equal(templates.resolveTemplate('music-video', { lang: 'en' }).name, 'Music video from a song');
     assert.match(templates.resolveTemplate('music-video', { lang: 'es' }).name, /Videoclip/);
     assert.match(templates.resolveTemplate('music-video', { lang: 'de' }).description, /Musikvideo/);
+    // music-video-stills (WP35): the same chain, but the story scenes are moved by the local zoom (free) instead of H3 Max clips; the singer
+    // scenes keep the lip sync
+    assert.deepEqual(types('music-video-stills'), [
+      'input.audio', 'input.image', 'audio.beats', 'audio.lyrics_timing', 'music_video.plan', 'text.template', 'text.template',
+      'image.edit', 'image.edit', 'image.to_video', 'fal.h3_lipsync', 'music_video.edit', 'output.result'
+    ]);
+    assert.deepEqual(byId['music-video-stills'].requires, ['openrouter', 'ffmpeg', 'elevenlabs', 'fal']);
+    assert.deepEqual(
+      byId['music-video-stills'].graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`),
+      [
+        'n1.audio>n3.audio', 'n1.audio>n4.audio', 'n3.analysis>n5.analysis', 'n4.timing>n5.timing', 'n1.audio>n5.song',
+        'n5.story_prompts>n6.a', 'n5.performance_prompts>n7.a', 'n6.text>n8.prompt', 'n2.image>n8.images', 'n7.text>n9.prompt', 'n2.image>n9.images',
+        'n8.image>n10.image', 'n9.image>n11.image', 'n5.performance_audio>n11.audio',
+        'n1.audio>n12.song', 'n5.shots>n12.shots', 'n10.video>n12.story', 'n11.video>n12.performance', 'n12.video>n13.inputs', 'n4.timing>n12.captions'
+      ]
+    );
+    {
+      const stillsDoc = byId['music-video-stills'];
+      const stillsNode = (id) => stillsDoc.graph.nodes.find((node) => node.id === id);
+      // the zoom clip is as long as a scene of the plan can be and has the frame rate of the cut; one zoom for all scenes (the node has no
+      // setting that varies per scene, so the motion is the same slow push in)
+      assert.deepEqual(stillsNode('n10').params, { duration: 5, match_audio: false, fps: 25, zoom: 'in' });
+      assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get('image.to_video'), stillsNode('n10').params), stillsNode('n10').params, 'every param is one of the node, with a valid value');
+      assert.equal(stillsNode('n10').params.duration, stillsNode('n5').params.clip_seconds, 'a zoom clip is as long as the clips of the plan');
+      assert.equal(String(stillsNode('n10').params.fps), stillsNode('n12').params.fps, 'and has the frame rate of the cut');
+      assert.equal(stillsDoc.graph.nodes.some((node) => node.type === 'fal.h3_video'), false, 'no paid clip is made for the story');
+      assert.deepEqual(stillsDoc.graph.nodes.filter((node) => node.type.startsWith('fal.')).map((node) => node.type), ['fal.h3_lipsync']);
+      assert.equal(stillsDoc.graph.edges.some((edge) => edge.from.port === 'story_motion'), false, 'the motion text of the plan has nobody to read it');
+      // everything else is the template of the video clips
+      for (const id of ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n11', 'n12', 'n13']) {
+        assert.deepEqual(stillsNode(id), byId['music-video'].graph.nodes.find((node) => node.id === id), `${id} is the same as in the template with video clips`);
+      }
+      assert.deepEqual(stillsDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), byId['music-video'].app.inputs.map((entry) => `${entry.node}.${entry.param}`));
+      // the figure in the description is what the price tables say: 28 images and four lip sync scenes of 7.5 s, nothing for the clips
+      const imageModels = require('../lib/image-models');
+      const images = 28 * imageModels.estimateUsd('google/gemini-3-pro-image');
+      const lipSyncParams = nodeRegistry.normalizeParams(nodeRegistry.get('fal.h3_lipsync'), stillsNode('n11').params);
+      const lipSync = 4 * nodeRegistry.get('fal.h3_lipsync').cost.estimate(lipSyncParams, { inputs: { audio: { type: 'audio', duration: 7.5 } } });
+      assert.equal(Math.round(images * 100) / 100, 3.75);
+      assert.equal(Math.round(lipSync * 100) / 100, 2.4);
+      assert.equal(Math.round(images + lipSync + 0.05), 6, 'about 6 US dollars with the plan and the lyric times');
+      for (const [lang, name, about, parts] of [
+        ['en', 'Music video from a song (moving images)', /about 6 US dollars/, [/3\.75/, /2\.40/, /about 11/, /confirm/]],
+        ['de', 'Musikvideo aus Song (bewegte Bilder)', /etwa 6 US-Dollar/, [/3\.75/, /2\.40/, /etwa 11/, /Bestätigung/]],
+        ['es', null, /unos 6 dólares/, [/3,75/, /2,40/, /unos 11/, /confirmes/]]
+      ]) {
+        const resolved = templates.resolveTemplate('music-video-stills', { lang });
+        if (name) assert.equal(resolved.name, name);
+        else assert.match(resolved.name, /imágenes en movimiento/);
+        assert.match(resolved.description, about, `${lang}: the description names the cost of a 2-minute song`);
+        for (const part of parts) assert.match(resolved.description, part, `${lang}: ${part}`);
+        assert.equal(/H3 Max turbo/.test(resolved.description), false, `${lang}: no clip model is paid here`);
+        assert.match(resolved.graph.nodes.find((node) => node.id === 'n10').title, lang === 'en' ? /slow zoom/ : lang === 'de' ? /langsamer Zoom/ : /zoom lento/);
+      }
+    }
     // frame-chain: the clip edges into concat are in playback order
     const concatEdges = byId['frame-chain'].graph.edges.filter((edge) => edge.to.port === 'clips');
     assert.deepEqual(concatEdges.map((edge) => edge.from.node), ['n2', 'n5']);
@@ -286,12 +348,13 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills'].includes(item.id)).every((item) => item.available));
       // the music templates need the ElevenLabs key, and ffmpeg where the video is mixed
       assert.deepEqual(noAudio.find((item) => item.id === 'song-from-idea').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'video-with-music').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'talking-portrait').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'music-video').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], 'the lyric times come from ElevenLabs');
+      assert.deepEqual(noAudio.find((item) => item.id === 'music-video-stills').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], 'so do they in the variant with moving images');
       // Higgsfield is a requirement of its own: a template with hf.* nodes is available exactly when Higgsfield is connected
       const noHiggsfield = templates.listTemplates({ lang: 'en', checks: { ...allOn, higgsfield: () => 'Higgsfield is not connected' } });
       const dub = noHiggsfield.find((item) => item.id === 'dub-clip');
@@ -305,8 +368,9 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video'].includes(item.id)).every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills'].includes(item.id)).every((item) => item.available));
       assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
+      assert.deepEqual(noFal.find((item) => item.id === 'music-video-stills').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes still does');
       assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
       assert.deepEqual(noFal.find((item) => item.id === 'photo-to-3d').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       const originalHasKey = falLib.hasKey;
@@ -434,6 +498,13 @@ async function main() {
         ['fal.h3_video*1', 'fal.h3_lipsync*1'], ['music_video.edit*1'], ['output.result*1']
       ]);
       assert.equal(summary['music-video'].batch, false, 'one song in, the lists are made inside: no Batch mark');
+      // the variant with moving images: the story clips are the free zoom of this computer, so one paid step less
+      assert.deepEqual(summary['music-video-stills'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 5, providers: ['openrouter', 'elevenlabs', 'fal'] });
+      assert.deepEqual(summary['music-video-stills'].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`)), [
+        ['input.audio*1', 'input.image*1'], ['audio.beats*1', 'audio.lyrics_timing*1'], ['music_video.plan*1'], ['text.template*2'], ['image.edit*2'],
+        ['image.to_video*1', 'fal.h3_lipsync*1'], ['music_video.edit*1'], ['output.result*1']
+      ]);
+      assert.equal(summary['music-video-stills'].batch, false);
 
       const priced = createRegistry();
       nodesBasic.registerAll(priced);
