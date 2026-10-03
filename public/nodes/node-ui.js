@@ -1375,6 +1375,8 @@
     // One-click remedy for an issue shown in `message` (slot.fix), e.g. "Convert to HTML with AI".
     const fix = el('div', { class: 'nv-node-fix is-empty' });
     const ports = el('div', { class: 'nv-node-ports' });
+    // Row of the connections of a multi-input in the order the model receives them (applyOrder).
+    const order = el('div', { class: 'nv-node-order is-empty' });
     const params = el('div', { class: 'nv-node-params' });
     // A line to read under the settings (the length of a song and where it comes from), filled through the slot.
     const note = el('div', { class: 'nv-node-note is-empty', dataset: { slot: 'note' } });
@@ -1382,10 +1384,10 @@
     const pager = el('div', { class: 'nv-node-pager' });
     const cost = el('span', { class: 'nv-node-cost', dataset: { slot: 'cost' } });
     const foot = el('div', { class: 'nv-node-foot' }, pager, cost);
-    card.append(head, status, message, fix, ports, params, note, preview, foot);
+    card.append(head, status, message, fix, ports, order, params, note, preview, foot);
     const state = {
       el: card,
-      refs: { head, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, params, note, preview, pager, cost, foot },
+      refs: { head, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, order, params, note, preview, pager, cost, foot },
       widgets: new Map(),
       sig: null,
       node: null,
@@ -1394,7 +1396,11 @@
       connSig: '',
       slotKey: '',
       previewKey: null,
-      noteKey: ''
+      noteKey: '',
+      orderKey: '',
+      orderDrag: false,
+      orderPending: null,
+      orderFocus: null
     };
     cardStates.set(card, state);
     title.addEventListener('dblclick', (event) => {
@@ -1716,6 +1722,189 @@
     state.refs.foot.classList.toggle('is-empty', !pager.children.length && !info.cost);
   }
 
+  /* ---------- order of the connections of a multi-input ---------- */
+
+  // The row under a multi-input with at least two connections: one chip per connection in exactly the order the model
+  // receives them, with the same numbers as the badges on the edges. Image inputs show small previews (placeholder with
+  // the title of the source while there is no result), other inputs a chip with the title. A chip is moved by dragging,
+  // with the arrow keys (left / up = earlier, right / down = later, Home / End = first / last) or from its context menu
+  // (cardActions.orderMenu); the change itself is cardActions.reorder(nodeId, portId, edgeId, place).
+  //   rows: [{ portId, label, base, items: [{ edgeId, text, order, list, title, source, output, thumb }] }]
+  const ORDER_DRAG_THRESHOLD = 4;
+
+  function orderChipTitle(item) {
+    const parts = [T('nodes.order.chipTitle', { n: item.text, source: item.source })];
+    if (item.output) parts.push(T('nodes.order.chipOutput', { output: item.output }));
+    if (item.list) parts.push(T('nodes.order.chipList'));
+    else if (item.order === null) parts.push(T('nodes.order.chipShifted'));
+    return parts.join(' · ');
+  }
+
+  function buildOrderChip(state, row, item, index, count) {
+    const chip = el('div', {
+      class: `nv-order-chip nv-nodrag${row.base === 'image' ? ' is-image' : ''}${item.list ? ' is-list' : ''}`,
+      role: 'listitem',
+      tabindex: '0',
+      title: orderChipTitle(item),
+      'aria-label': orderChipTitle(item),
+      'aria-posinset': index + 1,
+      'aria-setsize': count,
+      dataset: { edge: item.edgeId, port: row.portId }
+    });
+    const num = el('span', { class: 'nv-order-num', text: item.text });
+    if (row.base === 'image') {
+      if (item.thumb) chip.append(el('img', { class: 'nv-order-thumb', src: item.thumb, alt: '', loading: 'lazy', draggable: 'false' }));
+      else chip.append(el('span', { class: 'nv-order-ph' }, icon('image', 12), el('span', { class: 'nv-order-name', text: item.title })));
+    } else {
+      chip.append(el('span', { class: 'nv-order-name', text: item.title }));
+    }
+    chip.append(num);
+    return chip;
+  }
+
+  function wireOrderRow(state, rowEl, row) {
+    const chips = () => Array.from(rowEl.querySelectorAll('.nv-order-chip'));
+    const nodeId = () => state.node && state.node.id;
+    const move = (edgeId, place) => {
+      // the row is drawn again by the change; the moved chip gets the focus back (kept for the keyboard)
+      state.orderFocus = edgeId;
+      if (cardActions.reorder && nodeId()) cardActions.reorder(nodeId(), row.portId, edgeId, place);
+      state.orderFocus = null;
+    };
+
+    rowEl.addEventListener('keydown', (event) => {
+      const chip = event.target.closest && event.target.closest('.nv-order-chip');
+      if (!chip || event.altKey || event.ctrlKey || event.metaKey) return;
+      const place = { ArrowLeft: 'earlier', ArrowUp: 'earlier', ArrowRight: 'later', ArrowDown: 'later', Home: 'first', End: 'last' }[event.key];
+      if (!place) return;
+      event.preventDefault();
+      event.stopPropagation();
+      move(chip.dataset.edge, place);
+    });
+
+    rowEl.addEventListener('contextmenu', (event) => {
+      const chip = event.target.closest && event.target.closest('.nv-order-chip');
+      if (!chip) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (cardActions.orderMenu && nodeId()) cardActions.orderMenu(nodeId(), row.portId, chip.dataset.edge, event.clientX, event.clientY);
+    });
+
+    rowEl.addEventListener('pointerdown', (event) => {
+      const chip = event.target.closest && event.target.closest('.nv-order-chip');
+      if (!chip || event.button !== 0) return;
+      event.stopPropagation();
+      const all = chips();
+      const from = all.indexOf(chip);
+      // measured once, before the dragged chip gets its transform (its own rectangle moves with the pointer)
+      const rects = all.map((other) => other.getBoundingClientRect());
+      const start = { x: event.clientX, y: event.clientY };
+      // The card sits in the zoomed world layer: screen distances are divided by the current scale.
+      const scale = chip.offsetWidth ? chip.getBoundingClientRect().width / chip.offsetWidth || 1 : 1;
+      let dragging = false;
+      let target = from;
+      try {
+        chip.setPointerCapture(event.pointerId);
+      } catch (_) {
+        /* capture is a convenience: the listeners below are on the chip itself */
+      }
+
+      const mark = (index) => {
+        all.forEach((other, i) => {
+          const on = dragging && i === index && i !== from;
+          other.classList.toggle('is-drop', on && index < from);
+          other.classList.toggle('is-drop-after', on && index > from);
+        });
+      };
+      const finish = (apply) => {
+        chip.removeEventListener('pointermove', onMove);
+        chip.removeEventListener('pointerup', onUp);
+        chip.removeEventListener('pointercancel', onCancel);
+        chip.removeEventListener('keydown', onKey);
+        try {
+          chip.releasePointerCapture(event.pointerId);
+        } catch (_) {
+          /* already released */
+        }
+        const wasDragging = dragging;
+        dragging = false;
+        state.orderDrag = false;
+        chip.classList.remove('is-dragging');
+        chip.style.transform = '';
+        rowEl.classList.remove('is-sorting');
+        mark(-1);
+        // rows that arrived during the drag: a move draws the row again anyway, else they are drawn now
+        const pending = state.orderPending;
+        state.orderPending = null;
+        if (wasDragging && apply && target !== from) move(chip.dataset.edge, target);
+        else if (pending) applyOrder(state, pending);
+      };
+      const onMove = (moveEvent) => {
+        const dx = moveEvent.clientX - start.x;
+        const dy = moveEvent.clientY - start.y;
+        if (!dragging) {
+          if (Math.hypot(dx, dy) < ORDER_DRAG_THRESHOLD) return;
+          dragging = true;
+          state.orderDrag = true;
+          chip.classList.add('is-dragging');
+          rowEl.classList.add('is-sorting');
+        }
+        chip.style.transform = `translate(${dx / scale}px, ${dy / scale}px)`;
+        // the chip nearest to the pointer is the place the dragged one takes
+        let nearest = from;
+        let best = Infinity;
+        rects.forEach((rect, i) => {
+          const distance = Math.hypot(moveEvent.clientX - (rect.left + rect.width / 2), moveEvent.clientY - (rect.top + rect.height / 2));
+          if (distance < best) {
+            best = distance;
+            nearest = i;
+          }
+        });
+        target = nearest;
+        mark(target);
+      };
+      const onUp = () => finish(true);
+      const onCancel = () => finish(false);
+      const onKey = (keyEvent) => {
+        if (keyEvent.key === 'Escape' && dragging) {
+          keyEvent.stopPropagation();
+          finish(false);
+        }
+      };
+      chip.addEventListener('pointermove', onMove);
+      chip.addEventListener('pointerup', onUp);
+      chip.addEventListener('pointercancel', onCancel);
+      chip.addEventListener('keydown', onKey);
+    });
+  }
+
+  // Draws the rows (unchanged rows are not rebuilt; while a chip is being dragged the new state waits for the drop).
+  function applyOrder(state, rows) {
+    const host = state.refs.order;
+    const list = rows || [];
+    const key = JSON.stringify(list);
+    if (key === state.orderKey) return;
+    if (state.orderDrag) {
+      state.orderPending = list;
+      return;
+    }
+    state.orderKey = key;
+    host.textContent = '';
+    for (const row of list) {
+      const rowEl = el('div', { class: 'nv-order-row', role: 'list', 'aria-label': T('nodes.order.title', { port: row.label }) });
+      row.items.forEach((item, index) => rowEl.append(buildOrderChip(state, row, item, index, row.items.length)));
+      wireOrderRow(state, rowEl, row);
+      host.append(el('div', { class: 'nv-order-port', dataset: { port: row.portId }, title: T('nodes.order.hint') }, el('div', { class: 'nv-order-head', text: T('nodes.order.title', { port: row.label }) }), rowEl));
+    }
+    host.classList.toggle('is-empty', !list.length);
+    if (state.orderFocus) {
+      const wanted = state.orderFocus;
+      state.orderFocus = null;
+      const chip = Array.from(host.querySelectorAll('.nv-order-chip')).find((item) => item.dataset.edge === wanted);
+      if (chip) chip.focus({ preventScroll: true });
+    }
+  }
+
   // Marks a card that takes part in the Design App: 'input', 'output', 'both' or null.
   function setAppMark(state, mark) {
     const { head } = state.refs;
@@ -1797,6 +1986,7 @@
     createCard,
     updateCard,
     applySlots,
+    applyOrder,
     setAppMark,
     setCardActions,
     statusLabel,

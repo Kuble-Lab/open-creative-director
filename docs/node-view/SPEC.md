@@ -332,7 +332,7 @@ Ledger → type mapping (`lib/nodes/assets.js valueFromLedgerEntry`): kind `imag
 5. `T` → `T[]` → OK: wrapped into a one-item list.
 6. `T[]` → `T[]` → OK.
 7. Everything else (e.g. `video` → `image`, `image` → `video`) → rejected; the palette suggests the bridging node (`video.extract_frame`, `image.to_video`).
-8. A port with `multiple: true` accepts several edges (order = order in `graph.edges`, shown as small index badges); otherwise a new edge replaces the old one.
+8. A port with `multiple: true` accepts several edges (order = order in `graph.edges`, shown as index badges, each on its own curve and never covering another badge of the input, and as a numbered row of the sources under the input on the card; the order is changed by dragging an entry of the row, with the arrow keys or from the context menu of an entry or an edge, as one undo step); otherwise a new edge replaces the old one. The order is part of the cache key (§9.3), so a new order makes the node stale. Behind the first list connection the position is unknown (a list counts with all of its items) and is shown as "…".
 9. Cycles are rejected at connect time (client) and at validate time (server).
 
 The same `types.js` data is served to the client in `GET /api/nodes/registry` (`portTypes`, `compat` matrix) so client and server never diverge.
@@ -663,6 +663,7 @@ Client uses `EventSource` (auto-reconnect); after a reconnect it calls `GET /api
 | --- | --- |
 | `public/nodes/nodes.css` | All node-view styles, prefix `nv-`. Uses existing `:root` tokens plus `--nv-*` tokens (§12.8). |
 | `public/nodes/i18n-nodes.js` | `Object.assign(window.I18N.de/en/es, {...})` with keys prefixed `nodes.` |
+| `public/nodes/edge-geometry.js` | Pure UMD maths of the edge curve and the placement of the number badges of a multi-input. |
 | `public/nodes/graph.js` | Pure model: create/validate graph, add/remove/move nodes, connect/disconnect with `canConnect` + cycle check, groups/notes, clipboard serialise/paste with id remap, stale propagation helper, compatible-node filtering for the palette. UMD-style: `module.exports` in Node, `window.OCDNodes.graph` in the browser. |
 | `public/nodes/history.js` | Pure undo/redo snapshot stack (UMD). |
 | `public/nodes/api.js` | REST helpers (own `request()`, same error shape as `app.js api()`), upload with progress (`XMLHttpRequest`), `EventSource` wrapper. |

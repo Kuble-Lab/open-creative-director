@@ -803,7 +803,7 @@ function testDescribePort() {
     'nodes.portdesc.images',
     'nodes.portdesc.type.image.in'
   ]);
-  assert.deepEqual(d.facts.map((fact) => fact.key), ['nodes.porttip.fact.multi', 'nodes.porttip.fact.multiListMediaMax']);
+  assert.deepEqual(d.facts.map((fact) => fact.key), ['nodes.porttip.fact.multi', 'nodes.porttip.fact.multiListMediaMax', 'nodes.porttip.fact.orderImage'], 'three images: the fact about the numbers and how to change them');
   assert.deepEqual(d.facts[0].vars, { max: 9, count: 3 });
 
   // The connection order is the order resolveNodeInputs collects the items in (edge order of the graph).
