@@ -236,6 +236,17 @@ function buildEnvironment() {
     outputs: [{ id: 'video', type: 'video' }],
     execute: async () => ({ variants: [] })
   });
+  // An output that may stay empty. mode lean: the node says so beforehand (emptyOutputs(params), the plan refuses a connection
+  // from it); mode silent: it delivers no value for `extra` without saying so (an optional result that did not come).
+  registry.register({
+    type: 't.optional',
+    category: 'text',
+    outputs: [{ id: 'out', type: 'text' }, { id: 'extra', type: 'text' }],
+    params: [{ id: 'mode', kind: 'select', options: ['full', 'lean', 'silent'], default: 'full' }],
+    emptyOutputs: (params) => (params.mode === 'lean' ? ['extra'] : []),
+    execute: (ctx, _inputs, params) =>
+      tracked(ctx, async () => ({ variants: [params.mode === 'full' ? { out: textValue('main'), extra: textValue('more') } : { out: textValue('main') }] }))
+  });
   nodesBasic.registerAll(registry);
   return { registry, calls, state };
 }
@@ -497,6 +508,52 @@ async function main() {
       const record = await run(makeEngine(), wf.id, { mode: 'all' });
       assert.equal(record.nodes.b.status, 'error');
       assert.match(record.nodes.b.message, /unknown output nope/);
+    }
+
+    /* ----- an output that stays empty: refused before the run when the node says so, else the node behind stops with a code ----- */
+    {
+      resetState();
+      const engine = makeEngine();
+      const graph = (mode) =>
+        makeWorkflow([node('o', 't.optional', { mode }), node('u', 't.upper'), node('a', 't.upper')], edges('o.extra>u.in', 'o.out>a.in'));
+      // announced: the start and the plan refuse the connection, nothing runs, the node behind and the output are named
+      const lean = await graph('lean');
+      await assert.rejects(engine.start(lean.id, { mode: 'all' }), (err) => {
+        assert.equal(err.code, 'INVALID_GRAPH');
+        const issue = err.issues.find((item) => item.code === 'OUTPUT_EMPTY');
+        assert.deepEqual([issue.nodeId, issue.port, issue.level, issue.data], ['u', 'in', 'error', { input: 'in', output: 'extra' }]);
+        assert.equal(err.issues.filter((item) => item.code === 'OUTPUT_EMPTY').length, 1, 'only the connection from the empty output');
+        return true;
+      });
+      const leanPlan = await engine.plan(lean.id, { mode: 'all' });
+      assert.equal(leanPlan.valid, false);
+      assert.equal(leanPlan.nodes.u.status, 'invalid');
+      assert.equal(leanPlan.nodes.u.reasonCode, 'OUTPUT_EMPTY');
+      assert.deepEqual(leanPlan.nodes.u.reasonData, { input: 'in', output: 'extra' });
+      assert.notEqual(leanPlan.nodes.a.status, 'invalid', 'the connection from the other output is fine');
+      assert.deepEqual(env.state.counts, {}, 'nothing ran');
+      // the output is there: all is well
+      const full = await graph('full');
+      assert.equal((await engine.plan(full.id, { mode: 'all' })).valid, true);
+      assert.equal((await run(engine, full.id, { mode: 'all' })).status, 'completed');
+      assert.equal((await selectedValue(full.id, 'u', 'out')).value, 'MORE');
+      // not announced: the plan cannot know, the run stops the node behind with the same code; the node before and the other branch stay
+      resetState();
+      const silent = await graph('silent');
+      assert.equal((await engine.plan(silent.id, { mode: 'all' })).valid, true);
+      const stopped = await run(engine, silent.id, { mode: 'all' });
+      assert.equal(stopped.status, 'failed');
+      assert.equal(stopped.nodes.o.status, 'done');
+      assert.equal(stopped.nodes.u.status, 'error');
+      assert.equal(stopped.nodes.u.code, 'OUTPUT_EMPTY');
+      assert.deepEqual(stopped.nodes.u.data, { input: 'in', output: 'extra' });
+      assert.match(stopped.nodes.u.message, /produced no extra/);
+      assert.equal(stopped.nodes.a.status, 'done');
+      assert.equal(env.state.counts.u, undefined, 'the node behind never started');
+      // and the plan afterwards knows it too: the stored result has no value for the output
+      const afterwards = await engine.plan(silent.id, { mode: 'all' });
+      assert.equal(afterwards.nodes.u.status, 'invalid');
+      assert.equal(afterwards.nodes.u.reasonCode, 'OUTPUT_EMPTY');
     }
 
     /* ----- cancel: aborts a waiting executor, pending nodes become cancelled ----- */

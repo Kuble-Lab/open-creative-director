@@ -163,7 +163,7 @@
     return modelViewerLoad;
   }
 
-  // Poster of a 3D model: the first image of the same result (the preview image the provider renders), or null.
+  // Poster of a 3D model: the first image of the same result (its preview image: the render of the provider or the one the app draws), or null.
   function posterOf(values) {
     return (values || []).find((value) => value && value.type === 'image' && typeof value.url === 'string') || null;
   }

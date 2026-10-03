@@ -1,10 +1,11 @@
 'use strict';
 
 // The node "Image to 3D" (fal.image_to_3d, lib/nodes/nodes-fal.js, WP32) and everything a 3D result needs: the port type
-// model3d, the GLB (glTF binary) as a stored result with a preview image, the four models (Tripo H3.1, Hunyuan 3D Pro 3.1,
-// Meshy 7.1, SAM 3D Objects), their requests and estimates, the checks BEFORE anything is uploaded or queued, the failures
-// of a result (no GLB, SAM 3D with a splat only), the limits per model with connections that stay, the ZIP of the outputs
-// (the GLB belongs in), send-to-chat (a 3D model is refused, its preview is not) and the budget of participants.
+// model3d, the GLB (glTF binary) as a stored result with a preview image (the render of the provider, else one the app draws
+// from the GLB: lib/glb-preview.js), the four models (Tripo H3.1, Hunyuan 3D Pro 3.1, Meshy 7.1, SAM 3D Objects), their requests and
+// estimates, the checks BEFORE anything is uploaded or queued, the failures of a result (no GLB, SAM 3D with a splat only), the
+// limits per model with connections that stay, the ZIP of the outputs (the GLB belongs in), send-to-chat (a 3D model is refused,
+// its preview is not) and the budget of participants.
 //
 // A private copy of the app runs in a temp directory (own data folders, ephemeral port): nothing touches the real data.
 // lib/fal.js is replaced by mocks and a fetch guard refuses everything except localhost, so nothing is paid and nothing
@@ -20,6 +21,7 @@ const { createIsolatedApp } = require('./support/isolated-app');
 const { cubeGlb, readGlb } = require('./support/glb');
 const typesLib = require('../lib/nodes/types');
 const falPure = require('../lib/fal');
+const glbPreview = require('../lib/glb-preview');
 const graphLib = require('../public/nodes/graph');
 
 const ADMIN = 'admin@example.com';
@@ -233,6 +235,15 @@ function testTexts() {
     for (const lang of ['de', 'en', 'es']) assert.ok(dictionaries[lang][key] && dictionaries[lang][key].trim(), `${lang}: ${key}`);
   }
   assert.equal(dictionaries.de['nodes.type.fal.image_to_3d.label'], 'Bild zu 3D');
+  // the preview exists for every model: the texts say who draws it, and the empty output is no longer SAM 3D's
+  for (const lang of ['de', 'en', 'es']) {
+    const previewOut = dictionaries[lang]['nodes.portdesc.fal.image_to_3d.preview.out'];
+    for (const word of ['Tripo', 'Hunyuan', 'Meshy', 'SAM 3D', 'PNG']) assert.ok(previewOut.includes(word), `${lang}: preview.out names ${word}`);
+    assert.equal(/SAM 3D (liefert|delivers|no entrega)/.test(previewOut), false, `${lang}: SAM 3D delivers no longer "no preview"`);
+    assert.equal(dictionaries[lang]['nodes.issue.OUTPUT_EMPTY'].includes('SAM'), false, `${lang}: the empty output is not SAM 3D's example any more`);
+    assert.ok(/3D/.test(dictionaries[lang]['nodes.issue.OUTPUT_EMPTY']), `${lang}: the example is the preview of a 3D model`);
+    assert.ok(/Vorschau|preview|vista previa/i.test(dictionaries[lang]['nodes.type.fal.image_to_3d.help']), `${lang}: the help names the preview`);
+  }
   // the search words of the order
   const words = dictionaries.de['nodes.type.fal.image_to_3d.keywords'].split(',').map((item) => item.trim());
   for (const word of ['3D', 'GLB', 'Mesh', 'Modell', 'Objekt', 'Figur', 'Produkt', 'Tripo', 'Hunyuan', 'Meshy', 'SAM']) assert.ok(words.includes(word), `keyword ${word}`);
@@ -461,7 +472,8 @@ async function run(iso) {
     assert.equal(node.category, 'fal');
     assert.equal(node.paid, true);
     assert.equal(node.async, true);
-    assert.equal(node.experimental, true, 'not verified against the live API, like every fal node');
+    assert.ok(!node.experimental, 'all four models ran live on 2026-10-03: no badge (the other fal nodes keep it; SAM 3D is marked in the model list)');
+    assert.equal(node.emptyOutputs, undefined, 'the preview of every model exists, no output is announced as empty');
     assert.equal(node.label, 'Image to 3D');
     assert.deepEqual(node.inputs.map((port) => `${port.id}:${port.type}${port.required ? '!' : ''}${port.multiple ? `[max ${port.max}]` : ''}`), ['image:image!', 'left:image[max 1]', 'back:image[max 1]', 'right:image[max 1]']);
     assert.deepEqual(node.inputs.filter((port) => port.limitBy).map((port) => [port.id, port.limitBy]), [['left', { param: 'model', capability: 'left' }], ['back', { param: 'model', capability: 'back' }], ['right', { param: 'model', capability: 'right' }]]);
@@ -751,6 +763,18 @@ async function run(iso) {
   }
 
   /* ---------- a run per model: the GLB and its preview are stored ---------- */
+  // the preview the app draws from the GLB (lib/glb-preview.js): a PNG of 1024 x 1024, transparent around the orange cube, not
+  // the image of a provider
+  async function assertDrawnPreview(bytes) {
+    assert.ok(!bytes.equals(PNG), 'drawn by the app, not the image of a provider');
+    const drawn = glbPreview.decodePng(bytes);
+    assert.ok(drawn, 'a PNG');
+    assert.deepEqual([drawn.width, drawn.height], [1024, 1024]);
+    assert.equal(drawn.data[3], 0, 'transparent in the corner');
+    const middle = (512 * 1024 + 512) * 4;
+    assert.equal(drawn.data[middle + 3], 255, 'the cube in the middle');
+    assert.ok(drawn.data[middle] > drawn.data[middle + 1] + 30 && drawn.data[middle + 1] > drawn.data[middle + 2] + 10, `the orange of the cube: ${[...drawn.data.subarray(middle, middle + 3)]}`);
+  }
   async function checkStored(outcome, { preview, estimate, endpoint }) {
     const modelValue = outcome.variants[0].model;
     assert.equal(modelValue.type, 'model3d');
@@ -779,11 +803,14 @@ async function run(iso) {
       const image = outcome.variants[0].preview;
       assert.equal(image.type, 'image');
       assert.match(image.url, new RegExp(`^/assets/${sessionId}/img-\\d{3}\\.png$`));
-      assert.ok((await fsp.readFile(path.join(store.sessionAssetDir(sessionId), image.file))).equals(PNG), 'the preview is stored unchanged');
+      const stored = await fsp.readFile(path.join(store.sessionAssetDir(sessionId), image.file));
+      if (preview === 'rendered') await assertDrawnPreview(stored);
+      else assert.ok(stored.equals(PNG), 'the preview of the provider is stored unchanged');
       assert.deepEqual(job.resultAssetIds, [modelValue.assetId, image.assetId]);
       const imageEntry = (await store.readLedger(sessionId)).find((item) => item.id === image.assetId);
       assert.equal(imageEntry.kind, 'image');
       assert.ok(imageEntry.cost === null || imageEntry.cost === undefined, 'no cost twice');
+      assert.equal(imageEntry.prompt, job.prompt, 'the image belongs to the same request as the model');
     } else {
       assert.equal('preview' in outcome.variants[0], false, 'no preview: no value');
       assert.deepEqual(job.resultAssetIds, [modelValue.assetId]);
@@ -836,13 +863,13 @@ async function run(iso) {
     assert.deepEqual([calls.submit[0].input.enable_rigging, calls.submit[0].input.enable_animation], [false, false]);
     await checkStored(meshy, { preview: true, estimate: 1.2, endpoint: 'meshy/v7.1/multi-image-to-3d' });
 
-    // SAM 3D: the mesh, no preview; the splat is not even downloaded
+    // SAM 3D: the mesh and no preview of the provider: the app draws it from the GLB (poller, child process); the splat is not even downloaded
     resetCalls();
     const sam = await execute(inputsOf(front), { model: 'sam3d_objects', object: 'chair' });
     assert.equal(calls.submit[0].endpoint, 'fal-ai/sam-3/3d-objects');
     assert.deepEqual(calls.submit[0].input, { prompt: 'chair', export_textured_glb: true, image_url: `https://v3b.fal.media/files/${front.file}` });
     assert.deepEqual(calls.download, [{ url: URLS.glb, maxBytes: 256 * MB }], 'only the GLB');
-    await checkStored(sam, { preview: false, estimate: 0.02, endpoint: 'fal-ai/sam-3/3d-objects' });
+    await checkStored(sam, { preview: 'rendered', estimate: 0.02, endpoint: 'fal-ai/sam-3/3d-objects' });
     const files = await fsp.readdir(store.sessionAssetDir(sessionId));
     assert.equal(files.some((name) => /\.(ply|splat|fbx|part)$/.test(name)), false, 'no splat and no leftover');
 
@@ -851,18 +878,50 @@ async function run(iso) {
     scenario = () => ({ model_mesh: glbFile('https://v3b.fal.media/files/out/model.fbx'), model_urls: { glb: glbFile() } });
     const viaUrls = await execute(inputsOf(front));
     assert.equal(calls.download[0].url, URLS.glb, 'the FBX of model_mesh is not taken');
-    assert.equal('preview' in viaUrls.variants[0], false, 'no rendered image in the result');
+    assert.equal(calls.download.length, 1, 'no image of the provider in the result, nothing more to download');
+    await assertDrawnPreview(await fsp.readFile(path.join(store.sessionAssetDir(sessionId), viaUrls.variants[0].preview.file)));
 
-    // the preview cannot be fetched or is no image: the model is the result that was paid for
+    // the preview of the provider cannot be fetched or is no image: the model is the result that was paid for, and the preview
+    // that the app draws from it steps in
     resetCalls();
     downloads = { [URLS.png]: { error: new Error('preview gone') } };
     const noPreview = await execute(inputsOf(front));
     assert.equal(noPreview.variants[0].model.type, 'model3d');
-    assert.equal('preview' in noPreview.variants[0], false);
+    assert.deepEqual(calls.download.map((call) => call.url), [URLS.glb, URLS.png], 'the image of the provider was asked for first');
+    await assertDrawnPreview(await fsp.readFile(path.join(store.sessionAssetDir(sessionId), noPreview.variants[0].preview.file)));
+    const noPreviewJob = (await store.readSession(sessionId)).jobs.find((item) => item.assetId === noPreview.variants[0].model.assetId);
+    assert.deepEqual(noPreviewJob.resultAssetIds, [noPreview.variants[0].model.assetId, noPreview.variants[0].preview.assetId]);
+    assert.equal(noPreviewJob.status, 'completed');
     resetCalls();
     downloads = { [URLS.png]: { bytes: Buffer.from('<html>not an image</html>') } };
     const htmlPreview = await execute(inputsOf(front));
-    assert.equal('preview' in htmlPreview.variants[0], false);
+    await assertDrawnPreview(await fsp.readFile(path.join(store.sessionAssetDir(sessionId), htmlPreview.variants[0].preview.file)));
+    assert.equal((await fsp.readdir(store.sessionAssetDir(sessionId))).some((name) => name.endsWith('.part')), false);
+
+    // the app cannot draw the model either (it requires a decoder): the model alone is the result, and the job is done. Nothing
+    // fails: the model is what was paid for. The reason is in the log.
+    resetCalls();
+    const needsDecoder = cubeGlb({ edit: (json) => { json.extensionsRequired = ['KHR_draco_mesh_compression']; } });
+    downloads = { [URLS.png]: { error: new Error('preview gone') }, [URLS.glb]: { bytes: needsDecoder } };
+    const warned = [];
+    const imagesBefore = (await store.readLedger(sessionId)).filter((entry) => entry.kind === 'image').length;
+    const originalWarn = console.warn;
+    console.warn = (...args) => warned.push(args.join(' '));
+    let modelOnly;
+    try {
+      modelOnly = await execute(inputsOf(front));
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(modelOnly.variants[0].model.type, 'model3d');
+    assert.equal('preview' in modelOnly.variants[0], false, 'no preview: no value');
+    assert.deepEqual(modelOnly.cost, { usd: 0.3 }, 'the model is paid as always');
+    const modelOnlyJob = (await store.readSession(sessionId)).jobs.find((item) => item.assetId === modelOnly.variants[0].model.assetId);
+    assert.equal(modelOnlyJob.status, 'completed', 'a render that fails never fails the job');
+    assert.deepEqual(modelOnlyJob.resultAssetIds, [modelOnly.variants[0].model.assetId]);
+    assert.ok(warned.some((line) => /\[glb-preview\] Vorschau von mod-\d+\.glb nicht erstellt: .*KHR_draco_mesh_compression/.test(line)), `the reason is logged: ${warned.join(' | ')}`);
+    assert.equal(journal.length, 1, 'booked once');
+    assert.equal((await store.readLedger(sessionId)).filter((entry) => entry.kind === 'image').length, imagesBefore, 'no image was saved for it');
     assert.equal((await fsp.readdir(store.sessionAssetDir(sessionId))).some((name) => name.endsWith('.part')), false);
   }
 
@@ -1214,28 +1273,31 @@ async function run(iso) {
       const chatAssets = await store.readLedger(chat.id);
       assert.equal(chatAssets.every((entry) => entry.kind === 'image'), true, 'no model in the chat');
 
-      // SAM 3D has no preview: the model is there, a node behind the preview says so, in words that have a text
+      // SAM 3D delivers no preview: the app draws one from the model, so the output is there like with the other models
       await save({
         nodes: [
           inputNode('a', source, 0),
           g('sam3d_objects', { object: 'chair' }),
           node('out', 'output.result', { label: 'Modell' }, 600, 100)
         ],
-        edges: [edge('e1', 'a', 'image', 'g', 'image'), edge('e3', 'g', 'model', 'out', 'inputs')]
+        edges: [edge('e1', 'a', 'image', 'g', 'image'), edge('e3', 'g', 'model', 'out', 'inputs'), edge('e4', 'g', 'preview', 'out', 'inputs')]
       });
       resetCalls();
       const samDone = await start();
       assert.equal(samDone.status, 'completed', JSON.stringify(samDone).slice(0, 500));
       assert.equal(calls.submit[0].endpoint, 'fal-ai/sam-3/3d-objects');
       const samVariant = (await call('GET', `/api/workflows/${created.id}`)).body.results.nodes.g.history[0].variants[0];
-      assert.deepEqual(Object.keys(samVariant), ['model']);
+      assert.deepEqual(Object.keys(samVariant).sort(), ['model', 'preview']);
       assert.equal(samVariant.model.type, 'model3d');
-      // the chat: nothing but the model, so there is nothing to send
+      assert.equal(samVariant.preview.type, 'image');
+      const samServed = await api(samVariant.preview.url, { as: owner, raw: true });
+      assert.equal(samServed.headers.get('content-type'), 'image/png');
+      await assertDrawnPreview(Buffer.from(await samServed.arrayBuffer()));
+      // the chat takes the preview image, not the model
       const samSend = await call('POST', `/api/workflows/${created.id}/send-to-chat`, { sessionId: chat.id, nodeId: 'g' });
-      assert.equal(samSend.status, 415);
-      assert.equal(samSend.body.reason, 'model3d');
-      // a node behind the empty preview: the plan says so BEFORE the model is paid (and counts the node behind for nothing),
-      // the run is refused with the plan's reason, nothing is queued
+      assert.equal(samSend.status, 200, samSend.text);
+      assert.deepEqual(samSend.body.ports, ['preview']);
+      // a node behind the preview of SAM 3D is valid now: the plan counts it with the model, nothing is refused
       const behindPreview = (object) => ({
         nodes: [
           inputNode('a', source, 0),
@@ -1247,36 +1309,22 @@ async function run(iso) {
       });
       await save(behindPreview('table'));
       planned = (await call('POST', `/api/workflows/${created.id}/runs/plan`, { mode: 'all' })).body;
-      assert.equal(planned.valid, false, 'a preview that SAM 3D never makes cannot be connected');
-      const emptyIssue = planned.issues.find((item) => item.code === 'OUTPUT_EMPTY');
-      assert.deepEqual([emptyIssue.nodeId, emptyIssue.port, emptyIssue.level, emptyIssue.data], ['rb', 'image', 'error', { input: 'image', output: 'preview' }]);
-      assert.equal(planned.nodes.g.status, 'stale', 'the model itself is fine');
-      assert.equal(planned.nodes.rb.status, 'invalid');
-      assert.equal(planned.nodes.rb.reasonCode, 'OUTPUT_EMPTY');
-      assert.deepEqual(planned.nodes.rb.reasonData, { input: 'image', output: 'preview' });
-      assert.equal(planned.nodes.rb.estimate, null, 'the node behind never runs: no price');
-      near(planned.totals.usd, 0.02, 'only SAM 3D is counted');
-      assert.equal(planned.totals.paidNodes, 1);
+      assert.equal(planned.valid, true, JSON.stringify(planned.issues));
+      assert.equal(planned.issues.some((item) => item.code === 'OUTPUT_EMPTY'), false, 'the preview of SAM 3D is no empty output any more');
+      assert.notEqual(planned.nodes.rb.status, 'invalid');
+      near(planned.totals.usd, 0.02 + nodesFal.PRICES.removeBackground.usd, 'SAM 3D and the node behind it');
+      assert.equal(planned.totals.paidNodes, 2);
+      // running only the model works, and the same graph with the model made already does not make it again
       resetCalls();
-      const refusedEmpty = await call('POST', `/api/workflows/${created.id}/runs`, { mode: 'all' });
-      assert.equal(refusedEmpty.status, 400, refusedEmpty.text);
-      assert.equal(refusedEmpty.body.code, 'INVALID_GRAPH');
-      nothingSent('the model is not paid first');
-      // running only the model (the node behind is not part of it) works
       const onlyModel = await start({ mode: 'node', nodeIds: ['g'] });
       assert.equal(onlyModel.status, 'completed', JSON.stringify(onlyModel).slice(0, 400));
       assert.equal(calls.submit.length, 1);
-      // the same graph with the model already made: the plan is the same and the model is not made again
       await save(behindPreview('chair'));
       planned = (await call('POST', `/api/workflows/${created.id}/runs/plan`, { mode: 'all' })).body;
+      assert.equal(planned.valid, true, JSON.stringify(planned.issues));
       assert.equal(planned.nodes.g.status, 'cached', 'the model is not made again');
-      assert.equal(planned.nodes.rb.status, 'invalid');
-      assert.equal(planned.nodes.rb.reasonCode, 'OUTPUT_EMPTY');
-      assert.deepEqual(planned.nodes.rb.reasonData, { input: 'image', output: 'preview' });
-      resetCalls();
-      assert.equal((await call('POST', `/api/workflows/${created.id}/runs`, { mode: 'all' })).status, 400);
-      nothingSent();
-      // a model that does render a preview takes the connection (Tripo: valid and the full estimate)
+      near(planned.totals.usd, nodesFal.PRICES.removeBackground.usd, 'only the node behind is left to pay');
+      // a model that does render a preview takes the connection too (Tripo: valid and the full estimate)
       await save({
         nodes: [inputNode('a', source, 0), g('tripo_h31', { texture: false, seed: 11 }), node('rb', 'fal.remove_background', {}, 600, 260)],
         edges: [edge('e1', 'a', 'image', 'g', 'image'), edge('e5', 'g', 'preview', 'rb', 'image')]
@@ -1284,11 +1332,20 @@ async function run(iso) {
       planned = (await call('POST', `/api/workflows/${created.id}/runs/plan`, { mode: 'all' })).body;
       assert.equal(planned.valid, true, JSON.stringify(planned.issues));
       near(planned.totals.usd, 0.2 + nodesFal.PRICES.removeBackground.usd);
-      // and when the preview of such a model is missing in an answer (the render could not be fetched), the run itself still
-      // says the same thing: the node behind stops with the code, the model stays
+      // and when the preview is missing after all (the provider delivers none and the app cannot draw the model, here one that
+      // requires a decoder), the run says what the engine says for every output that stays empty: the node behind stops with the
+      // code, the model stays
       resetCalls();
-      downloads = { [URLS.png]: { error: new Error('preview not reachable') } };
-      const runtimeStop = await start();
+      const needsDecoder = cubeGlb({ edit: (json) => { json.extensionsRequired = ['KHR_draco_mesh_compression']; } });
+      downloads = { [URLS.png]: { error: new Error('preview not reachable') }, [URLS.glb]: { bytes: needsDecoder } };
+      const originalWarn = console.warn;
+      console.warn = () => {};
+      let runtimeStop;
+      try {
+        runtimeStop = await start();
+      } finally {
+        console.warn = originalWarn;
+      }
       assert.equal(runtimeStop.status, 'failed');
       assert.equal(runtimeStop.nodes.g.status, 'done');
       assert.equal(runtimeStop.nodes.rb.status, 'error');
