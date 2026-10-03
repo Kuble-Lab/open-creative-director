@@ -79,6 +79,7 @@
         <li><a href="#de-languages">Sprachen</a></li>
         <li><a href="#de-keys">Bedienung und Tastatur</a></li>
         <li><a href="#de-settings">Einstellungen (Admins)</a></li>
+        <li><a href="#de-mcp">Agent-Zugang (MCP)</a></li>
         <li><a href="#de-monitoring">Nutzung und Monitoring (Superadmins)</a></li>
       </ol></nav>
       <section class="card" id="de-start" data-section="start"><h2>Erste Schritte</h2><p>Du beschreibst in einem Satz, was du produzieren willst. Der Creative Director stellt die richtigen Rückfragen, plant die Produktion und erzeugt mit echten Werkzeugen Bilder, Videos, Sprache und Motion Graphics. Die Ergebnisse erscheinen direkt im Chat.</p>
@@ -190,7 +191,7 @@
 <li>Ohne Team (Gast) ist das Budget 0. Du siehst dann nur Eigenes und persönlich Geteiltes.</li>
 </ul></section>
       <section class="card" id="de-account" data-section="account"><h2>Menü, Konto und Kosten</h2><ul>
-<li><strong>Mit Anmeldung:</strong> Initialen, E-Mail-Adresse und Rolle (Person, Admin, Superadmin), «Meine Kosten diesen Monat», Einstellungen (nur Admins), Hilfe, Monitoring (nur Superadmins), Sprache und Abmelden.</li>
+<li><strong>Mit Anmeldung:</strong> Initialen, E-Mail-Adresse und Rolle (Person, Admin, Superadmin), «Meine Kosten diesen Monat», Einstellungen (nur Admins), «Agent-Zugang (MCP)» (Admins und interne Personen), Hilfe, Monitoring (nur Superadmins), Sprache und Abmelden.</li>
 <li><strong>Lokal:</strong> kein Konto, das Menü zeigt Kosten, Einstellungen und Hilfe; die Kosten stehen zusätzlich als Summe in der Kopfzeile.</li>
 <li><strong>Kostenübersicht:</strong> Summen pro Monat, Woche, Typ und Chat. Jeder Aufruf wird mit seinen Kosten ins Journal geschrieben. Admins sehen die Kosten aller, alle anderen nur ihre eigenen.</li>
 <li>Ohne Preisangabe des Anbieters gelten Schätzwerte; Abo-Aufrufe (etwa über ChatGPT) haben keinen Einzelpreis.</li>
@@ -253,6 +254,15 @@
 <li><strong>Personen:</strong> zusätzliche Admins und, mit Anmeldung, die Team-Liste. Sie enthält die Personen, die du beim Teilen wählen kannst. Sie ist keine Zugangsliste: wer sich anmelden darf, bestimmt weiter der Login. Mehrere Adressen lassen sich auf einmal einfügen. Darunter stehen die <strong>Teams</strong> (Schulungen mit Budget pro Person), siehe «Teams und Schulungen».</li>
 <li><strong>Rendering:</strong> Render-Nodes für Motion Graphics; mehrere Nodes werden automatisch verteilt.</li>
 </ul></section>
+      <section class="card" id="de-mcp" data-section="mcp"><h2>Agent-Zugang (MCP)</h2><p>Für Admins und interne Personen, im Menü unter «Agent-Zugang (MCP)». Externe Agents wie Claude Code oder Codex arbeiten mit einem persönlichen Schlüssel in deinem Namen: mit deinen Workflows und Vorlagen, mit denselben Kostenregeln, begrenzt pro Lauf und pro Monat. Die App führt die Läufe aus; der Agent bestellt sie und holt die Ergebnisse.</p>
+<ul>
+<li><strong>Adresse:</strong> Der Dialog zeigt die Adresse des Endpunkts zum Kopieren. Sie kommt aus der öffentlichen Adresse der App.</li>
+<li><strong>Neuer Schlüssel:</strong> Name, Recht («Nur lesen» oder «Lesen und starten»), Limit pro Lauf, Limit pro Monat und Gültigkeit in Tagen. Der Schlüssel wird nur einmal angezeigt; kopiere ihn sofort. Geht er verloren, widerrufe ihn und lege einen neuen an.</li>
+<li><strong>Liste:</strong> pro Schlüssel Recht, Limits, Verbrauch in diesem Monat, zuletzt benutzt und Ablauf. «Widerrufen» wirkt sofort und lässt sich nicht rückgängig machen. Admins sehen alle Schlüssel, alle anderen ihre eigenen.</li>
+<li><strong>Einrichten:</strong> Für Claude Code steht der Befehl <code>claude mcp add --transport http</code> mit Adresse und Header <code>Authorization: Bearer</code> in der Kurzanleitung. Andere Agents brauchen dieselben drei Angaben: Streamable HTTP, Adresse, Bearer-Header.</li>
+<li><strong>Grenzen:</strong> Bezahlte Läufe starten nur mit einem Höchstbetrag, den der Agent bestätigt, und nur innerhalb der Limits. Higgsfield ist für Agents gesperrt. Pro Schlüssel laufen höchstens zwei Läufe gleichzeitig. Hochgeladene Dateien bleiben sieben Tage; pro Schlüssel sind höchstens 2 GB und 1 GB pro Stunde möglich, und der Inhalt muss zum Dateityp passen.</li>
+<li>Der Schlüssel gilt nicht mehr, wenn die Person nicht mehr intern ist oder aus der Team-Liste entfernt wurde.</li>
+</ul></section>
       <section class="card" id="de-monitoring" data-section="monitoring"><h2>Nutzung und Monitoring (Superadmins)</h2><p>Nur für Superadmins, im Menü unter «Nutzung und Monitoring». Die Seite zeigt Nutzung und Kosten pro Person, Anbieter und Tag, Läufe, Jobs und fehlgeschlagene Anfragen und lässt sich nach Zeitraum, Person und Anbieter filtern. Mit Teams gibt es zusätzlich den Filter «Team» und die Tabellen «Teams und Budget» mit Budget, Verbrauch und Rest pro Person. Alle Einträge gibt es als CSV.</p></section>
     </div>
 
@@ -278,6 +288,7 @@
         <li><a href="#en-languages">Languages</a></li>
         <li><a href="#en-keys">Keys and controls</a></li>
         <li><a href="#en-settings">Settings (admins)</a></li>
+        <li><a href="#en-mcp">Agent access (MCP)</a></li>
         <li><a href="#en-monitoring">Usage and monitoring (superadmins)</a></li>
       </ol></nav>
       <section class="card" id="en-start" data-section="start"><h2>Getting started</h2><p>You describe in one sentence what you want to produce. The Creative Director asks the right questions, plans the production and creates images, videos, speech and motion graphics with real tools. The results appear right in the chat.</p>
@@ -389,7 +400,7 @@
 <li>Without a team (guest) the budget is 0. You then only see your own entries and what is shared with you personally.</li>
 </ul></section>
       <section class="card" id="en-account" data-section="account"><h2>Menu, account and costs</h2><ul>
-<li><strong>Signed in:</strong> initials, e-mail address and role (person, admin, superadmin), “My costs this month”, settings (admins only), help, monitoring (superadmins only), language and sign-out.</li>
+<li><strong>Signed in:</strong> initials, e-mail address and role (person, admin, superadmin), “My costs this month”, settings (admins only), “Agent access (MCP)” (admins and internal people), help, monitoring (superadmins only), language and sign-out.</li>
 <li><strong>Local:</strong> no account; the menu shows costs, settings and help, and the total also stays in the header.</li>
 <li><strong>Cost overview:</strong> totals per month, week, type and chat. Every call is written to the journal with its cost. Admins see everybody's costs, everyone else only their own.</li>
 <li>Where a provider reports no price, estimates apply; subscription calls (for example through ChatGPT) have no single price.</li>
@@ -452,6 +463,15 @@
 <li><strong>People:</strong> additional admins and, with sign-in, the team list. It holds the people you can pick when sharing. It is not an access list: the login still decides who may sign in. Several addresses can be pasted at once. Below are the <strong>teams</strong> (trainings with a budget per person), see “Teams and trainings”.</li>
 <li><strong>Rendering:</strong> render nodes for motion graphics; several nodes are balanced automatically.</li>
 </ul></section>
+      <section class="card" id="en-mcp" data-section="mcp"><h2>Agent access (MCP)</h2><p>For admins and internal people, in the menu under “Agent access (MCP)”. External agents such as Claude Code or Codex work in your name with a personal key: with your workflows and templates, under the same cost rules, limited per run and per month. The app executes the runs; the agent orders them and fetches the results.</p>
+<ul>
+<li><strong>Address:</strong> the dialog shows the address of the endpoint to copy. It is derived from the public address of the app.</li>
+<li><strong>New key:</strong> name, right (“Read only” or “Read and start”), limit per run, limit per month and validity in days. The key is shown only once; copy it at once. If it is lost, revoke it and create a new one.</li>
+<li><strong>List:</strong> per key the right, limits, usage this month, last use and expiry. “Revoke” works at once and cannot be undone. Admins see all keys, everybody else their own.</li>
+<li><strong>Setting up:</strong> for Claude Code the quick guide shows the command <code>claude mcp add --transport http</code> with the address and the header <code>Authorization: Bearer</code>. Other agents need the same three things: Streamable HTTP, address, Bearer header.</li>
+<li><strong>Limits:</strong> paid runs only start with a maximum amount the agent confirms, and only within the limits. Higgsfield is blocked for agents. A key runs at most two runs at a time. Uploaded files are kept for seven days; a key may store at most 2 GB and upload 1 GB per hour, and the content has to match the file type.</li>
+<li>The key stops working when the person is no longer internal or was removed from the team list.</li>
+</ul></section>
       <section class="card" id="en-monitoring" data-section="monitoring"><h2>Usage and monitoring (superadmins)</h2><p>For superadmins only, in the menu under “Usage and monitoring”. The page shows usage and costs per person, provider and day, runs, jobs and failed requests, and can be filtered by period, person and provider. With teams there is also a “Team” filter and the tables “Teams and budget” with budget, spending and what is left per person. All entries are available as CSV.</p></section>
     </div>
 
@@ -477,6 +497,7 @@
         <li><a href="#es-languages">Idiomas</a></li>
         <li><a href="#es-keys">Manejo y teclado</a></li>
         <li><a href="#es-settings">Ajustes (administradores)</a></li>
+        <li><a href="#es-mcp">Acceso de agentes (MCP)</a></li>
         <li><a href="#es-monitoring">Uso y monitorización (superadministradores)</a></li>
       </ol></nav>
       <section class="card" id="es-start" data-section="start"><h2>Primeros pasos</h2><p>Describes en una frase lo que quieres producir. El Creative Director hace las preguntas adecuadas, planifica la producción y crea imágenes, vídeos, voz y motion graphics con herramientas reales. Los resultados aparecen directamente en el chat.</p>
@@ -588,7 +609,7 @@
 <li>Sin equipo (invitado) el presupuesto es 0. Entonces solo ves lo tuyo y lo que se comparte contigo personalmente.</li>
 </ul></section>
       <section class="card" id="es-account" data-section="account"><h2>Menú, cuenta y costes</h2><ul>
-<li><strong>Con sesión iniciada:</strong> iniciales, correo electrónico y rol (persona, administrador, superadministrador), «Mis costes este mes», ajustes (solo administradores), ayuda, monitorización (solo superadministradores), idioma y cerrar sesión.</li>
+<li><strong>Con sesión iniciada:</strong> iniciales, correo electrónico y rol (persona, administrador, superadministrador), «Mis costes este mes», ajustes (solo administradores), «Acceso de agentes (MCP)» (administradores y personas internas), ayuda, monitorización (solo superadministradores), idioma y cerrar sesión.</li>
 <li><strong>En local:</strong> sin cuenta; el menú muestra costes, ajustes y ayuda, y el total sigue además en la cabecera.</li>
 <li><strong>Resumen de costes:</strong> totales por mes, semana, tipo y chat. Cada llamada se anota en el registro con su coste. Los administradores ven los costes de todos; el resto solo los suyos.</li>
 <li>Cuando un proveedor no indica precio se usan estimaciones; las llamadas de suscripción (por ejemplo vía ChatGPT) no tienen precio individual.</li>
@@ -650,6 +671,15 @@
 <li><strong>Servicios:</strong> claves API (OpenRouter, ElevenLabs, fal.ai …), conexión con Higgsfield y ChatGPT, y el interruptor «Preguntar por el modelo antes de cada vídeo» (predeterminado: activado, véase «Vídeos en el chat»). Las claves quedan solo en el servidor y surten efecto de inmediato.</li>
 <li><strong>Personas:</strong> administradores adicionales y, con inicio de sesión, la lista del equipo. Contiene a las personas que puedes elegir al compartir. No es una lista de acceso: el inicio de sesión sigue decidiendo quién puede entrar. Se pueden pegar varias direcciones a la vez. Debajo están los <strong>equipos</strong> (formaciones con presupuesto por persona), consulta «Equipos y formaciones».</li>
 <li><strong>Renderizado:</strong> nodos de render para motion graphics; varios nodos se reparten automáticamente.</li>
+</ul></section>
+      <section class="card" id="es-mcp" data-section="mcp"><h2>Acceso de agentes (MCP)</h2><p>Para administradores y personas internas, en el menú bajo «Acceso de agentes (MCP)». Agentes externos como Claude Code o Codex trabajan en tu nombre con una clave personal: con tus workflows y plantillas, con las mismas reglas de costes y limitados por ejecución y por mes. La app ejecuta las ejecuciones; el agente las pide y recoge los resultados.</p>
+<ul>
+<li><strong>Dirección:</strong> el diálogo muestra la dirección del punto de acceso para copiarla. Se deriva de la dirección pública de la app.</li>
+<li><strong>Nueva clave:</strong> nombre, permiso («Solo lectura» o «Leer e iniciar»), límite por ejecución, límite por mes y validez en días. La clave se muestra una sola vez; cópiala de inmediato. Si se pierde, revócala y crea una nueva.</li>
+<li><strong>Lista:</strong> por clave el permiso, los límites, el uso de este mes, el último uso y la caducidad. «Revocar» actúa de inmediato y no se puede deshacer. Los administradores ven todas las claves, los demás las suyas.</li>
+<li><strong>Configuración:</strong> para Claude Code la guía rápida muestra el comando <code>claude mcp add --transport http</code> con la dirección y la cabecera <code>Authorization: Bearer</code>. Otros agentes necesitan lo mismo: Streamable HTTP, dirección y cabecera Bearer.</li>
+<li><strong>Límites:</strong> las ejecuciones de pago solo empiezan con un importe máximo que el agente confirma y dentro de los límites. Higgsfield está bloqueado para los agentes. Cada clave tiene como máximo dos ejecuciones a la vez. Los archivos subidos se conservan siete días; cada clave puede guardar como máximo 2 GB y subir 1 GB por hora, y el contenido debe corresponder al tipo de archivo.</li>
+<li>La clave deja de valer cuando la persona ya no es interna o se la quita de la lista del equipo.</li>
 </ul></section>
       <section class="card" id="es-monitoring" data-section="monitoring"><h2>Uso y monitorización (superadministradores)</h2><p>Solo para superadministradores, en el menú, en «Uso y monitorización». La página muestra uso y costes por persona, proveedor y día, ejecuciones, trabajos y solicitudes fallidas, y se puede filtrar por periodo, persona y proveedor. Con equipos hay además el filtro «Equipo» y las tablas «Equipos y presupuesto» con presupuesto, gasto y restante por persona. Todas las entradas están disponibles como CSV.</p></section>
     </div>

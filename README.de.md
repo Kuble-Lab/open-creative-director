@@ -28,6 +28,7 @@ Inspiriert vom Higgsfield-«Supercomputer»-Konzept — neu gebaut als offene, l
 - **Prompt-Vorlagen** — kuratiertes, klappbares Menü produktionsreifer Prompts (Casting, Serie, Branding, Motion, Social Media, Marketing) plus eigene team-geteilte Vorlagen.
 - **Drei Sprachen** — UI auf Deutsch, Englisch und Spanisch.
 - **Kosten-Journal** — jede Generierung und jeder LLM-Call wird mit Kosten protokolliert.
+- **Agent-Zugang (MCP)** — externe Agents bestellen Läufe mit einem persönlichen Schlüssel, begrenzt pro Lauf und pro Monat ([Details](#agent-zugang-mcp-optional)).
 
 ## Schnellstart
 
@@ -207,6 +208,55 @@ Daten: `data/teams.json` (chmod 600, atomar geschrieben), `data/folder-owners.js
 ### Freigabelisten-Sync (optional)
 
 Teilnehmer haben Adressen, die dein Login nicht kennt. Führt dein Login eine Freigabelisten-Datei (`{ "default": {...}, "routes": [{ "path": "/training", "public": false, "extra_emails": [...] }] }`), setze `ACCESS_ALLOWLIST_FILE` (Pfad) und `ACCESS_ALLOWLIST_ROUTE` (Route). Nach jeder Änderung an einem Team hält die App dann `extra_emails` dieser Route auf den von Hand gepflegten Adressen plus allen Mitgliedern aktiver Teams (Adressen aus `INTERNAL_EMAIL_DOMAINS` werden nicht eingetragen). Manuelle Einträge und andere Routen bleiben unangetastet: Nur was die App selbst eingetragen hat, wird wieder entfernt (gemerkt in `data/access-sync.json`, vor der Änderung der Liste geschrieben und zusätzlich als Kopie neben der Liste; ein unlesbarer Status stoppt den Sync mit einer Warnung). Die Datei wird atomar geschrieben (ein Symlink wird aufgelöst; der Eigentümer bleibt erhalten, soweit die App ihn setzen darf; eine in einen Container eingehängte Einzeldatei wird direkt überschrieben), behält ihre Rechte, und vor der ersten Änderung entsteht einmal eine Kopie `<Datei>.bak-<Zeitstempel>`; eine fehlende Route wird angelegt. Ein Fehler blockiert die Team-Änderung nie — er erscheint als Warnung in `sync`. Sind beide Variablen nicht gesetzt, passiert nichts.
+
+## Agent-Zugang (MCP) (optional)
+
+Externe Agents (Claude Code, Codex, eigene Bots) können über einen [MCP](https://modelcontextprotocol.io)-Endpunkt Läufe in der App bestellen. Ein Agent arbeitet mit einem persönlichen Schlüssel im Namen der Person, die ihn angelegt hat: mit denselben Vorlagen, Workflows und Kostenregeln wie in der Oberfläche, begrenzt pro Lauf und pro Monat. Die App führt die Workflows aus; der Agent bestellt nur Läufe und holt die Ergebnisse. Der Endpunkt ist `POST /mcp` (MCP über Streamable HTTP, Antworten nur als JSON; `GET` ergibt `405`). Es ist eine kleine eigene Umsetzung ohne zusätzliche Abhängigkeit. Sie spricht die Protokollrevision 2026-07-28 und, mit `initialize` und Versionsaushandlung, die früheren Revisionen 2025-11-25, 2025-06-18 und 2025-03-26. JSON-RPC-Batches (ein Array mit bis zu 10 Nachrichten) nimmt sie an, wie es die Revision 2025-03-26 verlangt, also ohne Versions-Header oder mit `2025-03-26`.
+
+**Einrichten**
+
+1. Öffne **Menü → Agent-Zugang (MCP)** (Admins und interne Personen; im lokalen Modus alle). Der Dialog zeigt die Adresse des Endpunkts, deine Schlüssel mit Recht, Limits, Verbrauch im Monat, letzter Benutzung und Ablauf sowie ein Formular für einen neuen Schlüssel.
+2. Lege einen Schlüssel an: Name, Recht («Nur lesen» oder «Lesen und starten»), Limit pro Lauf, Limit pro Monat und Gültigkeit. Der Schlüssel wird **einmal** angezeigt; kopiere ihn sofort. Gespeichert wird nur ein Hash.
+3. Trage Adresse und Schlüssel im Agent ein. Für Claude Code:
+
+   ```bash
+   claude mcp add --transport http open-creator https://deine-app.example.com/mcp --header "Authorization: Bearer <Schlüssel>"
+   ```
+
+   Jeder andere Client braucht drei Angaben: Transport *Streamable HTTP*, die Adresse und den Header `Authorization: Bearer <Schlüssel>`. Der Schlüssel wird nur aus diesem Header gelesen, nie aus der Adresse.
+
+**Schlüssel**
+
+- Format `ocd_k1_` plus 43 Zeichen (256 Bit Zufall). `data/mcp-keys.json` (Modus 600) enthält den SHA-256-Hash, ein kurzes Präfix für die Liste, Name, Besitzer, Recht, Limits, Erstellung, letzte Benutzung, Ablauf und Widerruf. Der Schlüssel erscheint nie in einem Log, einer Fehlermeldung oder im Kostenjournal.
+- Standard: 2 USD pro Lauf, 20 USD pro Monat, 90 Tage. Obergrenzen: 1000 USD pro Lauf, 10000 USD pro Monat, 365 Tage; höchstens 25 gültige Schlüssel pro Person.
+- Ein Schlüssel handelt als seine Person und sieht dieselben Workflows, Vorlagen und Teams, nie mehr. Er gilt nicht mehr, sobald die Person weder Admin noch intern ist oder aus der Team-Liste entfernt wurde. Teilnehmende und Gäste bekommen keine Schlüssel. Ohne Benutzerverwaltung (`AUTH_WHOAMI_URL` nicht gesetzt) handelt der Schlüssel als lokale Person, und alle, die die App erreichen, können Schlüssel anlegen.
+- Admins sehen und widerrufen alle Schlüssel, alle anderen nur ihre eigenen. Ein Widerruf wirkt sofort. API: `GET` und `POST /api/mcp/keys`, `PATCH` und `DELETE /api/mcp/keys/:id` (Fehler `INVALID_NAME`, `INVALID_RIGHT`, `INVALID_LIMIT`, `INVALID_EXPIRY`, `TOO_MANY_KEYS`, `KEY_NOT_FOUND`, `KEY_REVOKED`, `FORBIDDEN_FOR_ROLE`).
+
+**Werkzeuge**
+
+| Werkzeug | Recht | Was es tut |
+| --- | --- | --- |
+| `list_templates` | Lesen | Vorlagen mit Eingängen und Kostenspanne |
+| `list_workflows` | Lesen | Eigene und geteilte Workflows |
+| `get_workflow` | Lesen | Nodes, Eingänge, letzte Ergebnisse als Links |
+| `estimate_run` | Lesen | Kostenschätzung der Engine mit den bezahlten Schritten |
+| `get_run` | Lesen | Status, Fortschritt, Ergebnisse als Links (kann bis 30 s warten) |
+| `upload_asset` | Lesen und starten | Bild, Video oder Audio als Eingang: Base64 bis 15 MB, grössere Dateien über einen einmaligen Upload-Link |
+| `create_from_template` | Lesen und starten | Legt aus einer Vorlage einen Workflow an und füllt die Eingänge |
+| `run_workflow` | Lesen und starten | Startet einen Lauf; verlangt `max_usd`, den höchsten Betrag, den der Agent zu zahlen bereit ist |
+| `cancel_run` | Lesen und starten | Bricht einen Lauf dieses Schlüssels ab |
+
+Ein Schlüssel «Nur lesen» sieht und nutzt die fünf Lese-Werkzeuge. `run_workflow` lehnt mit einem verständlichen Grund ab, und es wird nichts belastet, wenn die Schätzung über `max_usd` oder über dem Limit pro Lauf liegt, wenn der Kalendermonat das Monatslimit überschreiten würde (gebuchte Kosten des Schlüssels plus Reservierungen laufender Läufe), wenn ein bezahlter Schritt keinen bekannten Preis hat, wenn der Workflow Higgsfield nutzt (für Agents gesperrt), wenn der Schlüssel schon zwei Läufe laufen hat oder wenn das Budget der Person nicht reicht.
+
+**Links.** Ergebnisse kommen als `GET /mcp/files/<token>` (signiert, 24 Stunden gültig, eine Datei, ohne Anmeldung; nur Medien, kein SVG und kein JSON). Grosse Uploads gehen an `PUT /mcp/upload/<token>` (15 Minuten gültig, einmal, bis 500 MB, SVG bis 10 MB, dieselben Typregeln wie beim normalen Upload). Links beginnen mit `PUBLIC_BASE_URL`, auch mit Unterpfad; ohne diese Variable gilt die Adresse der Anfrage. Das Signaturgeheimnis liegt in `data/mcp-link-secret` (Modus 600). Ein Upload-Link verfällt, sobald der Schlüssel widerrufen oder die Person nicht mehr zulässig ist; ein Ergebnis-Link ist signiert und hält keinen Zustand auf dem Server, er gilt also seine 24 Stunden.
+
+**Kosten.** Ein Lauf über einen Schlüssel bucht wie immer auf die Person. Jede Zeile des Kostenjournals trägt dazu die ID und den Namen des Schlüssels (nie den Schlüssel selbst), damit die Kostenauswertung zeigen kann, was ein Agent ausgegeben hat.
+
+**Grenzen.** 60 Anfragen pro Minute und Schlüssel (ein JSON-RPC-Batch zählt so viele Anfragen, wie er Nachrichten hat); höchstens 4 Anfragen gleichzeitig pro Schlüssel und höchstens 2 Anfragekörper über 1 MB gleichzeitig in der ganzen App (weitere erhalten `429` mit `Retry-After`); ein Anfragekörper von höchstens 22 MiB; zwei Läufe gleichzeitig pro Schlüssel; 30 Workflows aus Vorlagen pro Schlüssel und Stunde; 20 offene Upload-Links pro Schlüssel. Uploads bleiben in einer versteckten Sitzung pro Schlüssel liegen, höchstens 2 GB, 1 GB pro Stunde und 1000 Dateien pro Schlüssel (über einer Grenze antwortet das Werkzeug mit einem Fehler, ein Link mit `413` oder `429`, und ein abgewiesener Link wird nicht verbraucht). Nach 7 Tagen werden sie entfernt; ein Workflow behält seine eigene Kopie einer Datei, die er bekommen hat. Die ersten Bytes einer Datei müssen zu ihrem Typ passen (png, jpg, webp, gif, mp4, m4a, webm, mp3, wav, aac); ein SVG wird gerastert. Ein Neustart der App beendet offene Upload-Links und die Reservierungen laufender Läufe.
+
+**Reverse-Proxy.** Die App prüft den Schlüssel selbst. Darum müssen drei Pfade **ohne vorgeschaltetes Login** freigegeben werden: der Endpunkt `/mcp`, `/mcp/files/` und `/mcp/upload/`. In nginx sind das `location = /mcp` und `location ^~ /mcp/`; ein einfaches `location /mcp` würde auch `/mcp-ui.js` und jeden anderen Pfad freigeben, der mit `/mcp` beginnt. Alles andere bleibt hinter dem Login. Für `/mcp/upload/` grosse Anfragekörper zulassen und nicht puffern (nginx: `client_max_body_size 500m;` und `proxy_request_buffering off;`). Setze `PUBLIC_BASE_URL` auf die öffentliche Adresse der App, sonst zeigen der Dialog und die Links die interne. Agents senden keinen `Origin`-Header; Anfragen einer Browser-Seite werden gegen den ganzen Ursprung geprüft (Schema, Host und Port): die Adresse in `PUBLIC_BASE_URL` ist erlaubt, weitere Ursprünge gehören in `MCP_ALLOWED_ORIGINS` (durch Komma getrennt; ein blosser Host bedeutet `https://Host`). Loopback-Adressen gelten nur bei einer lokalen Installation, ohne `PUBLIC_BASE_URL` (oder mit einer Loopback-Adresse), und nur auf dem Port der App selbst. Falsche Schlüssel begrenzt die App nicht pro IP-Adresse (die Schlüssel haben 256 Bit); das gehört bei Bedarf in den Proxy. Die Pfade `/.well-known/oauth-*` werden nicht gebraucht (nur Bearer-Schlüssel); der Proxy darf sie mit `404` beantworten.
+
+Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `test-mcp-tools.js`, `test-mcp-limits.js` (JSON-RPC-Client über echtes HTTP gegen isolierte App-Kopien, kein bezahlter Aufruf) und `test-mcp-ui.js`.
 
 ## Tests
 

@@ -6447,6 +6447,7 @@ window.onLangChange = () => {
   renderUsers();
   if (state.usersPaste) state.usersPaste.retranslate();
   OCTeams.rerender();
+  OCMcp.rerender();
   renderModelInfo();
   renderAttachments();
   renderJobStatusBar();
@@ -6567,6 +6568,7 @@ OCShell.register({
   settingsAvailable: () => state.settingsAvailable,
   costsText: () => state.costsAmountText
 });
+OCMcp.attach();
 OCTeams.attach({ openSettingsTab: (tab) => openSettingsModal(tab), settingsAvailable: () => state.settingsAvailable });
 OCAccess.onChange(() => renderBudgetBanner());
 OCShell.addSection('workspace', () => {

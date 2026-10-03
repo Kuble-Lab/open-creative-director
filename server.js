@@ -50,6 +50,8 @@ const nodeWorkflows = require('./lib/nodes/workflows-store');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
 const { registerNodeRoutes } = require('./lib/nodes/routes');
 const { createRunService, installRunService } = require('./lib/nodes/run-service');
+const { createMcp } = require('./lib/mcp');
+const { registerKeyRoutes } = require('./lib/mcp/key-routes');
 const nodeHiggsfieldCatalog = require('./lib/nodes/higgsfield-catalog');
 
 loadEnv();
@@ -69,6 +71,10 @@ const runtime = {
 
 const BASE_PORT = Number.parseInt(process.env.PORT, 10) || 3111;
 const app = express();
+// Agent access (MCP, lib/mcp): POST /mcp with a personal key. Mounted before the login middleware and the body parsers
+// below on purpose: the key is the login of this path and the body is read there with its own limit.
+const mcp = createMcp();
+mcp.mount(app);
 let higgsfieldConnectTimer = null;
 let higgsfieldPollInFlight = false;
 let higgsfieldBalanceCache = null;
@@ -937,6 +943,11 @@ app.delete('/api/users/:email', (req, res) => {
     fail(res, status, err.message);
   }
 });
+
+/* ---------- agent access (MCP) ---------- */
+
+// Keys of the agent access: admins and internal people (lib/mcp/key-routes.js).
+registerKeyRoutes(app, { keys: mcp.keys, usage: (key) => mcp.accounting.monthSpentUsd(key.id) });
 
 /* ---------- teams (trainings with a USD budget per person) ---------- */
 

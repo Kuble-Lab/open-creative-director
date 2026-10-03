@@ -1035,7 +1035,7 @@ function registeredRoutes(app) {
 function testRouteInventory({ iso, exercised }) {
   const registered = registeredRoutes(iso.app);
   assert.deepEqual(registered, Object.keys(ROUTE_RULES).sort(), 'every route needs an entry in ROUTE_RULES (and every entry a route)');
-  assert.deepEqual(Object.values(ROUTE_RULES).filter((rule) => !['public', 'open', 'admin', 'superadmin', 'identified', 'session', 'workflow', 'folder'].includes(rule)), []);
+  assert.deepEqual(Object.values(ROUTE_RULES).filter((rule) => !['public', 'open', 'admin', 'superadmin', 'identified', 'internal', 'session', 'workflow', 'folder'].includes(rule)), []);
 
   // Routes on one chat or workflow: each was called by an outsider and answered 404 (see testSessions / testWorkflows)
   const covered = new Set(exercised);

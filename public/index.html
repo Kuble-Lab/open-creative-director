@@ -504,6 +504,16 @@
       </div>
     </div>
 
+    <div id="mcpModal" class="modal hidden">
+      <div class="modal-panel mcp-panel" role="dialog" aria-labelledby="mcpTitle">
+        <div class="modal-head">
+          <h2 id="mcpTitle" data-i18n="mcp.title">Agent-Zugang (MCP)</h2>
+          <button id="mcpClose" class="modal-close" type="button" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div id="mcpBody" class="modal-body mcp-body"></div>
+      </div>
+    </div>
+
     <div id="nodeApp" class="nv-app hidden"></div>
 
     <div id="lightbox" class="lightbox hidden">
@@ -512,6 +522,7 @@
 
     <script src="i18n.js"></script>
     <script src="team-groups.js"></script>
+    <script src="mcp-ui.js"></script>
     <script src="email-list.js"></script>
     <script src="teams-ui.js"></script>
     <script src="access-client.js"></script>
