@@ -438,10 +438,13 @@ async function run(iso) {
     ['n5.characters', 'text', false],
     ['n5.shots_per_minute', 'number', false],
     ['n5.performance_share', 'number', false],
-    ['n12.transition', 'select', false]
+    ['n12.transition', 'select', false],
+    ['n12.captions', 'select', false]
   ]);
   assert.deepEqual(music.inputs.find((input) => input.id === 'n5.shots_per_minute'), { id: 'n5.shots_per_minute', node: 'n5', param: 'shots_per_minute', label: 'Szenen pro Minute', list: false, hasValue: true, derived: false, type: 'number', required: false, integer: false, min: 6, max: 30 });
   assert.deepEqual(music.inputs.find((input) => input.id === 'n12.transition').options, ['cut', 'crossfade', 'flash']);
+  assert.deepEqual(music.inputs.find((input) => input.id === 'n12.captions').options, ['off', 'karaoke', 'words', 'lines'], 'the person can switch the captions off');
+  assert.equal(music.inputs.find((input) => input.id === 'n12.captions').label, 'Untertitel (Songtext im Bild)');
   assert.deepEqual(music.outputs, [{ node: 'n13', label: 'Musikvideo' }]);
   assert.equal(music.paid, true);
   assert.equal(music.cost.kind, 'unknown', 'the scenes come from the plan: no price before the run');
@@ -449,7 +452,19 @@ async function run(iso) {
     const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
     assert.ok(hits.includes('music-video'), `"${query}" (${lang}) finds the music video: ${hits}`);
   }
-  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video'], 'a search narrows the list down');
+  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video', 'music-video-stills'], 'a search narrows the list down');
+  // the variant with moving images (WP35): the same inputs, no clips to pay for, found by the words of its name and of its price
+  const stills = realTemplates.find((item) => item.id === 'music-video-stills');
+  assert.deepEqual(stills.inputs.map((input) => input.id), music.inputs.map((input) => input.id), 'the person is asked for the same things');
+  assert.equal(stills.name, 'Musikvideo aus Song (bewegte Bilder)');
+  assert.deepEqual(stills.outputs, [{ node: 'n13', label: 'Musikvideo' }]);
+  assert.equal(stills.paid, true);
+  assert.equal(stills.cost.kind, 'unknown', 'the scenes come from the plan here too');
+  for (const [query, lang] of [['bewegte Bilder', 'de'], ['Musikvideo günstig', 'de'], ['moving images', 'en'], ['music video cheap', 'en'], ['imágenes en movimiento', 'es']]) {
+    const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
+    assert.deepEqual(hits, ['music-video-stills'], `"${query}" (${lang}) finds only the variant with moving images: ${hits}`);
+  }
+  assert.ok((await realService.listRunnable(v.s1, { query: 'günstig', lang: 'de' })).items.some((item) => item.id === 'music-video-stills'), '"günstig" alone finds it among others');
   assert.deepEqual((await realService.listRunnable(v.s1, { query: 'video nichts-dergleichen', lang: 'de' })).items.filter((item) => item.kind === 'template'), [], 'all words have to appear');
   assert.deepEqual((await realService.listRunnable(v.s1, { query: 'ab' })).items.filter((item) => item.kind === 'template').length > 0, true, 'a short word is searched as typed');
 

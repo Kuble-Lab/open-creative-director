@@ -14,6 +14,9 @@
 //   - the template through the real engine: the real nodes for the song, the times, the plan and the cut, doubles only for the
 //     three provider nodes (image, video, lip sync); the lists keep their order from the plan to the cut, a share of 0 and a song
 //     without lyric times give empty lists and still a video, the prices before and after the plan has run
+//   - the captions of the template (WP35): the lyric times reach the cut as ONE script for the encoder, an instrumental song and the
+//     switch "off" give no script, an ffmpeg without libass refuses the plan before anything is paid; the variant of the template with
+//     moving images runs through the engine with the real zoom node (the cut runs with a stand-in for libass, see the comment there)
 //   - the Director's way: the run service prepares the template, asks for what is missing, and shows the plan with the unknown prices
 // A private copy of the app runs in a temp directory (own data folders). ElevenLabs, the language model and the provider nodes are
 // replaced, and a fetch guard refuses everything except localhost: nothing is paid and nothing leaves the machine. The parts that
@@ -28,6 +31,8 @@ const vm = require('vm');
 const { promisify } = require('util');
 
 const { createIsolatedApp } = require('./support/isolated-app');
+const { createAssStandIn, createFakeFfmpeg } = require('./support/fake-ffmpeg');
+const { parseAss, lex } = require('./support/ass-reader');
 
 const execFileAsync = promisify(execFile);
 const ADMIN = 'admin@example.com';
@@ -144,7 +149,7 @@ function testTexts({ planLib, editLib, tools }) {
     assert.ok(typeof value === 'string' && value.trim(), `${lang}: ${key}`);
     return value;
   };
-  const types = ['audio.beats', 'audio.lyrics_timing', 'music_video.plan', 'music_video.edit'];
+  const types = ['audio.beats', 'audio.lyrics_timing', 'music_video.plan', 'music_video.edit', 'video.captions', 'video.soundwave'];
   for (const lang of ['de', 'en', 'es']) {
     for (const type of types) {
       for (const part of ['label', 'keywords', 'help', 'example', 'tip.1', 'tip.2']) need(lang, `nodes.type.${type}.${part}`);
@@ -152,7 +157,7 @@ function testTexts({ planLib, editLib, tools }) {
       assert.equal(need(lang, `nodes.type.${type}.help`).includes('ß'), false);
     }
     // the messages of the codes, with the placeholders their data fills
-    for (const code of ['BEATS_AUDIO_TOO_SHORT', 'TIMING_NO_LYRICS', 'TIMING_AUDIO_TOO_LONG', 'TIMING_BAD_ARGUMENT', 'MUSICVIDEO_ANALYSIS_INVALID', 'MUSICVIDEO_SHOTS_INVALID', 'MUSICVIDEO_STORY_MISMATCH', 'MUSICVIDEO_PERFORMANCE_MISMATCH', 'MUSICVIDEO_NO_TIMING']) {
+    for (const code of ['BEATS_AUDIO_TOO_SHORT', 'TIMING_NO_LYRICS', 'TIMING_AUDIO_TOO_LONG', 'TIMING_BAD_ARGUMENT', 'MUSICVIDEO_ANALYSIS_INVALID', 'MUSICVIDEO_SHOTS_INVALID', 'MUSICVIDEO_STORY_MISMATCH', 'MUSICVIDEO_PERFORMANCE_MISMATCH', 'MUSICVIDEO_NO_TIMING', 'MUSICVIDEO_NO_CAPTIONS_TIMING', 'CAPTIONS_NO_LIBASS', 'CAPTIONS_TIMING_INVALID']) {
       const text = need(lang, `nodes.issue.${code}`);
       assert.equal(text.includes('ß'), false, `${lang}: ${code} has no sharp s`);
     }
@@ -222,14 +227,17 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   const edit = registry.get('music_video.edit');
   assert.equal(edit.category, 'edit-video');
   assert.equal(edit.paid, false);
-  assert.deepEqual(ports(edit.inputs), [['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true]]);
+  assert.deepEqual(ports(edit.inputs), [['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true], ['captions', 'text', false, false]]);
   assert.equal(edit.inputs.find((port) => port.id === 'story').max, planLib.MAX_SCENES);
   assert.equal(edit.inputs.find((port) => port.id === 'performance').max, planLib.MAX_SCENES);
   assert.deepEqual(ports(edit.outputs), [['video', 'video', false, false]]);
   assert.deepEqual(edit.params.find((param) => param.id === 'transition').options, editLib.TRANSITIONS);
   assert.deepEqual(edit.params.find((param) => param.id === 'resolution').options, editLib.RESOLUTIONS);
   assert.deepEqual(edit.params.find((param) => param.id === 'fps').options, editLib.FPS_VALUES.map(String));
-  assert.deepEqual(registry.normalizeParams(edit, {}), { transition: 'cut', resolution: '720p', fps: '25', fit: 'crop', fade_out: 1 });
+  assert.deepEqual(registry.normalizeParams(edit, {}), { transition: 'cut', resolution: '720p', fps: '25', fit: 'crop', fade_out: 1, captions: 'off', captions_position: 'bottom' });
+  assert.deepEqual(edit.params.find((param) => param.id === 'captions').options, ['off', 'karaoke', 'words', 'lines']);
+  assert.deepEqual(edit.params.find((param) => param.id === 'captions_position').options, ['bottom', 'middle', 'top']);
+  assert.deepEqual(edit.params.find((param) => param.id === 'captions_position').showIf, { param: 'captions', in: ['karaoke', 'words', 'lines'] }, 'the position is only shown when captions are on');
   assert.equal(registry.normalizeParams(edit, { fade_out: 99 }).fade_out, 10);
 
   // validation: the stable codes the page translates
@@ -246,6 +254,12 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   assert.deepEqual(issue(plan, { cut_on: 'beats', performance_share: 0 }, unconnected('timing')), [], 'nothing to warn about when no times are needed');
   assert.equal(issue(plan, { cut_on: 'beats', performance_share: 0.2 }, unconnected('timing')).length, 1, 'a singer needs the times');
   assert.deepEqual(issue(plan, { cut_on: 'lines', performance_share: 0 }, unconnected('timing')).length, 1, 'cutting on lines needs them');
+  // captions (WP35): off by default and then nothing to check; asked for without lyric times the cut warns (whether ffmpeg has libass is
+  // checked in test-music-video-captions.js with a stand-in, because it depends on the machine)
+  const captionsWarning = (params, connected) => issue(edit, params, connected).filter((item) => item.code === 'MUSICVIDEO_NO_CAPTIONS_TIMING').map((item) => [item.level, item.port]);
+  assert.deepEqual(issue(edit, {}, unconnected('captions')), []);
+  assert.deepEqual(captionsWarning({ captions: 'karaoke' }, unconnected('captions')), [['warning', 'captions']]);
+  assert.deepEqual(captionsWarning({ captions: 'lines' }, { captions: { connected: true, count: 1 } }), []);
 
   // the price of the timing: by the length of the song, none while it is not known
   const estimate = (audio) => timing.cost.estimate({}, { inputs: audio === undefined ? {} : { audio } });
@@ -317,6 +331,7 @@ async function run(iso) {
   const registryModule = iso.load('lib/nodes/registry');
   const nodesBasic = iso.load('lib/nodes/nodes-basic');
   const musicVideoNodes = iso.load('lib/nodes/nodes-music-video');
+  const editNodes = iso.load('lib/nodes/nodes-edit');
   const planLib = iso.load('lib/music-video-plan');
   const editLib = iso.load('lib/music-video-edit');
   const renderLib = iso.load('lib/music-video-render');
@@ -1052,6 +1067,8 @@ async function run(iso) {
   const registry = createRegistry();
   nodesBasic.registerAll(registry);
   musicVideoNodes.registerAll(registry);
+  // the local editing nodes: the zoom of the variant with moving images is the real one
+  editNodes.registerAll(registry);
   // What the doubles saw, by the position in the list (the executions of a node run side by side and finish in any order)
   const seen = { image: { n8: [], n9: [] }, video: [], lipsync: [] };
   const clearSeen = () => {
@@ -1109,6 +1126,23 @@ async function run(iso) {
   const engineConfig = { imageModel: 'openai/gpt-image-2', videoModel: 'bytedance/seedance-2.5', defaultBrain: 'vendor/default-brain', brainModels: ['vendor/default-brain'] };
   const engine = createEngine({ store: flowStore, registry, events: bus, getConfig: () => engineConfig, limits: { jobPollMs: 20 } });
 
+  // The template burns the lyrics in as karaoke captions, and libass (the filter "ass") is not in every ffmpeg - not in the one of the machine
+  // that runs this test, maybe. The cut therefore runs with a stand-in: the real ffmpeg, which lists the filter as present and takes it out
+  // of the graph, after writing the script down. So the wiring (times node -> cut -> one script for the encoder) is tested everywhere; the
+  // picture of the captions is tested with libass where there is one (test-captions-ass.js, test-music-video-captions.js).
+  const standIn = await createAssStandIn(workDir, { real: bins.ffmpeg });
+  const originalFfmpegPath = process.env.FFMPEG_PATH;
+  restorers.push(() => {
+    if (originalFfmpegPath === undefined) delete process.env.FFMPEG_PATH;
+    else process.env.FFMPEG_PATH = originalFfmpegPath;
+    ffmpegLib.resetFilterCache();
+  });
+  const useFfmpeg = (file) => {
+    process.env.FFMPEG_PATH = file;
+    ffmpegLib.resetFilterCache();
+  };
+  useFfmpeg(standIn.file);
+
   const document = templatesLib.resolveTemplate('music-video', { lang: 'en' });
   // the story clips are H3 Max turbo (Seedance refuses the images of the template: they show the person of the photo)
   assert.equal(document.graph.nodes.find((node) => node.id === 'n10').type, 'fal.h3_video');
@@ -1129,19 +1163,20 @@ async function run(iso) {
   }
   const resultOf = async (nodeId) => (await flowStore.readResults(workflow.id)).nodes[nodeId].history[0];
   let runNumber = 0;
-  const runAll = async (overrides = {}) => {
+  const runAll = async (overrides = {}, flowId = workflow.id) => {
     runNumber += 1;
     llmRun.token = ` run${runNumber}`;
     clearSeen();
     resetProviders();
-    const runId = await engine.start(workflow.id, { mode: 'all', user: STAFF, overrides });
-    const record = await engine.whenFinished(workflow.id, runId);
+    await standIn.reset();
+    const runId = await engine.start(flowId, { mode: 'all', user: STAFF, overrides });
+    const record = await engine.whenFinished(flowId, runId);
     assert.equal(record.status, 'completed', JSON.stringify(record.nodes).slice(0, 600));
     return record;
   };
   // the cut shows every scene in the colour of its prompt
-  const checkCut = async (shots, finalVideo) => {
-    const file = path.join(store.sessionAssetDir(flowSession), finalVideo.file);
+  const checkCut = async (shots, finalVideo, session = flowSession) => {
+    const file = path.join(store.sessionAssetDir(session), finalVideo.file);
     const info = await probeFile(file);
     near(info.duration, SONG_SECONDS, 0.1, 'as long as the song');
     assert.equal(info.hasAudio, true);
@@ -1273,6 +1308,18 @@ async function run(iso) {
     assert.equal((shown.type === 'list' ? shown.items[0] : shown).assetId, final.assetId);
     assert.deepEqual(await scratchLeft(flowSession), []);
 
+    // the captions: the times of the song went from the times node to the cut, which gave ONE script to the encoder (not one per batch);
+    // the lines are where the song has them (the film starts with the first scene), 0.4 s ahead of their first word
+    const scripts = await standIn.scripts();
+    assert.equal(scripts.length, 1, 'the encoder draws the captions once');
+    const captions = parseAss(scripts[0].text);
+    assert.deepEqual([captions.info.PlayResX, captions.info.PlayResY], ['1280', '720'], 'the script has the size of the film');
+    assert.deepEqual(captions.events.map((event) => lex(event.text).visible.replace(/\n/g, ' ')), LYRICS, 'the lines of the song, in order');
+    assert.ok(captions.events.every((event) => /\\kf\d+/.test(event.text)), 'karaoke: every line is filled word by word');
+    const filmStart = shots.shots[0].start;
+    near(captions.events[0].start / 100, Math.max(0, eleven.starts[0] - filmStart - 0.4), 0.02, 'the first line appears just before its first word');
+    assert.ok(captions.events.every((event) => event.end / 100 <= SONG_SECONDS - filmStart + 0.01), 'nothing is shown after the end of the film');
+
     // a second plan: everything is up to date, and the nodes behind the lists know how many times they ran
     const planned = await engine.plan(workflow.id, { mode: 'all', user: STAFF });
     assert.equal(planned.valid, true);
@@ -1335,6 +1382,7 @@ async function run(iso) {
     runNumber += 1;
     llmRun.token = ` run${runNumber}`;
     clearSeen();
+    await standIn.reset();
     const runId = await engine.start(workflow.id, { mode: 'all', user: STAFF, overrides: { n4: { lyrics: '', method: 'transcribe' } } });
     const record = await engine.whenFinished(workflow.id, runId);
     assert.equal(record.status, 'completed', JSON.stringify(record.nodes).slice(0, 600));
@@ -1344,6 +1392,7 @@ async function run(iso) {
     assert.equal(shots.cut_on, 'beats');
     assert.equal(seen.lipsync.length, 0);
     await checkCut(shots, (await resultOf('n12')).variants[0].video);
+    assert.deepEqual(await standIn.scripts(), [], 'a song without words has nothing to show: the captions are on, but no script is made');
     eleven.silent = false;
   }
 
@@ -1357,6 +1406,79 @@ async function run(iso) {
     const refusedRun = await errorOf(engine.start(workflow.id, { mode: 'all', user: STAFF, overrides: { n5: { brief: '' } } }));
     assert.ok(refusedRun, 'the run is refused');
     assert.deepEqual([eleven.align.length, eleven.stt.length, llmCalls.length], [0, 0, 0], 'nothing was sent');
+  }
+
+  // 7. the captions switched off in the form: no script, the same film (a share that no case before used, so that the plan is made anew and
+  //    the engine does not hand back the clips of an older run)
+  {
+    await runAll({ n5: { performance_share: 0.2 }, n12: { captions: 'off' } });
+    const shots = planLib.parseShots((await resultOf('n5')).variants[0].shots.value);
+    assert.deepEqual(await standIn.scripts(), []);
+    await checkCut(shots, (await resultOf('n12')).variants[0].video);
+  }
+
+  // 8. an ffmpeg without libass: with the captions on the run is refused before anything is paid, and the plan says why; with the captions
+  //    off the same plan is fine
+  {
+    const noAss = await createFakeFfmpeg(workDir, { filters: [], name: 'ffmpeg-no-libass' });
+    useFfmpeg(noAss.file);
+    try {
+      resetProviders();
+      const blocked = await engine.plan(workflow.id, { mode: 'all', user: STAFF });
+      assert.equal(blocked.valid, false);
+      const noLibass = blocked.issues.find((issue) => issue.nodeId === 'n12' && issue.code === 'CAPTIONS_NO_LIBASS');
+      assert.ok(noLibass && noLibass.level === 'error', JSON.stringify(blocked.issues));
+      assert.ok(await errorOf(engine.start(workflow.id, { mode: 'all', user: STAFF })), 'the run is refused');
+      assert.deepEqual([eleven.align.length, eleven.stt.length, llmCalls.length, journal.length], [0, 0, 0, 0], 'nothing was sent and nothing was paid');
+      const unblocked = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { n12: { captions: 'off' } } });
+      assert.equal(unblocked.valid, true, JSON.stringify(unblocked.issues));
+      assert.equal((await noAss.calls()).length, 0, 'no ffmpeg process was started for this');
+    } finally {
+      useFfmpeg(standIn.file);
+    }
+  }
+
+  // 9. the variant with moving images: the story scenes are moved by the zoom node of this computer (the real one), only the images and the
+  //    lip sync are provider calls, and the cut and the captions are the same
+  {
+    const stillsDocument = templatesLib.resolveTemplate('music-video-stills', { lang: 'en' });
+    const stills = (await flowStore.createWorkflow({ document: stillsDocument, user: STAFF, owner: null })).workflow;
+    const stillsSession = stills.sessionId;
+    const stillsSong = await asset(songBytes, '.wav', stillsSession);
+    const stillsPhoto = await asset(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'), '.png', stillsSession);
+    const graph = JSON.parse(JSON.stringify(stills.graph));
+    const setStills = (id, params) => Object.assign(graph.nodes.find((node) => node.id === id).params, params);
+    setStills('n1', { asset: { assetId: stillsSong.assetId, sessionId: stillsSession } });
+    setStills('n2', { asset: { assetId: stillsPhoto.assetId, sessionId: stillsSession } });
+    setStills('n4', { lyrics: LYRICS_TEXT });
+    setStills('n5', { brief: 'A drummer crosses a quiet harbour town at dawn.', shots_per_minute: 12, performance_share: 0.3 });
+    await flowStore.saveGraph(stills.id, { baseRev: stills.rev, graph });
+
+    await runAll({}, stills.id);
+    const results = (await flowStore.readResults(stills.id)).nodes;
+    const shots = planLib.parseShots(results.n5.history[0].variants[0].shots.value);
+    assert.ok(shots.story >= 3 && shots.performance >= 1);
+    assert.equal(seen.video.length, 0, 'no paid clip is made for the story');
+    assert.equal(seen.lipsync.length, shots.performance, 'the singer scenes still get their lip sync');
+    // a zoom clip per story scene, as long as the clip length of the plan, in the picture size of the scene's image
+    const zooms = results.n10.history[0].variants[0].video;
+    assert.equal(zooms.items.length, shots.story);
+    for (const clip of zooms.items) {
+      const info = await probeFile(path.join(store.sessionAssetDir(stillsSession), clip.file));
+      near(info.duration, 5, 0.1, 'the zoom clip is as long as the clip length of the plan');
+      assert.equal(info.hasAudio, false);
+    }
+    const file = await checkCut(shots, results.n12.history[0].variants[0].video, stillsSession);
+    near((await probeFile(file)).frames, SONG_SECONDS * 25, 1);
+    const stillsScripts = await standIn.scripts();
+    assert.equal(stillsScripts.length, 1);
+    assert.deepEqual(parseAss(stillsScripts[0].text).events.map((event) => lex(event.text).visible.replace(/\n/g, ' ')), LYRICS);
+    assert.deepEqual(await scratchLeft(stillsSession), []);
+    // the plan after the run: nothing left to run, and the zoom is no paid step (it costs nothing, a step of the gallery that is free)
+    const afterwards = await engine.plan(stills.id, { mode: 'all', user: STAFF });
+    assert.equal(afterwards.valid, true);
+    assert.equal(afterwards.totals.usd, 0);
+    assert.equal(afterwards.nodes.n10.executions, shots.story);
   }
 
   /* ---------- the Director's way ---------- */
@@ -1376,7 +1498,7 @@ async function run(iso) {
     const prepared = await service.prepare(viewer, {
       templateId: 'music-video',
       sourceSessionId: chat.id,
-      inputs: { Song: chatSong.id, 'Foto der Hauptperson': chatPhoto.id, 'n5.brief': 'A drummer crosses a quiet harbour town at dawn.', 'n5.performance_share': 0.2, 'n12.transition': 'crossfade' },
+      inputs: { Song: chatSong.id, 'Foto der Hauptperson': chatPhoto.id, 'n5.brief': 'A drummer crosses a quiet harbour town at dawn.', 'n5.performance_share': 0.2, 'n12.transition': 'crossfade', 'n12.captions': 'lines' },
       lang: 'de',
       requireStartable: true
     });
@@ -1388,6 +1510,7 @@ async function run(iso) {
     assert.equal(param('n5', 'brief'), 'A drummer crosses a quiet harbour town at dawn.');
     assert.equal(param('n5', 'performance_share'), 0.2);
     assert.equal(param('n12', 'transition'), 'crossfade');
+    assert.equal(param('n12', 'captions'), 'lines', 'the captions are one of the things the person can set');
     assert.ok(param('n1', 'asset') && param('n1', 'asset').sessionId === made.sessionId, 'the song is copied into the workflow');
     assert.ok(param('n2', 'asset') && param('n2', 'asset').sessionId === made.sessionId);
     // what the card shows: paid, nothing known in advance but what the song costs once the plan has run

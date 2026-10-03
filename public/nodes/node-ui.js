@@ -50,6 +50,7 @@
     'ELEVENLABS_API_KEY is not set': 'nodes.reason.elevenlabs',
     'No render node configured': 'nodes.reason.rendernode',
     'ffmpeg/ffprobe not found': 'nodes.reason.ffmpeg',
+    'ffmpeg has no libass (filter "ass")': 'nodes.reason.libass',
     '@resvg/resvg-js is not installed': 'nodes.reason.resvg',
     'Not available for your account': 'nodes.reason.account'
   });

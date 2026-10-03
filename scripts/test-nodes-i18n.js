@@ -209,7 +209,7 @@ function testPortDescriptions() {
 
   // generic texts for all port ids, and the last-resort texts for all seven base types on both sides
   const ids = new Set(ports.map((p) => p.port));
-  assert.equal(ids.size, 64, 'the registry has 64 port ids');
+  assert.equal(ids.size, 65, 'the registry has 65 port ids');
   for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
   for (const base of ['text', 'number', 'image', 'video', 'audio', 'model3d', 'any']) {
     for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);
@@ -302,7 +302,7 @@ function testSearchKeywords() {
   for (const lang of languages) {
     assert.match(window.I18N[lang]['nodes.palette.moreModels'], /\{count\}/);
     assert.match(window.I18N[lang]['nodes.palette.moreModelsSearch'], /\{count\}/);
-    for (const reason of ['openrouter', 'llm', 'higgsfield', 'fal', 'elevenlabs', 'rendernode', 'ffmpeg', 'resvg', 'account']) {
+    for (const reason of ['openrouter', 'llm', 'higgsfield', 'fal', 'elevenlabs', 'rendernode', 'ffmpeg', 'libass', 'resvg', 'account']) {
       assert.ok(window.I18N[lang][`nodes.reason.${reason}`], `${lang}: nodes.reason.${reason}`);
     }
   }

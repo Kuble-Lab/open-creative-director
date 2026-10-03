@@ -164,7 +164,17 @@ const GOLDEN = [
   ['en', 'participant', 0, 'music video', (r) => assert.equal(r[0].type, 'music_video.plan')],
   ['de', 'participant', 0, 'bpm', (r) => assert.equal(r[0].type, 'audio.beats')],
   ['de', 'participant', 0, 'wortzeiten', (r) => assert.equal(r[0].type, 'audio.lyrics_timing')],
-  ['de', 'participant', 0, 'schnitt im takt', (r) => assert.equal(r[0].type, 'music_video.edit')]
+  ['de', 'participant', 0, 'schnitt im takt', (r) => assert.equal(r[0].type, 'music_video.edit')],
+  // WP35: captions and the sound wave are found in the three languages, by their name and by the words people use for them
+  ['de', 'participant', 0, 'untertitel einbrennen', (r) => assert.equal(r[0].type, 'video.captions')],
+  ['de', 'participant', 0, 'untertitel', (r) => assert.equal(r[0].type, 'video.captions')],
+  ['de', 'participant', 0, 'karaoke', (r) => assert.ok(types(r, 2).includes('video.captions'), `captions among the first 2: ${types(r, 3)}`)],
+  ['en', 'participant', 0, 'captions', (r) => assert.equal(r[0].type, 'video.captions')],
+  ['es', 'participant', 0, 'subtítulos', (r) => assert.equal(r[0].type, 'video.captions')],
+  ['de', 'participant', 0, 'klangwelle', (r) => assert.equal(r[0].type, 'video.soundwave')],
+  ['de', 'participant', 0, 'equalizer', (r) => assert.equal(r[0].type, 'video.soundwave')],
+  ['en', 'participant', 0, 'sound wave', (r) => assert.equal(r[0].type, 'video.soundwave')],
+  ['es', 'participant', 0, 'onda de sonido', (r) => assert.equal(r[0].type, 'video.soundwave')]
 ];
 
 function testGoldenQueries() {
@@ -177,7 +187,7 @@ function testGoldenQueries() {
       throw error;
     }
   }
-  assert.equal(GOLDEN.length, 32, 'the table lists the golden queries (the quick pick has its own test)');
+  assert.equal(GOLDEN.length, 41, 'the table lists the golden queries (the quick pick has its own test)');
 }
 
 function testAllVideoNodesSurviveManyModels() {
@@ -245,7 +255,7 @@ function testQuickPickFromImage() {
 function testNoiseAndTypos() {
   // only the video node that names Veo as a model it can use, no scattered letters
   assert.deepEqual(types(search('de', 'participant', 'veo')), ['video.generate'], '"veo" finds no scattered letters for participants');
-  assert.deepEqual(types(search('de', 'participant', 'untertitel')), [], 'nothing, instead of anything at random');
+  assert.deepEqual(types(search('de', 'participant', 'steuererklaerung')), [], 'nothing, instead of anything at random');
   assert.equal(search('de', 'participant', 'sedance')[0].type, 'video.seedance', 'a typo still finds the node while nothing else matches');
   assert.ok(search('de', 'participant', 'sprechend').some((entry) => entry.type === 'fal.h3_lipsync'));
   assert.equal(search('de', 'participant', 'ken burns')[0].type, 'image.to_video');
@@ -364,6 +374,7 @@ function testUnavailableReasons() {
     'ELEVENLABS_API_KEY is not set',
     'No render node configured',
     'ffmpeg/ffprobe not found',
+    'ffmpeg has no libass (filter "ass")',
     '@resvg/resvg-js is not installed',
     'Not available for your account'
   ];
