@@ -229,10 +229,10 @@ async function run(iso) {
   const planDef = real.get('explainer.plan');
   assert.equal(planDef.category, 'llm');
   assert.equal(planDef.paid, true);
-  assert.deepEqual(planDef.inputs.map((port) => [port.id, port.type]), [['documents', 'document[]'], ['text', 'text'], ['topic', 'text'], ['notes', 'text'], ['sources', 'text'], ['brand', 'text'], ['brief', 'text']]);
+  assert.deepEqual(planDef.inputs.map((port) => [port.id, port.type]), [['documents', 'document[]'], ['text', 'text'], ['topic', 'text'], ['notes', 'text'], ['sources', 'text'], ['info', 'text'], ['brand', 'text'], ['brief', 'text']]);
   assert.ok(planDef.inputs.every((port) => !port.required), 'every input is optional');
   assert.deepEqual(planDef.outputs.map((port) => [port.id, port.type]), [
-    ['script', 'text'], ['narration', 'text[]'], ['briefs', 'text[]'], ['image_prompts', 'text[]'], ['clip_prompts', 'text[]'], ['shots', 'text'], ['sources', 'text'], ['presenter', 'text[]']
+    ['script', 'text'], ['narration', 'text[]'], ['narration_context', 'text[]'], ['briefs', 'text[]'], ['image_prompts', 'text[]'], ['clip_prompts', 'text[]'], ['shots', 'text'], ['sources', 'text'], ['presenter', 'text[]']
   ]);
   const pp = (id) => planDef.params.find((param) => param.id === id);
   assert.equal(pp('model').optionsSource, 'brain-models');
@@ -607,7 +607,7 @@ async function run(iso) {
     assert.deepEqual(calls.map((call) => call.kind), ['plan', 'plan']);
     assert.match(calls[1].options.prompt, /Your previous answer:\n\{/);
     assert.match(calls[1].options.prompt, /It had these problems\. Fix them/);
-    assert.match(calls[1].options.prompt, /Scene s4 has 70 words of narration/);
+    assert.match(calls[1].options.prompt, /Scene s4 has 70 spoken words of narration/);
     assert.ok(repaired.ctx.logs.some((line) => /The plan had 1 problem: asking once more/.test(line)));
     assert.ok(Math.abs(repaired.result.cost.usd - 2 * USD.plan) < 1e-9, 'both requests are paid');
     // the second answer is good: no more splitting

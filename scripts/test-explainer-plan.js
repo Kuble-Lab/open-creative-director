@@ -162,7 +162,7 @@ function testGoodScript() {
   // the schema: every field of a scene
   for (const key of ['id', 'kind', 'role', 'narration', 'est_seconds', 'on_screen', 'elements', 'figure', 'image_prompt', 'clip_prompt', 'source_refs']) assert.ok(key in script.scenes[0], key);
   for (const key of ['title', 'bullets', 'numbers', 'quote']) assert.ok(key in script.scenes[0].on_screen, key);
-  assert.deepEqual(Object.keys(script).filter((key) => !['warnings'].includes(key)).sort(), ['audience', 'downgrades', 'format', 'language', 'presenter', 'removed_claims', 'scenes', 'sources', 'summary', 'title', 'verified', 'version', 'visual_mode']);
+  assert.deepEqual(Object.keys(script).filter((key) => !['warnings'].includes(key)).sort(), ['audience', 'downgrades', 'format', 'language', 'length_seconds', 'presenter', 'removed_claims', 'scenes', 'sources', 'summary', 'title', 'verified', 'version', 'visual_mode']);
   JSON.parse(JSON.stringify(script));
   // json from the model in any dress
   assert.deepEqual(plan.parseJsonAnswer('```json\n{"a":1}\n```'), { a: 1 });
@@ -627,7 +627,18 @@ function testOutputs() {
   assert.equal(out.shots.scenes.length, 13);
   assert.deepEqual(out.shots.counts, { scenes: 13, narration: 13, briefs: 13, images: 2, clips: 1 });
   // the index pairs
-  assert.deepEqual(out.shots.scenes[1], { id: 's2', index: 1, kind: 'still', role: 'point', est_seconds: script.scenes[1].est_seconds, spoken: true, narration: 1, brief: 1, image: 0, clip: null });
+  // (WP37b: the entry also carries what the scene node needs - title, elements with their anchors, the figure, the source references -
+  // so that it finds them by the id of its scene, not by its position in a list)
+  const second = script.scenes[1];
+  assert.deepEqual(out.shots.scenes[1], {
+    id: 's2', index: 1, kind: 'still', role: 'point', est_seconds: second.est_seconds, spoken: true, narration: 1, brief: 1, image: 0, clip: null,
+    title: second.on_screen.title,
+    elements: second.elements.map((element) => ({ id: element.id, type: element.type, content: element.content, anchor: element.anchor })),
+    figure: null,
+    source_refs: second.source_refs
+  });
+  assert.equal(out.narrationContext.length, out.narration.length, 'the text around a scene is paired with the narration');
+  assert.equal(out.shots.target_seconds, script.length_seconds);
   assert.equal(out.shots.scenes[4].image, 1);
   assert.equal(out.shots.scenes[7].clip, 0);
   assert.equal(out.shots.scenes[12].narration, 12);
