@@ -184,7 +184,7 @@ async function main() {
       assert.ok(defaultRegistry.CATEGORIES.includes('fal'));
       assert.ok(defaultRegistry.publicRegistry().categories.includes('fal'));
       for (const type of types) assert.ok(defaultRegistry.get(type), `${type} in the default registry`);
-      assert.equal(defaultRegistry.list().length, 79, '62 + 12 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid');
+      assert.equal(defaultRegistry.list().length, 83, '62 + 12 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes');
       assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 12);
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });
@@ -257,11 +257,138 @@ async function main() {
       assert.equal(estimate('fal.h3_insert'), 0.3, '5 s at 768p, only the new scene');
       assert.equal(estimate('fal.h3_insert', { resolution: '480p', duration: 10 }), 0.5);
       assert.equal(estimate('fal.h3_style', { duration: 10 }), 0.8);
-      // the duration is not a param: unknown
+      // the duration is not a param: unknown (the plan can know it from the connected audio, see the lip sync block below)
       assert.equal(estimate('fal.h3_lipsync'), null);
       assert.equal(estimate('fal.h3_3d'), null);
       assert.equal(estimate('fal.model'), null);
       assert.equal(estimate('fal.remove_background'), 0.018, 'flat price per image (details in test-nodes-remove-background.js)');
+    }
+
+    /* ---------- fal.h3_lipsync: the plan knows the price once it knows the audio ---------- */
+    {
+      const def = oneOf(registry, 'fal.h3_lipsync');
+      const price = (raw, context) => def.cost.estimate(registry.normalizeParams(def, raw), context);
+      const clip = (duration) => ({ type: 'audio', sessionId: 's', assetId: 'aud-001', file: 'aud-001.mp3', ...(duration === undefined ? {} : { duration }) });
+      const withAudio = (value) => ({ inputs: { audio: value } });
+      const near = (actual, expected, message) => assert.ok(typeof actual === 'number' && Math.abs(actual - expected) < 1e-9, `${message}: ${actual} !== ${expected}`);
+
+      // unknown: no context, nothing about the audio, an upload (it carries no length)
+      assert.equal(price({}, undefined), null);
+      assert.equal(price({}, {}), null);
+      assert.equal(price({}, { inputs: {} }), null);
+      assert.equal(price({}, withAudio(clip())), null, 'an upload has no stored length');
+      // known: per second of the audio, 1.2 times above 15 s (the same figures as the run, see the lip sync section)
+      near(price({}, withAudio(clip(5))), 0.4, '5 s at 768P');
+      near(price({}, withAudio(clip(10))), 0.8, '10 s');
+      near(price({}, withAudio(clip(15))), 1.2, '15 s is not above 15 s');
+      near(price({}, withAudio(clip(15.5))), 1.488, 'above 15 s: 1.2 times');
+      near(price({}, withAudio(clip(20))), 1.92, '20 s: 20 x 0.08 x 1.2');
+      near(price({ resolution: '2K' }, withAudio(clip(20))), 7.68, 'the price the run reports for 20 s at 2K');
+      near(price({ resolution: '480P' }, withAudio(clip(7))), 0.35, '480P');
+      near(price({ resolution: '1080P' }, withAudio(clip(6.5))), 1.04, '1080P');
+      // the run and the plan use one function
+      assert.equal(nodesFal.lipsyncUsd({ resolution: '768P' }, 5), 0.4);
+      assert.equal(nodesFal.lipsyncUsd({ resolution: '2K' }, 20), 7.68);
+      assert.equal(nodesFal.lipsyncUsd({ resolution: 'nonsense' }, 5), null);
+      assert.equal(nodesFal.lipsyncUsd({ resolution: '768P' }, 0), null);
+      // a list (the node runs once per item, the plan multiplies by the number of runs): the mean, so the total is the exact sum
+      const items = [clip(5), clip(10), clip(20)];
+      const mean = price({}, withAudio(listValue('audio', items)));
+      near(mean, (0.4 + 0.8 + 1.92) / 3, 'the mean of 5 s, 10 s and 20 s');
+      near(mean * 3, 0.4 + 0.8 + 1.92, 'times three runs: the exact sum');
+      near(price({}, withAudio(listValue('audio', [clip(7)]))), 0.56, 'a list of one');
+      // one item without a length makes the sum unknown; so does an empty list, never a partial figure
+      assert.equal(price({}, withAudio(listValue('audio', [clip(5), clip()]))), null);
+      assert.equal(price({}, withAudio(listValue('audio', []))), null);
+      // nonsense lengths are not trusted
+      for (const duration of [0, -3, NaN, Infinity, 'abc', null]) assert.equal(price({}, withAudio(clip(duration))), null, `length ${duration}`);
+      // nothing is guessed from the last run of the node type (that price belongs to other audio; for a list it is the sum of all items)
+      assert.equal(def.cost.history, false);
+      assert.equal(def.cost.unit, 'usd');
+
+      // through the engine: the plan knows the length once the audio node has run (an audio a node made carries its length)
+      const engine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { jobPollMs: 20 } });
+      const node = (id, type, params = {}, x = 0) => ({ id, type, typeVersion: 1, x, y: 0, params });
+      const edge = (id, from, fromPort, to, toPort) => ({ id, from: { node: from, port: fromPort }, to: { node: to, port: toPort } });
+      const { workflow } = await wfStore.createWorkflow({ name: 'fal lip sync plan' });
+      created.push(workflow.id);
+      const owner = workflow.sessionId;
+      const scratch = await assets.createScratchDir(owner);
+      await fsp.writeFile(path.join(scratch, 'speech.mp3'), 'not really audio');
+      const measured = await assets.saveOutputFile(owner, { kind: 'audio', ext: '.mp3', sourceFile: path.join(scratch, 'speech.mp3'), duration: 8 });
+      await assets.removeScratchDir(scratch);
+      assert.equal(measured.duration, 8);
+      const uploadedAudio = await store.saveAsset(owner, { kind: 'upload', buffer: Buffer.from('upload'), ext: '.mp3', prompt: 'seed' });
+      const portraitAsset = await store.saveAsset(owner, { kind: 'upload', buffer: Buffer.from('png'), ext: '.png', prompt: 'seed' });
+      const ref = (assetId) => ({ assetId, sessionId: owner });
+      const graphWith = (audioAssetId, resolution = '768P') => ({
+        nodes: [
+          node('a', 'input.audio', { asset: ref(audioAssetId) }),
+          node('i', 'input.image', { asset: ref(portraitAsset.id) }),
+          node('l', 'fal.h3_lipsync', { resolution }, 300),
+          node('o', 'output.result', { label: 'Clip' }, 600)
+        ],
+        edges: [edge('e1', 'a', 'audio', 'l', 'audio'), edge('e2', 'i', 'image', 'l', 'image'), edge('e3', 'l', 'video', 'o', 'inputs')]
+      });
+      let rev = workflow.rev;
+      const useGraph = async (graph) => {
+        rev = (await wfStore.saveGraph(workflow.id, { baseRev: rev, graph })).rev;
+      };
+      const readyInputs = async () => {
+        const runId = await engine.start(workflow.id, { mode: 'node', nodeIds: ['a', 'i'], user: 'tester' });
+        assert.equal((await engine.whenFinished(workflow.id, runId)).status, 'completed');
+      };
+      await useGraph(graphWith(measured.assetId));
+      let plan = await engine.plan(workflow.id, { mode: 'all' });
+      assert.equal(plan.valid, true, JSON.stringify(plan.issues));
+      assert.equal(plan.nodes.l.estimate, null, 'the input nodes have not run: the length is not known');
+      assert.equal(plan.totals.unknownNodes, 1);
+      await readyInputs();
+      plan = await engine.plan(workflow.id, { mode: 'all' });
+      near(plan.nodes.l.estimate.usd, 0.64, '8 s at 768P');
+      assert.equal(plan.totals.unknownNodes, 0);
+      near(plan.totals.usd, 0.64, 'the total of the plan');
+      // another resolution is another price; an override of the run request counts too
+      plan = await engine.plan(workflow.id, { mode: 'all', overrides: { l: { resolution: '2K' } } });
+      near(plan.nodes.l.estimate.usd, 2.56, '8 s at 2K');
+      // an upload carries no length: still unknown after the input node ran
+      await useGraph(graphWith(uploadedAudio.id));
+      await readyInputs();
+      plan = await engine.plan(workflow.id, { mode: 'all' });
+      assert.equal(plan.nodes.l.estimate, null, 'an upload has no length');
+      assert.equal(plan.totals.unknownNodes, 1);
+
+      // a list of audios (the node runs once per item, like the singer scenes of the music video): the mean per run, the total is the sum
+      const scratchTwo = await assets.createScratchDir(owner);
+      await fsp.writeFile(path.join(scratchTwo, 'speech.mp3'), 'not really audio either');
+      const measuredTwo = await assets.saveOutputFile(owner, { kind: 'audio', ext: '.mp3', sourceFile: path.join(scratchTwo, 'speech.mp3'), duration: 10 });
+      await assets.removeScratchDir(scratchTwo);
+      const listGraph = (assetIds) => ({
+        nodes: [
+          node('m', 'input.media_list', { kind: 'audio', assets: assetIds.map(ref) }),
+          node('i', 'input.image', { asset: ref(portraitAsset.id) }),
+          node('l', 'fal.h3_lipsync', { resolution: '768P' }, 300),
+          node('o', 'output.result', { label: 'Clips' }, 600)
+        ],
+        edges: [edge('e1', 'm', 'items', 'l', 'audio'), edge('e2', 'i', 'image', 'l', 'image'), edge('e3', 'l', 'video', 'o', 'inputs')]
+      });
+      await useGraph(listGraph([measured.assetId, measuredTwo.assetId]));
+      plan = await engine.plan(workflow.id, { mode: 'all' });
+      assert.equal(plan.nodes.l.estimate, null, 'the list has not been made yet');
+      const listRun = await engine.start(workflow.id, { mode: 'node', nodeIds: ['m', 'i'], user: 'tester' });
+      assert.equal((await engine.whenFinished(workflow.id, listRun)).status, 'completed');
+      plan = await engine.plan(workflow.id, { mode: 'all' });
+      assert.equal(plan.nodes.l.executions, 2);
+      near(plan.nodes.l.estimate.usd, (0.64 + 0.8) / 2, 'the mean of 8 s and 10 s');
+      near(plan.totals.usd, 0.64 + 0.8, 'the total of two clips is the sum');
+      assert.equal(plan.totals.unknownNodes, 0);
+      // one of them an upload (no length): the whole step is unknown, not a partial amount
+      await useGraph(listGraph([measured.assetId, uploadedAudio.id]));
+      const mixedRun = await engine.start(workflow.id, { mode: 'node', nodeIds: ['m', 'i'], user: 'tester' });
+      assert.equal((await engine.whenFinished(workflow.id, mixedRun)).status, 'completed');
+      plan = await engine.plan(workflow.id, { mode: 'all' });
+      assert.equal(plan.nodes.l.estimate, null);
+      assert.equal(plan.totals.unknownNodes, 1);
     }
 
     /* ---------- fal.h3_video ---------- */

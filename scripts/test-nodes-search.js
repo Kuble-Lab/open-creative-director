@@ -158,7 +158,13 @@ const GOLDEN = [
   ['de', 'participant', 0, 'jingle', (r) => assert.equal(r[0].type, 'audio.music')],
   ['de', 'participant', 0, 'hintergrundmusik', (r) => assert.equal(r[0].type, 'audio.music')],
   ['en', 'participant', 0, 'music', (r) => assert.equal(r[0].type, 'audio.music')],
-  ['es', 'participant', 0, 'música', (r) => assert.equal(r[0].type, 'audio.music')]
+  ['es', 'participant', 0, 'música', (r) => assert.equal(r[0].type, 'audio.music')],
+  // WP34: the words of a music video find the planning node first, the tempo its analysis, the times of the words their node, the cut its node
+  ['de', 'participant', 0, 'musikvideo', (r) => assert.equal(r[0].type, 'music_video.plan')],
+  ['en', 'participant', 0, 'music video', (r) => assert.equal(r[0].type, 'music_video.plan')],
+  ['de', 'participant', 0, 'bpm', (r) => assert.equal(r[0].type, 'audio.beats')],
+  ['de', 'participant', 0, 'wortzeiten', (r) => assert.equal(r[0].type, 'audio.lyrics_timing')],
+  ['de', 'participant', 0, 'schnitt im takt', (r) => assert.equal(r[0].type, 'music_video.edit')]
 ];
 
 function testGoldenQueries() {
@@ -171,7 +177,7 @@ function testGoldenQueries() {
       throw error;
     }
   }
-  assert.equal(GOLDEN.length, 27, 'the table lists the golden queries (the quick pick has its own test)');
+  assert.equal(GOLDEN.length, 32, 'the table lists the golden queries (the quick pick has its own test)');
 }
 
 function testAllVideoNodesSurviveManyModels() {
