@@ -17,6 +17,7 @@ const or = require('./lib/openrouter');
 const brain = require('./lib/brain');
 const tools = require('./lib/tools');
 const videoModels = require('./lib/video-models');
+const workflowRuns = require('./lib/workflow-runs');
 const videoRefusal = require('./lib/video-refusal');
 const resultMeta = require('./lib/result-meta');
 const gts = require('./lib/gts');
@@ -48,6 +49,7 @@ const adminMonitoring = require('./lib/admin-monitoring');
 const nodeWorkflows = require('./lib/nodes/workflows-store');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
 const { registerNodeRoutes } = require('./lib/nodes/routes');
+const { createRunService, installRunService } = require('./lib/nodes/run-service');
 const nodeHiggsfieldCatalog = require('./lib/nodes/higgsfield-catalog');
 
 loadEnv();
@@ -1994,9 +1996,15 @@ app.get('/api/sessions/:id', async (req, res) => {
   if (!id) return;
   try {
     if (!(await guardSession(req, res, id))) return;
-    const session = await store.readSession(id);
+    let session = await store.readSession(id);
+    // Workflow runs that finished while nobody watched (a restart, a missed end) are taken into the chat first.
+    if (workflowRuns.hasRunning(session)) {
+      await workflowRuns.syncSession(id).catch(() => {});
+      session = await store.readSession(id);
+    }
     const ledger = await store.readLedger(id);
     const viewer = access.viewerOf(req);
+    const budgetStatus = await budget.status(viewer);
     res.json({
       session: {
         id: session.id,
@@ -2004,10 +2012,14 @@ app.get('/api/sessions/:id', async (req, res) => {
         folder: typeof session.folder === 'string' && session.folder.trim() ? session.folder.trim() : null,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-        messages: videoModels.attachChoices(
-          await withOriginAccess(req, session.messages.filter((message) => !message.hidden).map((message) => ({ ...message }))),
+        messages: await workflowRuns.attachRuns(
+          videoModels.attachChoices(
+            await withOriginAccess(req, session.messages.filter((message) => !message.hidden).map((message) => ({ ...message }))),
+            session,
+            budgetStatus
+          ),
           session,
-          await budget.status(viewer)
+          { viewer, budgetStatus }
         ),
         videoModelPreference: videoModels.publicPreference(session, viewer),
         brandings: viewer.active && access.isRestricted(viewer) ? [] : session.brandings,
@@ -2239,6 +2251,89 @@ app.delete('/api/sessions/:id/video-model-preference', async (req, res) => {
   }
 });
 
+/* ---------- workflow runs of the chat (lib/workflow-runs.js) ---------- */
+
+const WORKFLOW_RUN_STATUS = Object.freeze({
+  WORKFLOW_NOT_FOUND: 404,
+  RUN_NOT_FOUND: 404,
+  NOT_FOUND: 404,
+  RUN_ACTIVE: 409,
+  REV_CONFLICT: 409,
+  COST_CHANGED: 409,
+  CARD_OUTDATED: 409,
+  NODE_UNAVAILABLE: 409,
+  INVALID_GRAPH: 400,
+  INVALID_REQUEST: 400,
+  CONFIRMATION_REQUIRED: 400,
+  RUN_LIMIT: 429,
+  NOT_REQUESTER: 403
+});
+
+function failWorkflowRun(res, err) {
+  if (failAccountRule(res, err)) return;
+  if (err.code === 'ENOENT') return fail(res, 404, 'Session nicht gefunden');
+  const status = err.status || WORKFLOW_RUN_STATUS[err.code];
+  if (!status) return fail(res, 500, err.message);
+  res.status(status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+}
+
+async function publicWorkflowRun(sessionId, requestId, viewer) {
+  const synced = await workflowRuns.syncRequest({ sessionId, requestId });
+  if (!synced || !synced.request) return null;
+  return workflowRuns.publicRun(synced.request, { viewer, budgetStatus: await budget.status(viewer), live: synced.live });
+}
+
+// The click on "Start": the run starts with the amount the card showed; plan and budget are checked again, and only one
+// click starts the run.
+app.post('/api/sessions/:id/workflow-runs/:requestId', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  const requestId = String(req.params.requestId || '').trim();
+  if (!store.isValidId(requestId)) return fail(res, 400, 'Ungueltiger Workflow-Lauf.');
+  const viewer = access.viewerOf(req);
+  try {
+    await workflowRuns.startRequest({ sessionId: id, requestId, viewer, seen: req.body && typeof req.body === 'object' && Object.keys(req.body).length ? req.body : null });
+    res.status(201).json({ run: await publicWorkflowRun(id, requestId, viewer) });
+  } catch (err) {
+    failWorkflowRun(res, err);
+  }
+});
+
+// The state of a card (the client asks while a run is running or starting); a finished run is taken into the chat here too.
+app.get('/api/sessions/:id/workflow-runs/:requestId', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  const requestId = String(req.params.requestId || '').trim();
+  if (!store.isValidId(requestId)) return fail(res, 400, 'Ungueltiger Workflow-Lauf.');
+  try {
+    const run = await publicWorkflowRun(id, requestId, access.viewerOf(req));
+    if (!run) return fail(res, 404, 'Workflow-Lauf wurde nicht gefunden.');
+    res.json({ run });
+  } catch (err) {
+    failWorkflowRun(res, err);
+  }
+});
+
+// "Cancel": a card that waits is closed, a run that is running is stopped.
+app.post('/api/sessions/:id/workflow-runs/:requestId/cancel', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  const requestId = String(req.params.requestId || '').trim();
+  if (!store.isValidId(requestId)) return fail(res, 400, 'Ungueltiger Workflow-Lauf.');
+  const viewer = access.viewerOf(req);
+  try {
+    await workflowRuns.cancelRequest({ sessionId: id, requestId, viewer });
+    const run = await publicWorkflowRun(id, requestId, viewer);
+    if (!run) return fail(res, 404, 'Workflow-Lauf wurde nicht gefunden.');
+    res.json({ run });
+  } catch (err) {
+    failWorkflowRun(res, err);
+  }
+});
+
 app.post('/api/sessions/:id/message', async (req, res) => {
   const id = requireSessionId(req, res);
   if (!id) return;
@@ -2353,6 +2448,9 @@ registerNodeRoutes(app, {
   higgsfieldCatalog: nodeHiggsfieldCatalog,
   canUseFolder: (req, folder) => canUseFolder(req, folder)
 });
+// The run service (lib/nodes/run-service.js) shares the engine of the node routes: one list of active runs for the
+// node view, the Director and any other access.
+installRunService(createRunService({ engine: nodeEngine }));
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(PATHS.publicDir, 'index.html'));

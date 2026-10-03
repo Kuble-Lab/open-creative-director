@@ -156,6 +156,9 @@ async function testSessions(ctx) {
     ['POST', `/api/sessions/${chat.id}/message`, { text: 'hi' }],
     ['POST', `/api/sessions/${chat.id}/video-model-requests/vmr-x`, { model: 'bytedance/seedance-2.5' }],
     ['POST', `/api/sessions/${chat.id}/video-model-requests/vmr-x/cancel`, {}],
+    ['GET', `/api/sessions/${chat.id}/workflow-runs/wfr-x`],
+    ['POST', `/api/sessions/${chat.id}/workflow-runs/wfr-x`, {}],
+    ['POST', `/api/sessions/${chat.id}/workflow-runs/wfr-x/cancel`, {}],
     ['DELETE', `/api/sessions/${chat.id}/video-model-preference`]
   ];
   for (const [method, url, json] of foreign) {

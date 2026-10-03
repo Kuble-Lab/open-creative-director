@@ -247,6 +247,7 @@ const state = {
   profileFolder: null,
   streaming: false,
   jobTimer: null,
+  workflowRunTimer: null,
   renderNodeTimer: null,
   renderNodeState: null,
   renderNodeAvailable: false,
@@ -1347,6 +1348,365 @@ function renderVideoModelHint() {
   el.videoModelHint.appendChild(change);
 }
 
+/* ---------- Workflow runs (card of the Director, lib/workflow-runs.js) ---------- */
+
+const WORKFLOW_RUN_POLL_MS = 4000;
+
+function workflowRunDuration(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '';
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return seconds >= 60 ? t('workflowRun.minutes', { minutes: Math.floor(seconds / 60), seconds: seconds % 60 }) : t('workflowRun.seconds', { seconds });
+}
+
+function workflowRunCredits(value) {
+  return typeof value === 'number' && value > 0 ? t('workflowRun.credits', { credits: Number.isInteger(value) ? value : value.toFixed(1) }) : '';
+}
+
+// The total of the run as one phrase; an unknown price is never shown as 0.
+function workflowRunTotal(run) {
+  const totals = run.totals || {};
+  const credits = workflowRunCredits(totals.credits);
+  if (!run.paid) return t('workflowRun.totalFree');
+  const usd = videoModelMoney(totals.usd);
+  if (totals.unknownNodes > 0) {
+    const known = totals.usd > 0 ? t('workflowRun.totalPartial', { amount: usd }) : t('workflowRun.totalUnknown');
+    return credits ? `${known} + ${credits}` : known;
+  }
+  if (totals.usd > 0) return credits ? `${t('workflowRun.totalEstimate', { amount: usd })} + ${credits}` : t('workflowRun.totalEstimate', { amount: usd });
+  return credits || t('workflowRun.totalUnknown');
+}
+
+function workflowRunStartLabel(run) {
+  if (!run.paid) return t('workflowRun.start');
+  const totals = run.totals || {};
+  if (totals.unknownNodes > 0) return totals.usd > 0 ? t('workflowRun.startPartial', { amount: videoModelMoney(totals.usd) }) : t('workflowRun.startUnknown');
+  if (totals.usd > 0) return t('workflowRun.startPrice', { amount: videoModelMoney(totals.usd) });
+  const credits = workflowRunCredits(totals.credits);
+  return credits ? t('workflowRun.startPrice', { amount: credits }) : t('workflowRun.startUnknown');
+}
+
+function workflowRunStepPrice(step) {
+  if (typeof step.usd === 'number') return t('workflowRun.totalEstimate', { amount: videoModelMoney(step.usd) });
+  if (typeof step.credits === 'number') return workflowRunCredits(step.credits);
+  return t('workflowRun.priceUnknown');
+}
+
+function workflowRunErrorText(run) {
+  if (!run.lastError) return '';
+  const key = `workflowRun.error.${run.lastErrorCode}`;
+  if (run.lastErrorCode && i18nHas(key)) return t(key);
+  const rule = run.lastErrorCode ? OCAccess.accountRuleMessage({ code: run.lastErrorCode }) : null;
+  return t('workflowRun.startFailed', { error: rule || run.lastError });
+}
+
+function workflowRunInputValue(input) {
+  const wrap = document.createElement('div');
+  wrap.className = 'wr-input-value';
+  if (Array.isArray(input.media)) {
+    const row = document.createElement('div');
+    row.className = 'wr-thumbs';
+    for (const item of input.media) {
+      if (!item.url) {
+        // a file that was in the workflow already: it has no address in this chat
+        row.appendChild(textNode('span', 'wr-chip', t('workflowRun.fileInWorkflow')));
+        continue;
+      }
+      if (item.type === 'image') {
+        const img = document.createElement('img');
+        img.src = rel(item.url);
+        img.alt = input.label;
+        img.loading = 'lazy';
+        img.addEventListener('click', () => openLightbox(rel(item.url)));
+        row.appendChild(img);
+      } else if (item.type === 'video') {
+        const video = document.createElement('video');
+        video.src = rel(item.url);
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        row.appendChild(video);
+      } else {
+        row.appendChild(textNode('span', 'wr-chip', t('workflowRun.audioFile')));
+      }
+    }
+    wrap.appendChild(row);
+    if (input.count > input.media.length) wrap.appendChild(textNode('span', 'wr-more', t('workflowRun.moreFiles', { count: input.count - input.media.length })));
+  } else if (typeof input.text === 'string') {
+    wrap.appendChild(textNode('span', 'wr-text', input.text));
+  } else {
+    const value = Array.isArray(input.value) ? input.value.join(', ') : typeof input.value === 'boolean' ? t(input.value ? 'workflowRun.yes' : 'workflowRun.no') : String(input.value);
+    wrap.appendChild(textNode('span', 'wr-text', value));
+  }
+  return wrap;
+}
+
+function workflowRunOpenLink(run) {
+  if (!run.workflowId) return null;
+  const link = document.createElement('a');
+  link.className = 'wr-open';
+  link.href = `#w=${encodeURIComponent(run.workflowId)}`;
+  link.textContent = t('workflowRun.open');
+  return link;
+}
+
+function workflowRunBudgetBlock(run) {
+  const block = run.blocked;
+  if (!block) return '';
+  if (block.reason === 'exhausted') return t('workflowRun.blockedExhausted');
+  return t('workflowRun.blockedBudget', { estimate: videoModelMoney(block.needUsd), remaining: videoModelMoney(block.remainingUsd) });
+}
+
+async function afterWorkflowRunChange() {
+  await Promise.all([refreshDetail(), loadSessions(), refreshCosts().catch(() => {})]);
+  if (OCAccess.me().restricted) OCAccess.refreshMe().catch(() => {});
+}
+
+async function startWorkflowRun(run, card) {
+  if (state.streaming || run.status !== 'pending' || !state.currentId || card.dataset.busy === '1') return;
+  card.dataset.busy = '1';
+  const buttons = [...card.querySelectorAll('button')];
+  const line = card.querySelector('.wr-status');
+  for (const button of buttons) button.disabled = true;
+  line.textContent = t('workflowRun.starting');
+  line.classList.remove('error');
+  try {
+    // The click says what this card showed; the server starts nothing when its estimate has moved on since.
+    const totals = run.totals || {};
+    const seen = { maxUsd: totals.usd || 0, maxCredits: totals.credits || 0, maxUnknownNodes: totals.unknownNodes || 0, rev: run.rev };
+    await api(`/api/sessions/${encodeURIComponent(state.currentId)}/workflow-runs/${encodeURIComponent(run.id)}`, { method: 'POST', body: JSON.stringify(seen) });
+    await afterWorkflowRunChange();
+  } catch (error) {
+    // The card may be out of date (price, budget, started elsewhere): the chat is read again and shows the reason.
+    const rule = OCAccess.accountRuleMessage(error);
+    if (rule) OCAccess.refreshMe().catch(() => {});
+    const known = error.code && i18nHas(`workflowRun.error.${error.code}`) ? t(`workflowRun.error.${error.code}`) : null;
+    line.textContent = known || t('workflowRun.startFailed', { error: rule || error.message });
+    line.classList.add('error');
+    // The buttons stay locked until the card is drawn again with what the server has now: a quick second click on the old
+    // card would otherwise accept a new price that was never shown.
+    await refreshDetail().catch(() => {});
+    if (card.isConnected) {
+      delete card.dataset.busy;
+      for (const button of buttons) button.disabled = false;
+    }
+  }
+}
+
+async function cancelWorkflowRun(run, card) {
+  if (!state.currentId || card.dataset.busy === '1') return;
+  card.dataset.busy = '1';
+  for (const button of card.querySelectorAll('button')) button.disabled = true;
+  try {
+    await api(`/api/sessions/${encodeURIComponent(state.currentId)}/workflow-runs/${encodeURIComponent(run.id)}/cancel`, { method: 'POST', body: '{}' });
+    await refreshDetail();
+  } catch (error) {
+    const line = card.querySelector('.wr-status');
+    line.textContent = error.message;
+    line.classList.add('error');
+    delete card.dataset.busy;
+    for (const button of card.querySelectorAll('button')) button.disabled = false;
+  }
+}
+
+function workflowRunCard(run) {
+  const status = run.status || 'pending';
+  const waiting = status === 'pending' || status === 'processing';
+  const card = document.createElement('section');
+  card.className = `workflow-run ${status}`;
+  card.dataset.runId = run.id;
+  card.setAttribute('aria-label', t('workflowRun.label'));
+
+  const head = document.createElement('div');
+  head.className = 'wr-head';
+  head.appendChild(textNode('span', 'wr-kind', t('workflowRun.label')));
+  head.appendChild(textNode('span', `wr-state ${status}`, t(`workflowRun.state.${status}`)));
+  card.appendChild(head);
+  card.appendChild(textNode('strong', 'wr-title', run.title || ''));
+  const nodes = run.nodeCount === 1 ? t('workflowRun.nodeOne') : t('workflowRun.nodeMany', { count: run.nodeCount });
+  card.appendChild(textNode('p', 'wr-meta', `${t(run.origin === 'template' ? 'workflowRun.originTemplate' : 'workflowRun.originWorkflow')} · ${nodes}`));
+  if (run.created && run.mine) card.appendChild(textNode('p', 'wr-note', t('workflowRun.listNote')));
+
+  if (waiting && (run.inputs || []).length) {
+    const inputs = document.createElement('div');
+    inputs.className = 'wr-inputs';
+    inputs.appendChild(textNode('span', 'wr-section', t('workflowRun.inputs')));
+    for (const input of run.inputs) {
+      const row = document.createElement('div');
+      row.className = 'wr-input';
+      row.appendChild(textNode('span', 'wr-input-label', input.label));
+      row.appendChild(workflowRunInputValue(input));
+      inputs.appendChild(row);
+    }
+    card.appendChild(inputs);
+  }
+
+  if (waiting) {
+    const steps = document.createElement('div');
+    steps.className = 'wr-steps';
+    if (run.paid) {
+      steps.appendChild(textNode('span', 'wr-section', t('workflowRun.paidSteps')));
+      const list = document.createElement('ul');
+      for (const step of run.paidSteps || []) {
+        const item = document.createElement('li');
+        item.appendChild(textNode('span', 'wr-step-name', step.label));
+        item.appendChild(textNode('span', 'wr-step-price', workflowRunStepPrice(step)));
+        list.appendChild(item);
+      }
+      steps.appendChild(list);
+    } else {
+      steps.appendChild(textNode('span', 'wr-section', t('workflowRun.noPaid')));
+    }
+    if (run.localSteps > 0) steps.appendChild(textNode('p', 'wr-local', t(run.localSteps === 1 ? 'workflowRun.localOne' : 'workflowRun.localMany', { count: run.localSteps })));
+    card.appendChild(steps);
+
+    const total = document.createElement('div');
+    total.className = 'wr-total';
+    total.appendChild(textNode('span', 'wr-total-label', t('workflowRun.total')));
+    total.appendChild(textNode('strong', 'wr-total-value', workflowRunTotal(run)));
+    card.appendChild(total);
+    if (run.paid) card.appendChild(textNode('p', 'wr-fine', t('workflowRun.priceNote')));
+    if (run.budget) card.appendChild(textNode('p', 'wr-budget', t('workflowRun.budgetLine', { remaining: videoModelMoney(run.budget.remainingUsd) || '$0.00' })));
+    if (run.blocked) card.appendChild(textNode('p', 'wr-blocked', workflowRunBudgetBlock(run)));
+    if (run.note === 'plan_changed') card.appendChild(textNode('p', 'wr-note', t('workflowRun.planChanged')));
+    if (run.inputsKept && run.mine) card.appendChild(textNode('p', 'wr-note', t('workflowRun.inputsKept')));
+  }
+
+  if (status === 'running') {
+    const live = run.run || {};
+    const step = live.step;
+    const progress = document.createElement('div');
+    progress.className = 'wr-progress';
+    const bar = document.createElement('div');
+    bar.className = 'wr-bar';
+    bar.setAttribute('role', 'progressbar');
+    const percent = step && step.total > 0 ? Math.round((step.done / step.total) * 100) : 0;
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    bar.setAttribute('aria-valuenow', String(percent));
+    const fill = document.createElement('span');
+    fill.style.width = `${Math.min(100, Math.max(4, percent))}%`;
+    bar.appendChild(fill);
+    progress.appendChild(bar);
+    const parts = [];
+    if (step && step.total > 0) parts.push(t('workflowRun.progress', { done: Math.min(step.total, step.done + 1), total: step.total }));
+    if ((live.running || []).length) parts.push(live.running.join(', '));
+    if (live.costUsd > 0) parts.push(t('workflowRun.costSoFar', { amount: videoModelMoney(live.costUsd) }));
+    else if (live.credits > 0) parts.push(t('workflowRun.costSoFar', { amount: workflowRunCredits(live.credits) }));
+    progress.appendChild(textNode('p', 'wr-progress-text', parts.length ? parts.join(' · ') : t('workflowRun.runningNow')));
+    card.appendChild(progress);
+    card.appendChild(textNode('p', 'wr-fine', t('workflowRun.resultHere')));
+  }
+
+  if (status === 'completed') {
+    const result = run.result || {};
+    const facts = [t('workflowRun.doneIn', { duration: workflowRunDuration(result.durationMs) })];
+    if (result.costUsd > 0) facts.push(t('workflowRun.costDone', { amount: videoModelMoney(result.costUsd) }));
+    else if (result.credits > 0) facts.push(t('workflowRun.costDone', { amount: workflowRunCredits(result.credits) }));
+    card.appendChild(textNode('p', 'wr-result', facts.join(' · ')));
+    const count = (result.assets || []).length;
+    if (count) card.appendChild(textNode('p', 'wr-result-line', t(count === 1 ? 'workflowRun.filesOne' : 'workflowRun.filesMany', { count })));
+    for (const text of result.texts || []) {
+      const details = document.createElement('details');
+      details.className = 'wr-text-result';
+      details.appendChild(textNode('summary', '', t('workflowRun.textSummary', { label: text.label })));
+      details.appendChild(textNode('div', 'wr-text-body', text.text));
+      card.appendChild(details);
+    }
+    if ((result.model3d || []).length) card.appendChild(textNode('p', 'wr-note', t('workflowRun.model3d', { labels: result.model3d.map((item) => item.label).join(', ') })));
+    if (result.skipped > 0) card.appendChild(textNode('p', 'wr-note', t('workflowRun.skipped', { count: result.skipped })));
+    if (result.empty) card.appendChild(textNode('p', 'wr-note', t('workflowRun.empty')));
+  }
+
+  if (status === 'failed') {
+    card.appendChild(textNode('p', 'wr-error-text', t('workflowRun.failedLine')));
+    if (run.error) card.appendChild(textNode('p', 'wr-error-detail', run.error));
+    for (const failure of run.failures || []) {
+      card.appendChild(textNode('p', 'wr-error-detail', failure.message ? `${failure.label}: ${failure.message}` : failure.label));
+    }
+    const cost = run.result && run.result.costUsd > 0 ? videoModelMoney(run.result.costUsd) : '';
+    if (cost) card.appendChild(textNode('p', 'wr-fine', t('workflowRun.costDone', { amount: cost })));
+  }
+
+  if (status === 'cancelled') {
+    card.appendChild(textNode('p', 'wr-result', t(run.result ? 'workflowRun.cancelledRun' : 'workflowRun.cancelled')));
+  }
+
+  const foot = document.createElement('div');
+  foot.className = 'wr-foot';
+  const locked = state.streaming;
+  if (waiting && run.mine) {
+    const start = document.createElement('button');
+    start.type = 'button';
+    start.className = 'wr-start';
+    start.textContent = workflowRunStartLabel(run);
+    start.disabled = locked || status !== 'pending' || Boolean(run.blocked);
+    if (locked) start.title = t('workflowRun.waitStream');
+    start.addEventListener('click', () => startWorkflowRun(run, card));
+    foot.appendChild(start);
+  }
+  const open = workflowRunOpenLink(run);
+  if (open) foot.appendChild(open);
+  if ((waiting || status === 'running') && run.mine) {
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'wr-cancel';
+    cancel.textContent = t('workflowRun.cancel');
+    cancel.disabled = waiting && (locked || status !== 'pending');
+    cancel.addEventListener('click', () => cancelWorkflowRun(run, card));
+    foot.appendChild(cancel);
+  }
+  if (foot.children.length) card.appendChild(foot);
+  if (waiting && !run.mine) card.appendChild(textNode('p', 'wr-fine', t('workflowRun.onlyRequester')));
+
+  const line = document.createElement('div');
+  line.className = 'wr-status';
+  line.setAttribute('role', 'status');
+  if (waiting && run.lastError && status === 'pending') {
+    line.textContent = workflowRunErrorText(run);
+    line.classList.add('error');
+  } else if (status === 'processing') {
+    line.textContent = t('workflowRun.starting');
+  }
+  card.appendChild(line);
+  return card;
+}
+
+// While a run is running (or starting) the card is asked about every few seconds: one cheap read of the run, and the chat is
+// only read again when the state changed (the finished result is in the chat then).
+function openWorkflowRuns() {
+  return (state.detail?.session?.messages || []).filter((message) => message.workflowRun && ['running', 'processing'].includes(message.workflowRun.status));
+}
+
+function scheduleWorkflowRunPolling() {
+  if (state.workflowRunTimer) {
+    clearInterval(state.workflowRunTimer);
+    state.workflowRunTimer = null;
+  }
+  if (!openWorkflowRuns().length) return;
+  state.workflowRunTimer = setInterval(async () => {
+    if (!state.currentId || state.streaming || document.hidden) return;
+    const sessionId = state.currentId;
+    let changed = false;
+    for (const message of openWorkflowRuns()) {
+      try {
+        const data = await api(`/api/sessions/${encodeURIComponent(sessionId)}/workflow-runs/${encodeURIComponent(message.workflowRun.id)}`);
+        if (state.currentId !== sessionId || !data.run) return;
+        if (data.run.status !== message.workflowRun.status) changed = true;
+        message.workflowRun = data.run;
+        const old = el.messages.querySelector(`.workflow-run[data-run-id="${CSS.escape(data.run.id)}"]`);
+        if (old && !changed) old.replaceWith(workflowRunCard(data.run));
+      } catch (err) {
+        if (err.status === 404 && OCAccess.isActive()) return handleSessionGone(sessionId);
+      }
+    }
+    if (changed) await afterWorkflowRunChange().catch(() => {});
+    if (!openWorkflowRuns().length && state.workflowRunTimer) {
+      clearInterval(state.workflowRunTimer);
+      state.workflowRunTimer = null;
+    }
+  }, WORKFLOW_RUN_POLL_MS);
+}
+
 function chip(label, spinning, isError) {
   const wrap = document.createElement('div');
   wrap.className = `chip${isError ? ' error' : ''}`;
@@ -1395,6 +1755,8 @@ function toolLabel(message) {
   if (message.name === 'generate_video' && message.videoModelChoice?.status === 'pending') return t('tools.videoChoosing');
   if (message.name === 'generate_video' && (message.videoModelChoice?.status || message.videoModelChoiceStatus) === 'cancelled') return t('videoModel.cancelledTitle');
   if (message.name === 'generate_video') return t('tools.videoStarted');
+  if (message.name === 'list_workflows') return t('tools.workflowsListed');
+  if (message.name === 'run_workflow') return t(`tools.workflow.${message.workflowRun?.status || message.workflowRunStatus || 'running'}`);
   if (message.name === 'higgsfield_generate_image') return t('tools.higgsfieldImageStarted');
   if (message.name === 'higgsfield_generate_video') return t('tools.higgsfieldVideoStarted');
   if (message.name === 'higgsfield_models') return t('tools.higgsfieldModelsLoaded');
@@ -1665,6 +2027,7 @@ function renderDetail() {
       const known = failed ? providerRuleMessage(message.errorCode) : null;
       wrap.appendChild(chip(known || (failed ? String(message.content).slice(0, 200) : toolLabel(message)), false, failed));
       if (message.videoModelChoice) wrap.appendChild(videoModelChoiceCard(message.videoModelChoice));
+      if (message.workflowRun) wrap.appendChild(workflowRunCard(message.workflowRun));
 
       const grid = document.createElement('div');
       grid.className = 'asset-grid';
@@ -2669,6 +3032,7 @@ async function handleSessionGone(id) {
     state.detail = null;
     setSessionHash(null);
     scheduleJobPolling();
+    scheduleWorkflowRunPolling();
   }
   await loadSessions().catch(() => {});
   if (wasOpen) {
@@ -3694,6 +4058,7 @@ async function openSession(id) {
   renderDetail();
   renderToolsMenu();
   scheduleJobPolling();
+  scheduleWorkflowRunPolling();
   state.liveRenderNodeJob = false;
   scheduleRenderNodePolling(0);
   await Promise.all([
@@ -3712,6 +4077,7 @@ async function refreshDetail() {
   renderToolsMenu();
   await loadCurrentFolderProfile().catch((err) => setStatus(err.message));
   scheduleJobPolling();
+  scheduleWorkflowRunPolling();
   state.liveRenderNodeJob = false;
   scheduleRenderNodePolling(0);
 }
@@ -5529,6 +5895,16 @@ function handleEvent(event) {
     node.className = 'msg tool';
     node.appendChild(chip(t('tools.videoChoosing'), false, false));
     node.appendChild(videoModelChoiceCard(event.choice));
+    appendLiveNode(node);
+    return;
+  }
+  if (event.type === 'workflow_run' && event.run) {
+    finishChips();
+    live.textEl = null;
+    const node = document.createElement('div');
+    node.className = 'msg tool';
+    node.appendChild(chip(t(`tools.workflow.${event.run.status}`), false, false));
+    node.appendChild(workflowRunCard(event.run));
     appendLiveNode(node);
     return;
   }
