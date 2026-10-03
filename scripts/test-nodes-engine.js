@@ -915,6 +915,51 @@ async function main() {
       env.state.failItem = null;
     }
 
+    /* ----- order of the connections of a multi-input: the engine follows graph.edges, the cache key follows the order ----- */
+    {
+      const graphLib = require('../public/nodes/graph');
+      const reg = graphLib.indexRegistry(JSON.parse(JSON.stringify(env.registry.publicRegistry())));
+      const wf = await makeWorkflow(
+        [
+          node('a', 'input.text', { text: 'alpha' }, 0, 0),
+          node('b', 'input.text', { text: 'beta' }, 0, 100),
+          node('c', 'input.text', { text: 'gamma' }, 0, 200),
+          node('j', 'text.join', { separator: '+' }, 300, 100),
+          node('u', 't.upper', {}, 300, 300)
+        ],
+        // the edge into u sits between the edges of the multi-input
+        edges('a.text>j.items', 'b.text>u.in', 'b.text>j.items', 'c.text>j.items'),
+        'Input order'
+      );
+      const engine = makeEngine();
+      const first = await run(engine, wf.id, { mode: 'all' });
+      assert.equal(first.status, 'completed', JSON.stringify(first.nodes));
+      assert.equal((await selectedValue(wf.id, 'j', 'text')).value, 'alpha+beta+gamma');
+      assert.ok(Object.values((await engine.plan(wf.id, { mode: 'all' })).nodes).every((entry) => entry.status === 'cached'));
+
+      // gamma to the front: only the edges of the input change places, the rest stays where it was
+      const save = async (graph) => {
+        const current = await wfStore.readWorkflow(wf.id);
+        await wfStore.saveGraph(wf.id, { baseRev: current.rev, graph: { ...current.graph, edges: graph.edges } });
+      };
+      const stored = (await wfStore.readWorkflow(wf.id)).graph;
+      const moved = graphLib.moveInputEdge(reg, stored, 'j', 'items', 'e4', 'first');
+      assert.equal(moved.changed, true);
+      assert.deepEqual(moved.graph.edges.map((edge) => edge.id), ['e4', 'e2', 'e1', 'e3'], 'the edge into u keeps its slot');
+      await save(moved.graph);
+      const plan = await engine.plan(wf.id, { mode: 'all' });
+      assert.equal(plan.nodes.j.status, 'stale', 'the new order makes the node stale: its cache key contains the order');
+      for (const id of ['a', 'b', 'c', 'u']) assert.equal(plan.nodes[id].status, 'cached', id);
+      const second = await run(engine, wf.id, { mode: 'all' });
+      assert.equal(second.nodes.j.status, 'done', 'not served from the cache of the old order');
+      assert.equal((await selectedValue(wf.id, 'j', 'text')).value, 'gamma+alpha+beta');
+
+      // and back: the first result is found again by its key
+      const back = graphLib.setInputOrder(reg, (await wfStore.readWorkflow(wf.id)).graph, 'j', 'items', ['e1', 'e3', 'e4']);
+      await save(back.graph);
+      assert.equal((await engine.plan(wf.id, { mode: 'all' })).nodes.j.status, 'cached');
+    }
+
   } finally {
     for (const id of created) {
       await wfStore.deleteWorkflow(id).catch(() => {});

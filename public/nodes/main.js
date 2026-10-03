@@ -2156,6 +2156,33 @@
     return items;
   }
 
+  // Moves one connection of a multi-input to another place in the order of that input (a chip dragged in the row of a
+  // card, the arrow keys, the menus). Only the edges of this input change places in graph.edges; one undo step. The next
+  // plan marks the node as stale: its cache key contains the inputs in this order.
+  function reorderInput(nodeId, portId, edgeId, target) {
+    const result = graphLib.moveInputEdge(state.reg, state.graph, nodeId, portId, edgeId, target);
+    if (result.error || !result.changed) return false;
+    applyGraph(result.graph, { history: 'reorder-inputs' });
+    return true;
+  }
+
+  // Menu entries to move a connection within its input: only for a multi-input with two or more connections; an entry
+  // that would change nothing (the first one cannot go forward) is disabled.
+  function orderMenuItems(nodeId, portId, edgeId) {
+    const ids = graphLib.incomingEdges(state.graph, nodeId, portId).map((edge) => edge.id);
+    const node = graphLib.getNode(state.graph, nodeId);
+    const port = node && state.reg ? graphLib.findPort(state.reg, node, 'in', portId) : null;
+    const at = ids.indexOf(edgeId);
+    if (!port || !port.multiple || ids.length < 2 || at < 0) return [];
+    const go = (place) => () => reorderInput(nodeId, portId, edgeId, place);
+    return [
+      { label: ui.T('nodes.order.first'), icon: 'arrowUp', disabled: at === 0, onClick: go('first') },
+      { label: ui.T('nodes.order.earlier'), icon: 'chevron-left', disabled: at === 0, onClick: go('earlier') },
+      { label: ui.T('nodes.order.later'), icon: 'chevron', disabled: at === ids.length - 1, onClick: go('later') },
+      { label: ui.T('nodes.order.last'), icon: 'arrowDown', disabled: at === ids.length - 1, onClick: go('last') }
+    ];
+  }
+
   async function renameNodeDialog(id) {
     const node = graphLib.getNode(state.graph, id);
     if (!node) return;
@@ -2183,7 +2210,13 @@
         { label: ui.T('nodes.action.ungroup'), icon: 'x', onClick: deleteSelection }
       ]);
     } else if (info.kind === 'edge') {
-      ui.menu(info.clientX, info.clientY, [{ label: ui.T('nodes.inspector.disconnect'), icon: 'trash', danger: true, onClick: () => applyGraph(graphLib.disconnect(state.graph, info.id), { history: 'disconnect' }) }]);
+      const edge = state.graph.edges.find((item) => item.id === info.id);
+      const order = edge ? orderMenuItems(edge.to.node, edge.to.port, edge.id) : [];
+      ui.menu(info.clientX, info.clientY, [
+        ...order,
+        order.length ? { separator: true } : null,
+        { label: ui.T('nodes.inspector.disconnect'), icon: 'trash', danger: true, onClick: () => applyGraph(graphLib.disconnect(state.graph, info.id), { history: 'disconnect' }) }
+      ]);
     } else {
       ui.menu(info.clientX, info.clientY, canvasMenuItems(info.world));
     }
@@ -2660,7 +2693,9 @@
         if (node) nodeHelp.openPopover(node.type, anchor);
       },
       fix: applyFix,
-      select: selectNodeById
+      select: selectNodeById,
+      reorder: reorderInput,
+      orderMenu: (nodeId, portId, edgeId, x, y) => ui.menu(x, y, orderMenuItems(nodeId, portId, edgeId))
     });
     runController = OCD.run.createController({ OCD });
     inspector = OCD.inspector.createInspector({

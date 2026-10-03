@@ -6,6 +6,7 @@
 (function (global) {
   const OCD = (global.OCDNodes = global.OCDNodes || {});
   const graphLib = OCD.graph;
+  const geometry = OCD.edgeGeometry;
   const ui = OCD.ui;
   const { el } = ui;
 
@@ -26,10 +27,7 @@
     return { nodes: new Set(), notes: new Set(), groups: new Set(), edge: null };
   }
 
-  function bezier(a, b) {
-    const dx = Math.max(60, Math.abs(b.x - a.x) * 0.5);
-    return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
-  }
+  const bezier = geometry.path;
 
   function createCanvas(container, options) {
     const opts = options || {};
@@ -217,6 +215,70 @@
       scheduleMinimap();
     }
 
+    /* ---------- order of the connections (row under a multi-input) ---------- */
+
+    // A small preview of what a source hands over on one output: the first image of its latest result (the slot preview
+    // painted by run.js), else, for an input node, the file it holds. Null while there is nothing to show.
+    function thumbOf(sourceId, outPort) {
+      const leaves = (value, out = []) => {
+        if (!value || typeof value !== 'object') return out;
+        if (Array.isArray(value)) value.forEach((item) => leaves(item, out));
+        else if (value.type === 'list' && Array.isArray(value.items)) value.items.forEach((item) => leaves(item, out));
+        else out.push(value);
+        return out;
+      };
+      const image = (value) => leaves(value).find((item) => item.type === 'image' && typeof item.url === 'string') || null;
+      const preview = slots.get(sourceId)?.preview;
+      const fromResult = Array.isArray(preview) ? preview.find((item) => item.port === outPort) : null;
+      let found = fromResult ? image(fromResult.value) : null;
+      if (!found) {
+        const node = graph.nodes.find((item) => item.id === sourceId);
+        const def = node && reg ? reg.types.get(node.type) : null;
+        if (def && def.category === 'input') {
+          for (const param of def.params || []) {
+            if (param.kind === 'asset' || param.kind === 'assets') found = found || image(node.params?.[param.id]);
+          }
+        }
+      }
+      return found ? ui.mediaUrl(found) : null;
+    }
+
+    // One row per multi-input of the node that has two or more connections, in the order the engine collects them.
+    // The numbers are the ones on the edges (graphLib.connectionOrder): "…" behind the first list.
+    function orderRowsFor(node, connected) {
+      if (!reg || !connected || ![...connected.values()].some((count) => count > 1)) return [];
+      const rows = [];
+      for (const port of graphLib.portsFor(reg, node).inputs) {
+        if (port.hidden || !port.multiple || (connected.get(port.id) || 0) < 2) continue;
+        const edges = graphLib.incomingEdges(graph, node.id, port.id);
+        const base = graphLib.parseType(port.type)?.base || 'any';
+        const items = graphLib.connectionOrder(reg, graph, edges, true).map(({ edge, order, list, from, fromDef, outputs }) => {
+          const custom = from && typeof from.title === 'string' ? from.title.trim() : '';
+          const source = custom || (fromDef ? ui.typeLabel(fromDef) : from ? from.type : edge.from.node);
+          return {
+            edgeId: edge.id,
+            order,
+            text: geometry.orderText(order),
+            list,
+            title: source,
+            source,
+            output: outputs.length > 1 ? ui.portLabel(edge.from.port) : '',
+            thumb: base === 'image' ? thumbOf(edge.from.node, edge.from.port) : null
+          };
+        });
+        rows.push({ portId: port.id, label: ui.portLabel(port.id), base, items });
+      }
+      return rows;
+    }
+
+    function refreshOrder(nodeId, connected) {
+      const state = cards.get(nodeId);
+      const node = state && graph.nodes.find((item) => item.id === nodeId);
+      if (!node) return;
+      const rows = orderRowsFor(node, connected || incomingMap().get(nodeId));
+      if (rows.length || state.orderKey) ui.applyOrder(state, rows);
+    }
+
     /* ---------- cards ---------- */
 
     // Map(nodeId -> Map(inputPortId -> edge count)) built in one pass over the edges.
@@ -283,6 +345,7 @@
           positionCard(state, node.x, node.y);
           changed.add(node.id);
         }
+        refreshOrder(node.id, connected);
       }
       for (const [id, state] of cards) {
         if (seen.has(id)) continue;
@@ -394,20 +457,38 @@
     }
 
     // Recomputes edge geometry. affected = Set of node ids whose edges need updating (null = all).
+    // The number badges of a multi-input are placed together (geometry.placeBadges): each on its own curve, moved back
+    // until it covers no other badge of the input. The number is the position the engine hands the connection over at
+    // (graphLib.connectionOrder, the same logic as the port tooltip): "…" behind the first list, none for a single edge.
     function updateEdges(affected) {
       const seen = new Set();
-      const multiCounts = new Map();
       const nodes = nodeMap();
+      const byInput = new Map();
       for (const edge of graph.edges) {
         const key = `${edge.to.node}.${edge.to.port}`;
-        multiCounts.set(key, (multiCounts.get(key) || 0) + 1);
+        if (!byInput.has(key)) byInput.set(key, []);
+        byInput.get(key).push(edge);
       }
-      const indexInPort = new Map();
+      const touched = (edge) => {
+        const entry = edgeEls.get(edge.id);
+        return !affected || affected.has(edge.from.node) || affected.has(edge.to.node) || !entry || entry.edge !== edge;
+      };
+      // edge id -> { x, y, text } for the edges that get a badge. An input is placed again when one of its edges moved or
+      // when its connections changed (an edge added, removed or reordered).
+      const badges = new Map();
+      for (const list of byInput.values()) {
+        const signature = list.map((edge) => edge.id).join(',');
+        if (list.length < 2 || !(list.some(touched) || list.some((edge) => edgeEls.get(edge.id)?.signature !== signature))) continue;
+        const toNode = nodes.get(list[0].to.node);
+        const toPort = toNode && reg ? graphLib.findPort(reg, toNode, 'in', list[0].to.port) : null;
+        if (!toPort?.multiple) continue;
+        const paths = list.map((edge) => edgePath(edge));
+        const spots = geometry.placeBadges(paths.map(({ a, b }) => ({ a, b })));
+        const order = graphLib.connectionOrder(reg, graph, list, true);
+        list.forEach((edge, index) => badges.set(edge.id, { x: spots[index].x, y: spots[index].y, text: geometry.orderText(order[index].order), list: order[index].list }));
+      }
       for (const edge of graph.edges) {
         seen.add(edge.id);
-        const key = `${edge.to.node}.${edge.to.port}`;
-        const index = (indexInPort.get(key) || 0) + 1;
-        indexInPort.set(key, index);
         let entry = edgeEls.get(edge.id);
         const fromBase = portBase(edge.from.node, 'out', edge.from.port);
         if (!entry) {
@@ -415,13 +496,17 @@
           const hit = svgEl('path', { class: 'nv-edge-hit' });
           const line = svgEl('path', { class: 'nv-edge-line' });
           const badge = svgEl('g', { class: 'nv-edge-badge' });
-          badge.append(svgEl('circle', { r: 8 }), svgEl('text', { 'text-anchor': 'middle', dy: '3.5' }));
+          badge.append(svgEl('circle', { r: geometry.BADGE_RADIUS }), svgEl('text', { 'text-anchor': 'middle', dy: '3.5' }));
           group.append(hit, line, badge);
           edgeGroup.append(group);
           entry = { group, hit, line, badge, base: null, edge: null };
           edgeEls.set(edge.id, entry);
         }
-        const touches = !affected || affected.has(edge.from.node) || affected.has(edge.to.node) || entry.edge !== edge;
+        const touches = touched(edge);
+        const input = byInput.get(`${edge.to.node}.${edge.to.port}`);
+        const signature = input.length < 2 ? '' : input.map((item) => item.id).join(',');
+        const regroup = entry.signature !== signature;
+        entry.signature = signature;
         entry.edge = edge;
         if (entry.base !== fromBase) {
           entry.base = fromBase;
@@ -429,16 +514,17 @@
           entry.badge.setAttribute('style', `--edge-color: var(--nv-port-${fromBase}, var(--nv-port-any))`);
         }
         if (touches) {
-          const { b, d } = edgePath(edge);
+          const { d } = edgePath(edge);
           entry.hit.setAttribute('d', d);
           entry.line.setAttribute('d', d);
-          const toNode = nodes.get(edge.to.node);
-          const toPort = toNode && reg ? graphLib.findPort(reg, toNode, 'in', edge.to.port) : null;
-          const showBadge = Boolean(toPort?.multiple) && multiCounts.get(key) > 1;
-          entry.badge.style.display = showBadge ? '' : 'none';
-          if (showBadge) {
-            entry.badge.setAttribute('transform', `translate(${b.x - 26} ${b.y})`);
-            entry.badge.querySelector('text').textContent = String(index);
+        }
+        if (touches || regroup || badges.has(edge.id)) {
+          const spot = badges.get(edge.id);
+          entry.badge.style.display = spot ? '' : 'none';
+          if (spot) {
+            entry.badge.setAttribute('transform', `translate(${spot.x} ${spot.y})`);
+            entry.badge.querySelector('text').textContent = spot.text;
+            entry.badge.classList.toggle('is-list', spot.list);
           }
         }
         entry.group.classList.toggle('is-selected', selection.edge === edge.id);
@@ -546,6 +632,11 @@
         pendingMeasure.add(nodeId);
         scheduleMeasure();
       }
+      // a new result changes the previews in the order row of the nodes this one feeds
+      if (patch.preview !== undefined) {
+        const fed = new Set(graph.edges.filter((edge) => edge.from.node === nodeId).map((edge) => edge.to.node));
+        for (const id of fed) refreshOrder(id);
+      }
     }
 
     function clearSlots(nodeId) {
@@ -554,6 +645,7 @@
       for (const [id, state] of cards) {
         if (!nodeId || id === nodeId) ui.applySlots(state, slots.get(id));
       }
+      for (const id of cards.keys()) refreshOrder(id);
       scheduleMeasure();
     }
 

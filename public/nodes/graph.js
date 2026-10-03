@@ -1808,6 +1808,76 @@
     return [text.dirKey, text.key, ...text.fallbackKeys];
   }
 
+  // The position of each connection of an input as the engine collects them (resolveNodeInputs in lib/nodes/engine.js):
+  // in the order of `edges` (the connections of one input in graph.edges order); a list counts with all of its items, so
+  // the position behind the first list connection is unknown. Returns, per edge,
+  //   { edge, order (1-based, null behind a list or when the input takes a single connection), list (the output is a list),
+  //     from (source node or null), fromDef, outputs (visible outputs of the source), fromPort }.
+  // The positions on the edges, in the row under the input and in the hover help all come from here.
+  function connectionOrder(reg, graph, edges, multiple) {
+    let afterList = false;
+    return edges.map((edge, index) => {
+      const from = getNode(graph, edge.from.node);
+      const fromDef = from ? reg.types.get(from.type) || null : null;
+      const outputs = from ? portsFor(reg, from).outputs.filter((output) => !output.hidden) : [];
+      const fromPort = outputs.find((output) => output.id === edge.from.port) || null;
+      const list = Boolean(fromPort && (parseType(fromPort.type) || {}).list);
+      const order = multiple && afterList ? null : index + 1;
+      if (list) afterList = true;
+      return { edge, order, list, from, fromDef, outputs, fromPort };
+    });
+  }
+
+  // Changes the order of the connections of one multi-input: `edgeIds` lists all of its edges in the new order. Only the
+  // slots these edges hold in graph.edges are reassigned among themselves; every other edge keeps its place. Returns
+  // { graph, changed } (the same graph object when nothing changes) or { graph, error: { reason } } with reason
+  // 'unknown_node' | 'unknown_port' | 'not_multiple' | 'bad_order' (not exactly the edges of the input, or a repeat).
+  function setInputOrder(reg, graph, nodeId, portId, edgeIds) {
+    const node = getNode(graph, nodeId);
+    if (!node) return { graph, error: { reason: 'unknown_node' } };
+    const port = findPort(reg, node, 'in', portId);
+    if (!port) return { graph, error: { reason: 'unknown_port' } };
+    if (!port.multiple) return { graph, error: { reason: 'not_multiple' } };
+    const slots = [];
+    graph.edges.forEach((edge, index) => {
+      if (edge.to.node === nodeId && edge.to.port === portId) slots.push(index);
+    });
+    const byId = new Map(slots.map((index) => [graph.edges[index].id, graph.edges[index]]));
+    if (!Array.isArray(edgeIds) || edgeIds.length !== slots.length || new Set(edgeIds).size !== edgeIds.length || !edgeIds.every((id) => byId.has(id))) {
+      return { graph, error: { reason: 'bad_order' } };
+    }
+    if (slots.every((index, k) => graph.edges[index].id === edgeIds[k])) return { graph, changed: false };
+    const edges = graph.edges.slice();
+    slots.forEach((index, k) => {
+      edges[index] = byId.get(edgeIds[k]);
+    });
+    return { graph: { ...graph, edges }, changed: true };
+  }
+
+  // Moves one connection of a multi-input to another place in that input's order. `target`: a 0-based place (the place
+  // the edge has afterwards), 'first', 'last', 'earlier' or 'later' (one place; at the end nothing changes). Result as for
+  // setInputOrder, plus reason 'unknown_edge' (the edge does not go into this input) and 'bad_target'.
+  function moveInputEdge(reg, graph, nodeId, portId, edgeId, target) {
+    const ids = incomingEdges(graph, nodeId, portId).map((edge) => edge.id);
+    const from = ids.indexOf(edgeId);
+    const node = getNode(graph, nodeId);
+    const port = node ? findPort(reg, node, 'in', portId) : null;
+    // the checks of setInputOrder come first so a wrong node or port is named as such
+    if (!node || !port || !port.multiple) return setInputOrder(reg, graph, nodeId, portId, ids);
+    if (from < 0) return { graph, error: { reason: 'unknown_edge' } };
+    let to;
+    if (target === 'first') to = 0;
+    else if (target === 'last') to = ids.length - 1;
+    else if (target === 'earlier') to = Math.max(0, from - 1);
+    else if (target === 'later') to = Math.min(ids.length - 1, from + 1);
+    else if (Number.isInteger(target) && target >= 0 && target < ids.length) to = target;
+    else return { graph, error: { reason: 'bad_target' } };
+    const next = ids.slice();
+    next.splice(from, 1);
+    next.splice(to, 0, edgeId);
+    return setInputOrder(reg, graph, nodeId, portId, next);
+  }
+
   // Structured description of one port for the hover tooltip; no strings, no HTML: the UI resolves the keys.
   //   { nodeId, nodeType, portId, direction, labelKey, label, base, typeKey, list, required (in: boolean, out: null),
   //     multiple, max, count, limit (the limit that depends on the chosen model, or null), overLimit,
@@ -1868,6 +1938,12 @@
     } else if (isInput) {
       facts.push({ key: 'nodes.porttip.fact.singleMap', vars: {} });
     }
+    // Several connections on a multi-input: the numbers on the edges and in the row under the input are the positions
+    // the model receives; a prompt refers to images by them. How to change them depends on the UI, the text says it.
+    const ceiling = limit && limit.known ? limit.max : max;
+    if (multiple && count >= 2 && (ceiling === null || ceiling >= 2)) {
+      facts.push({ key: parsed.base === 'image' ? 'nodes.porttip.fact.orderImage' : 'nodes.porttip.fact.order', vars: {} });
+    }
     if (isInput && port.param && def && (def.params || []).some((param) => param.id === port.param)) {
       facts.push({ key: 'nodes.porttip.fact.param', vars: {} });
     }
@@ -1875,21 +1951,14 @@
 
     // A list on a multi-input delivers all of its items, so its length decides every later position ("Image 4" ...);
     // that is unknown here, hence the positions behind the first list connection are null.
-    let afterList = false;
-    let shifted = false;
-    const connections = incoming.slice(0, PORT_TIP_MAX_CONNECTIONS).map((edge, index) => {
-      const from = getNode(graph, edge.from.node);
-      const fromDef = from ? reg.types.get(from.type) || null : null;
-      const outputs = from ? portsFor(reg, from).outputs.filter((output) => !output.hidden) : [];
-      const fromPort = outputs.find((output) => output.id === edge.from.port);
-      const isList = Boolean(fromPort && (parseType(fromPort.type) || {}).list);
-      const order = multiple && afterList ? null : index + 1;
-      if (order === null) shifted = true;
-      if (isList) afterList = true;
+    const ordered = connectionOrder(reg, graph, incoming.slice(0, PORT_TIP_MAX_CONNECTIONS), multiple);
+    const afterList = ordered.some((item) => item.list);
+    const shifted = ordered.some((item) => item.order === null);
+    const connections = ordered.map(({ edge, order, list, from, fromDef, outputs }) => {
       const custom = from && typeof from.title === 'string' && from.title.trim() ? from.title.trim() : '';
       return {
         order,
-        list: isList,
+        list,
         edgeId: edge.id,
         nodeId: edge.from.node,
         nodeTitle: custom || (fromDef ? fromDef.label : from ? from.type : edge.from.node),
@@ -2062,6 +2131,9 @@
     portDescriptionKeys,
     portDescriptionChain,
     describePort,
+    connectionOrder,
+    setInputOrder,
+    moveInputEdge,
     PORT_TIP_MAX_CONNECTIONS,
     PROMPT_TYPE,
     firstCompatiblePort,
