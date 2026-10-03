@@ -831,6 +831,16 @@ async function testPoller(sessionId) {
   assert.equal(estimatedDone.status, 'completed');
   assert.equal(estimatedDone.cost, 0.32);
   assert.equal(estimatedDone.seed, undefined);
+  assert.equal(journal.find((line) => line.assetId === estimated.assetId).keyId, undefined, 'a job from the app carries no agent key');
+
+  // a job that an agent key started: the cost goes into the journal with the id and the name of the key (WP27)
+  const viaKey = await addFalJob(sessionId, { costEstimateUsd: 0.2, keyId: 'k0123456789abcdef', keyName: 'Agent' });
+  result = { video: { url: 'https://v3b.fal.media/files/b/z.mp4' } };
+  await poller.pollOnce();
+  const viaKeyLine = journal.find((line) => line.assetId === viaKey.assetId);
+  assert.equal(viaKeyLine.keyId, 'k0123456789abcdef');
+  assert.equal(viaKeyLine.keyName, 'Agent');
+  assert.equal(viaKeyLine.user, 'tester', 'it books on the person');
 
   // unknown cost: nothing is journaled
   const journalBefore = journal.length;

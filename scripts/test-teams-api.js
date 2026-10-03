@@ -673,6 +673,15 @@ async function testRulesTable(ctx) {
   assert.match(gts.body.error, /GTS/);
   assert.equal((await call(GUEST, 'GET', '/api/gts/search?q=test')).status, 403);
   assert.equal((await api('/api/gts/search?q=test', { as: STAFF })).status, 503, 'internal people: as before (no token here)');
+  // agent access (WP27): keys are for admins and internal people; participants and guests get 403 on every route
+  for (const email of [P1, GUEST]) {
+    for (const [method, url, json] of [['GET', '/api/mcp/keys'], ['POST', '/api/mcp/keys', { name: 'X', right: 'read' }], ['PATCH', '/api/mcp/keys/kaaaaaaaaaaaaaaaa', { name: 'X' }], ['DELETE', '/api/mcp/keys/kaaaaaaaaaaaaaaaa']]) {
+      const response = await call(email, method, url, json);
+      assert.equal(response.status, 403, `${method} ${url} as ${email}`);
+      assert.equal(response.body.code, 'FORBIDDEN_FOR_ROLE');
+      assert.equal(response.body.feature, 'mcp');
+    }
+  }
   const contextPost = await call(P1, 'POST', `/api/sessions/${ctx.chat.id}/context`, { brainId: 'x' });
   assert.equal(contextPost.status, 403);
   assert.equal(contextPost.body.code, 'FORBIDDEN_FOR_ROLE');

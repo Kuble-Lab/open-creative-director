@@ -28,6 +28,7 @@ Inspired by the Higgsfield "Supercomputer" concept — rebuilt as an open, local
 - **Prompt presets** — a curated, collapsible menu of production-ready prompts (casting, series, branding, motion, social media, marketing) plus your own team-shared presets.
 - **Three languages** — UI in English, German and Spanish.
 - **Cost journal** — every generation and LLM call is logged with its cost.
+- **Agent access (MCP)** — external agents order runs with a personal key, within limits per run and per month ([details](#agent-access-mcp-optional)).
 
 ## Quick start
 
@@ -207,6 +208,55 @@ Data: `data/teams.json` (chmod 600, written atomically), `data/folder-owners.jso
 ### Allowlist sync (optional)
 
 Participants have addresses your login does not know. If your login keeps an allowlist file (`{ "default": {...}, "routes": [{ "path": "/training", "public": false, "extra_emails": [...] }] }`), set `ACCESS_ALLOWLIST_FILE` (path) and `ACCESS_ALLOWLIST_ROUTE` (route). After every change of a team the app then makes `extra_emails` of that route hold the manually maintained addresses plus everybody in an active team (addresses of `INTERNAL_EMAIL_DOMAINS` are not entered). Manual entries and other routes are never touched: only what the app added itself is removed again (remembered in `data/access-sync.json`, written before the list changes, with a copy next to the list; an unreadable record stops the sync with a warning). The file is written atomically (a symlink is followed; the owner is kept where the app may set it; a single file mounted into a container is written in place), keeps its permissions, and a copy `<file>.bak-<timestamp>` is made once before the first change; a missing route is created. A failure never blocks the team change — it shows up as a warning in `sync`. Both variables unset = nothing happens.
+
+## Agent access (MCP) (optional)
+
+External agents (Claude Code, Codex, your own bots) can order runs from the app through an [MCP](https://modelcontextprotocol.io) endpoint. An agent works with a personal key, in the name of the person who created it: the same templates, workflows and cost rules as in the interface, limited per run and per month. The app executes the workflows; the agent only orders runs and fetches the results. The endpoint is `POST /mcp` (MCP over Streamable HTTP, JSON answers only; `GET` answers `405`). It is a small own implementation without an extra dependency. It speaks the protocol revision 2026-07-28 and, with `initialize` and version negotiation, the earlier revisions 2025-11-25, 2025-06-18 and 2025-03-26. JSON-RPC batches (an array of up to 10 messages) are accepted as revision 2025-03-26 requires, that is without the version header or with `2025-03-26`.
+
+**Set up**
+
+1. Open **Menu → Agent access (MCP)** (admins and internal people; in the local mode everybody). The dialog shows the address of the endpoint, your keys with right, limits, usage this month, last use and expiry, and a form for a new key.
+2. Create a key: name, right (*Read only* or *Read and start*), limit per run, limit per month and validity. The key is shown **once**; copy it right away. Only a hash is stored.
+3. Enter the address and the key in the agent. For Claude Code:
+
+   ```bash
+   claude mcp add --transport http open-creator https://your-app.example.com/mcp --header "Authorization: Bearer <key>"
+   ```
+
+   Any other client needs three things: transport *Streamable HTTP*, the address, and the header `Authorization: Bearer <key>`. The key is only read from that header, never from the address.
+
+**Keys**
+
+- Format `ocd_k1_` plus 43 characters (256 bits of randomness). `data/mcp-keys.json` (mode 600) holds the SHA-256 hash, a short prefix for the list, name, owner, right, limits, creation, last use, expiry and revocation. The key never appears in a log, an error message or the cost journal.
+- Defaults: 2 USD per run, 20 USD per month, 90 days. Upper bounds: 1000 USD per run, 10000 USD per month, 365 days; at most 25 valid keys per person.
+- A key acts as its person and sees the same workflows, templates and teams, never more. It stops working as soon as the person is no longer an admin or internal person or was removed from the team list. Participants and guests get no keys. Without user management (`AUTH_WHOAMI_URL` unset) the key acts as the local person, and everybody who can reach the app can create keys.
+- Admins see and revoke all keys; everybody else only their own. Revoking works at once. API: `GET` and `POST /api/mcp/keys`, `PATCH` and `DELETE /api/mcp/keys/:id` (errors `INVALID_NAME`, `INVALID_RIGHT`, `INVALID_LIMIT`, `INVALID_EXPIRY`, `TOO_MANY_KEYS`, `KEY_NOT_FOUND`, `KEY_REVOKED`, `FORBIDDEN_FOR_ROLE`).
+
+**Tools**
+
+| Tool | Right | What it does |
+| --- | --- | --- |
+| `list_templates` | read | Templates with inputs and cost range |
+| `list_workflows` | read | Own and shared workflows |
+| `get_workflow` | read | Nodes, inputs, latest results as links |
+| `estimate_run` | read | Cost estimate of the engine with the paid steps |
+| `get_run` | read | Status, progress, results as links (can wait up to 30 s) |
+| `upload_asset` | read and start | Image, video or audio as an input: base64 up to 15 MB, larger files through a one-time upload link |
+| `create_from_template` | read and start | Creates a workflow from a template and fills its inputs |
+| `run_workflow` | read and start | Starts a run; requires `max_usd`, the most the agent accepts to pay |
+| `cancel_run` | read and start | Cancels a run of this key |
+
+A *Read only* key sees and uses the five read tools. `run_workflow` refuses with a readable reason, and charges nothing, when the estimate is above `max_usd` or above the limit per run, when the calendar month would exceed the monthly limit (booked costs of the key plus reservations of running runs), when a paid step has no known price, when the workflow uses Higgsfield (blocked for agents), when the key already has two runs in progress, or when the budget of the person does not cover it.
+
+**Links.** Results are delivered as `GET /mcp/files/<token>` (signed, valid 24 hours, one file, no login; only media, no SVG or JSON). Large uploads go to `PUT /mcp/upload/<token>` (valid 15 minutes, once, up to 500 MB, SVG up to 10 MB, same type rules as the normal upload). Links begin with `PUBLIC_BASE_URL`, also with a sub-path; without it the address of the request is used. The signing secret lives in `data/mcp-link-secret` (mode 600). An upload link stops working as soon as the key is revoked or the person is no longer eligible; a result link is signed and keeps no state on the server, so it stays valid for its 24 hours.
+
+**Costs.** A run through a key books on the person, as always. Every line of the cost journal carries the id and the name of the key (never the key itself), so the cost summary can tell what an agent spent.
+
+**Limits.** 60 requests per minute and key (a JSON-RPC batch counts as many requests as it has messages); at most 4 requests at the same moment per key, and at most 2 request bodies above 1 MB in progress in the whole app (more are answered `429` with `Retry-After`); a request body of at most 22 MiB; two runs at a time per key; 30 workflows from templates per key and hour; 20 open upload links per key. Uploads stay in a hidden session per key, at most 2 GB, 1 GB per hour and 1000 files per key (over a limit the tool answers with an error, a link with `413` or `429`, and a refused link is not used up). They are removed after 7 days; a workflow keeps its own copy of a file it was given. The first bytes of a file have to match its type (png, jpg, webp, gif, mp4, m4a, webm, mp3, wav, aac); an SVG is rasterised. A restart of the app ends open upload links and the reservations of running runs.
+
+**Reverse proxy.** The app checks the key itself, so three paths must be released **without a login in front**: the endpoint `/mcp`, `/mcp/files/` and `/mcp/upload/`. In nginx that is `location = /mcp` and `location ^~ /mcp/`; a plain `location /mcp` would also release `/mcp-ui.js` and every other path that begins with `/mcp`. Everything else keeps the login. For `/mcp/upload/` allow large bodies and do not buffer them (nginx: `client_max_body_size 500m;` and `proxy_request_buffering off;`). Set `PUBLIC_BASE_URL` to the public address of the app, otherwise the dialog and the links show the internal one. Agents send no `Origin` header; requests from a browser page are checked against the whole origin (scheme, host and port): the address in `PUBLIC_BASE_URL` is allowed, further origins go into `MCP_ALLOWED_ORIGINS` (comma-separated; a bare host means `https://host`). Loopback addresses are accepted only on a local installation, without `PUBLIC_BASE_URL` (or with a loopback one), and only on the port of the app itself. The app does not limit wrong keys per IP address (the keys have 256 bits); do that at the proxy if you need it. The paths `/.well-known/oauth-*` are not used (bearer key only); the proxy may answer them with `404`.
+
+Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `test-mcp-tools.js`, `test-mcp-limits.js` (JSON-RPC client over real HTTP against isolated app copies, no paid call) and `test-mcp-ui.js`.
 
 ## Tests
 

@@ -51,7 +51,7 @@ function testHelpPage() {
   assert.deepEqual(ids.en, ids.de, 'en has the same sections as de');
   assert.deepEqual(ids.es, ids.de, 'es has the same sections as de');
   // The parts of the interface the help must cover.
-  for (const id of ['start', 'chat', 'projects', 'context', 'sharing', 'teams', 'budget', 'account', 'nodes', 'presets', 'languages', 'keys', 'settings', 'monitoring']) {
+  for (const id of ['start', 'chat', 'projects', 'context', 'sharing', 'teams', 'budget', 'account', 'nodes', 'presets', 'languages', 'keys', 'settings', 'mcp', 'monitoring']) {
     assert.ok(ids.de.includes(id), `section ${id}`);
   }
   assert.doesNotMatch(page, /ß/, 'Swiss spelling: no sharp s');
