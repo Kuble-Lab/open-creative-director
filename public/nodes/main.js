@@ -2221,6 +2221,18 @@
     return Boolean(dom.overlays.querySelector('.nv-dialog-backdrop, .nv-viewer'));
   }
 
+  // Text the person selected outside the canvas, for example in an answer of the assistant, in the inspector or in a
+  // help text. Copy, cut and delete then belong to that text (the browser copies it), not to the selected nodes. A press
+  // on the canvas ends such a selection again (see the pointerdown listener in boot).
+  function textSelectedOutsideCanvas() {
+    if (!dom || !dom.canvasHost || typeof global.getSelection !== 'function') return false;
+    const selection = global.getSelection();
+    if (!selection || selection.isCollapsed || !String(selection).trim()) return false;
+    const anchor = selection.anchorNode;
+    const element = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
+    return Boolean(element) && !dom.canvasHost.contains(element);
+  }
+
   // "?" or F1: the help popover of the selected node, the keyboard way to the "?" of its card. Needs exactly one node.
   function openSelectedHelp() {
     if (state.selection.nodes.size !== 1) return false;
@@ -2270,8 +2282,10 @@
         event.preventDefault();
         redo();
       } else if (lower === 'c') {
+        if (textSelectedOutsideCanvas()) return; // the browser copies the selected text
         if (copySelection()) event.preventDefault();
       } else if (lower === 'x') {
+        if (textSelectedOutsideCanvas()) return;
         if (hasSelection()) {
           event.preventDefault();
           cutSelection();
@@ -2303,6 +2317,7 @@
     } else if (key === '?' || key === 'F1') {
       if (openSelectedHelp()) event.preventDefault();
     } else if (key === 'Delete' || key === 'Backspace') {
+      if (textSelectedOutsideCanvas()) return;
       event.preventDefault();
       deleteSelection();
     } else if (lower === 'f' || (key === '!' && event.shiftKey) || (event.code === 'Digit1' && event.shiftKey)) {
@@ -2742,6 +2757,10 @@
     });
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
+    // A press on the canvas ends a text selection elsewhere, so copy, cut and delete work on the nodes again.
+    dom.canvasHost.addEventListener('pointerdown', () => {
+      if (textSelectedOutsideCanvas()) global.getSelection().removeAllRanges();
+    }, true);
     global.addEventListener('blur', () => canvas.setSpace(false));
     document.addEventListener('paste', (event) => {
       if (!state.active || !state.workflow || isEditable(event.target) || dialogOpen()) return;
