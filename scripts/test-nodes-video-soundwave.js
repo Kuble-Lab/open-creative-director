@@ -80,10 +80,15 @@ function testGraph() {
   assert.deepEqual(other.outputs[0].maps, ['[out]', '0:a:0'], 'the sound stays the sound of the video');
   assert.deepEqual(other.outputs[0].args, []);
   const silent = build({}, [probeOf(320, 180, { audio: null }), audioOnly()]);
-  assert.match(silent.graph, /^\[1:a:0\]asplit=2\[snd0\]\[src\];\[snd0\]apad\[snd\];\[src\]aformat=channel_layouts=mono,showwaves/);
+  // its sound is cut or padded to the length of the video, without -shortest (ffmpeg 6 stops an endless apad under -shortest)
+  assert.match(silent.graph, /^\[1:a:0\]asplit=2\[snd0\]\[src\];\[snd0\]atrim=end=3,apad=whole_dur=3\[snd\];\[src\]aformat=channel_layouts=mono,showwaves/);
   assert.deepEqual(silent.outputs[0].maps, ['[out]', '[snd]'], 'a video without sound gets the audio input as its sound');
-  assert.deepEqual(silent.outputs[0].args, ['-shortest']);
+  assert.deepEqual(silent.outputs[0].args, []);
   assert.equal(silent.outputs[0].audioCopy, false);
+  // a video of unknown length: padded under -shortest as before
+  const unknown = build({}, [probeOf(320, 180, { audio: null, duration: 0 }), audioOnly()]);
+  assert.match(unknown.graph, /;\[snd0\]apad\[snd\];/);
+  assert.deepEqual(unknown.outputs[0].args, ['-shortest']);
 
   assert.throws(() => build({}, [probeOf(320, 180, { audio: null })]), /no sound/);
   assert.throws(() => build({}, [probeOf(320, 180), { video: null, audio: null }]), /no audio/);
