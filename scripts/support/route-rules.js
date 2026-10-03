@@ -101,6 +101,9 @@ const ROUTE_RULES = {
   'POST /api/sessions/:id/message': 'session',
   'POST /api/sessions/:id/video-model-requests/:requestId': 'session', // the click on a model of the picker card
   'POST /api/sessions/:id/video-model-requests/:requestId/cancel': 'session',
+  'GET /api/sessions/:id/workflow-runs/:requestId': 'session', // the state of a workflow card of the Director
+  'POST /api/sessions/:id/workflow-runs/:requestId': 'session', // the click on "Start" of that card
+  'POST /api/sessions/:id/workflow-runs/:requestId/cancel': 'session',
   'DELETE /api/sessions/:id/video-model-preference': 'session',
   'GET /api/nodes/registry': 'public',
   'GET /api/nodes/options/:source': 'open',
@@ -230,6 +233,9 @@ const PARTICIPANT_RULES = {
   'POST /api/sessions/:id/message': 'same', // plus the budget (402) and no ChatGPT models (403)
   'POST /api/sessions/:id/video-model-requests/:requestId': 'same', // plus the budget (402): an option over what is left is refused
   'POST /api/sessions/:id/video-model-requests/:requestId/cancel': 'same',
+  'GET /api/sessions/:id/workflow-runs/:requestId': 'same',
+  'POST /api/sessions/:id/workflow-runs/:requestId': 'same', // plus the budget (402) and the rules for Higgsfield: the run service decides
+  'POST /api/sessions/:id/workflow-runs/:requestId/cancel': 'same',
   'DELETE /api/sessions/:id/video-model-preference': 'same',
   'GET /api/nodes/registry': 'filtered', // Higgsfield nodes marked as not available
   'GET /api/nodes/options/:source': 'filtered', // Higgsfield sources 403, models without ChatGPT, library voices only

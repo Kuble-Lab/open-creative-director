@@ -420,7 +420,7 @@ async function main() {
       assert.equal(descriptor.cost.unit, 'credits');
     }
 
-    /* ----- Director tool list is unchanged ----- */
+    /* ----- Director tool list: unchanged except for the two workflow tools (WP26) ----- */
     {
       resetMocks();
       patch(rendernode, 'enabled', () => true);
@@ -430,7 +430,7 @@ async function main() {
       assert.deepEqual(names, [
         'generate_image', 'edit_image', 'generate_video', 'generate_speech', 'list_voices', 'import_gts_asset',
         'create_branding', 'update_branding', 'add_branding_asset', 'import_branding_asset', 'create_cast_member',
-        'update_cast_member', 'import_cast_asset', 'save_memory', 'save_project_memory', 'render_motion_graphics',
+        'update_cast_member', 'import_cast_asset', 'save_memory', 'save_project_memory', 'list_workflows', 'run_workflow', 'render_motion_graphics',
         'concat_videos', 'higgsfield_models', 'higgsfield_generate_image', 'higgsfield_generate_video', 'higgsfield_check_balance'
       ]);
       assert.ok(!names.includes('higgsfield_edit'));
