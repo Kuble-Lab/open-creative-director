@@ -61,7 +61,7 @@ async function main() {
 
     await testHelp(A, registry, registryModule);
     testCanvas(A, registry);
-    testProposals(A, registry, typesLib);
+    testProposals(A, registry, typesLib, registryModule);
     testAnswers(A);
     await testRoundTrip(A, registry);
     testLimitAndTexts(A);
@@ -304,7 +304,7 @@ function proposalContext(A, registry, { restricted = false, optionLists = new Ma
   return { registry, canvas, restricted, usable: new Set(descriptors.filter((descriptor) => descriptor.available === true).map((descriptor) => descriptor.type)), optionLists };
 }
 
-function testProposals(A, registry, typesLib) {
+function testProposals(A, registry, typesLib, registryModule) {
   const ctx = (options) => proposalContext(A, registry, options);
   const check = (insert, options) => A.validateProposal(insert, ctx(options));
   const node = (ref, type, params, extra = {}) => ({ ref, type, ...(params ? { params } : {}), ...extra });
@@ -454,10 +454,32 @@ function testProposals(A, registry, typesLib) {
   // a node whose type this server does not know cannot be connected to
   const odd = A.sanitizeCanvas({ nodes: [{ id: 'n1', type: 'future.thing', params: {} }, { id: 'n2', type: 'image.generate', params: {} }], edges: [] });
   assert.deepEqual(codes(check({ nodes: [node('p', 'input.prompt')], edges: [edge(out('p', 'prompt'), old('n1', 'in'))] }, { canvas: odd })), ['unknown_node']);
-  // an output a node never fills with its options (the preview of SAM 3D); the model is chosen from the list the inspector shows
+  // the model is chosen from the list the inspector shows; every model has a preview (SAM 3D too: the app draws it), so the output
+  // takes a connection whichever model is chosen
   const models3d = { optionLists: new Map([['image-to-3d-models', ['tripo_h31', 'hunyuan_pro31', 'meshy_71', 'sam3d_objects'].map((value) => ({ value, label: value }))]]) };
-  assert.deepEqual(codes(check({ nodes: [node('d', 'fal.image_to_3d', { model: 'sam3d_objects' }), node('r', 'image.resize')], edges: [edge(out('d', 'preview'), out('r', 'image'))] }, models3d)), ['output_empty']);
-  assert.deepEqual(check({ nodes: [node('d', 'fal.image_to_3d', { model: 'tripo_h31' }), node('r', 'image.resize')], edges: [edge(out('d', 'preview'), out('r', 'image'))] }, models3d).issues, []);
+  for (const model of ['tripo_h31', 'sam3d_objects']) {
+    assert.deepEqual(check({ nodes: [node('d', 'fal.image_to_3d', { model }), node('r', 'image.resize')], edges: [edge(out('d', 'preview'), out('r', 'image'))] }, models3d).issues, [], model);
+  }
+  // an output a node never fills with its options is refused (the general rule of `emptyOutputs`; no node of the app lists one
+  // today, so a node type of its own in a small registry)
+  const small = registryModule.createRegistry();
+  small.register({
+    type: 't.sparse',
+    category: 'image',
+    outputs: [{ id: 'image', type: 'image' }, { id: 'extra', type: 'image' }],
+    params: [{ id: 'mode', kind: 'select', options: ['full', 'lean'], default: 'full' }],
+    emptyOutputs: (params) => (params.mode === 'lean' ? ['extra'] : []),
+    execute: async () => ({ variants: [{}] })
+  });
+  small.register({ type: 't.sink', category: 'image', inputs: [{ id: 'image', type: 'image', required: true }], outputs: [], execute: async () => ({ variants: [{}] }) });
+  const smallCheck = (mode, port) => A.validateProposal(
+    { nodes: [node('s', 't.sparse', { mode }), node('k', 't.sink')], edges: [edge(out('s', port), out('k', 'image'))] },
+    proposalContext(A, small, { canvas: A.sanitizeCanvas({ nodes: [], edges: [] }) })
+  );
+  assert.deepEqual(codes(smallCheck('lean', 'extra')), ['output_empty']);
+  assert.match(smallCheck('lean', 'extra').issues[0].message, /produces no "extra" with its options/);
+  assert.deepEqual(smallCheck('full', 'extra').issues, []);
+  assert.deepEqual(smallCheck('lean', 'image').issues, [], 'only the output that stays empty is refused');
   // the 3D model fits its own kind and "any", nothing else
   assert.deepEqual(codes(check({ nodes: [node('d', 'fal.image_to_3d'), node('r', 'image.resize')], edges: [edge(out('d', 'model'), out('r', 'image'))] })), ['incompatible']);
   assert.deepEqual(check({ nodes: [node('d', 'fal.image_to_3d'), node('o', 'output.result')], edges: [edge(out('d', 'model'), out('o', 'inputs'))] }).issues, []);

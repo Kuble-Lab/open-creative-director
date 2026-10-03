@@ -170,7 +170,8 @@ async function main() {
         assert.equal(def.category, 'fal', type);
         assert.equal(def.paid, true, type);
         assert.equal(def.async, true, type);
-        assert.equal(def.experimental, true, type);
+        // not verified against the live API, so every fal node carries the badge - except image to 3D: all four models ran live (2026-10-03)
+        assert.equal(def.experimental === true, type !== 'fal.image_to_3d', type);
         assert.equal(def.cost.unit, 'usd', type);
         assert.equal(typeof def.execute, 'function');
         assert.ok(def.timeoutMs > 95 * 60 * 1000, 'longer than the poller timeout of 90 minutes');
