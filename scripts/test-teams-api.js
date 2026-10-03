@@ -1108,12 +1108,12 @@ async function testBudgetTools(ctx) {
   teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
   const speech = await run(PAB, 'generate_speech', { text: 'x'.repeat(1000) });
   assert.match(speech.toolResult, /Sprache erzeugt/);
-  assert.equal(speech.asset.cost, 0.3);
+  assert.equal(speech.asset.cost, 0.08);
   const speechRows = (await costsLib.readCosts()).filter((row) => row.user === PAB && row.type === 'speech');
   assert.equal(speechRows.length, 1);
-  assert.equal(speechRows[0].cost, 0.3);
+  assert.equal(speechRows[0].cost, 0.08);
   assert.match(speechRows[0].model, /^elevenlabs\//);
-  assert.ok(Math.abs((await budgetLib.statusOfEmail(PAB)).spentUsd - 0.3) < 1e-9, 'it counts against the budget');
+  assert.ok(Math.abs((await budgetLib.statusOfEmail(PAB)).spentUsd - 0.08) < 1e-9, 'it counts against the budget');
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   // a small rest does not buy long speech
   await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: chat.id, type: 'image', model: 'm', cost: (await budgetLib.statusOfEmail(PAB)).remainingUsd - 0.01, user: PAB });
@@ -1122,10 +1122,10 @@ async function testBudgetTools(ctx) {
   assert.equal(speechCalls, 1, 'the provider was not called');
   // internal people have no budget, but the estimate is booked for them, too: the cost overview shows what ElevenLabs costs
   const staffSpeech = await run(STAFF, 'generate_speech', { text: 'Hallo' });
-  assert.equal(staffSpeech.asset.cost, 0.0015);
+  assert.equal(staffSpeech.asset.cost, 0.0004);
   const staffRows = (await costsLib.readCosts()).filter((row) => row.user === STAFF && row.type === 'speech');
   assert.equal(staffRows.length, 1);
-  assert.deepEqual([staffRows[0].cost, staffRows[0].billing], [0.0015, 'Schaetzung (Zeichen)']);
+  assert.deepEqual([staffRows[0].cost, staffRows[0].billing], [0.0004, 'Schaetzung (Zeichen)']);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0, 'and nothing is reserved for them');
 
   // music is priced by the minute (ELEVENLABS_MUSIC_USD_PER_MIN, default 0.20): the estimate is reserved before the call,
