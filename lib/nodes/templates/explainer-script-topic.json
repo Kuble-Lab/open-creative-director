@@ -79,6 +79,17 @@
         "params": {
           "label": "Sources"
         }
+      },
+      {
+        "id": "n6",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 360,
+        "title": "What matters most (optional)",
+        "params": {
+          "prompt": ""
+        }
       }
     ],
     "edges": [
@@ -147,6 +158,28 @@
           "node": "n5",
           "port": "inputs"
         }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n6",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n2",
+          "port": "focus"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n6",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n3",
+          "port": "brief"
+        }
       }
     ],
     "groups": [],
@@ -157,7 +190,7 @@
         "y": 420,
         "w": 520,
         "h": 260,
-        "text": "Write the topic. Claude Opus 5.5 searches the web (about 0.7 cent a search plus tokens), writes notes in which every fact has a number, and the planner builds the script from them. All together about 0.30 to 0.50 US dollars for 2 minutes, so the run asks for confirmation first. Use Only these domains in Research the topic to keep to sources you trust. A second pass removes what the research does not say. To change the script, copy the Script result into the field Edited script of Plan explainer video and run that node again: it is only checked and passed on, with no model call and no cost."
+        "text": "Write the topic. Claude Opus 5.5 searches the web (about 0.7 cent a search plus tokens), writes notes in which every fact has a number, and the planner builds the script from them. All together about 0.30 to 0.50 US dollars for 2 minutes, so the run asks for confirmation first. Set the language of the script and of the research to the same value (the research notes are in the language of the research). What matters most goes to the research and to the planner. Use Only these domains in Research the topic to keep to sources you trust. A second pass removes what the research does not say. To change the script, copy the Script result into the field Edited script of Plan explainer video and run that node again: it is only checked and passed on, with no model call and no cost."
       }
     ],
     "viewport": {
@@ -177,14 +210,19 @@
         "label": "Topic"
       },
       {
-        "node": "n3",
-        "param": "brief",
+        "node": "n6",
+        "param": "prompt",
         "label": "What matters most (optional)"
       },
       {
         "node": "n3",
         "param": "language",
-        "label": "Language"
+        "label": "Language of the script"
+      },
+      {
+        "node": "n2",
+        "param": "language",
+        "label": "Language of the research"
       },
       {
         "node": "n3",
@@ -211,17 +249,19 @@
       "node.n2": "Thema recherchieren",
       "node.n3": "Erklärvideo planen",
       "param.n1.prompt": "Wie funktioniert eine Wärmepumpe, und was kostet ihr Betrieb?",
-      "note.t1": "Schreibe das Thema. Claude Opus 5.5 sucht im Web (etwa 0.7 Rappen pro Suche plus Tokens), schreibt Notizen, in denen jede Tatsache eine Nummer trägt, und der Planer baut daraus das Skript. Zusammen etwa 0.30 bis 0.50 US-Dollar für 2 Minuten, deshalb fragt der Lauf vorher um Bestätigung. Mit Nur diese Domains in Thema recherchieren bleibst du bei Quellen, denen du vertraust. Ein zweiter Durchgang entfernt, was die Recherche nicht sagt. Um das Skript zu ändern, kopiere das Ergebnis Skript in das Feld Skript (bearbeitet) von Erklärvideo planen und starte diesen Node erneut: Es wird nur geprüft und weitergegeben, ohne Modellaufruf und ohne Kosten.",
+      "note.t1": "Schreibe das Thema. Claude Opus 5.5 sucht im Web (etwa 0.7 US-Cent pro Suche plus Tokens), schreibt Notizen, in denen jede Tatsache eine Nummer trägt, und der Planer baut daraus das Skript. Zusammen etwa 0.30 bis 0.50 US-Dollar für 2 Minuten, deshalb fragt der Lauf vorher um Bestätigung. Stelle die Sprache des Skripts und die der Recherche auf denselben Wert (die Recherche-Notizen sind in der Sprache der Recherche). Was besonders wichtig ist, geht an die Recherche und an den Planer. Mit Nur diese Domains in Thema recherchieren bleibst du bei Quellen, denen du vertraust. Ein zweiter Durchgang entfernt, was die Recherche nicht sagt. Um das Skript zu ändern, kopiere das Ergebnis Skript in das Feld Skript (bearbeitet) von Erklärvideo planen und starte diesen Node erneut: Es wird nur geprüft und weitergegeben, ohne Modellaufruf und ohne Kosten.",
       "param.n2.language": "de",
       "param.n3.language": "de",
       "app.title": "Erklärvideo: Skript zu einem Thema",
       "app.description": "Nenne ein Thema und wähle Sprache und Länge. Du erhältst das Skript eines Erklärvideos mit Sprechtext, Bildschirmtext und den Quellen.",
       "app.input.n1.prompt": "Thema",
-      "app.input.n3.brief": "Was besonders wichtig ist (optional)",
-      "app.input.n3.language": "Sprache",
+      "app.input.n3.language": "Sprache des Skripts",
       "app.input.n3.length_seconds": "Länge (Sekunden)",
       "app.output.n4": "Skript",
-      "app.output.n5": "Quellen"
+      "app.output.n5": "Quellen",
+      "node.n6": "Was besonders wichtig ist (optional)",
+      "app.input.n6.prompt": "Was besonders wichtig ist (optional)",
+      "app.input.n2.language": "Sprache der Recherche"
     },
     "es": {
       "name": "Vídeo explicativo: guion sobre un tema",
@@ -230,17 +270,19 @@
       "node.n2": "Investigar el tema",
       "node.n3": "Planificar vídeo explicativo",
       "param.n1.prompt": "¿Cómo funciona una bomba de calor y cuánto cuesta usarla?",
-      "note.t1": "Escribe el tema. Claude Opus 5.5 busca en la web (unos 0,7 céntimos por búsqueda más tokens), escribe notas en las que cada hecho lleva un número y el planificador construye el guion con ellas. En total unos 0,30 a 0,50 dólares para 2 minutos, por eso la ejecución pide antes que lo confirmes. Con Solo estos dominios en Investigar el tema te quedas con fuentes de confianza. Una segunda pasada elimina lo que la investigación no dice. Para cambiar el guion, copia el resultado Guion en el campo Guion (editado) de Planificar vídeo explicativo y ejecuta ese nodo de nuevo: solo se comprueba y se pasa, sin llamada al modelo y sin coste.",
+      "note.t1": "Escribe el tema. Claude Opus 5.5 busca en la web (unos 0,7 céntimos por búsqueda más tokens), escribe notas en las que cada hecho lleva un número y el planificador construye el guion con ellas. En total unos 0,30 a 0,50 dólares para 2 minutos, por eso la ejecución pide antes que lo confirmes. Pon el idioma del guion y el de la investigación en el mismo valor (las notas de la investigación están en el idioma de la investigación). Lo que más importa llega a la investigación y al planificador. Con Solo estos dominios en Investigar el tema te quedas con fuentes de confianza. Una segunda pasada elimina lo que la investigación no dice. Para cambiar el guion, copia el resultado Guion en el campo Guion (editado) de Planificar vídeo explicativo y ejecuta ese nodo de nuevo: solo se comprueba y se pasa, sin llamada al modelo y sin coste.",
       "param.n2.language": "es",
       "param.n3.language": "es",
       "app.title": "Vídeo explicativo: guion sobre un tema",
       "app.description": "Indica un tema y elige el idioma y la duración. Obtienes el guion de un vídeo explicativo con narración, texto en pantalla y las fuentes.",
       "app.input.n1.prompt": "Tema",
-      "app.input.n3.brief": "Lo que más importa (opcional)",
-      "app.input.n3.language": "Idioma",
+      "app.input.n3.language": "Idioma del guion",
       "app.input.n3.length_seconds": "Duración (segundos)",
       "app.output.n4": "Guion",
-      "app.output.n5": "Fuentes"
+      "app.output.n5": "Fuentes",
+      "node.n6": "Lo que más importa (opcional)",
+      "app.input.n6.prompt": "Lo que más importa (opcional)",
+      "app.input.n2.language": "Idioma de la investigación"
     }
   }
 }

@@ -330,6 +330,15 @@ async function run(iso) {
       assert.ok(err && /broken\.pdf/.test(err.message), err && err.message);
       assert.equal(err.code, 'DOCUMENT_UNREADABLE');
     }
+    // a file that is gone from the disk: the message names the file, never the folder on the server
+    {
+      const missingFile = path.join(dir, 'server-folder', 'secret-session', 'gone.pdf');
+      const err = await errorOf(documents.readDocument(missingFile, { ext: '.pdf', name: 'gone.pdf' }));
+      assert.equal(err && err.code, 'DOCUMENT_UNREADABLE');
+      assert.match(err.message, /gone\.pdf/);
+      assert.ok(!err.message.includes('secret-session') && !err.message.includes(dir), err.message);
+      assert.ok(!String(err.detail).includes('secret-session'));
+    }
   }
 
   // poppler missing: the node says so before it runs, and a run refuses the PDF with the same words

@@ -1295,7 +1295,7 @@
       // then generators before editors before helpers, models last, the rest alphabetical.
       const pa = a.entry.type === PROMPT_TYPE ? 0 : 1;
       const pb = b.entry.type === PROMPT_TYPE ? 0 : 1;
-      return ca - cb || pa - pb || b.lead - a.lead || a.usable - b.usable || a.role - b.role || a.model - b.model || a.entry.label.localeCompare(b.entry.label);
+      return ca - cb || pa - pb || a.usable - b.usable || b.lead - a.lead || a.role - b.role || a.model - b.model || a.entry.label.localeCompare(b.entry.label);
     });
     const out = [];
     let nodes = 0;

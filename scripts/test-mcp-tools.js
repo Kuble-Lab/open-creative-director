@@ -569,6 +569,18 @@ async function run(iso, holder) {
   const svg = await ok(starter.secret, 'upload_asset', { filename: 'logo.svg', data_base64: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32" fill="#d8a25f"/></svg>').toString('base64') });
   assert.equal(svg.type, 'image');
   assert.match(svg.note, /PNG/);
+  // documents: PDF and text go in, a ".pdf" that is no PDF is told what is wrong, a document has its own limit
+  const pdfUpload = await ok(starter.secret, 'upload_asset', { filename: 'report.pdf', data_base64: Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n').toString('base64') });
+  assert.equal(pdfUpload.type, 'document');
+  const textUpload = await ok(starter.secret, 'upload_asset', { filename: 'notes.md', data_base64: Buffer.from('# Notes\n\nHello').toString('base64') });
+  assert.equal(textUpload.type, 'document');
+  const fakePdf = await refused(starter.secret, 'upload_asset', { filename: 'fake.pdf', data_base64: Buffer.from('this is not a pdf').toString('base64') }, /cannot be used as a document: The file is not a PDF/);
+  assert.doesNotMatch(fakePdf, /image, video or audio/);
+  const docLink = await ok(starter.secret, 'upload_asset', { filename: 'big.pdf', size_bytes: 1000 });
+  assert.equal(docLink.max_bytes, 50 * 1024 * 1024, 'a document is at most 50 MB');
+  const uploadTool = startList.find((tool) => tool.name === 'upload_asset');
+  assert.match(uploadTool.description, /pdf, txt, md/);
+  assert.match(uploadTool.description, /50 MB/);
   // wrong type, not base64, empty, nothing known
   await refused(starter.secret, 'upload_asset', { filename: 'run.exe', data_base64: Buffer.from('MZ').toString('base64') }, /Unsupported file type/);
   await refused(starter.secret, 'upload_asset', { filename: 'doc.docx', mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, /Unsupported file type/); // a PDF is a document since WP37a
@@ -610,6 +622,16 @@ async function run(iso, holder) {
   const again = await put(link2.upload_url, video);
   assert.equal(again.status, 410, 'the link works once');
   assert.equal((await again.json()).error, 'upload_link_used');
+  // a document through the link: a PDF is taken, a ".pdf" with other content is refused with the reason
+  const pdfLink = await ok(starter.secret, 'upload_asset', { filename: 'paper.pdf' });
+  const pdfSent = await put(pdfLink.upload_url, Buffer.from('%PDF-1.4\n%%EOF\n'));
+  assert.equal(pdfSent.status, 201);
+  assert.equal((await pdfSent.json()).type, 'document');
+  const badLink = await ok(starter.secret, 'upload_asset', { filename: 'paper2.pdf' });
+  const badSent = await put(badLink.upload_url, Buffer.from('<html>no pdf</html>'));
+  assert.equal(badSent.status, 415);
+  const badBody = await badSent.json();
+  assert.match(badBody.message, /cannot be used as a document: The file is not a PDF/);
   // expired, unknown
   const link3 = await ok(starter.secret, 'upload_asset', { filename: 'sound.mp3' });
   clock.t += 15 * 60 * 1000 + 1000;

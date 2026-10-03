@@ -206,6 +206,7 @@ async function run(iso) {
   const researchDef = real.get('llm.research');
   assert.equal(researchDef.category, 'llm');
   assert.equal(researchDef.paid, true);
+  assert.deepEqual(researchDef.cost, { unit: 'usd', history: false, estimate: null }, 'no guess from an earlier run: the search decides the price');
   assert.deepEqual(researchDef.inputs.map((port) => [port.id, port.type, Boolean(port.required), port.param || null]), [['topic', 'text', true, 'topic'], ['focus', 'text', false, 'focus']]);
   assert.deepEqual(researchDef.outputs.map((port) => [port.id, port.type]), [['notes', 'text'], ['sources', 'text']]);
   const rp = (id) => researchDef.params.find((param) => param.id === id);
@@ -357,6 +358,32 @@ async function run(iso) {
     assert.deepEqual(calls.at(-1).options.restrictedModels, ['vendor/allowed']);
     await exec('explainer.plan', makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed'], defaultBrain: 'vendor/allowed' } }), { text: text(DOCUMENT_TEXT) }, { language: 'de', verify: false });
     assert.equal(calls.at(-1).options.model, 'vendor/allowed');
+
+    // only the ChatGPT subscription is connected (no OpenRouter key): the default of the app, not Opus, and the log says so
+    {
+      const keyOn = or.hasKey;
+      or.hasKey = () => false;
+      try {
+        const subscription = makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } });
+        assert.equal(explainerNodes.chooseModel(subscription, { model: '' }), 'chatgpt/gpt-5.6-sol');
+        assert.equal(subscription.logs.length, 1);
+        assert.match(subscription.logs[0], /OPENROUTER_API_KEY is not set, so anthropic\/claude-opus-5\.5 cannot be used: chatgpt\/gpt-5\.6-sol is used instead/);
+        // a model named by hand is not touched
+        assert.equal(explainerNodes.chooseModel(makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } }), { model: 'vendor/x' }), 'vendor/x');
+        // without any default: Opus, and the call fails with the message of the provider
+        assert.equal(explainerNodes.chooseModel(makeCtx({ config: { defaultBrain: '' } }), { model: '' }), 'anthropic/claude-opus-5.5');
+        // through the nodes
+        reset();
+        const viaCtx = makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } });
+        await exec('explainer.plan', viaCtx, { text: text(DOCUMENT_TEXT) }, { language: 'de', verify: false });
+        assert.equal(calls[0].options.model, 'chatgpt/gpt-5.6-sol');
+        assert.ok(viaCtx.logs.some((line) => /OPENROUTER_API_KEY is not set/.test(line)));
+        // the price of the default of the app is not known
+        assert.equal(real.get('explainer.plan').cost.estimate(real.normalizeParams(real.get('explainer.plan'), {}), { config: {}, inputs: { text: text('x') }, connected: new Set(['text']) }), null);
+      } finally {
+        or.hasKey = keyOn;
+      }
+    }
 
     // a model chosen by hand that is not on their list is refused as before (the real adapter decides)
     await withRealAdapter(async () => {
@@ -516,7 +543,9 @@ async function run(iso) {
     assert.equal(script.language, 'de');
     assert.equal(script.scenes.length, 13);
     assert.equal(out.narration.type, 'list');
-    assert.equal(out.narration.items.length, 12);
+    assert.equal(out.narration.items.length, 13, 'one entry for every scene');
+    assert.equal(out.narration.items.at(-1).value, '', 'the sources card is silent');
+    assert.equal(out.narration.items.length, out.briefs.items.length);
     assert.equal(out.narration.items[0].type, 'text');
     assert.equal(out.briefs.items.length, 13);
     assert.deepEqual(out.image_prompts.items, []);
@@ -524,12 +553,12 @@ async function run(iso) {
     assert.deepEqual(out.presenter.items, []);
     const shots = jsonOf(out.shots);
     assert.equal(shots.scenes.length, 13);
-    assert.equal(shots.counts.narration, 12);
+    assert.equal(shots.counts.narration, 13);
     assert.equal(out.sources.value, 'S. 1 — bericht\nS. 2 — bericht\nS. 3 — bericht');
     assert.ok(ctx.logs.some((line) => /Checked against the sources: 0 statements removed, 0 softened/.test(line)));
     assert.ok(ctx.logs.some((line) => /13 scenes, about \d+(\.\d)? s, 0 stills, 0 clips, verified/.test(line)));
     // the list ports are what the next nodes take
-    assert.deepEqual(out.narration.items.map((item) => item.value), jsonOf(out.script).scenes.filter((item) => item.narration).map((item) => item.narration));
+    assert.deepEqual(out.narration.items.map((item) => item.value), jsonOf(out.script).scenes.map((item) => item.narration));
   }
 
   // a model without file support, and the subscription: the text alone, and the log says so
@@ -556,6 +585,16 @@ async function run(iso) {
     const large = await planWith({ documents: listValue('document', [big]), text: text(DOCUMENT_TEXT) }, { verify: false });
     assert.deepEqual(calls[0].options.files, []);
     assert.ok(large.ctx.logs.some((line) => /Not sent as files \(too large\): huge\.pdf: 400 pages/.test(line)));
+    // the files travel as base64 (a third larger): 23 MB of PDF would be over the 32 MB of a request
+    reset();
+    const heavy = await asset(Buffer.concat([makePdf(['x']), Buffer.alloc(23 * 1024 * 1024)]), '.pdf', 'scans.pdf', { pages: 40 });
+    const tooHeavy = await planWith({ documents: listValue('document', [heavy]), text: text(DOCUMENT_TEXT) }, { verify: false });
+    assert.deepEqual(calls[0].options.files, []);
+    assert.ok(tooHeavy.ctx.logs.some((line) => /Not sent as files \(too large\): scans\.pdf: 23 MB/.test(line)));
+    reset();
+    const fine = await asset(Buffer.concat([makePdf(['x']), Buffer.alloc(20 * 1024 * 1024)]), '.pdf', 'fine.pdf', { pages: 40 });
+    await planWith({ documents: listValue('document', [fine]), text: text(DOCUMENT_TEXT) }, { verify: false });
+    assert.equal(calls[0].options.files.length, 1, '20 MB of PDF go along (about 27 MB on the wire)');
   }
 
   // one repair: a scene is too long
@@ -640,6 +679,50 @@ async function run(iso) {
     assert.equal(jsonOf(unreadable.out.script).verified, false);
     assert.equal(jsonOf(unreadable.out.script).scenes.length, 13);
     assert.ok(unreadable.ctx.logs.some((line) => /The check pass could not be read/.test(line)));
+    // a check that answers for some scenes only: not verified, the skipped scenes are named, the problem is logged
+    reset();
+    answers.verify.push((options) => {
+      const base = JSON.parse(/Script to check:\n([\s\S]*?)\n\n<data/.exec(options.prompt)[1]);
+      return { scenes: base.scenes.slice(0, 5).map((item) => ({ id: item.id, narration: item.narration, bullets: item.on_screen.bullets, numbers: item.on_screen.numbers, quote_ok: true, issues: [] })) };
+    });
+    const partial = await planWith({ text: text(DOCUMENT_TEXT) }, {});
+    const partialScript = jsonOf(partial.out.script);
+    assert.equal(partialScript.verified, false);
+    assert.deepEqual(partialScript.unverified_scenes, ['s6', 's7', 's8', 's9', 's10', 's11', 's12']);
+    assert.ok(partial.ctx.logs.some((line) => /The check pass is incomplete: Scene s6 was not checked\./.test(line)), partial.ctx.logs.join('|'));
+    assert.ok(partial.ctx.logs.some((line) => /not checked: s6, s7/.test(line)));
+    assert.ok(!partial.ctx.logs.some((line) => /scenes, about .*verified$/.test(line)));
+    // a check that wipes out every scene: the script is kept, unverified, and the log says so
+    reset();
+    answers.verify.push((options) => {
+      const base = JSON.parse(/Script to check:\n([\s\S]*?)\n\n<data/.exec(options.prompt)[1]);
+      return { scenes: base.scenes.map((item) => ({ id: item.id, narration: '', bullets: [], numbers: [], quote_ok: true, issues: [{ claim: 'all', verdict: 'removed', reason: 'x' }] })) };
+    });
+    const wiped = await planWith({ text: text(DOCUMENT_TEXT) }, {});
+    const wipedScript = jsonOf(wiped.out.script);
+    assert.equal(wipedScript.verified, false);
+    assert.equal(wipedScript.scenes.length, 13, 'the planned script is kept');
+    assert.deepEqual(wipedScript.removed_claims, []);
+    assert.equal(wiped.out.narration.items.length, 13);
+    assert.ok(wiped.ctx.logs.some((line) => /The check pass was not applied: The check would leave 0 of 12 scenes/.test(line)), wiped.ctx.logs.join('|'));
+    assert.ok(Math.abs(wiped.result.cost.usd - (USD.plan + USD.verify)) < 1e-9, 'both calls are paid');
+    // a verified script that is fed back: verified only while the text is the one that was checked
+    reset();
+    const checkedRun = await planWith({ text: text(DOCUMENT_TEXT) }, {});
+    const checkedScript = jsonOf(checkedRun.out.script);
+    assert.equal(checkedScript.verified, true);
+    reset();
+    const unchanged = await planWith({ text: text(DOCUMENT_TEXT) }, { script: JSON.stringify(checkedScript) });
+    assert.equal(calls.length, 0);
+    assert.equal(jsonOf(unchanged.out.script).verified, true);
+    assert.ok(!unchanged.ctx.logs.some((line) => /edited after the check/.test(line)));
+    const changedScript = JSON.parse(JSON.stringify(checkedScript));
+    changedScript.scenes[2].narration += ' Und eine neue Behauptung ohne Beleg';
+    const changed = await planWith({ text: text(DOCUMENT_TEXT) }, { script: JSON.stringify(changedScript) });
+    assert.equal(calls.length, 0);
+    assert.equal(jsonOf(changed.out.script).verified, false);
+    assert.ok(changed.ctx.logs.some((line) => /edited after the check against the sources: it is not verified any more/.test(line)));
+    assert.ok(!changed.ctx.logs.some((line) => /scenes, about .*verified$/.test(line)));
     // the check pass fails: the plan is not lost, only unverified
     reset();
     answers.verify.push(new Error('provider down'));
@@ -681,7 +764,7 @@ async function run(iso) {
     assert.match(calls[0].options.system, /a numbered source of the research: "\[n\]"/);
     const script = jsonOf(research.out.script);
     assert.deepEqual(script.sources.map((source) => [source.ref, source.title, source.url]), [['[1]', 'Agency report', 'https://example.org/a'], ['[2]', 'Paper', 'https://example.org/b']]);
-    assert.equal(research.out.sources.value, '[1] Agency report — https://example.org/a\n[2] Paper — https://example.org/b');
+    assert.equal(research.out.sources.value, '[1] Agency report — https://example.org/a (retrieved 2026-10-03)\n[2] Paper — https://example.org/b (retrieved 2026-10-03)', 'the day of the research stays with the sources');
     assert.deepEqual(calls.map((call) => call.kind), ['plan', 'verify'], 'research notes are material: the statements are checked');
     assert.match(calls[1].options.prompt, /research-notes/);
   }
@@ -789,7 +872,7 @@ async function run(iso) {
     assert.equal(script.scenes[1].est_seconds, planLib.secondsFor(narrationOf(2, 20), 'de'));
     assert.ok(second.ctx.logs.some((line) => /checked and used: no model call, no cost/.test(line)));
     for (const item of script.scenes.filter((entry) => entry.role !== 'sources')) for (const element of item.elements) assert.ok(planLib.anchorIn(element.anchor, item.narration));
-    assert.equal(second.out.narration.items.length, 12);
+    assert.equal(second.out.narration.items.length, 13);
     // it works without any other input
     const alone = await planWith({}, { script: JSON.stringify(edited) });
     assert.equal(calls.length, 0);

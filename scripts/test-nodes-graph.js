@@ -649,6 +649,21 @@ function testQuickPick() {
   assert.ok(!rank('out', 'video').some((entry) => entry.type === 'image.crop'));
   // category chips still narrow the quick pick
   assert.ok(rank('in', 'text', { category: 'llm' }).every((entry) => entry.category === 'llm'));
+  // the lead of a first output only decides between nodes that are equally usable: a node that cannot run here
+  // does not move ahead of one that can
+  {
+    const fake = JSON.parse(JSON.stringify(payload));
+    const base = { category: 'input', params: [], inputs: [], keywords: [] };
+    fake.nodeTypes.push(
+      { ...base, type: 'test.side', label: 'Side image', available: true, outputs: [{ id: 'text', type: 'text' }, { id: 'image', type: 'image' }] },
+      { ...base, type: 'test.lead', label: 'Lead image', available: 'not set up', outputs: [{ id: 'image', type: 'image' }] },
+      { ...base, type: 'test.lead_ok', label: 'Lead image ready', available: true, outputs: [{ id: 'image', type: 'image' }] }
+    );
+    const fakeReg = graphLib.indexRegistry(fake);
+    const fakeEntries = fakeReg.list.filter((def) => def.type.startsWith('test.')).map((def) => ({ key: def.type, type: def.type, category: def.category, label: def.label, search: def.label }));
+    const order = graphLib.rankPaletteEntries(fakeReg, fakeEntries, { filter: { dir: 'in', type: 'image' } }).map((entry) => entry.type);
+    assert.deepEqual(order, ['test.lead_ok', 'test.side', 'test.lead'], 'usable first, then the lead, then the rest');
+  }
   // pure targets used by the ranking
   const targets = graphLib.quickPickTargets(reg, 'in', 'text');
   assert.equal(targets[0].type, 'input.prompt');

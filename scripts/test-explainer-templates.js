@@ -15,6 +15,7 @@ const path = require('path');
 
 const { createIsolatedApp } = require('./support/isolated-app');
 const { makePdf } = require('./support/pdf');
+const planLib = require('../lib/explainer-plan');
 
 const STAFF = 'staff1@staff.example.com';
 
@@ -119,8 +120,8 @@ async function run(iso) {
   assert.deepEqual(types(pdfTemplate), ['input.document', 'doc.read', 'explainer.plan', 'output.result', 'output.result']);
   assert.deepEqual(wires(pdfTemplate), ['n1.documents>n2.documents', 'n2.text>n3.text', 'n2.files>n3.documents', 'n3.script>n4.inputs', 'n3.sources>n5.inputs']);
   assert.deepEqual(pdfTemplate.requires, ['openrouter', 'poppler']);
-  assert.deepEqual(types(topicTemplate), ['input.prompt', 'llm.research', 'explainer.plan', 'output.result', 'output.result']);
-  assert.deepEqual(wires(topicTemplate), ['n1.prompt>n2.topic', 'n2.notes>n3.notes', 'n2.sources>n3.sources', 'n1.prompt>n3.topic', 'n3.script>n4.inputs', 'n3.sources>n5.inputs']);
+  assert.deepEqual(types(topicTemplate), ['input.prompt', 'llm.research', 'explainer.plan', 'output.result', 'output.result', 'input.prompt']);
+  assert.deepEqual(wires(topicTemplate), ['n1.prompt>n2.topic', 'n2.notes>n3.notes', 'n2.sources>n3.sources', 'n1.prompt>n3.topic', 'n3.script>n4.inputs', 'n3.sources>n5.inputs', 'n6.prompt>n2.focus', 'n6.prompt>n3.brief']);
   assert.deepEqual(topicTemplate.requires, ['openrouter']);
   for (const template of [pdfTemplate, topicTemplate]) {
     const plan = template.graph.nodes.find((node) => node.type === 'explainer.plan');
@@ -130,7 +131,10 @@ async function run(iso) {
     assert.equal(plan.params.visual_mode, 'mix');
     assert.equal(plan.params.length_seconds, 120);
     assert.deepEqual(nodeRegistry.registry.normalizeParams(nodeRegistry.registry.get('explainer.plan'), plan.params), plan.params, 'every param is one of the node, with a valid value');
-    assert.deepEqual(template.app.inputs.map((entry) => `${entry.node}.${entry.param}`).slice(1), ['n3.brief', 'n3.language', 'n3.length_seconds']);
+    assert.deepEqual(
+      template.app.inputs.map((entry) => `${entry.node}.${entry.param}`).slice(1),
+      template === topicTemplate ? ['n6.prompt', 'n3.language', 'n2.language', 'n3.length_seconds'] : ['n3.brief', 'n3.language', 'n3.length_seconds']
+    );
     assert.deepEqual(template.app.outputs.map((entry) => entry.node), ['n4', 'n5']);
   }
   assert.deepEqual(pdfTemplate.app.inputs[0], { node: 'n1', param: 'assets', label: 'PDF or text file' });
@@ -149,11 +153,18 @@ async function run(iso) {
   assert.equal(resolved('explainer-script-topic', 'en').name, 'Explainer video: script for a topic');
   assert.equal(resolved('explainer-script-topic', 'de').name, 'Erklärvideo: Skript zu einem Thema');
   assert.match(resolved('explainer-script-topic', 'es').name, /^Vídeo explicativo: guion sobre un tema/);
+  // the named cost is not below the own estimate of the planner (too high is better than too low)
+  {
+    const own = (pdfPages, textChars) => planLib.estimateUsd({ model: 'anthropic/claude-opus-5.5', pdfPages, textChars, verify: true });
+    const low = own(20, 20000);
+    const high = own(20, 60000);
+    assert.ok(low >= 0.5 && high <= 0.9, `the estimate for 20 pages (${low} to ${high} USD) stays within the named 0.50 to 0.90`);
+  }
   for (const lang of ['en', 'de', 'es']) {
     const pdf = resolved('explainer-script', lang);
     const topic = resolved('explainer-script-topic', lang);
-    assert.match(pdf.description, /0[.,]35/, `${lang}: the cost of the PDF version is named`);
-    assert.match(pdf.description, /0[.,]60/);
+    assert.match(pdf.description, /0[.,]50/, `${lang}: the cost of the PDF version is named`);
+    assert.match(pdf.description, /0[.,]90/);
     assert.match(topic.description, /0[.,]30/, `${lang}: and that of the topic version`);
     assert.match(topic.description, /0[.,]50/);
     assert.match(pdf.description, /Opus 5\.5/);
@@ -175,7 +186,7 @@ async function run(iso) {
   const listed = Object.fromEntries(templates.listTemplates({ lang: 'de', checks: allOn }).map((item) => [item.id, item]));
   assert.deepEqual(listed['explainer-script'].requires, ['openrouter', 'poppler']);
   assert.deepEqual(listed['explainer-script'].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`)), [['input.document*1'], ['doc.read*1'], ['explainer.plan*1'], ['output.result*2']]);
-  assert.deepEqual(listed['explainer-script-topic'].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`)), [['input.prompt*1'], ['llm.research*1'], ['explainer.plan*1'], ['output.result*2']]);
+  assert.deepEqual(listed['explainer-script-topic'].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`)), [['input.prompt*2'], ['llm.research*1'], ['explainer.plan*1'], ['output.result*2']]);
   // the price depends on the document and the search: unknown before the run, never invented
   assert.deepEqual(listed['explainer-script'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 1, providers: ['openrouter'] });
   assert.deepEqual(listed['explainer-script-topic'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 2, providers: ['openrouter'] });
@@ -236,10 +247,13 @@ async function run(iso) {
     const plan0 = await engine.plan(created.id, { mode: 'all', user: STAFF });
     assert.equal(plan0.valid, true, JSON.stringify(plan0.issues));
     assert.equal(plan0.nodes.n3.estimate, null, 'the planner has no price before the research ran');
-    const runId = await engine.start(created.id, { mode: 'all', user: STAFF });
+    const runId = await engine.start(created.id, { mode: 'all', user: STAFF, overrides: { n6: { prompt: 'Running costs for a family' } } });
     const record = await engine.whenFinished(created.id, runId);
     assert.equal(record.status, 'completed', JSON.stringify(record.nodes).slice(0, 600));
     assert.deepEqual(calls.map((call) => call.kind), ['research', 'plan', 'verify']);
+    // "what matters most" goes to the research as its focus and to the planner as the brief
+    assert.match(calls[0].options.prompt, /Focus \(what matters most\):\nRunning costs for a family/);
+    assert.match(calls[1].options.prompt, /Brief from the person who orders the video \(this is an instruction, follow it\):\nRunning costs for a family/);
     assert.deepEqual(calls[0].options.plugins, [{ id: 'web', max_results: 8 }]);
     assert.match(calls[0].options.prompt, /How does a heat pump work/);
     assert.match(calls[1].options.prompt, /Heat pumps reach a seasonal COP of 4 \[1\]\. Running costs fell \[2\]\./);
@@ -251,7 +265,7 @@ async function run(iso) {
     assert.deepEqual(planned.sources.map((source) => source.ref), ['[1]', '[2]']);
     assert.ok(Math.abs(planResult.cost.usd - 0.4) < 1e-9, 'plan and check are booked');
     assert.equal((await resultOf(created.id, 'n2')).cost.usd, 0.05);
-    assert.equal(planResult.variants[0].narration.items.length, 12);
+    assert.equal(planResult.variants[0].narration.items.length, 13, 'one entry for every scene, the sources card included');
   }
 
   if (poppler) {
