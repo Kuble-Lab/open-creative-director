@@ -1,0 +1,633 @@
+'use strict';
+
+// The cut of an explainer video (WP37b): lib/explainer-edit.js (pure) and the node "Cut explainer video" (explainer.edit) with the real
+// ffmpeg on made-up media: scenes of one colour each, voices that are one tone each (so that a voice can be found in the film by its
+// pitch), music that is another tone.
+//   - the timeline in whole frames, the shot list, the sound graph, the merged word times, the SRT, the length note (pure)
+//   - the voices stand exactly at the start of their scene: cut and crossfade, 12 scenes (cut in batches), no drift
+//   - the crossfade shortens the film by the overlap and the picture fades while the voice of the next scene begins
+//   - the subtitle file and the captions JSON are in the times of the film (shifted by the start of every scene)
+//   - music: quiet and loud, looped under a long film, lowered under the voice (and not lowered without ducking), the voice is not touched
+//   - intro and outro (hard cut, their own sound), clips of the shots (trimmed, slowed down, held), 16:9 and 9:16
+//   - the length against the target (a warning above 15 %), the codes of the errors, no scratch folders left behind
+//   - the caption script reaches the encoder once, shifted (with a stand-in for libass where the ffmpeg has none)
+// A private copy of the app runs in a temp directory; nothing is paid, nothing leaves the machine. Skipped when ffmpeg is missing.
+
+const assert = require('assert/strict');
+const fsp = require('fs/promises');
+const path = require('path');
+
+const { createIsolatedApp } = require('./support/isolated-app');
+const { createAssStandIn } = require('./support/fake-ffmpeg');
+const { parseAss } = require('./support/ass-reader');
+const { toneWav, amplitudeAt, onsetOf, endOf, createMedia } = require('./support/explainer-media');
+
+const STAFF = 'staff1@staff.example.com';
+const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
+const errorOf = async (promise) => {
+  try {
+    await promise;
+  } catch (err) {
+    return err;
+  }
+  return null;
+};
+
+const restorers = [];
+function restoreAll() {
+  while (restorers.length) restorers.pop()();
+}
+
+/* ---------- the pure part ---------- */
+
+function testPure({ editLib, cuesLib, musicEdit }) {
+  // the timeline: the scenes one after the other, under a crossfade the next one fades in over the end of the one before
+  const cut = editLib.planTimeline({ durations: [2.4, 1.9, 2.9], fps: 30, transition: 'cut' });
+  assert.deepEqual(cut.frames, [72, 57, 87]);
+  assert.deepEqual(cut.owns, [72, 57, 87]);
+  assert.deepEqual(cut.starts, [0, 72, 129]);
+  assert.equal(cut.totalFrames, 216);
+  assert.equal(cut.total, 7.2);
+  assert.equal(cut.overlap, 0);
+  const fade = editLib.planTimeline({ durations: [2.4, 1.9, 2.9], fps: 30, transition: 'crossfade' });
+  assert.equal(fade.overlap, 8, 'a quarter second is 8 frames at 30 fps (7.5 rounded)');
+  assert.deepEqual(fade.fades, [0, 8, 8]);
+  assert.deepEqual(fade.owns, [64, 49, 87], 'what a scene keeps until the next one begins');
+  assert.deepEqual(fade.starts, [0, 64, 113]);
+  assert.equal(fade.totalFrames, 200);
+  assert.equal(fade.totalFrames, fade.frames.reduce((sum, value) => sum + value, 0) - 16, 'the film is as much shorter as the fades overlap');
+  // hard cuts (next to the person on camera): one frame of fade only
+  const hard = editLib.planTimeline({ durations: [2, 2.4, 1.9, 1.5], hardCuts: [false, true, false, true], fps: 30, transition: 'crossfade' });
+  assert.deepEqual(hard.fades, [0, 1, 8, 1]);
+  assert.equal(hard.totalFrames, 60 + 72 + 57 + 45 - 10);
+  // a very short shot never fades longer than it lasts
+  const short = editLib.planTimeline({ durations: [1, 0.1, 1], fps: 30, transition: 'crossfade' });
+  assert.ok(short.owns.every((frames) => frames >= 1), JSON.stringify(short.owns));
+  assert.equal(short.starts[2] + short.owns[2], short.totalFrames);
+  assert.throws(() => editLib.planTimeline({ durations: [] }), /no scenes/);
+  // the shot list says the same thing, in seconds, for buildEditPlan: its frames are those of the timeline
+  const shots = editLib.shotsOf({ timeline: hard, kinds: ['person', 'motion', 'clip', 'person'], aspectRatio: '16:9', hardCuts: [false, true, false, true], fits: ['pad', null, 'crop', 'pad'] });
+  assert.equal(shots.aspect_ratio, '16:9');
+  assert.deepEqual(shots.shots.map((shot) => shot.kind), ['performance', 'performance', 'story', 'performance'], 'only a generated clip may be slowed down');
+  assert.deepEqual(shots.shots.map((shot) => shot.fit || null), ['pad', null, 'crop', 'pad']);
+  assert.deepEqual(shots.shots.map((shot) => Boolean(shot.hardCut)), [false, true, false, true]);
+  for (const kind of ['cut', 'crossfade']) {
+    const timeline = editLib.planTimeline({ durations: [2.4, 1.9, 2.9, 2.0], hardCuts: [false, false, false, true], fps: 30, transition: kind });
+    const plan = musicEdit.buildEditPlan({
+      shots: editLib.shotsOf({ timeline, kinds: ['motion', 'motion', 'motion', 'person'], aspectRatio: '16:9', hardCuts: [false, false, false, true] }),
+      order: [1, 2, 3, 4],
+      infos: [{ audio: true, video: false, duration: 20 }, ...[2.4, 1.9, 2.9, 2.0].map((duration) => ({ video: true, audio: false, duration, width: 160, height: 90 }))],
+      params: { transition: kind, resolution: '720p', fps: 30, fit: 'crop', fade_out: 0 }
+    });
+    assert.equal(plan.frames, timeline.totalFrames, `${kind}: the picture and the sound plan have the same number of frames`);
+    near(plan.seconds, timeline.total, 1e-9);
+    assert.deepEqual(plan.summary.map((entry) => entry.frames), timeline.owns, `${kind}: every shot has the frames the sound gave it`);
+  }
+
+  // the sound
+  const sound = editLib.soundtrackArgs({
+    voices: [{ file: '/v/a.mp3' }, { file: null }, { file: '/v/c.mp3' }],
+    music: { file: '/m.mp3', level: 0.25, duck: true },
+    timeline: cut,
+    outputFile: '/out.wav'
+  });
+  assert.deepEqual(sound.inputs, ['/v/a.mp3', '/v/c.mp3', '/m.mp3']);
+  const perFrame = 48000 / 30;
+  assert.ok(sound.graph.includes(`atrim=end_sample=${72 * perFrame},asetpts=PTS-STARTPTS,apad=whole_len=${72 * perFrame}[s0]`), 'every voice is cut or padded to the frames of its scene');
+  assert.ok(sound.graph.includes(`anullsrc=channel_layout=stereo:sample_rate=48000,atrim=end_sample=${57 * perFrame}`), 'a scene without a voice is silence of the same length');
+  assert.ok(sound.graph.includes('concat=n=3:v=0:a=1[voice]'));
+  assert.ok(sound.graph.includes('sidechaincompress') && sound.graph.includes('asplit=2'));
+  assert.ok(sound.graph.includes('alimiter'));
+  assert.ok(sound.argv.join(' ').includes('-stream_loop -1 -i /m.mp3'), 'the music loops');
+  assert.equal(sound.argv[sound.argv.length - 1], '/out.wav');
+  const plain = editLib.soundtrackArgs({ voices: [{ file: '/v/a.mp3' }, { file: '/v/b.mp3' }, { file: '/v/c.mp3' }], timeline: cut, outputFile: '/o.wav' });
+  assert.ok(plain.graph.endsWith('[voice]anull[sound]') && !plain.graph.includes('sidechain'), 'no music: only the voices');
+  const noDuck = editLib.soundtrackArgs({ voices: [{ file: '/a' }, { file: '/b' }, { file: '/c' }], music: { file: '/m', level: 0.12, duck: false }, timeline: cut, outputFile: '/o' });
+  assert.ok(!noDuck.graph.includes('sidechain') && noDuck.graph.includes('amix=inputs=2'));
+  assert.ok(!editLib.soundtrackArgs({ voices: [{ file: '/a' }, { file: '/b' }, { file: '/c' }], music: { file: '/m', level: 0, duck: true }, timeline: cut, outputFile: '/o' }).graph.includes('amix'), 'level 0: no music');
+  assert.throws(() => editLib.soundtrackArgs({ voices: [{ file: '/a' }], timeline: cut, outputFile: '/o' }), /Every scene needs a voice/);
+  assert.throws(() => editLib.soundtrackArgs({ voices: [{}, {}, {}], timeline: { ...cut, fps: 29.97 }, outputFile: '/o' }), /does not divide/);
+  assert.deepEqual(editLib.MUSIC_LEVELS, { off: 0, quiet: 0.12, medium: 0.25, loud: 0.45 });
+
+  // the word times of the scenes in the times of the film
+  const first = cuesLib.timingOf([{ text: 'Eins.', start: 0.2, end: 0.6 }, { text: 'Zwei', start: 0.8, end: 1.1 }, { text: 'drei.', start: 1.2, end: 1.6 }], 1.7);
+  const second = cuesLib.timingOf([{ text: 'Vier', start: 0.3, end: 0.7 }], 0.8);
+  const merged = editLib.mergeTimings([first, cuesLib.silentTiming(4), second], [0, 2.4, 6.9], 9.5);
+  assert.equal(merged.duration, 9.5);
+  assert.equal(merged.source, 'speech');
+  assert.deepEqual(merged.words.map((word) => [word.text, word.start]), [['Eins.', 0.2], ['Zwei', 0.8], ['drei.', 1.2], ['Vier', 7.2]], 'a scene without words adds none');
+  assert.deepEqual(merged.words.map((word) => word.line), [0, 1, 1, 2], 'the words keep their lines, counted over the whole film');
+  assert.deepEqual(merged.lines.map((line) => [line.text, line.start, line.end]), [['Eins.', 0.2, 0.6], ['Zwei drei.', 0.8, 1.6], ['Vier', 7.2, 7.6]]);
+
+  // the SRT
+  assert.equal(editLib.srtTime(3661.0075), '01:01:01,008');
+  assert.equal(editLib.srtTime(0), '00:00:00,000');
+  assert.equal(editLib.srtTime(-3), '00:00:00,000');
+  const srt = editLib.srtOf(merged.lines, 9.5);
+  assert.equal(srt, '1\n00:00:00,200 --> 00:00:00,760\nEins.\n\n2\n00:00:00,800 --> 00:00:01,850\nZwei drei.\n\n3\n00:00:07,200 --> 00:00:07,850\nVier\n');
+  assert.ok(editLib.srtOf([{ text: 'x', start: 9.4, end: 9.45 }], 9.5).includes('00:00:09,500'), 'the last entry stays inside the film');
+  assert.equal(editLib.srtOf([], 5), '');
+  assert.equal(editLib.srtOf([{ text: 'late', start: 12, end: 13 }], 9.5), '', 'a line after the end is dropped');
+
+  // the length
+  assert.equal(editLib.lengthNote(120, 120), null);
+  assert.equal(editLib.lengthNote(137, 120), null, '14 % is inside');
+  assert.match(editLib.lengthNote(141, 120), /141 s long, 18 % above the 120 s/);
+  assert.match(editLib.lengthNote(90, 120), /90 s long, 25 % below the 120 s/);
+  assert.equal(editLib.lengthNote(90, null), null);
+  assert.equal(editLib.lengthNote(0, 120), null);
+}
+
+/* ---------- the node ---------- */
+
+async function run(iso) {
+  const store = iso.load('lib/store');
+  const assets = iso.load('lib/nodes/assets');
+  const ffmpegLib = iso.load('lib/ffmpeg');
+  const registryModule = iso.load('lib/nodes/registry');
+  const editLib = iso.load('lib/explainer-edit');
+  const cuesLib = iso.load('lib/explainer-cues');
+  const musicEdit = iso.load('lib/music-video-edit');
+  const { textValue, listValue } = iso.load('lib/nodes/types');
+  const real = registryModule.registry;
+
+  testPure({ editLib, cuesLib, musicEdit });
+
+  const bins = ffmpegLib.binaries();
+  if (!bins.available) {
+    console.log('ffmpeg not found: the parts with real audio and video are skipped');
+    return;
+  }
+
+  /* ---------- definition ---------- */
+
+  const def = real.get('explainer.edit');
+  assert.equal(def.category, 'edit-video');
+  assert.equal(def.paid, false);
+  assert.equal(def.cost.unit, 'local');
+  assert.ok(def.timeoutMs >= 20 * 60 * 1000, 'a long film may take its time');
+  const ports = (list) => list.map((port) => [port.id, port.type, Boolean(port.required), Boolean(port.multiple)]);
+  assert.deepEqual(ports(def.inputs), [
+    ['scenes', 'video', true, true], ['audio', 'audio', true, true], ['timing', 'text', true, true], ['shots', 'text', true, false],
+    ['clips', 'video', false, true], ['music', 'audio', false, false], ['intro', 'video', false, false], ['outro', 'video', false, false]
+  ]);
+  assert.equal(def.inputs.find((port) => port.id === 'clips').max, 2);
+  assert.deepEqual(ports(def.outputs), [['video', 'video', false, false], ['subtitles', 'text', false, false], ['captions', 'text', false, false]]);
+  const defaults = real.normalizeParams(def, {});
+  assert.deepEqual(defaults, { transition: 'crossfade', resolution: '1080p', fps: '30', captions: 'lines', captions_position: 'bottom', music_level: 'quiet', ducking: true, fade_out: 1, fit: 'crop' });
+  assert.deepEqual(def.params.find((param) => param.id === 'music_level').options, ['quiet', 'medium', 'loud']);
+  assert.deepEqual(def.params.find((param) => param.id === 'captions').options, ['off', 'lines', 'words']);
+  assert.deepEqual(def.params.find((param) => param.id === 'transition').options, ['cut', 'crossfade']);
+
+  /* ---------- helpers ---------- */
+
+  const workDir = await fsp.mkdtemp(path.join(iso.root, 'explainer-edit-'));
+  const media = createMedia({ ffmpeg: bins.ffmpeg, ffprobe: bins.ffprobe, dir: workDir });
+  const session = await store.createSession();
+  const sessionId = session.id;
+  const otherSession = await store.createSession();
+  async function assetOf(bytes, ext, owner = sessionId) {
+    const saved = await store.saveAsset(owner, { kind: 'upload', buffer: bytes, ext, prompt: 'seed' });
+    return assets.valueFromAsset(owner, saved.id);
+  }
+  const fileAsset = async (file, owner = sessionId) => assetOf(await fsp.readFile(file), path.extname(file), owner);
+  const scratchLeft = async () => (await fsp.readdir(store.sessionAssetDir(sessionId))).filter((name) => name.startsWith('.nodes-'));
+  function makeCtx(owner = sessionId) {
+    const controller = new AbortController();
+    const logs = [];
+    return {
+      workflowId: 'wf-test',
+      runId: 'r-test',
+      nodeId: 'n1',
+      sessionId: owner,
+      user: STAFF,
+      config: {},
+      signal: controller.signal,
+      log: (line) => logs.push(line),
+      saveOutputFile: (options) => assets.saveOutputFile(owner, options),
+      withLocalSlot: (fn) => fn(),
+      logs
+    };
+  }
+  const exec = (ctx, inputs, raw = {}) => def.execute(ctx, inputs, real.normalizeParams(def, { resolution: '720p', captions: 'off', music_level: 'medium', ...raw }));
+  const fileOf = (value) => assets.assetFilePath(value);
+
+  // voices: one tone each; the scene is the voice plus 0.4 s
+  const TONES = [1000, 1500, 2000, 2500, 3000, 3500];
+  const COLOURS = ['ff0000', '00ff00', '0000ff', 'ffff00', 'ff00ff', '00ffff', 'ff8000', '8000ff', '80ff00', '0080ff', 'ff0080', '808080'];
+  const wordsOf = (voice) => [
+    { text: 'Eins', start: 0.2, end: 0.5 },
+    { text: 'zwei.', start: 0.55, end: 0.9 },
+    { text: 'Drei', start: Math.min(voice - 0.3, 1.0), end: voice - 0.05 }
+  ];
+  // A made-up film: scenes with their voices, timings and the shot list.
+  async function filmOf(voices, { kinds = [], colours = COLOURS, format = 'landscape', size = '160x90', target = null, tones = TONES } = {}) {
+    const scenes = [];
+    const audio = [];
+    const timing = [];
+    for (let index = 0; index < voices.length; index += 1) {
+      const voice = voices[index];
+      const spoken = voice > 0;
+      const seconds = cuesLib.sceneDuration(spoken ? voice : 4);
+      scenes.push(await fileAsset(await media.colourClip(colours[index % colours.length], seconds, { size })));
+      audio.push(await assetOf(spoken ? toneWav(voice, tones[index % tones.length]) : toneWav(4, 100, { amplitude: 0 }), '.wav'));
+      timing.push(textValue(JSON.stringify(spoken ? cuesLib.timingOf(wordsOf(voice).filter((word) => word.end > word.start), voice) : cuesLib.silentTiming(4))));
+    }
+    const shots = {
+      version: 1,
+      language: 'de',
+      format,
+      visual_mode: 'mix',
+      duration: 10,
+      target_seconds: target,
+      scenes: voices.map((voice, index) => ({ id: `s${index + 1}`, index, kind: kinds[index] ? kinds[index].kind : 'motion', role: 'point', est_seconds: 5, spoken: voice > 0, narration: index, brief: index, image: null, clip: kinds[index] && kinds[index].clip !== undefined ? kinds[index].clip : null }))
+    };
+    return {
+      voices,
+      inputs: { scenes: listValue('video', scenes), audio: listValue('audio', audio), timing: listValue('text', timing), shots: textValue(JSON.stringify(shots)) },
+      scenes,
+      audio,
+      timing,
+      shots
+    };
+  }
+  const withInputs = (film, extra) => ({ ...film.inputs, ...extra });
+  const frameOf = (seconds) => Math.round(seconds * 30);
+
+  /* ---------- the voices stand at the start of their scene: cut ---------- */
+
+  const voices = [2.0, 1.5, 2.5];
+  const film = await filmOf(voices);
+  {
+    const ctx = makeCtx();
+    const result = await exec(ctx, film.inputs, { transition: 'cut', fps: '30' });
+    const out = result.variants[0];
+    const file = fileOf(out.video);
+    const info = await media.probe(file);
+    assert.equal(info.width, 1280);
+    assert.equal(info.height, 720);
+    assert.equal(info.fps, 30);
+    near(info.frames, 216, 1, 'the frames of the three scenes');
+    near(info.duration, 7.2, 0.06);
+    assert.ok(info.hasAudio);
+    near(info.audioDuration, 7.2, 0.08, 'the sound is as long as the film');
+    // the pictures
+    assert.equal(await media.colourAt(file, 1.0), COLOURS[0]);
+    assert.equal(await media.colourAt(file, 3.0), COLOURS[1]);
+    assert.equal(await media.colourAt(file, 5.5), COLOURS[2]);
+    // the voices: each begins exactly where its scene begins, ends with its length, and the 0.4 s after it are silent
+    const { samples, rate } = await media.pcm(file);
+    const starts = [0, 2.4, 4.3];
+    voices.forEach((voice, index) => {
+      const onset = onsetOf(samples, rate, TONES[index], { from: Math.max(0, starts[index] - 0.2) });
+      near(onset, starts[index], 0.03, `voice ${index + 1} begins with its scene`);
+      const end = endOf(samples, rate, TONES[index]);
+      near(end, starts[index] + voice, 0.03, `voice ${index + 1} is as long as it is`);
+      assert.ok(amplitudeAt(samples, rate, TONES[index], starts[index] + voice + 0.05, starts[index] + voice + 0.35) < 0.02, `silence after voice ${index + 1}`);
+      for (let other = 0; other < 3; other += 1) {
+        if (other !== index) assert.ok(amplitudeAt(samples, rate, TONES[other], starts[index] + 0.2, starts[index] + voice - 0.2) < 0.02, `only voice ${index + 1} speaks in its scene`);
+      }
+    });
+    near(amplitudeAt(samples, rate, 1000, 0.3, 1.8), 0.5, 0.06, 'the voice is not changed in level');
+    // the log: real length, and no warning without a wish
+    assert.ok(ctx.logs.some((line) => /3 scenes, 7.2 s at 30 fps, 1280x720/.test(line)), ctx.logs.join(' | '));
+    assert.ok(!ctx.logs.some((line) => /Warning/.test(line)));
+    assert.deepEqual(await scratchLeft(), [], 'no scratch folder is left');
+    // the subtitles and the captions of the film
+    const lines = out.subtitles.value.split('\n\n');
+    assert.ok(lines.length >= 3, out.subtitles.value);
+    assert.match(lines[0], /^1\n00:00:00,200 --> /);
+    const captions = JSON.parse(out.captions.value);
+    assert.equal(captions.duration, 7.2);
+    assert.equal(captions.words.length, 9);
+    near(captions.words[3].start, 2.4 + 0.2, 0.001, 'the first word of scene 2 is shifted by the start of its scene');
+    near(captions.words[6].start, 4.3 + 0.2, 0.001);
+    assert.equal(out.subtitles.value.split('\n').filter((line) => /-->/.test(line)).length, captions.lines.length);
+  }
+
+  /* ---------- crossfade: shorter by the overlap, the voice at the beginning of the picture ---------- */
+
+  {
+    const ctx = makeCtx();
+    const result = await exec(ctx, film.inputs, { transition: 'crossfade', fps: '30' });
+    const file = fileOf(result.variants[0].video);
+    const info = await media.probe(file);
+    near(info.frames, 200, 1, 'three scenes, two fades of 8 frames');
+    near(info.duration, 200 / 30, 0.06);
+    const starts = [0, 64 / 30, 113 / 30];
+    const { samples, rate } = await media.pcm(file);
+    voices.forEach((voice, index) => {
+      near(onsetOf(samples, rate, TONES[index], { from: Math.max(0, starts[index] - 0.2) }), starts[index], 0.03, `voice ${index + 1} at the start of its picture`);
+      near(endOf(samples, rate, TONES[index]), starts[index] + voice, 0.03);
+    });
+    // the picture fades: before the fade the first scene, in the middle of it a mix, after it the second
+    assert.equal(await media.colourAt(file, starts[1] - 0.1), COLOURS[0]);
+    const [r, g] = await media.rgbAt(file, starts[1] + 4 / 30);
+    assert.ok(r > 40 && g > 40 && r < 215 && g < 215, `a mix of red and green in the middle of the fade: ${r},${g}`);
+    assert.equal(await media.colourAt(file, starts[1] + 0.5), COLOURS[1]);
+    assert.equal(await media.colourAt(file, starts[2] + 0.5), COLOURS[2]);
+    const captions = JSON.parse(result.variants[0].captions.value);
+    near(captions.words[3].start, starts[1] + 0.2, 0.001, 'the captions follow the voice, not the cut');
+    assert.equal(captions.duration, 6.667);
+    assert.ok(ctx.logs.some((line) => /3 scenes, 6.7 s at 30 fps/.test(line)), ctx.logs.join(' | '));
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- 12 scenes: cut in batches, no drift ---------- */
+
+  {
+    const many = Array.from({ length: 12 }, () => 1.0);
+    const bigFilm = await filmOf(many);
+    const ctx = makeCtx();
+    const result = await exec(ctx, bigFilm.inputs, { transition: 'crossfade', fps: '30' });
+    const file = fileOf(result.variants[0].video);
+    const timeline = editLib.planTimeline({ durations: many.map((voice) => cuesLib.sceneDuration(voice)), fps: 30, transition: 'crossfade' });
+    const info = await media.probe(file);
+    near(info.frames, timeline.totalFrames, 1);
+    const { samples, rate } = await media.pcm(file);
+    for (let index = 0; index < 12; index += 1) {
+      const start = timeline.starts[index] / 30;
+      const frequency = TONES[index % TONES.length];
+      near(onsetOf(samples, rate, frequency, { from: Math.max(0, start - 0.2) }), start, 0.03, `scene ${index + 1} of 12: the voice is where the picture is`);
+      assert.equal(await media.colourAt(file, start + 0.3 + (index === 0 ? 0 : 0)), COLOURS[index], `scene ${index + 1} of 12: its picture`);
+    }
+    assert.ok(ctx.logs.some((line) => /batches/.test(line)), `many scenes are cut in batches: ${ctx.logs.join(' | ')}`);
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- the sources card has no voice: silence, no words ---------- */
+
+  const withCard = await filmOf([2.0, 1.0, 0]);
+  {
+    const result = await exec(makeCtx(), withCard.inputs, { transition: 'cut', fps: '30' });
+    const file = fileOf(result.variants[0].video);
+    const info = await media.probe(file);
+    near(info.duration, 2.4 + 1.4 + 4.4, 0.1);
+    const captions = JSON.parse(result.variants[0].captions.value);
+    assert.equal(captions.words.length, 6, 'the card adds no words');
+  }
+
+  /* ---------- music ---------- */
+
+  {
+    const music = await assetOf(toneWav(1.0, 200, { amplitude: 0.5 }), '.wav');
+    // a film with a silent card at the end: there the music is back at its own level
+    const cardFilm = await filmOf([2.0, 1.5, 0]);
+    const run = async (extra, raw = {}) => {
+      const result = await exec(makeCtx(), withInputs(cardFilm, { music, ...extra }), { transition: 'cut', fps: '30', fade_out: 0, ...raw });
+      const file = fileOf(result.variants[0].video);
+      return { ...(await media.pcm(file)), info: await media.probe(file) };
+    };
+    const cardStart = 2.4 + 1.9;
+    const medium = await run({}, { music_level: 'medium', ducking: false });
+    const duckingOff = {
+      voice: amplitudeAt(medium.samples, medium.rate, 200, 0.3, 1.8),
+      card: amplitudeAt(medium.samples, medium.rate, 200, cardStart + 1.0, cardStart + 3.5)
+    };
+    near(duckingOff.card, 0.5 * 0.25, 0.02, 'the music at a quarter of its level, in the silence of the card');
+    near(duckingOff.voice, duckingOff.card, 0.02, 'without ducking the music stays where it is under the voice');
+    near(amplitudeAt(medium.samples, medium.rate, 1000, 0.3, 1.8), 0.5, 0.06, 'the voice is not changed in level by the music');
+    near(medium.info.duration, 2.4 + 1.9 + 4.4, 0.1);
+    // the music is only 1 s long: it is looped under the whole film
+    assert.ok(amplitudeAt(medium.samples, medium.rate, 200, cardStart + 3.0, cardStart + 3.9) > 0.05, 'the music runs to the end of the film');
+
+    const ducked = await run({}, { music_level: 'medium', ducking: true });
+    const duckedVoice = amplitudeAt(ducked.samples, ducked.rate, 200, 0.3, 1.8);
+    const duckedCard = amplitudeAt(ducked.samples, ducked.rate, 200, cardStart + 1.0, cardStart + 3.5);
+    assert.ok(duckedVoice < 0.5 * duckingOff.voice, `the music gives way under the voice: ${duckedVoice} against ${duckingOff.voice}`);
+    near(duckedCard, duckingOff.card, 0.025, 'and comes back where nobody speaks');
+    near(amplitudeAt(ducked.samples, ducked.rate, 1000, 0.3, 1.8), 0.5, 0.06, 'the voice is the same with ducking');
+
+    const quiet = await run({}, { music_level: 'quiet', ducking: false });
+    const loud = await run({}, { music_level: 'loud', ducking: false });
+    const level = (result) => amplitudeAt(result.samples, result.rate, 200, cardStart + 1.0, cardStart + 3.5);
+    near(level(quiet), 0.5 * 0.12, 0.015);
+    near(level(loud), 0.5 * 0.45, 0.03);
+    assert.ok(level(loud) > 3 * level(quiet));
+    // no music: nothing at that pitch
+    const none = await exec(makeCtx(), cardFilm.inputs, { transition: 'cut', fps: '30', fade_out: 0 });
+    const noMusic = await media.pcm(fileOf(none.variants[0].video));
+    assert.ok(amplitudeAt(noMusic.samples, noMusic.rate, 200, cardStart + 1.0, cardStart + 3.5) < 0.005);
+    // the fade-out at the end takes the sound down with the picture
+    const faded = await exec(makeCtx(), withInputs(cardFilm, { music }), { transition: 'cut', fps: '30', fade_out: 2, music_level: 'loud', ducking: false });
+    const fadedAudio = await media.pcm(fileOf(faded.variants[0].video));
+    const total = (await media.probe(fileOf(faded.variants[0].video))).duration;
+    assert.ok(amplitudeAt(fadedAudio.samples, fadedAudio.rate, 200, total - 0.3, total - 0.05) < 0.5 * amplitudeAt(fadedAudio.samples, fadedAudio.rate, 200, cardStart + 1, cardStart + 1.25));
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- intro and outro: hard cuts, their own sound ---------- */
+
+  {
+    const introAudio = path.join(workDir, 'intro.wav');
+    const outroAudio = path.join(workDir, 'outro.wav');
+    await fsp.writeFile(introAudio, toneWav(2.0, 700));
+    await fsp.writeFile(outroAudio, toneWav(1.5, 900));
+    const intro = await fileAsset(await media.colourClip('c0c0c0', 2.0, { audioFile: introAudio }));
+    const outro = await fileAsset(await media.colourClip('808080', 1.5, { audioFile: outroAudio }));
+    const twoScenes = await filmOf([2.0, 1.5]);
+    const ctx = makeCtx();
+    const result = await exec(ctx, withInputs(twoScenes, { intro, outro }), { transition: 'crossfade', fps: '30', fade_out: 0 });
+    const file = fileOf(result.variants[0].video);
+    const info = await media.probe(file);
+    // 60 + 72 + 57 + 45 frames, less one frame at each hard cut and the fade between the scenes
+    near(info.frames, 224, 1);
+    const { samples, rate } = await media.pcm(file);
+    near(onsetOf(samples, rate, 700), 0, 0.03, 'the intro speaks from the first moment');
+    near(endOf(samples, rate, 700), 59 / 30, 0.05, 'its sound is not faded away (one frame is the price of a hard cut)');
+    near(onsetOf(samples, rate, 1000, { from: 1.5 }), 59 / 30, 0.03, 'the first voice comes with the first scene');
+    near(onsetOf(samples, rate, 1500, { from: 3.5 }), 123 / 30, 0.03, 'the second voice at the start of its scene');
+    near(onsetOf(samples, rate, 900, { from: 5 }), 179 / 30, 0.03, 'the outro begins where its picture begins');
+    near(endOf(samples, rate, 900), 179 / 30 + 1.5, 0.05);
+    assert.equal(await media.colourAt(file, 1.0), 'c0c0c0');
+    assert.equal(await media.colourAt(file, 3.0), COLOURS[0]);
+    assert.equal(await media.colourAt(file, info.duration - 0.5), '808080');
+    // no fade between the person and a scene: the picture changes within a frame
+    assert.equal(await media.colourAt(file, 59 / 30 - 0.04), 'c0c0c0');
+    assert.equal(await media.colourAt(file, 59 / 30 + 0.1), COLOURS[0]);
+    // the captions only carry the words of the scenes, after the intro
+    const captions = JSON.parse(result.variants[0].captions.value);
+    near(captions.words[0].start, 59 / 30 + 0.2, 0.002);
+    assert.ok(ctx.logs.some((line) => /with intro and outro/.test(line)));
+    // an intro without a sound is silence at its place
+    const silentIntro = await fileAsset(await media.colourClip('c0c0c0', 2.0));
+    const silent = await exec(makeCtx(), withInputs(twoScenes, { intro: silentIntro }), { transition: 'cut', fps: '30' });
+    const silentSound = await media.pcm(fileOf(silent.variants[0].video));
+    near(onsetOf(silentSound.samples, silentSound.rate, 1000), 2.0, 0.03, 'the first voice after two seconds of silence');
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- clips by the shots: trimmed, slowed down, held ---------- */
+
+  {
+    // the scenes 2 and 3 are clip scenes: their stand-in is what the scene node made, the clips come from the clips input
+    const kinds = [{ kind: 'motion' }, { kind: 'clip', clip: 0 }, { kind: 'clip', clip: 1 }];
+    const clipFilm = await filmOf([2.0, 4.0, 4.0], { kinds });
+    // slow: 3.6 s (red then blue at 1.8 s) for 4.4 s; hold: 2 s (red then blue at 1 s)
+    const slow = await fileAsset(await media.colourClip('ff0000', 3.6, { second: '0000ff', switchAt: 1.8 }));
+    const hold = await fileAsset(await media.colourClip('ff0000', 2.0, { second: '0000ff', switchAt: 1.0 }));
+    const ctx = makeCtx();
+    const result = await exec(ctx, withInputs(clipFilm, { clips: listValue('video', [slow, hold]) }), { transition: 'cut', fps: '30', fade_out: 0 });
+    const file = fileOf(result.variants[0].video);
+    const info = await media.probe(file);
+    near(info.duration, 2.4 + 4.4 + 4.4, 0.08, 'the clips take the length of the scenes they stand in for');
+    const secondStart = 2.4;
+    const thirdStart = 2.4 + 4.4;
+    // slowed to 4.4 s: the switch moves from 1.8 s to 2.2 s
+    assert.equal(await media.colourAt(file, secondStart + 2.0), 'ff0000');
+    assert.equal(await media.colourAt(file, secondStart + 2.45), '0000ff');
+    assert.equal(await media.colourAt(file, secondStart + 4.3), '0000ff', 'the slowed clip fills its scene');
+    // too short even slowed to 0.8: it runs at 0.8 (the switch at 1.25 s) and holds its last frame
+    assert.equal(await media.colourAt(file, thirdStart + 1.1), 'ff0000');
+    assert.equal(await media.colourAt(file, thirdStart + 1.4), '0000ff');
+    assert.equal(await media.colourAt(file, thirdStart + 4.3), '0000ff', 'the last frame is held to the end of the scene');
+    // the voice of a clip scene is the voice of the scene
+    const { samples, rate } = await media.pcm(file);
+    near(onsetOf(samples, rate, TONES[1], { from: secondStart - 0.2 }), secondStart, 0.03);
+    near(onsetOf(samples, rate, TONES[2], { from: thirdStart - 0.2 }), thirdStart, 0.03);
+
+    // trimmed: a clip of 6 s (red, blue from 3 s) is cut off at 4.4 s, not slowed down
+    const long = await fileAsset(await media.colourClip('ff0000', 6.0, { second: '0000ff', switchAt: 3.0 }));
+    const trimFilm = await filmOf([2.0, 4.0], { kinds: [{ kind: 'motion' }, { kind: 'clip', clip: 0 }] });
+    const trimmed = await exec(makeCtx(), withInputs(trimFilm, { clips: listValue('video', [long]) }), { transition: 'cut', fps: '30', fade_out: 0 });
+    const trimmedFile = fileOf(trimmed.variants[0].video);
+    near((await media.probe(trimmedFile)).duration, 2.4 + 4.4, 0.08);
+    assert.equal(await media.colourAt(trimmedFile, 2.4 + 2.8), 'ff0000');
+    assert.equal(await media.colourAt(trimmedFile, 2.4 + 3.2), '0000ff', 'cut off, not slowed: the switch stays at 3 s');
+    // a clip scene without its clip: the plain scene stays, and the log says so
+    const missing = makeCtx();
+    const kept = await exec(missing, trimFilm.inputs, { transition: 'cut', fps: '30' });
+    assert.ok(missing.logs.some((line) => /plan wants a clip but none arrived/.test(line)));
+    assert.equal(await media.colourAt(fileOf(kept.variants[0].video), 2.4 + 1), COLOURS[1]);
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- the two formats ---------- */
+
+  {
+    const portrait = await filmOf([1.5, 1.5], { format: 'portrait', size: '90x160' });
+    const result = await exec(makeCtx(), portrait.inputs, { transition: 'cut', fps: '30' });
+    const info = await media.probe(fileOf(result.variants[0].video));
+    assert.deepEqual([info.width, info.height], [720, 1280], '9:16');
+    const wide = await media.probe(fileOf((await exec(makeCtx(), film.inputs, { transition: 'cut', fps: '30', resolution: '1080p' })).variants[0].video));
+    assert.deepEqual([wide.width, wide.height], [1920, 1080], '16:9 at 1080p');
+    const fps25 = await media.probe(fileOf((await exec(makeCtx(), film.inputs, { transition: 'cut', fps: '25' })).variants[0].video));
+    assert.equal(fps25.fps, 25);
+    near(fps25.duration, 7.2, 0.1);
+  }
+
+  /* ---------- the length against the target ---------- */
+
+  {
+    const ctx = makeCtx();
+    const far = await filmOf([2.0, 1.5], { target: 100 });
+    await exec(ctx, far.inputs, { transition: 'cut', fps: '30' });
+    assert.ok(ctx.logs.some((line) => /^Warning: The film is 4 s long, 96 % below the 100 s that were asked for/.test(line)), ctx.logs.join(' | '));
+    const close = makeCtx();
+    const near5 = await filmOf([2.0, 1.5], { target: 4.2 });
+    await exec(close, near5.inputs, { transition: 'cut', fps: '30' });
+    assert.ok(!close.logs.some((line) => /Warning/.test(line)));
+    assert.ok(close.logs.some((line) => /Length of the scenes: 4 s, asked for 4 s/.test(line)), close.logs.join(' | '));
+  }
+
+  /* ---------- errors ---------- */
+
+  {
+    const mismatch = await errorOf(exec(makeCtx(), { ...film.inputs, audio: listValue('audio', film.audio.slice(0, 2)) }, {}));
+    assert.equal(mismatch.code, 'EXPLAINER_EDIT_MISMATCH');
+    assert.deepEqual(mismatch.data, { scenes: 3, audio: 2, timing: 3, shots: 3 });
+    const noShots = await errorOf(exec(makeCtx(), { ...film.inputs, shots: textValue('{"scenes":[]}') }, {}));
+    assert.equal(noShots.code, 'EXPLAINER_SHOTS_INVALID');
+    assert.equal((await errorOf(exec(makeCtx(), { ...film.inputs, shots: textValue('nonsense') }, {}))).code, 'EXPLAINER_SHOTS_INVALID');
+    const badTiming = await errorOf(exec(makeCtx(), { ...film.inputs, timing: listValue('text', [textValue('x'), film.timing[1], film.timing[2]]) }, {}));
+    assert.equal(badTiming.code, 'EXPLAINER_TIMING_INVALID');
+    assert.match(badTiming.message, /timing 1/);
+    const noPicture = await errorOf(exec(makeCtx(), { ...film.inputs, scenes: listValue('video', [await assetOf(toneWav(1, 500), '.wav'), film.scenes[1], film.scenes[2]]) }, {}));
+    assert.ok(noPicture, 'a file without a picture is refused');
+    assert.equal(noPicture.code, 'EXPLAINER_EDIT_NO_VIDEO');
+    const foreign = await errorOf(exec(makeCtx(), { ...film.inputs, music: await assetOf(toneWav(1, 200), '.wav', otherSession.id) }, {}));
+    assert.match(foreign.message, /belongs to another session/);
+    assert.deepEqual(await scratchLeft(), [], 'a refused run leaves nothing behind');
+    // an abort in the middle: nothing is made, nothing is left
+    const aborting = makeCtx();
+    const controller = new AbortController();
+    aborting.signal = controller.signal;
+    const pending = exec(aborting, film.inputs, { transition: 'crossfade', fps: '30' });
+    controller.abort();
+    assert.ok(await errorOf(pending), 'an abort ends the node');
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- the captions ---------- */
+
+  {
+    const standIn = await createAssStandIn(workDir, { real: bins.ffmpeg });
+    const original = process.env.FFMPEG_PATH;
+    const use = (file) => {
+      if (file === undefined) delete process.env.FFMPEG_PATH;
+      else process.env.FFMPEG_PATH = file;
+      ffmpegLib.resetFilterCache();
+    };
+    restorers.push(() => use(original));
+    const hasLibass = ffmpegLib.hasFilter('ass');
+    if (!hasLibass) {
+      // an ffmpeg without libass: the plan is refused before anything is made
+      const issues = def.validate(real.normalizeParams(def, { captions: 'lines' }), {});
+      assert.equal(issues.length, 1);
+      assert.equal(issues[0].code, 'CAPTIONS_NO_LIBASS');
+      assert.deepEqual(def.validate(real.normalizeParams(def, { captions: 'off' }), {}), []);
+      const refused = await errorOf(exec(makeCtx(), film.inputs, { captions: 'lines', transition: 'cut', fps: '30' }));
+      assert.equal(refused.code, 'CAPTIONS_NO_LIBASS');
+      // off: no script, the film is made
+      const off = await exec(makeCtx(), film.inputs, { captions: 'off', transition: 'cut', fps: '30' });
+      assert.ok(off.variants[0].video);
+    }
+    use(standIn.file);
+    await standIn.reset();
+    assert.deepEqual(def.validate(real.normalizeParams(def, { captions: 'lines' }), {}), [], 'with the filter (the stand-in lists it) the plan is accepted');
+    const ctx = makeCtx();
+    const result = await exec(ctx, film.inputs, { captions: 'lines', transition: 'crossfade', fps: '30', captions_position: 'middle' });
+    const scripts = await standIn.scripts();
+    assert.equal(scripts.length, 1, 'ONE script for the encoder');
+    const ass = parseAss(scripts[0].text);
+    assert.equal(ass.info.PlayResX, '1280');
+    assert.equal(ass.info.PlayResY, '720');
+    assert.ok(ass.events.length >= 3);
+    // the first event of the second scene begins at its scene start (64 frames) plus the first word (0.2 s) less the lead-in of a caption
+    // line, in hundredths (a line is shown a little before its first word)
+    const starts = ass.events.map((event) => event.start);
+    const lead = iso.load('lib/captions-ass').LEAD_IN_SEC;
+    assert.ok(starts.some((start) => start >= Math.round((64 / 30 + 0.2 - lead) * 100) - 3 && start <= Math.round((64 / 30 + 0.2) * 100) + 3), `the captions of scene 2 begin around its first word, shifted by the start of the scene: ${starts}`);
+    assert.ok(starts.every((start, index) => index === 0 || start >= starts[index - 1]), 'in order');
+    assert.ok(ctx.logs.some((line) => /captions \(lines\)/.test(line)));
+    assert.ok(result.variants[0].subtitles.value.includes('-->'));
+    // words: the same words, one event per word or per line as the style says
+    await standIn.reset();
+    await exec(makeCtx(), film.inputs, { captions: 'words', transition: 'cut', fps: '30' });
+    assert.equal((await standIn.scripts()).length, 1);
+    // a film without any word: the captions are on, but there is nothing to burn in
+    await standIn.reset();
+    const card = makeCtx();
+    const cardOnly = await filmOf([0, 0]);
+    await exec(card, cardOnly.inputs, { captions: 'lines', transition: 'cut', fps: '30' });
+    assert.deepEqual(await standIn.scripts(), []);
+    assert.ok(card.logs.some((line) => /No words to show/.test(line)));
+    use(original);
+  }
+}
+
+async function main() {
+  const iso = await createIsolatedApp({ env: { ADMIN_EMAILS: 'admin@example.com', SUPERADMIN_EMAILS: '', INTERNAL_EMAIL_DOMAINS: 'staff.example.com', GTS_API_TOKEN: '', PUBLIC_BASE_URL: '' } });
+  try {
+    await run(iso);
+  } finally {
+    restoreAll();
+    await iso.cleanup();
+  }
+  console.log('test-explainer-edit.js: ok');
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

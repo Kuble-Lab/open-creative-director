@@ -832,6 +832,17 @@ async function run(iso) {
     } finally {
       fal.hasKey = falOn;
     }
+    // clips switched off (a workflow without a clip chain): the same descent, though fal is there
+    reset();
+    answers.plan.push(planAnswer((answer) => {
+      answer.scenes[1].kind = 'clip';
+      answer.scenes[1].clip_prompt = 'a slow pan';
+    }));
+    const noClips = await planWith({ text: text(DOCUMENT_TEXT) }, { verify: false, clips: false });
+    assert.equal(jsonOf(noClips.out.script).scenes[1].kind, 'still');
+    assert.deepEqual(noClips.out.clip_prompts.items, []);
+    assert.match(calls[0].options.system, /No video model is set up here/);
+    assert.equal(planDef.params.find((param) => param.id === 'clips').default, true, 'clips are allowed by default');
     // ai_video with fal: every scene is a clip
     reset();
     const video = await planWith({ text: text(DOCUMENT_TEXT) }, { verify: false, visual_mode: 'ai_video' });
