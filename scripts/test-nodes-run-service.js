@@ -427,6 +427,31 @@ async function run(iso) {
   const realForParticipant = await realService.listRunnable(v.p1, {});
   assert.ok(real.items.some((item) => item.id === 'dub-clip') && !realForParticipant.items.some((item) => item.id === 'dub-clip'));
   assert.ok(realTemplates.some((item) => item.cost.kind === 'free') && realTemplates.some((item) => item.cost.paid));
+  // the music video (WP34): what the Director has to ask for (the song, the photo and the idea; a blank idea is missing although it
+  // is a param of the planning node), the other inputs are optional; the words people search with find it, also several words in any order
+  const music = realTemplates.find((item) => item.id === 'music-video');
+  assert.deepEqual(music.inputs.map((input) => [input.id, input.type, input.required]), [
+    ['n1.asset', 'audio', true],
+    ['n2.asset', 'image', true],
+    ['n5.brief', 'text', true],
+    ['n4.lyrics', 'text', false],
+    ['n5.characters', 'text', false],
+    ['n5.shots_per_minute', 'number', false],
+    ['n5.performance_share', 'number', false],
+    ['n12.transition', 'select', false]
+  ]);
+  assert.deepEqual(music.inputs.find((input) => input.id === 'n5.shots_per_minute'), { id: 'n5.shots_per_minute', node: 'n5', param: 'shots_per_minute', label: 'Szenen pro Minute', list: false, hasValue: true, derived: false, type: 'number', required: false, integer: false, min: 6, max: 30 });
+  assert.deepEqual(music.inputs.find((input) => input.id === 'n12.transition').options, ['cut', 'crossfade', 'flash']);
+  assert.deepEqual(music.outputs, [{ node: 'n13', label: 'Musikvideo' }]);
+  assert.equal(music.paid, true);
+  assert.equal(music.cost.kind, 'unknown', 'the scenes come from the plan: no price before the run');
+  for (const [query, lang] of [['Musikvideo', 'de'], ['musikvideo', 'de'], ['Music Video', 'de'], ['music video', 'en'], ['video song', 'de'], ['Song Video', 'de'], ['Videoclip', 'es']]) {
+    const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
+    assert.ok(hits.includes('music-video'), `"${query}" (${lang}) finds the music video: ${hits}`);
+  }
+  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video'], 'a search narrows the list down');
+  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'video nichts-dergleichen', lang: 'de' })).items.filter((item) => item.kind === 'template'), [], 'all words have to appear');
+  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'ab' })).items.filter((item) => item.kind === 'template').length > 0, true, 'a short word is searched as typed');
 
   /* ============ P: prepare ============ */
 

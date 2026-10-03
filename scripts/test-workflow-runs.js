@@ -434,6 +434,7 @@ async function run(iso) {
   const prompt = director.requests.at(-1).messages[0].content;
   assert.match(prompt, /`list_workflows` \/ `run_workflow` - list the workflow templates/);
   assert.match(prompt, /a run with paid steps starts only after the user's click and ends your turn/);
+  assert.match(prompt, /For a production of many steps \(a music video from a song, a talking portrait\) look here first/, 'a long chain is looked for in the templates first');
   assert.ok(!/SystemPrompt/.test(prompt), 'the base prompt file is untouched');
   assert.equal((await store.readSession(hello.id)).workflowRunRequests, undefined, 'a chat without a run has no requests');
 
@@ -466,7 +467,7 @@ async function run(iso) {
   const filtered = await call(hello.id, STAFF1, 'list_workflows', { query: 'higgsfield' });
   assert.match(filtered.toolResult, /Higgsfield flow/);
   assert.ok(!filtered.toolResult.includes('free-text'));
-  assert.match((await call(hello.id, STAFF1, 'list_workflows', { query: 'gibt-es-nicht' })).toolResult, /Keine Vorlage und kein Workflow passt/);
+  assert.match((await call(hello.id, STAFF1, 'list_workflows', { query: 'gibt-es-nicht' })).toolResult, /Keine Vorlage und kein Workflow passt.*Stichwort.*ohne query/);
   const pList = await call((await newChat(P1)).id, P1, 'list_workflows', {});
   assert.ok(!pList.toolResult.includes('hf-flow'), 'a participant is not offered Higgsfield');
   assert.ok(!pList.toolResult.includes(sharedWf.id) && !pList.toolResult.includes(own.id), 'nor the workflows of the internal people');

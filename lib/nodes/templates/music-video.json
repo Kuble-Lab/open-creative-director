@@ -1,0 +1,530 @@
+{
+  "id": "music-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Music video from a song",
+  "description": "Turn a song into a music video cut to the beat. The song is analysed, ElevenLabs finds when each line is sung, a language model plans the scenes from your idea, every scene gets an image of your reference photo and an AI video clip (singer scenes with lip sync), and ffmpeg cuts it all to the song. About 13 scenes per minute, each with an image and a clip: a 2-minute song costs roughly 5 to 20 US dollars, depending on the video model. Nothing is charged before you confirm.",
+  "requires": [
+    "openrouter",
+    "ffmpeg",
+    "elevenlabs",
+    "fal"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.audio",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Song",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.image",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 380,
+        "title": "Reference photo",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n3",
+        "type": "audio.beats",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 60,
+        "params": {}
+      },
+      {
+        "id": "n4",
+        "type": "audio.lyrics_timing",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 360,
+        "params": {
+          "lyrics": "",
+          "method": "auto"
+        }
+      },
+      {
+        "id": "n5",
+        "type": "music_video.plan",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 100,
+        "params": {
+          "model": "",
+          "brief": "",
+          "characters": "",
+          "style": "",
+          "shots_per_minute": 8,
+          "performance_share": 0.25,
+          "cut_on": "lines",
+          "clip_seconds": 5,
+          "aspect_ratio": "16:9"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 60,
+        "title": "Story prompts with the photo",
+        "params": {
+          "template": "If a person appears in this image, it is the person from the reference photo: keep their face, hair and build exactly. {{a}}"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 660,
+        "title": "Singer prompts with the photo",
+        "params": {
+          "template": "The singer is the person from the reference photo: keep their face, hair and build exactly. {{a}}"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 60,
+        "title": "Story images",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n9",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 660,
+        "title": "Singer images",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n10",
+        "type": "video.generate",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 60,
+        "title": "Story clips",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "duration": 5,
+          "aspect_ratio": "16:9",
+          "resolution": "480p"
+        }
+      },
+      {
+        "id": "n11",
+        "type": "fal.h3_lipsync",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 660,
+        "title": "Singer clips (lip sync)",
+        "params": {
+          "resolution": "768P",
+          "transcription": false,
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n12",
+        "type": "music_video.edit",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 330,
+        "params": {
+          "transition": "cut",
+          "resolution": "720p",
+          "fps": "25",
+          "fit": "crop",
+          "fade_out": 1
+        }
+      },
+      {
+        "id": "n13",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 370,
+        "params": {
+          "label": "Music video"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n3",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n4",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "analysis"
+        },
+        "to": {
+          "node": "n5",
+          "port": "analysis"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n5",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n5",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n5",
+          "port": "story_prompts"
+        },
+        "to": {
+          "node": "n6",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n5",
+          "port": "performance_prompts"
+        },
+        "to": {
+          "node": "n7",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n6",
+          "port": "text"
+        },
+        "to": {
+          "node": "n8",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n2",
+          "port": "image"
+        },
+        "to": {
+          "node": "n8",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n7",
+          "port": "text"
+        },
+        "to": {
+          "node": "n9",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n2",
+          "port": "image"
+        },
+        "to": {
+          "node": "n9",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n8",
+          "port": "image"
+        },
+        "to": {
+          "node": "n10",
+          "port": "first_frame"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n5",
+          "port": "story_motion"
+        },
+        "to": {
+          "node": "n10",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n9",
+          "port": "image"
+        },
+        "to": {
+          "node": "n11",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n5",
+          "port": "performance_audio"
+        },
+        "to": {
+          "node": "n11",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n12",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n5",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n12",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n10",
+          "port": "video"
+        },
+        "to": {
+          "node": "n12",
+          "port": "story"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n11",
+          "port": "video"
+        },
+        "to": {
+          "node": "n12",
+          "port": "performance"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n12",
+          "port": "video"
+        },
+        "to": {
+          "node": "n13",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 80,
+        "y": 900,
+        "w": 400,
+        "h": 250,
+        "text": "Upload the song (mp3, wav or m4a) and a photo of the main person with the face clearly visible. The lyrics are optional: with them the line times are more exact, without them the words are recognised from the audio. A plan has at most 50 scenes: for songs longer than about 4 minutes set a longer clip length in the plan and in the story clips. Every scene is paid separately."
+      },
+      {
+        "id": "t2",
+        "x": 1400,
+        "y": 360,
+        "w": 400,
+        "h": 220,
+        "text": "The clip length of the plan and the duration of the story clips must stay equal. 16:9 is set in the plan and in both image nodes: change all three for a vertical video. The two text nodes tell the image model to keep the person of the photo."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Music video from a song",
+    "description": "Upload a song and a photo of the main person, write the idea and get a music video cut to the beat. The estimate is shown before the start.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "asset",
+        "label": "Song"
+      },
+      {
+        "node": "n2",
+        "param": "asset",
+        "label": "Photo of the main person"
+      },
+      {
+        "node": "n5",
+        "param": "brief",
+        "label": "Idea for the video (story, mood, setting)"
+      },
+      {
+        "node": "n4",
+        "param": "lyrics",
+        "label": "Song lyrics (optional)"
+      },
+      {
+        "node": "n5",
+        "param": "characters",
+        "label": "Main person (optional)"
+      },
+      {
+        "node": "n5",
+        "param": "shots_per_minute",
+        "label": "Scenes per minute"
+      },
+      {
+        "node": "n5",
+        "param": "performance_share",
+        "label": "Share of singer scenes"
+      },
+      {
+        "node": "n12",
+        "param": "transition",
+        "label": "Transition"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n13",
+        "label": "Music video"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Musikvideo aus Song",
+      "description": "Mache aus einem Song ein Musikvideo (Music Video), das im Takt geschnitten ist. Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell plant die Szenen nach deiner Idee, jede Szene bekommt ein Bild mit deinem Referenzfoto und einen KI-Videoclip (Gesangsszenen mit Lippensync), und ffmpeg schneidet alles zum Song. Rund 13 Szenen pro Minute, je mit Bild und Clip: Ein Song von 2 Minuten kostet je nach Videomodell grob 5 bis 20 US-Dollar. Vor deiner Bestätigung wird nichts berechnet.",
+      "node.n1": "Song",
+      "node.n2": "Referenzfoto",
+      "node.n6": "Handlungs-Prompts mit Foto",
+      "node.n7": "Gesangs-Prompts mit Foto",
+      "node.n8": "Handlungsbilder",
+      "node.n9": "Gesangsbilder",
+      "node.n10": "Handlungsclips",
+      "node.n11": "Gesangsclips (Lippensync)",
+      "note.t1": "Lade den Song (mp3, wav oder m4a) und ein Foto der Hauptperson mit gut sichtbarem Gesicht hoch. Der Songtext ist optional: Mit ihm sind die Zeilenzeiten genauer, ohne ihn werden die Wörter aus dem Audio erkannt. Ein Plan hat höchstens 50 Szenen: Bei Songs über etwa 4 Minuten stellst du im Plan und in den Handlungsclips eine längere Clip-Länge ein. Jede Szene wird einzeln berechnet.",
+      "note.t2": "Die Clip-Länge des Plans und die Dauer der Handlungsclips müssen gleich bleiben. 16:9 ist im Plan und in beiden Bild-Nodes eingestellt: Für ein Hochformat-Video änderst du alle drei. Die beiden Text-Nodes sagen dem Bildmodell, dass es die Person vom Foto beibehalten soll.",
+      "app.title": "Musikvideo aus Song",
+      "app.description": "Lade einen Song und ein Foto der Hauptperson hoch, schreibe die Idee und erhalte ein Musikvideo im Takt. Die Schätzung siehst du vor dem Start.",
+      "app.input.n1.asset": "Song",
+      "app.input.n2.asset": "Foto der Hauptperson",
+      "app.input.n5.brief": "Idee für das Video (Geschichte, Stimmung, Ort)",
+      "app.input.n4.lyrics": "Songtext (optional)",
+      "app.input.n5.characters": "Hauptperson (optional)",
+      "app.input.n5.shots_per_minute": "Szenen pro Minute",
+      "app.input.n5.performance_share": "Anteil Gesangsszenen",
+      "app.input.n12.transition": "Übergang",
+      "app.output.n13": "Musikvideo"
+    },
+    "es": {
+      "name": "Videoclip a partir de una canción",
+      "description": "Convierte una canción en un videoclip cortado al ritmo. Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje planifica las escenas según tu idea, cada escena recibe una imagen con tu foto de referencia y un clip de vídeo de IA (las escenas de canto con sincronización labial), y ffmpeg lo corta todo al ritmo de la canción. Unas 13 escenas por minuto, cada una con imagen y clip: una canción de 2 minutos cuesta aproximadamente de 5 a 20 dólares, según el modelo de vídeo. No se cobra nada antes de que confirmes.",
+      "node.n1": "Canción",
+      "node.n2": "Foto de referencia",
+      "node.n6": "Prompts de la historia con la foto",
+      "node.n7": "Prompts de canto con la foto",
+      "node.n8": "Imágenes de la historia",
+      "node.n9": "Imágenes de canto",
+      "node.n10": "Clips de la historia",
+      "node.n11": "Clips de canto (sincronización labial)",
+      "note.t1": "Sube la canción (mp3, wav o m4a) y una foto de la persona principal con el rostro bien visible. La letra es opcional: con ella los tiempos de las líneas son más exactos; sin ella, las palabras se reconocen a partir del audio. Un plan tiene como máximo 50 escenas: para canciones de más de unos 4 minutos, configura una duración de clip mayor en el plan y en los clips de la historia. Cada escena se cobra por separado.",
+      "note.t2": "La duración de clip del plan y la duración de los clips de la historia deben coincidir. El formato 16:9 está fijado en el plan y en los dos nodos de imagen: para un vídeo vertical cambia los tres. Los dos nodos de texto le indican al modelo de imagen que mantenga a la persona de la foto.",
+      "app.title": "Videoclip a partir de una canción",
+      "app.description": "Sube una canción y una foto de la persona principal, escribe la idea y recibe un videoclip cortado al ritmo. La estimación se muestra antes de empezar.",
+      "app.input.n1.asset": "Canción",
+      "app.input.n2.asset": "Foto de la persona principal",
+      "app.input.n5.brief": "Idea para el vídeo (historia, ambiente, lugar)",
+      "app.input.n4.lyrics": "Letra de la canción (opcional)",
+      "app.input.n5.characters": "Persona principal (opcional)",
+      "app.input.n5.shots_per_minute": "Escenas por minuto",
+      "app.input.n5.performance_share": "Proporción de escenas de canto",
+      "app.input.n12.transition": "Transición",
+      "app.output.n13": "Videoclip"
+    }
+  }
+}
