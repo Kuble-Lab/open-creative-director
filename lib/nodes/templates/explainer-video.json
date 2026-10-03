@@ -1,0 +1,539 @@
+{
+  "id": "explainer-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Explainer video from a PDF",
+  "description": "Turn a PDF (or a text file) into a finished explainer video: Claude Opus 5.5 plans the scenes and checks every statement against the document, ElevenLabs speaks the narration, Claude draws every scene as motion graphics in your brand (numbers, charts, figures cut out of the PDF) on the render node, and ffmpeg cuts it with voice, captions and a subtitle file. About 2 to 3 US dollars for a 20-page PDF and 2 minutes (script 0.50 to 0.90, voice about 0.15, scenes about 0.10 each). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
+  "requires": [
+    "openrouter",
+    "poppler",
+    "elevenlabs",
+    "rendernode",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.document",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 140,
+        "title": "PDF or text file",
+        "params": {
+          "assets": []
+        }
+      },
+      {
+        "id": "n2",
+        "type": "doc.read",
+        "typeVersion": 1,
+        "x": 460,
+        "y": 140,
+        "title": "Read document",
+        "params": {
+          "max_pages": 150,
+          "page_images": "all",
+          "language": "neutral"
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.branding",
+        "typeVersion": 1,
+        "x": 460,
+        "y": 520,
+        "title": "Branding",
+        "params": {
+          "branding": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "explainer.plan",
+        "typeVersion": 1,
+        "x": 880,
+        "y": 140,
+        "title": "Plan explainer video",
+        "params": {
+          "model": "",
+          "topic": "",
+          "brief": "",
+          "length_seconds": 120,
+          "language": "en",
+          "audience": "",
+          "tone": "factual",
+          "visual_mode": "mix",
+          "format": "landscape",
+          "max_still_share": 0.35,
+          "clips": false,
+          "presenter": "off",
+          "verify": true,
+          "script": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "explainer.voice",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 80,
+        "title": "Explainer voice",
+        "params": {
+          "voice_id": "",
+          "model_id": "eleven_v4",
+          "use_context": true
+        }
+      },
+      {
+        "id": "n6",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 440,
+        "title": "Pictures for still scenes",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n7",
+        "type": "explainer.scene",
+        "typeVersion": 1,
+        "x": 1760,
+        "y": 200,
+        "title": "Draw explainer scene",
+        "params": {
+          "model": "",
+          "format": "landscape",
+          "quality": "standard",
+          "vision_check": true,
+          "max_retries": 2,
+          "fallback": true
+        }
+      },
+      {
+        "id": "n8",
+        "type": "explainer.edit",
+        "typeVersion": 1,
+        "x": 2200,
+        "y": 200,
+        "title": "Cut explainer video",
+        "params": {
+          "transition": "crossfade",
+          "resolution": "1080p",
+          "fps": "30",
+          "captions": "lines",
+          "captions_position": "bottom",
+          "music_level": "quiet",
+          "ducking": true,
+          "fade_out": 1,
+          "fit": "crop"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2640,
+        "y": 100,
+        "params": {
+          "label": "Video"
+        }
+      },
+      {
+        "id": "n10",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2640,
+        "y": 300,
+        "params": {
+          "label": "Subtitles"
+        }
+      },
+      {
+        "id": "n11",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 760,
+        "params": {
+          "label": "Script"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "documents"
+        },
+        "to": {
+          "node": "n2",
+          "port": "documents"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "text"
+        },
+        "to": {
+          "node": "n4",
+          "port": "text"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "files"
+        },
+        "to": {
+          "node": "n4",
+          "port": "documents"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n2",
+          "port": "info"
+        },
+        "to": {
+          "node": "n4",
+          "port": "info"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n4",
+          "port": "narration"
+        },
+        "to": {
+          "node": "n5",
+          "port": "narration"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n4",
+          "port": "narration_context"
+        },
+        "to": {
+          "node": "n5",
+          "port": "context"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "image_prompts"
+        },
+        "to": {
+          "node": "n6",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n4",
+          "port": "briefs"
+        },
+        "to": {
+          "node": "n7",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n7",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n7",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n6",
+          "port": "image"
+        },
+        "to": {
+          "node": "n7",
+          "port": "stills"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n2",
+          "port": "pages"
+        },
+        "to": {
+          "node": "n7",
+          "port": "pages"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n7",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n2",
+          "port": "info"
+        },
+        "to": {
+          "node": "n7",
+          "port": "pages_info"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n7",
+          "port": "video"
+        },
+        "to": {
+          "node": "n8",
+          "port": "scenes"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n5",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n8",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n8",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n8",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n8",
+          "port": "video"
+        },
+        "to": {
+          "node": "n9",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n8",
+          "port": "subtitles"
+        },
+        "to": {
+          "node": "n10",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n4",
+          "port": "script"
+        },
+        "to": {
+          "node": "n11",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 460,
+        "y": 700,
+        "w": 760,
+        "h": 300,
+        "text": "Upload a PDF, TXT or MD file (up to 50 MB) and choose a branding if you have one. About 2 to 3 US dollars for a 20-page PDF and 2 minutes: the script 0.50 to 0.90 (reading is free), the voice about 0.15, every scene about 0.10 (Claude Opus 5.5 writes it, checks two frames and corrects it if needed), a few cents for each still picture. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Format must be the same in Plan explainer video and in Draw explainer scene. For music, connect an audio file to Cut explainer video. Scenes with a figure of the PDF cut it out of the page images (Read document: Page images = All). A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.6
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Explainer video from a PDF",
+    "description": "Upload a PDF or text file and get a finished explainer video: voice, motion graphics with your brand, captions and a subtitle file. Run only the planner first to check the script.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "assets",
+        "label": "PDF or text file"
+      },
+      {
+        "node": "n3",
+        "param": "branding",
+        "label": "Branding"
+      },
+      {
+        "node": "n4",
+        "param": "brief",
+        "label": "What matters most (optional)"
+      },
+      {
+        "node": "n4",
+        "param": "language",
+        "label": "Language"
+      },
+      {
+        "node": "n4",
+        "param": "length_seconds",
+        "label": "Length (seconds)"
+      },
+      {
+        "node": "n5",
+        "param": "voice_id",
+        "label": "Voice"
+      },
+      {
+        "node": "n8",
+        "param": "captions",
+        "label": "Captions"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n9",
+        "label": "Video"
+      },
+      {
+        "node": "n10",
+        "label": "Subtitles"
+      },
+      {
+        "node": "n11",
+        "label": "Script"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Erklärvideo aus PDF",
+      "description": "Mach aus einem PDF (oder einer Textdatei) ein fertiges Erklärvideo: Claude Opus 5.5 plant die Szenen und prüft jede Aussage gegen das Dokument, ElevenLabs spricht den Text, Claude zeichnet jede Szene als Motion Graphics in deiner Marke (Zahlen, Diagramme, aus dem PDF ausgeschnittene Abbildungen) auf dem Render-Node, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Etwa 2 bis 3 US-Dollar für ein PDF mit 20 Seiten und 2 Minuten (Skript 0.50 bis 0.90, Stimme etwa 0.15, Szenen je etwa 0.10). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
+      "node.n1": "PDF oder Textdatei",
+      "node.n2": "Dokument lesen",
+      "node.n3": "Branding",
+      "node.n4": "Erklärvideo planen",
+      "node.n5": "Erklärstimme",
+      "node.n6": "Bilder für Standbild-Szenen",
+      "node.n7": "Erklärszene zeichnen",
+      "node.n8": "Erklärvideo schneiden",
+      "param.n4.language": "de",
+      "note.t1": "Lade eine PDF-, TXT- oder MD-Datei hoch (bis 50 MB) und wähle ein Branding, falls du eines hast. Etwa 2 bis 3 US-Dollar für ein PDF mit 20 Seiten und 2 Minuten: das Skript 0.50 bis 0.90 (Lesen ist gratis), die Stimme etwa 0.15, jede Szene etwa 0.10 (Claude Opus 5.5 schreibt sie, prüft zwei Bilder und korrigiert bei Bedarf), ein paar Rappen für jedes Standbild. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Das Format muss in Erklärvideo planen und in Erklärszene zeichnen gleich sein. Für Musik verbindest du eine Audiodatei mit Erklärvideo schneiden. Szenen mit einer Abbildung schneiden sie aus den Seitenbildern des PDFs aus (Dokument lesen: Seitenbilder = Alle). Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen.",
+      "app.title": "Erklärvideo aus PDF",
+      "app.description": "Lade ein PDF oder eine Textdatei hoch und erhalte ein fertiges Erklärvideo: Stimme, Motion Graphics in deiner Marke, Untertitel und eine SRT-Datei. Starte zuerst nur den Planer, um das Skript zu prüfen.",
+      "app.input.n1.assets": "PDF oder Textdatei",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.brief": "Was besonders wichtig ist (optional)",
+      "app.input.n4.language": "Sprache",
+      "app.input.n4.length_seconds": "Länge (Sekunden)",
+      "app.input.n5.voice_id": "Stimme",
+      "app.input.n8.captions": "Untertitel",
+      "app.output.n9": "Video",
+      "app.output.n10": "Untertitel",
+      "app.output.n11": "Skript"
+    },
+    "es": {
+      "name": "Vídeo explicativo a partir de un PDF",
+      "description": "Convierte un PDF (o un archivo de texto) en un vídeo explicativo terminado: Claude Opus 5.5 planifica las escenas y comprueba cada afirmación con el documento, ElevenLabs lee la narración, Claude dibuja cada escena como motion graphics con tu marca (cifras, gráficos, figuras recortadas del PDF) en el nodo de render, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Unos 2 a 3 dólares para un PDF de 20 páginas y 2 minutos (guion 0,50 a 0,90, voz unos 0,15, escenas unos 0,10 cada una). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
+      "node.n1": "PDF o archivo de texto",
+      "node.n2": "Leer documento",
+      "node.n3": "Branding",
+      "node.n4": "Planificar vídeo explicativo",
+      "node.n5": "Voz explicativa",
+      "node.n6": "Imágenes para escenas fijas",
+      "node.n7": "Dibujar escena explicativa",
+      "node.n8": "Montar vídeo explicativo",
+      "param.n4.language": "es",
+      "note.t1": "Sube un archivo PDF, TXT o MD (hasta 50 MB) y elige un branding si tienes uno. Unos 2 a 3 dólares para un PDF de 20 páginas y 2 minutos: el guion 0,50 a 0,90 (leer es gratis), la voz unos 0,15, cada escena unos 0,10 (Claude Opus 5.5 la escribe, revisa dos fotogramas y la corrige si hace falta), unos céntimos por cada imagen fija. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. El formato debe ser el mismo en Planificar vídeo explicativo y en Dibujar escena explicativa. Para música, conecta un archivo de audio a Montar vídeo explicativo. Las escenas con una figura recortan la figura de las imágenes de página del PDF (Leer documento: Imágenes de página = Todas). El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa.",
+      "app.title": "Vídeo explicativo a partir de un PDF",
+      "app.description": "Sube un PDF o un archivo de texto y obtén un vídeo explicativo terminado: voz, motion graphics con tu marca, subtítulos y un archivo SRT. Ejecuta primero solo el planificador para revisar el guion.",
+      "app.input.n1.assets": "PDF o archivo de texto",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.brief": "Lo que más importa (opcional)",
+      "app.input.n4.language": "Idioma",
+      "app.input.n4.length_seconds": "Duración (segundos)",
+      "app.input.n5.voice_id": "Voz",
+      "app.input.n8.captions": "Subtítulos",
+      "app.output.n9": "Vídeo",
+      "app.output.n10": "Subtítulos",
+      "app.output.n11": "Guion"
+    }
+  }
+}

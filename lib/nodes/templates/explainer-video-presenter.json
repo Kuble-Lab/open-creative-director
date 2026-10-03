@@ -1,0 +1,748 @@
+{
+  "id": "explainer-video-presenter",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Explainer video with a presenter (portrait)",
+  "description": "Turn a topic into a portrait explainer video (9:16) that a presenter opens and closes on camera: Claude Opus 5.5 researches and plans, ElevenLabs speaks the scenes and the two presenter lines, H3 Max lip sync (fal.ai) lets your photo speak them, Claude draws the scenes in between as motion graphics in your brand, and ffmpeg cuts it with voice, captions and a subtitle file. Use a photo only with the consent of the person. About 3.5 to 4.5 US dollars for 2 minutes (the topic version plus about 1.4 for the two lip-sync clips). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
+  "requires": [
+    "openrouter",
+    "elevenlabs",
+    "rendernode",
+    "ffmpeg",
+    "fal"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 120,
+        "title": "Topic",
+        "params": {
+          "prompt": "How does a heat pump work, and what does it cost to run?"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 420,
+        "title": "What matters most (optional)",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n14",
+        "type": "input.image",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 760,
+        "title": "Photo of the presenter",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "llm.research",
+        "typeVersion": 1,
+        "x": 460,
+        "y": 120,
+        "title": "Research the topic",
+        "params": {
+          "model": "",
+          "topic": "",
+          "focus": "",
+          "max_results": 8,
+          "language": "en",
+          "include_domains": "",
+          "exclude_domains": ""
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.branding",
+        "typeVersion": 1,
+        "x": 460,
+        "y": 520,
+        "title": "Branding",
+        "params": {
+          "branding": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "explainer.plan",
+        "typeVersion": 1,
+        "x": 880,
+        "y": 140,
+        "title": "Plan explainer video",
+        "params": {
+          "model": "",
+          "topic": "",
+          "brief": "",
+          "length_seconds": 120,
+          "language": "en",
+          "audience": "",
+          "tone": "factual",
+          "visual_mode": "mix",
+          "format": "portrait",
+          "max_still_share": 0.35,
+          "clips": false,
+          "presenter": "intro_outro",
+          "verify": true,
+          "script": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "explainer.voice",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 80,
+        "title": "Explainer voice",
+        "params": {
+          "voice_id": "",
+          "model_id": "eleven_v4",
+          "use_context": true
+        }
+      },
+      {
+        "id": "n7",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 440,
+        "title": "Pictures for still scenes",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "9:16",
+          "count": 1
+        }
+      },
+      {
+        "id": "n12",
+        "type": "explainer.voice",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 760,
+        "title": "Voice of the presenter",
+        "params": {
+          "voice_id": "",
+          "model_id": "eleven_v4",
+          "use_context": false
+        }
+      },
+      {
+        "id": "n13",
+        "type": "fal.h3_lipsync",
+        "typeVersion": 1,
+        "x": 1760,
+        "y": 760,
+        "title": "Presenter speaks",
+        "params": {
+          "resolution": "768P",
+          "transcription": false,
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n15",
+        "type": "util.pick",
+        "typeVersion": 1,
+        "x": 2200,
+        "y": 700,
+        "title": "Intro",
+        "params": {
+          "index": 0
+        }
+      },
+      {
+        "id": "n16",
+        "type": "util.pick",
+        "typeVersion": 1,
+        "x": 2200,
+        "y": 860,
+        "title": "Outro",
+        "params": {
+          "index": -1
+        }
+      },
+      {
+        "id": "n8",
+        "type": "explainer.scene",
+        "typeVersion": 1,
+        "x": 1760,
+        "y": 200,
+        "title": "Draw explainer scene",
+        "params": {
+          "model": "",
+          "format": "portrait",
+          "quality": "standard",
+          "vision_check": true,
+          "max_retries": 2,
+          "fallback": true
+        }
+      },
+      {
+        "id": "n9",
+        "type": "explainer.edit",
+        "typeVersion": 1,
+        "x": 2640,
+        "y": 300,
+        "title": "Cut explainer video",
+        "params": {
+          "transition": "crossfade",
+          "resolution": "1080p",
+          "fps": "30",
+          "captions": "lines",
+          "captions_position": "bottom",
+          "music_level": "quiet",
+          "ducking": true,
+          "fade_out": 1,
+          "fit": "crop"
+        }
+      },
+      {
+        "id": "n10",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 3080,
+        "y": 200,
+        "params": {
+          "label": "Video"
+        }
+      },
+      {
+        "id": "n11",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 3080,
+        "y": 400,
+        "params": {
+          "label": "Subtitles"
+        }
+      },
+      {
+        "id": "n17",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 1000,
+        "params": {
+          "label": "Script"
+        }
+      },
+      {
+        "id": "n18",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 1180,
+        "params": {
+          "label": "Sources"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n2",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n6",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n2",
+          "port": "focus"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "notes"
+        },
+        "to": {
+          "node": "n4",
+          "port": "notes"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n2",
+          "port": "sources"
+        },
+        "to": {
+          "node": "n4",
+          "port": "sources"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n6",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "narration"
+        },
+        "to": {
+          "node": "n5",
+          "port": "narration"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n4",
+          "port": "narration_context"
+        },
+        "to": {
+          "node": "n5",
+          "port": "context"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n4",
+          "port": "image_prompts"
+        },
+        "to": {
+          "node": "n7",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n4",
+          "port": "briefs"
+        },
+        "to": {
+          "node": "n8",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n8",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n8",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n7",
+          "port": "image"
+        },
+        "to": {
+          "node": "n8",
+          "port": "stills"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n8",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n4",
+          "port": "presenter"
+        },
+        "to": {
+          "node": "n12",
+          "port": "narration"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n14",
+          "port": "image"
+        },
+        "to": {
+          "node": "n13",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n12",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n13",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n13",
+          "port": "video"
+        },
+        "to": {
+          "node": "n15",
+          "port": "items"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n13",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "items"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n8",
+          "port": "video"
+        },
+        "to": {
+          "node": "n9",
+          "port": "scenes"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n5",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n9",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n9",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e24",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n9",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e25",
+        "from": {
+          "node": "n15",
+          "port": "item"
+        },
+        "to": {
+          "node": "n9",
+          "port": "intro"
+        }
+      },
+      {
+        "id": "e26",
+        "from": {
+          "node": "n16",
+          "port": "item"
+        },
+        "to": {
+          "node": "n9",
+          "port": "outro"
+        }
+      },
+      {
+        "id": "e27",
+        "from": {
+          "node": "n9",
+          "port": "video"
+        },
+        "to": {
+          "node": "n10",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e28",
+        "from": {
+          "node": "n9",
+          "port": "subtitles"
+        },
+        "to": {
+          "node": "n11",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e29",
+        "from": {
+          "node": "n4",
+          "port": "script"
+        },
+        "to": {
+          "node": "n17",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e30",
+        "from": {
+          "node": "n4",
+          "port": "sources"
+        },
+        "to": {
+          "node": "n18",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 460,
+        "y": 760,
+        "w": 760,
+        "h": 300,
+        "text": "Only use a photo of a person who has agreed that their picture and a synthetic voice are used in a video (consent). The presenter opens and closes the video on camera: the planner writes the two lines, ElevenLabs speaks them and H3 Max lip sync (fal.ai) lets the photo speak. The format is portrait (9:16): use an upright photo of the face. About 3.5 to 4.5 US dollars for 2 minutes: the topic version (about 1.5 to 2.5) plus about 1.4 for two lip-sync clips of about 8 s each. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Format must be portrait in Plan explainer video and in Draw explainer scene. A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.5
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Explainer video with a presenter (portrait)",
+    "description": "Name a topic and add a photo of the presenter (with their consent): the presenter opens and closes the portrait video on camera, the scenes in between are motion graphics with voice and captions. Run only the planner first to check the script.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Topic"
+      },
+      {
+        "node": "n6",
+        "param": "prompt",
+        "label": "What matters most (optional)"
+      },
+      {
+        "node": "n14",
+        "param": "asset",
+        "label": "Photo of the presenter"
+      },
+      {
+        "node": "n3",
+        "param": "branding",
+        "label": "Branding"
+      },
+      {
+        "node": "n4",
+        "param": "language",
+        "label": "Language of the script"
+      },
+      {
+        "node": "n2",
+        "param": "language",
+        "label": "Language of the research"
+      },
+      {
+        "node": "n4",
+        "param": "length_seconds",
+        "label": "Length (seconds)"
+      },
+      {
+        "node": "n5",
+        "param": "voice_id",
+        "label": "Voice of the scenes"
+      },
+      {
+        "node": "n12",
+        "param": "voice_id",
+        "label": "Voice of the presenter"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n10",
+        "label": "Video"
+      },
+      {
+        "node": "n11",
+        "label": "Subtitles"
+      },
+      {
+        "node": "n17",
+        "label": "Script"
+      },
+      {
+        "node": "n18",
+        "label": "Sources"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Erklärvideo mit Moderation (Hochformat)",
+      "description": "Mach aus einem Thema ein Erklärvideo im Hochformat (9:16), das eine Moderatorin oder ein Moderator vor der Kamera eröffnet und abschliesst: Claude Opus 5.5 recherchiert und plant, ElevenLabs spricht die Szenen und die beiden Moderationstexte, H3 Max Lip Sync (fal.ai) lässt dein Foto sie sprechen, Claude zeichnet die Szenen dazwischen als Motion Graphics in deiner Marke, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Verwende ein Foto nur mit Einwilligung der Person. Etwa 3.50 bis 4.50 US-Dollar für 2 Minuten (die Themen-Version plus etwa 1.40 für die zwei Lip-Sync-Clips). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
+      "node.n1": "Thema",
+      "node.n6": "Was besonders wichtig ist (optional)",
+      "node.n14": "Foto der Moderation",
+      "node.n2": "Thema recherchieren",
+      "node.n3": "Branding",
+      "node.n4": "Erklärvideo planen",
+      "node.n5": "Erklärstimme",
+      "node.n7": "Bilder für Standbild-Szenen",
+      "node.n12": "Stimme der Moderation",
+      "node.n13": "Moderation spricht",
+      "node.n15": "Einstieg",
+      "node.n16": "Abschluss",
+      "node.n8": "Erklärszene zeichnen",
+      "node.n9": "Erklärvideo schneiden",
+      "param.n1.prompt": "Wie funktioniert eine Wärmepumpe, und was kostet ihr Betrieb?",
+      "param.n2.language": "de",
+      "param.n4.language": "de",
+      "note.t1": "Verwende nur ein Foto einer Person, die damit einverstanden ist, dass ihr Bild und eine synthetische Stimme in einem Video vorkommen (Einwilligung). Die Moderation eröffnet und schliesst das Video vor der Kamera: Der Planer schreibt die zwei Texte, ElevenLabs spricht sie und H3 Max Lip Sync (fal.ai) lässt das Foto sprechen. Das Format ist Hochformat (9:16): nimm ein aufrechtes Foto des Gesichts. Etwa 3.50 bis 4.50 US-Dollar für 2 Minuten: die Themen-Version (etwa 1.50 bis 2.50) plus etwa 1.40 für zwei Lip-Sync-Clips von je etwa 8 s. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Das Format muss in Erklärvideo planen und in Erklärszene zeichnen Hochformat sein. Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen.",
+      "app.title": "Erklärvideo mit Moderation (Hochformat)",
+      "app.description": "Nenne ein Thema und füge ein Foto der Moderation hinzu (mit Einwilligung): Die Moderation eröffnet und schliesst das Hochformat-Video vor der Kamera, dazwischen laufen Motion Graphics mit Stimme und Untertiteln. Starte zuerst nur den Planer, um das Skript zu prüfen.",
+      "app.input.n1.prompt": "Thema",
+      "app.input.n6.prompt": "Was besonders wichtig ist (optional)",
+      "app.input.n14.asset": "Foto der Moderation",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.language": "Sprache des Skripts",
+      "app.input.n2.language": "Sprache der Recherche",
+      "app.input.n4.length_seconds": "Länge (Sekunden)",
+      "app.input.n5.voice_id": "Stimme der Szenen",
+      "app.input.n12.voice_id": "Stimme der Moderation",
+      "app.output.n10": "Video",
+      "app.output.n11": "Untertitel",
+      "app.output.n17": "Skript",
+      "app.output.n18": "Quellen"
+    },
+    "es": {
+      "name": "Vídeo explicativo con presentador (vertical)",
+      "description": "Convierte un tema en un vídeo explicativo vertical (9:16) que un presentador abre y cierra ante la cámara: Claude Opus 5.5 investiga y planifica, ElevenLabs lee las escenas y las dos frases del presentador, H3 Max lip sync (fal.ai) hace que tu foto las diga, Claude dibuja las escenas intermedias como motion graphics con tu marca, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Usa una foto solo con el consentimiento de la persona. Unos 3,50 a 4,50 dólares para 2 minutos (la versión de tema más unos 1,40 por los dos clips de lip sync). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
+      "node.n1": "Tema",
+      "node.n6": "Lo que más importa (opcional)",
+      "node.n14": "Foto del presentador",
+      "node.n2": "Investigar un tema",
+      "node.n3": "Branding",
+      "node.n4": "Planificar vídeo explicativo",
+      "node.n5": "Voz explicativa",
+      "node.n7": "Imágenes para escenas fijas",
+      "node.n12": "Voz del presentador",
+      "node.n13": "El presentador habla",
+      "node.n15": "Introducción",
+      "node.n16": "Cierre",
+      "node.n8": "Dibujar escena explicativa",
+      "node.n9": "Montar vídeo explicativo",
+      "param.n1.prompt": "¿Cómo funciona una bomba de calor y cuánto cuesta su funcionamiento?",
+      "param.n2.language": "es",
+      "param.n4.language": "es",
+      "note.t1": "Usa solo la foto de una persona que haya aceptado que su imagen y una voz sintética aparezcan en un vídeo (consentimiento). El presentador abre y cierra el vídeo ante la cámara: el planificador escribe los dos textos, ElevenLabs los lee y H3 Max lip sync (fal.ai) hace hablar a la foto. El formato es vertical (9:16): usa una foto vertical del rostro. Unos 3,50 a 4,50 dólares para 2 minutos: la versión de tema (unos 1,50 a 2,50) más unos 1,40 por dos clips de lip sync de unos 8 s cada uno. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. El formato debe ser vertical en Planificar vídeo explicativo y en Dibujar escena explicativa. El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa.",
+      "app.title": "Vídeo explicativo con presentador (vertical)",
+      "app.description": "Nombra un tema y añade la foto del presentador (con su consentimiento): el presentador abre y cierra el vídeo vertical ante la cámara y entre medias hay motion graphics con voz y subtítulos. Ejecuta primero solo el planificador para revisar el guion.",
+      "app.input.n1.prompt": "Tema",
+      "app.input.n6.prompt": "Lo que más importa (opcional)",
+      "app.input.n14.asset": "Foto del presentador",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.language": "Idioma del guion",
+      "app.input.n2.language": "Idioma de la investigación",
+      "app.input.n4.length_seconds": "Duración (segundos)",
+      "app.input.n5.voice_id": "Voz de las escenas",
+      "app.input.n12.voice_id": "Voz del presentador",
+      "app.output.n10": "Vídeo",
+      "app.output.n11": "Subtítulos",
+      "app.output.n17": "Guion",
+      "app.output.n18": "Fuentes"
+    }
+  }
+}
