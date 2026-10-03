@@ -101,10 +101,11 @@ async function testHelp(A, registry, registryModule) {
   assert.ok(hello.length >= A.LIMITS.detailTypesMin);
   assert.ok(hello.includes('input.prompt'));
 
-  // music, 3D and background removal find their new nodes (WP28, WP30, WP32)
+  // music, 3D, background removal and video segmentation find their new nodes (WP28, WP30, WP32, WP33)
   assert.ok(A.pickHelpTypes({ question: 'Musik zum Video', canvas: empty, payload, dict: dictDe }).includes('audio.music'));
   assert.ok(A.pickHelpTypes({ question: 'Foto in ein 3D Modell verwandeln', canvas: empty, payload, dict: dictDe }).includes('fal.image_to_3d'));
   assert.ok(A.pickHelpTypes({ question: 'Hintergrund entfernen', canvas: empty, payload, dict: dictDe }).includes('fal.remove_background'));
+  assert.ok(A.pickHelpTypes({ question: 'Eine Person im Video freistellen', canvas: empty, payload, dict: dictDe }).includes('fal.video_segment'));
   assert.ok(A.pickHelpTypes({ question: 'Videos nebeneinander als Raster', canvas: empty, payload, dict: dictDe }).includes('video.grid'));
 
   // the selected node leads: a question about "this" node gets its help first
@@ -127,6 +128,7 @@ async function testHelp(A, registry, registryModule) {
   assert.match(line('video.generate'), /\[paid\].*in: prompt:text\*, first_frame:image, last_frame:image\+\(max by model\)/);
   assert.match(line('video.grid'), /\[local\].*in: videos:video\*\+\(max 4\), labels:text/);
   assert.match(line('fal.remove_background'), /\[paid\].*in: image:image\* \| out: image:image/);
+  assert.match(line('fal.video_segment'), /\[paid\].*in: video:video\* \| out: video:video/);
   assert.match(line('audio.music'), /\[paid\]/);
   assert.match(line('audio.music_plan'), /\[free call\]/, 'a provider call without charge is not "paid"');
   assert.match(line('fal.image_to_3d'), /out: model:model3d, preview:image/);
