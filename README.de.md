@@ -268,10 +268,11 @@ Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `t
 npm test                          # alle scripts/test-*.js, nacheinander
 npm test -- nodes-generate        # nur Tests, deren Dateiname den Text enthält
 npm test -- --timeout=600         # Sekunden pro Test (Standard 240)
-npm test -- --jobs=4              # mehrere gleichzeitig (schneller; Tests teilen data/ und projects/ und können sich stören)
+npm test -- --jobs=4              # mehrere gleichzeitig (schneller; Tests teilen die Datenordner der Kopie und können sich stören)
+npm test -- --keep                # die temporäre Kopie behalten, in der die Tests liefen (der Pfad wird ausgegeben)
 ```
 
-`scripts/run-tests.js` startet jedes `scripts/test-*.js` als eigenen Prozess und meldet `PASS` oder `FAIL` mit Dauer, am Ende `n/m passed` (Exit 1 bei Fehlern). Ein Test gilt nur als bestanden, wenn er mit 0 endet **und** seine letzte Ausgabezeile `<Dateiname>: ok` lautet; ein Test, der still abbricht (etwa ein Promise, das nie erfüllt wird), wird als `FAIL ... silent end` gemeldet. Jeder neue Test schliesst deshalb nach seiner letzten Prüfung mit `console.log('test-<name>.js: ok')`. Einige Tests überspringen ihren Browserteil, wenn Chrome oder `render-node/` fehlt, und `test-minimal-config.js` hängt von deiner lokalen `.env` ab.
+`scripts/run-tests.js` startet jedes `scripts/test-*.js` als eigenen Prozess und meldet `PASS` oder `FAIL` mit Dauer, am Ende `n/m passed` (Exit 1 bei Fehlern). Ein Test gilt nur als bestanden, wenn er mit 0 endet **und** seine letzte Ausgabezeile `<Dateiname>: ok` lautet; ein Test, der still abbricht (etwa ein Promise, das nie erfüllt wird), wird als `FAIL ... silent end` gemeldet. Jeder neue Test schliesst deshalb nach seiner letzten Prüfung mit `console.log('test-<name>.js: ok')`. Einige Tests überspringen ihren Browserteil, wenn Chrome oder `render-node/` fehlt. `npm test` lässt die Tests in einer temporären Kopie des Repositorys laufen (die Dateien, die git verfolgt oder verfolgen würde, `node_modules` verlinkt; keine `.env`, kein `data/`): Sie schreiben nie in deine Ordner `data/`, `projects/` oder `assets/` und lesen nie deine Einstellungen oder Schlüssel; die Kopie wird am Ende gelöscht. Ein Test, den du direkt mit `node scripts/test-….js` startest, läuft im Repository selbst.
 
 ## Hilfe und Mitarbeit
 
