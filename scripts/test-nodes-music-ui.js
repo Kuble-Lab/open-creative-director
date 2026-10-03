@@ -116,7 +116,7 @@ function testErrorTextsWithValues() {
   // every runtime code of the music and speech calls has a text in every language
   for (const code of [
     'MUSIC_SOURCE_MISSING', 'MUSIC_PLAN_WINS', 'MUSIC_SUBSCRIPTION_REQUIRED', 'MUSIC_PROMPT_REJECTED', 'MUSIC_PLAN_REJECTED',
-    'ELEVENLABS_RATE_LIMITED', 'ELEVENLABS_QUOTA_EXCEEDED', 'ELEVENLABS_KEY_REJECTED', 'ELEVENLABS_TIMEOUT', 'ELEVENLABS_SERVER_ERROR',
+    'ELEVENLABS_RATE_LIMITED', 'ELEVENLABS_QUOTA_EXCEEDED', 'ELEVENLABS_KEY_REJECTED', 'ELEVENLABS_MODEL_REJECTED', 'ELEVENLABS_TIMEOUT', 'ELEVENLABS_SERVER_ERROR',
     ...musicPlan.ERROR_CODES
   ]) {
     for (const lang of LANGS) assert.equal(uis[lang].hasIssueText(code), true, `${lang} has a text for ${code}`);

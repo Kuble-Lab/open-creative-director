@@ -158,6 +158,11 @@ async function testHelp(A, registry, registryModule) {
   assert.match(help, /Example: Prompt/);
   assert.match(help, /Params you may set: model "Modell" \(select, one of: vendor\/model-a \(Model A\) \| vendor\/model-b \(Model B\)\)/);
   assert.match(help, /duration "Dauer \(s\)" \(integer, 1\.\.30, default 5\)/);
+  // the speech node: its models are listed in the help (a short list, one of the DETAIL_SOURCES), so a model can be named by its id
+  assert.ok(A.DETAIL_SOURCES.includes('elevenlabs-tts-models'));
+  const ttsList = [{ value: 'eleven_v4', label: 'Eleven v4' }, { value: 'eleven_v4_turbo', label: 'Eleven v4 Turbo' }];
+  const ttsHelp = A.helpText(descriptors.find((descriptor) => descriptor.type === 'audio.tts'), dictDe, new Map([['elevenlabs-tts-models', ttsList]]));
+  assert.match(ttsHelp, /model_id "Sprachmodell" \(select, default "eleven_v4", one of: eleven_v4 \(Eleven v4\) \| eleven_v4_turbo \(Eleven v4 Turbo\)\)/);
   const mediaHelp = A.helpText(descriptors.find((descriptor) => descriptor.type === 'input.media_list'), dictDe, new Map());
   assert.match(mediaHelp, /Ports follow the param kind: kind=image: out items:image\[\]; kind=video: out items:video\[\]/);
   assert.match(mediaHelp, /Files .* are added by the person/, 'media params are not offered');
@@ -429,6 +434,11 @@ function testProposals(A, registry, typesLib, registryModule) {
   assert.deepEqual(noList.insert.nodes[0].params, {}, 'a value that cannot be checked is not used');
   assert.deepEqual(noList.adjusted, [{ ref: 'a', param: 'model', reason: 'unverifiable' }]);
   assert.deepEqual([...A.neededSources({ nodes: [node('a', 'image.generate', { model: 'x' }), node('b', 'llm.chat', { model: '' }), node('c', 'fal.image_to_3d', { model: 'tripo_h31' })] }, registry)].sort(), ['image-models', 'image-to-3d-models']);
+  // the speech node: a model is checked against the list of the speech models
+  const speechLists = { optionLists: new Map([['elevenlabs-tts-models', [{ value: 'eleven_v4', label: 'Eleven v4' }, { value: 'eleven_v4_turbo', label: 'Eleven v4 Turbo' }]]]) };
+  assert.deepEqual(check({ nodes: [node('s', 'audio.tts', { model_id: 'eleven_v4_turbo' })] }, speechLists).issues, []);
+  assert.deepEqual(codes(check({ nodes: [node('s', 'audio.tts', { model_id: 'eleven_nope' })] }, speechLists)), ['bad_option']);
+  assert.deepEqual([...A.neededSources({ nodes: [node('s', 'audio.tts', { model_id: 'eleven_v4' })] }, registry)], ['elevenlabs-tts-models']);
 
   // ----- ports -----
   assert.deepEqual(codes(check({ nodes: [node('p', 'input.prompt'), node('g', 'image.generate')], edges: [edge(out('p', 'nope'), out('g', 'prompt'))] })), ['no_port']);

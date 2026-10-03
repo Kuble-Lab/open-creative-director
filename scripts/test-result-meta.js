@@ -154,8 +154,8 @@ async function runServer(iso) {
   const spoken = await call(chat.id, 'generate_speech', { text: 'Hallo zusammen.' });
   ledger = await store.readLedger(chat.id);
   const speech = ledger.find((entry) => entry.kind === 'audio');
-  assert.equal(speech.model, 'elevenlabs/eleven_multilingual_v2');
-  assert.equal(spoken.events.find((event) => event.type === 'asset').asset.modelName, 'ElevenLabs Multilingual v2');
+  assert.equal(speech.model, 'elevenlabs/eleven_v4', 'the Director speaks with Eleven v4 unless it names a model');
+  assert.equal(spoken.events.find((event) => event.type === 'asset').asset.modelName, 'ElevenLabs v4');
   // the estimate per character is booked for everybody (internal people included): the card must not show it as the price the provider charged
   assert.equal(speech.costEstimated, true);
   assert.ok(speech.cost > 0);
@@ -168,6 +168,22 @@ async function runServer(iso) {
   assert.equal(generated.events.find((event) => event.type === 'asset').asset.costEstimated, undefined, 'a price from the provider is not marked');
   await call(chat.id, 'generate_speech', { text: 'Noch einmal.', model_id: 'eleven_turbo_v2_5' });
   assert.equal((await store.readLedger(chat.id)).filter((entry) => entry.kind === 'audio').at(-1).model, 'elevenlabs/eleven_turbo_v2_5');
+  const turbo = await call(chat.id, 'generate_speech', { text: 'Und schnell.', model_id: 'eleven_v4_turbo' });
+  assert.equal(turbo.events.find((event) => event.type === 'asset').asset.modelName, 'ElevenLabs v4 Turbo');
+  // every model the speech node offers has a readable name of its own, not the slug
+  for (const [id, name] of [
+    ['eleven_v4', 'ElevenLabs v4'],
+    ['eleven_v4_turbo', 'ElevenLabs v4 Turbo'],
+    ['eleven_v3', 'ElevenLabs v3'],
+    ['eleven_v3_conversational', 'ElevenLabs v3 Conversational'],
+    ['eleven_multilingual_v2', 'ElevenLabs Multilingual v2'],
+    ['eleven_flash_v2_5', 'ElevenLabs Flash v2.5'],
+    ['eleven_turbo_v2_5', 'ElevenLabs Turbo v2.5'],
+    ['eleven_flash_v2', 'ElevenLabs Flash v2'],
+    ['eleven_turbo_v2', 'ElevenLabs Turbo v2']
+  ]) {
+    assert.equal(resultMeta.displayName(`elevenlabs/${id}`), name, id);
+  }
 
   // ============ 3. the tool message of a turn carries the model, the reloaded chat serves it for every kind ============
   // A turn runs with the image model of the app's own configuration (config.json), whichever it is.
@@ -190,7 +206,7 @@ async function runServer(iso) {
   assert.equal(byId.get('img-001').model, 'openai/gpt-image-2');
   assert.equal(byId.get('img-001').modelName, 'GPT Image 2');
   assert.equal(byId.get('img-002').modelName, 'Nano Banana 2');
-  assert.equal(byId.get(speech.id).modelName, 'ElevenLabs Multilingual v2');
+  assert.equal(byId.get(speech.id).modelName, 'ElevenLabs v4');
 
   // ============ 4. old entries stay without a model: nothing is guessed, the configured model is not put in ============
   const old = await store.saveAsset(chat.id, { kind: 'image', buffer: PNG, ext: '.png', prompt: 'old', cost: 0.07 });
