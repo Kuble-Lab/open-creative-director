@@ -572,7 +572,8 @@ async function run(iso, clipDir) {
   await make('long24', { seconds: 4, rate: 24 });
   await make('big', { seconds: 1, rate: 24, size: '2560x1440', source: 'color' });
   await make('tall', { seconds: 1, rate: 24, size: '1080x2400', source: 'color' });
-  await make('odd', { seconds: 1, rate: 24, size: '641x361', pixFmt: 'yuv444p', source: 'color' });
+  // scaled to its odd size: the colour source of ffmpeg 6 rounds 641x361 down to even sides by itself
+  await make('odd', { seconds: 1, rate: 24, pixFmt: 'yuv444p', source: 'color', extra: ['-vf', 'scale=641:361'] });
   await ff(['-display_rotation', '90', '-i', clips.long24, '-c', 'copy', path.join(clipDir, 'turned.mp4')]);
   clips.turned = path.join(clipDir, 'turned.mp4');
   // a burst of 45 frames per second for 2 s, then one frame per second: the average rate looks harmless
