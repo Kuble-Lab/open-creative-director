@@ -42,6 +42,9 @@ const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 const LINKED_DIRS = ['node_modules', path.join('render-node', 'node_modules')];
 // What a copy without git (an exported tree) leaves out besides LINKED_DIRS
 const SKIPPED_WITHOUT_GIT = new Set(['.git', 'node_modules', 'data', 'projects', 'assets', '.env']);
+// Made empty in the copy: the app makes them on its first start (store.ensureDirs), so every checkout has them, and some tests
+// write into them without starting the app.
+const DATA_DIRS = ['data', 'projects', 'assets'];
 
 function parseArgs(argv) {
   const options = { timeoutSeconds: DEFAULT_TIMEOUT_SECONDS, jobs: DEFAULT_JOBS, filters: [], keep: false };
@@ -120,6 +123,7 @@ function createCopy() {
       }
     });
   }
+  for (const name of DATA_DIRS) fs.mkdirSync(path.join(dir, name), { recursive: true });
   for (const relative of LINKED_DIRS) {
     const target = path.join(ROOT, relative);
     const link = path.join(dir, relative);
