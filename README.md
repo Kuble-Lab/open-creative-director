@@ -268,10 +268,11 @@ Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `t
 npm test                          # every scripts/test-*.js, one after another
 npm test -- nodes-generate        # only tests whose file name contains the text
 npm test -- --timeout=600         # seconds per test (default 240)
-npm test -- --jobs=4              # several at once (faster; tests share data/ and projects/, so they can collide)
+npm test -- --jobs=4              # several at once (faster; tests share the data folders of the copy, so they can collide)
+npm test -- --keep                # keep the temporary copy the tests ran in (its path is printed)
 ```
 
-`scripts/run-tests.js` starts each `scripts/test-*.js` as its own process and prints `PASS` or `FAIL` with the duration, then `n/m passed` (exit code 1 if anything failed). A test passes only if it exits with 0 **and** its last output line is `<file name>: ok`; a test that just stops early (for example a promise that never settles) is reported as `FAIL ... silent end`. Every new test therefore ends with `console.log('test-<name>.js: ok')`, after its last check. Some tests skip their browser part when Chrome or `render-node/` is missing, and `test-minimal-config.js` depends on your local `.env`.
+`scripts/run-tests.js` starts each `scripts/test-*.js` as its own process and prints `PASS` or `FAIL` with the duration, then `n/m passed` (exit code 1 if anything failed). A test passes only if it exits with 0 **and** its last output line is `<file name>: ok`; a test that just stops early (for example a promise that never settles) is reported as `FAIL ... silent end`. Every new test therefore ends with `console.log('test-<name>.js: ok')`, after its last check. Some tests skip their browser part when Chrome or `render-node/` is missing. `npm test` runs the tests in a temporary copy of the repository (the files git tracks or would track, `node_modules` linked; no `.env`, no `data/`), so they never write into your `data/`, `projects/` or `assets/` and never read your settings or keys; the copy is removed at the end. A test started directly with `node scripts/test-….js` runs in place.
 
 ## Help and contributing
 
