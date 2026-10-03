@@ -1046,8 +1046,9 @@ async function run(iso) {
 
   /* ---------- the template through the engine ---------- */
 
-  // The real nodes everywhere but at the three providers: image, video and lip sync are doubles of the real definitions (same ports and
-  // parameters). They make a picture or a clip of the colour their prompt names, so what the cut shows tells where a clip came from.
+  // The real nodes everywhere but at the three providers: image, video (the story clips, H3 Max turbo) and lip sync are doubles of the real
+  // definitions (same ports and parameters). They make a picture or a clip of the colour their prompt names, so what the cut shows tells
+  // where a clip came from.
   const registry = createRegistry();
   nodesBasic.registerAll(registry);
   musicVideoNodes.registerAll(registry);
@@ -1060,7 +1061,9 @@ async function run(iso) {
     seen.lipsync.length = 0;
   };
   const colourOfImage = new Map();
-  const double = (type, execute) => registry.register({ ...real.get(type), available: () => true, prepare: undefined, validate: undefined, cost: undefined, execute });
+  // `priced` keeps the price table of the real definition (the plan then prices the node)
+  const double = (type, execute, { priced = false } = {}) =>
+    registry.register({ ...real.get(type), available: () => true, prepare: undefined, validate: undefined, cost: priced ? real.get(type).cost : undefined, execute });
   const scratchFile = async (ctx, name) => path.join(await assets.createScratchDir(ctx.sessionId), name);
   const keepFile = async (ctx, file, options) => {
     const value = await ctx.saveOutputFile({ sourceFile: file, ...options });
@@ -1079,7 +1082,7 @@ async function run(iso) {
     seen.image[ctx.nodeId][ctx.itemIndex ?? 0] = { prompt, hex, references };
     return { variants: [{ image: value }] };
   });
-  double('video.generate', async (ctx, inputs, params) => {
+  double('fal.h3_video', async (ctx, inputs, params) => {
     const hex = colourOfImage.get(inputs.first_frame.assetId);
     const clip = await colourClip(hex, params.duration);
     const file = await scratchFile(ctx, 'clip.mp4');
@@ -1087,7 +1090,7 @@ async function run(iso) {
     const value = await keepFile(ctx, file, { kind: 'video', ext: '.mp4', prompt: inputs.prompt.value, cost: 0, duration: params.duration });
     seen.video[ctx.itemIndex ?? 0] = { motion: inputs.prompt.value, hex, duration: params.duration };
     return { variants: [{ video: value }] };
-  });
+  }, { priced: true });
   double('fal.h3_lipsync', async (ctx, inputs) => {
     const hex = colourOfImage.get(inputs.image.assetId);
     const slice = assets.assetFilePath(inputs.audio);
@@ -1107,6 +1110,8 @@ async function run(iso) {
   const engine = createEngine({ store: flowStore, registry, events: bus, getConfig: () => engineConfig, limits: { jobPollMs: 20 } });
 
   const document = templatesLib.resolveTemplate('music-video', { lang: 'en' });
+  // the story clips are H3 Max turbo (Seedance refuses the images of the template: they show the person of the photo)
+  assert.equal(document.graph.nodes.find((node) => node.id === 'n10').type, 'fal.h3_video');
   const created = await flowStore.createWorkflow({ document, user: STAFF, owner: null });
   const workflow = created.workflow;
   const flowSession = workflow.sessionId;
@@ -1277,6 +1282,17 @@ async function run(iso) {
     assert.equal(planned.nodes.n10.executions, story.length);
     assert.equal(planned.nodes.n9.executions, performance.length);
     assert.equal(planned.nodes.n11.executions, performance.length);
+
+    // the price of the story clips once the plan has run: a clip is 5 s of H3 Max turbo at 768P, 0.04 USD a second (here 6 s: 0.24 each, so
+    // that the node is stale and has a price); the rest of the chain is cached, and the doubles of the other providers have no price
+    const repriced = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { n10: { duration: 6 } } });
+    assert.equal(repriced.nodes.n10.status, 'stale');
+    assert.equal(repriced.nodes.n10.executions, story.length);
+    assert.equal(repriced.nodes.n10.estimate.usd, 0.24);
+    near(repriced.totals.usd, story.length * 0.24, 1e-9, 'every story clip is priced');
+    assert.equal(repriced.totals.unknownNodes, 0);
+    const hd = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { n10: { duration: 5, resolution: '1080P' } } });
+    assert.equal(hd.nodes.n10.estimate.usd, 0.4, 'turbo at 1080P: 5 s at 0.08 USD');
   }
 
   // 2. a share of 0: the lists for the singer are empty, the nodes behind them run no time, the video is made of the story clips

@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Music video from a song",
-  "description": "Turn a song into a music video cut to the beat. The song is analysed, ElevenLabs finds when each line is sung, a language model plans the scenes from your idea, every scene gets an image of your reference photo and an AI video clip (singer scenes with lip sync), and ffmpeg cuts it all to the song. About 13 scenes per minute, each with an image and a clip: a 2-minute song costs roughly 5 to 20 US dollars, depending on the video model. Nothing is charged before you confirm.",
+  "description": "Turn a song into a music video cut to the beat. The song is analysed, ElevenLabs finds when each line is sung, a language model plans the scenes from your idea, every scene gets an image of your reference photo and an AI video clip (the story clips come from H3 Max turbo on fal.ai, 768P, 5 s, about 0.20 US dollars each, because Seedance refuses images that may show a real person; singer scenes get lip sync), and ffmpeg cuts it all to the song. About 13 scenes per minute, each with an image and a clip: a 2-minute song costs about 11 US dollars with the preset settings (roughly 5 to 20, depending on the number of scenes and the video settings). Nothing is charged before you confirm.",
   "requires": [
     "openrouter",
     "ffmpeg",
@@ -123,17 +123,20 @@
       },
       {
         "id": "n10",
-        "type": "video.generate",
+        "type": "fal.h3_video",
         "typeVersion": 1,
         "x": 2280,
         "y": 60,
-        "title": "Story clips",
+        "title": "Story clips (H3 Max turbo)",
         "params": {
-          "model": "",
           "prompt": "",
-          "duration": 5,
+          "model": "turbo",
+          "resolution": "768P",
           "aspect_ratio": "16:9",
-          "resolution": "480p"
+          "duration": 5,
+          "prompt_expansion": "balanced",
+          "seed": null,
+          "safety": true
         }
       },
       {
@@ -413,7 +416,7 @@
         "y": 360,
         "w": 400,
         "h": 220,
-        "text": "The clip length of the plan and the duration of the story clips must stay equal. 16:9 is set in the plan and in both image nodes: change all three for a vertical video. The two text nodes tell the image model to keep the person of the photo."
+        "text": "The clip length of the plan and the duration of the story clips must stay equal (H3 Max clips last at least 5 s). 16:9 is set in the plan and in both image nodes: change all three for a vertical video, the clips follow their first image. The two text nodes tell the image model to keep the person of the photo."
       }
     ],
     "viewport": {
@@ -478,17 +481,17 @@
   "i18n": {
     "de": {
       "name": "Musikvideo aus Song",
-      "description": "Mache aus einem Song ein Musikvideo (Music Video), das im Takt geschnitten ist. Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell plant die Szenen nach deiner Idee, jede Szene bekommt ein Bild mit deinem Referenzfoto und einen KI-Videoclip (Gesangsszenen mit Lippensync), und ffmpeg schneidet alles zum Song. Rund 13 Szenen pro Minute, je mit Bild und Clip: Ein Song von 2 Minuten kostet je nach Videomodell grob 5 bis 20 US-Dollar. Vor deiner Bestätigung wird nichts berechnet.",
+      "description": "Mache aus einem Song ein Musikvideo (Music Video), das im Takt geschnitten ist. Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell plant die Szenen nach deiner Idee, jede Szene bekommt ein Bild mit deinem Referenzfoto und einen KI-Videoclip (die Handlungsclips kommen von H3 Max turbo auf fal.ai, 768P, 5 s, etwa 0.20 US-Dollar je Clip, weil Seedance Bilder ablehnt, auf denen eine echte Person zu sehen sein könnte; Gesangsszenen bekommen Lippensync), und ffmpeg schneidet alles zum Song. Rund 13 Szenen pro Minute, je mit Bild und Clip: Ein Song von 2 Minuten kostet mit den voreingestellten Einstellungen etwa 11 US-Dollar (grob 5 bis 20, je nach Zahl der Szenen und den Video-Einstellungen). Vor deiner Bestätigung wird nichts berechnet.",
       "node.n1": "Song",
       "node.n2": "Referenzfoto",
       "node.n6": "Handlungs-Prompts mit Foto",
       "node.n7": "Gesangs-Prompts mit Foto",
       "node.n8": "Handlungsbilder",
       "node.n9": "Gesangsbilder",
-      "node.n10": "Handlungsclips",
+      "node.n10": "Handlungsclips (H3 Max turbo)",
       "node.n11": "Gesangsclips (Lippensync)",
       "note.t1": "Lade den Song (mp3, wav oder m4a) und ein Foto der Hauptperson mit gut sichtbarem Gesicht hoch. Der Songtext ist optional: Mit ihm sind die Zeilenzeiten genauer, ohne ihn werden die Wörter aus dem Audio erkannt. Ein Plan hat höchstens 50 Szenen: Bei Songs über etwa 4 Minuten stellst du im Plan und in den Handlungsclips eine längere Clip-Länge ein. Jede Szene wird einzeln berechnet.",
-      "note.t2": "Die Clip-Länge des Plans und die Dauer der Handlungsclips müssen gleich bleiben. 16:9 ist im Plan und in beiden Bild-Nodes eingestellt: Für ein Hochformat-Video änderst du alle drei. Die beiden Text-Nodes sagen dem Bildmodell, dass es die Person vom Foto beibehalten soll.",
+      "note.t2": "Die Clip-Länge des Plans und die Dauer der Handlungsclips müssen gleich bleiben (H3-Max-Clips dauern mindestens 5 Sekunden). 16:9 ist im Plan und in beiden Bild-Nodes eingestellt: Für ein Hochformat-Video änderst du alle drei, die Clips übernehmen das Format ihres Startbilds. Die beiden Text-Nodes sagen dem Bildmodell, dass es die Person vom Foto beibehalten soll.",
       "app.title": "Musikvideo aus Song",
       "app.description": "Lade einen Song und ein Foto der Hauptperson hoch, schreibe die Idee und erhalte ein Musikvideo im Takt. Die Schätzung siehst du vor dem Start.",
       "app.input.n1.asset": "Song",
@@ -503,17 +506,17 @@
     },
     "es": {
       "name": "Videoclip a partir de una canción",
-      "description": "Convierte una canción en un videoclip cortado al ritmo. Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje planifica las escenas según tu idea, cada escena recibe una imagen con tu foto de referencia y un clip de vídeo de IA (las escenas de canto con sincronización labial), y ffmpeg lo corta todo al ritmo de la canción. Unas 13 escenas por minuto, cada una con imagen y clip: una canción de 2 minutos cuesta aproximadamente de 5 a 20 dólares, según el modelo de vídeo. No se cobra nada antes de que confirmes.",
+      "description": "Convierte una canción en un videoclip cortado al ritmo. Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje planifica las escenas según tu idea, cada escena recibe una imagen con tu foto de referencia y un clip de vídeo de IA (los clips de la historia vienen de H3 Max turbo en fal.ai, 768P, 5 s, unos 0,20 dólares por clip, porque Seedance rechaza las imágenes en las que pueda aparecer una persona real; las escenas de canto llevan sincronización labial), y ffmpeg lo corta todo al ritmo de la canción. Unas 13 escenas por minuto, cada una con imagen y clip: una canción de 2 minutos cuesta unos 11 dólares con los ajustes predefinidos (de 5 a 20 aproximadamente, según el número de escenas y los ajustes de vídeo). No se cobra nada antes de que confirmes.",
       "node.n1": "Canción",
       "node.n2": "Foto de referencia",
       "node.n6": "Prompts de la historia con la foto",
       "node.n7": "Prompts de canto con la foto",
       "node.n8": "Imágenes de la historia",
       "node.n9": "Imágenes de canto",
-      "node.n10": "Clips de la historia",
+      "node.n10": "Clips de la historia (H3 Max turbo)",
       "node.n11": "Clips de canto (sincronización labial)",
       "note.t1": "Sube la canción (mp3, wav o m4a) y una foto de la persona principal con el rostro bien visible. La letra es opcional: con ella los tiempos de las líneas son más exactos; sin ella, las palabras se reconocen a partir del audio. Un plan tiene como máximo 50 escenas: para canciones de más de unos 4 minutos, configura una duración de clip mayor en el plan y en los clips de la historia. Cada escena se cobra por separado.",
-      "note.t2": "La duración de clip del plan y la duración de los clips de la historia deben coincidir. El formato 16:9 está fijado en el plan y en los dos nodos de imagen: para un vídeo vertical cambia los tres. Los dos nodos de texto le indican al modelo de imagen que mantenga a la persona de la foto.",
+      "note.t2": "La duración de clip del plan y la duración de los clips de la historia deben coincidir (los clips de H3 Max duran al menos 5 segundos). El formato 16:9 está fijado en el plan y en los dos nodos de imagen: para un vídeo vertical cambia los tres; los clips adoptan el formato de su primera imagen. Los dos nodos de texto le indican al modelo de imagen que mantenga a la persona de la foto.",
       "app.title": "Videoclip a partir de una canción",
       "app.description": "Sube una canción y una foto de la persona principal, escribe la idea y recibe un videoclip cortado al ritmo. La estimación se muestra antes de empezar.",
       "app.input.n1.asset": "Canción",
