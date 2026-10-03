@@ -108,7 +108,7 @@ function testSourceKeys() {
   const dynamic = [];
   for (const code of ['unknown_node', 'same_node', 'no_output', 'no_input', 'incompatible', 'duplicate', 'cycle', 'too_many', 'same_side', 'none']) dynamic.push(`nodes.connect.${code}`);
   for (const color of graphLib.GROUP_COLORS) dynamic.push(`nodes.color.${color}`);
-  for (const kind of ['image', 'video', 'audio']) dynamic.push(`nodes.asset.hint.${kind}`);
+  for (const kind of ['image', 'video', 'audio', 'document']) dynamic.push(`nodes.asset.hint.${kind}`);
   for (const status of ['queued', 'running', 'waiting_job', 'cached', 'done', 'error', 'skipped', 'cancelled', 'stale', 'notrun', 'invalid', 'unavailable']) {
     dynamic.push(`nodes.status.${status}`);
     dynamic.push(`nodes.statusHint.${status}`);
@@ -209,9 +209,9 @@ function testPortDescriptions() {
 
   // generic texts for all port ids, and the last-resort texts for all seven base types on both sides
   const ids = new Set(ports.map((p) => p.port));
-  assert.equal(ids.size, 65, 'the registry has 65 port ids');
+  assert.equal(ids.size, 80, 'the registry has 80 port ids (65 + the 15 of the explainer foundation: documents, info, pages, files, topic, focus, sources, brand, logo, script, narration, briefs, image_prompts, clip_prompts, presenter)');
   for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
-  for (const base of ['text', 'number', 'image', 'video', 'audio', 'model3d', 'any']) {
+  for (const base of ['text', 'number', 'image', 'video', 'audio', 'document', 'model3d', 'any']) {
     for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);
   }
 
@@ -225,7 +225,7 @@ function testPortDescriptions() {
   const orphans = [];
   for (const key of nodeKeys('de').filter((k) => k.startsWith('nodes.portdesc.'))) {
     const rest = key.slice('nodes.portdesc.'.length);
-    let match = /^type\.(text|number|image|video|audio|model3d|any)\.(in|out)$/.exec(rest);
+    let match = /^type\.(text|number|image|video|audio|document|model3d|any)\.(in|out)$/.exec(rest);
     if (match) continue;
     if (ids.has(rest)) continue; // generic
     match = /^([a-z0-9_]+)\.(in|out)$/.exec(rest);
@@ -302,7 +302,7 @@ function testSearchKeywords() {
   for (const lang of languages) {
     assert.match(window.I18N[lang]['nodes.palette.moreModels'], /\{count\}/);
     assert.match(window.I18N[lang]['nodes.palette.moreModelsSearch'], /\{count\}/);
-    for (const reason of ['openrouter', 'llm', 'higgsfield', 'fal', 'elevenlabs', 'rendernode', 'ffmpeg', 'libass', 'resvg', 'account']) {
+    for (const reason of ['openrouter', 'llm', 'higgsfield', 'fal', 'elevenlabs', 'rendernode', 'ffmpeg', 'libass', 'resvg', 'poppler', 'account']) {
       assert.ok(window.I18N[lang][`nodes.reason.${reason}`], `${lang}: nodes.reason.${reason}`);
     }
   }

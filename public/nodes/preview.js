@@ -17,6 +17,8 @@
   /* ---------- value helpers ---------- */
 
   const isMedia = (value) => Boolean(value) && MEDIA_TYPES.includes(value.type) && typeof value.url === 'string';
+  // A document (PDF, TXT, MD) is not shown in the viewer: the card holds a chip with its name, size and pages, and a link.
+  const isDocument = (value) => Boolean(value) && value.type === 'document' && typeof value.url === 'string';
   const isViewable = (value) => isMedia(value) || (Boolean(value) && (value.type === 'text' || value.type === 'number'));
 
   // Video sources get a media fragment so browsers paint the first frame as poster.
@@ -34,7 +36,7 @@
   }
 
   function fileNameOf(value, fallback) {
-    if (isMedia(value) && value.file) return value.file;
+    if ((isMedia(value) || isDocument(value)) && value.file) return value.file;
     if (value && value.type === 'text') return `${fallback || 'text'}.txt`;
     return fallback || 'result';
   }
@@ -69,7 +71,7 @@
     if (!value) return;
     let href = '';
     let revoke = null;
-    if (isMedia(value)) {
+    if (isMedia(value) || isDocument(value)) {
       href = ui.mediaUrl(value);
     } else if (value.type === 'text' || value.type === 'number') {
       const blob = new Blob([String(value.value)], { type: 'text/plain;charset=utf-8' });
@@ -256,6 +258,8 @@
         const isPoster = poster !== null && single === poster;
         if (!isPoster) entries.push({ kind: 'single', label, value: single, index: viewItems.length, poster: single.type === 'model3d' ? poster : null });
         viewItems.push({ value: single, label, poster: single.type === 'model3d' ? poster : null });
+      } else if (isDocument(single)) {
+        entries.push({ kind: 'document', label, value: single });
       }
     }
     const open = (index) => openViewer(viewItems, index, { title: options.title });
@@ -269,6 +273,7 @@
       }
       const body = el('div', { class: 'nv-pv-body' });
       if (entry.kind === 'single') renderSingle(body, entry.value, () => open(entry.index), entry.poster);
+      else if (entry.kind === 'document') body.append(ui.documentElement(entry.value));
       else renderGrid(body, entry.list, entry.first, open);
       holder.append(body);
       container.append(holder);
@@ -327,6 +332,7 @@
         });
       } else {
         cell.append(icon('file', 16));
+        if (isDocument(item)) cell.title = item.name || item.file || '';
         cell.disabled = true;
       }
       grid.append(cell);
@@ -363,6 +369,9 @@
         wrap.classList.add('is-glyph', 'is-model');
         wrap.append(icon('cube', 18));
       }
+    } else if (isDocument(value)) {
+      wrap.classList.add('is-glyph');
+      wrap.append(icon('file', 18));
     } else if (value.type === 'text') {
       wrap.classList.add('is-text');
       wrap.append(el('span', { text: shortText(value.value, 90) }));

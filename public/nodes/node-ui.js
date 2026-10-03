@@ -50,6 +50,7 @@
     'ELEVENLABS_API_KEY is not set': 'nodes.reason.elevenlabs',
     'No render node configured': 'nodes.reason.rendernode',
     'ffmpeg/ffprobe not found': 'nodes.reason.ffmpeg',
+    'pdftotext/pdftoppm not found (poppler)': 'nodes.reason.poppler',
     'ffmpeg has no libass (filter "ass")': 'nodes.reason.libass',
     '@resvg/resvg-js is not installed': 'nodes.reason.resvg',
     'Not available for your account': 'nodes.reason.account'
@@ -831,11 +832,46 @@
     return el('audio', { class: 'nv-media nv-media-audio', src: url, controls: true, preload: 'metadata' });
   }
 
+  // A document (PDF, TXT, MD) is not played: a chip with the name, the size and the pages, and a link that opens the file.
+  function isDocumentValue(value) {
+    return Boolean(value) && value.type === 'document' && typeof value.url === 'string';
+  }
+
+  function sizeText(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function documentDetail(value) {
+    const parts = [];
+    if (Number.isInteger(value.pages) && value.pages > 0) parts.push(value.pages === 1 ? T('nodes.document.page') : T('nodes.document.pages', { count: value.pages }));
+    const size = sizeText(value.bytes);
+    if (size) parts.push(size);
+    return parts.join(' · ');
+  }
+
+  function documentElement(value) {
+    const name = value.name || value.file || '';
+    const chip = el('div', { class: 'nv-doc' }, icon('file', 18));
+    const text = el('div', { class: 'nv-doc-text' }, el('div', { class: 'nv-doc-name', text: name, title: name }));
+    const detail = documentDetail(value);
+    if (detail) text.append(el('div', { class: 'nv-doc-detail', text: detail }));
+    chip.append(text);
+    const open = el('a', { class: 'nv-doc-open nv-nodrag', href: api.rel(value.url), target: '_blank', rel: 'noopener', title: T('nodes.document.open'), 'aria-label': T('nodes.document.open') }, icon('fullscreen', 13));
+    open.addEventListener('click', (event) => event.stopPropagation());
+    chip.append(open);
+    return chip;
+  }
+
   // Renders output values into a container: image/video/audio players, text, numbers, list grids.
   function renderValue(container, value) {
     container.textContent = '';
     if (value === undefined || value === null) return;
-    if (isMediaValue(value)) {
+    if (isDocumentValue(value)) {
+      container.append(documentElement(value));
+    } else if (isMediaValue(value)) {
       container.append(mediaElement(value));
     } else if (value.type === 'text') {
       container.append(el('div', { class: 'nv-pv-text nv-scroll', text: value.value }));
@@ -849,6 +885,7 @@
         if (item && item.type === 'image') cell.append(el('img', { src: mediaUrl(item), alt: '', loading: 'lazy', draggable: 'false' }));
         else if (item && item.type === 'text') cell.append(el('span', { text: String(item.value).slice(0, 80) }));
         else if (item && item.type === 'number') cell.append(el('span', { text: String(item.value) }));
+        else if (item && item.type === 'document') cell.append(icon('file', 16), el('span', { text: String(item.name || item.file || '').slice(0, 40) }));
         else cell.append(icon(item?.type === 'video' ? 'video' : item?.type === 'audio' ? 'audio' : 'file', 16));
         grid.append(cell);
       }
@@ -884,10 +921,11 @@
 
   function acceptFor(param, node) {
     const accept = param.accept === 'kind' ? node?.params?.kind || 'image' : param.accept || 'image';
-    return ['image', 'video', 'audio'].includes(accept) ? accept : 'image';
+    return ['image', 'video', 'audio', 'document'].includes(accept) ? accept : 'image';
   }
 
   function fileInputAccept(kind) {
+    if (kind === 'document') return '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
     return kind === 'image' ? 'image/*,.svg' : `${kind}/*`;
   }
 
@@ -902,7 +940,9 @@
     zone.append(icon('upload', 16), el('span', { text: multi ? T('nodes.asset.addFiles') : T('nodes.asset.upload') }), el('small', { text: T(`nodes.asset.hint.${kind}`) }));
     // Browse: chats and the workflow's own assets (asset-picker.js, WP7).
     const browse = el('button', { type: 'button', class: 'nv-asset-browse', title: T('nodes.picker.browse'), 'aria-label': T('nodes.picker.browse') }, icon('folder', 15));
-    const actions = el('div', { class: 'nv-asset-actions' }, zone, browse);
+    // the picker lists images, videos and sounds of chats and of the workflow: documents are uploaded
+    const actions = el('div', { class: 'nv-asset-actions' }, zone);
+    if (kind !== 'document') actions.append(browse);
     let current = multi ? (Array.isArray(value) ? value : []) : value || null;
     let busy = 0;
 
@@ -919,8 +959,10 @@
 
     function drawItem(item, index) {
       const cell = el('div', { class: 'nv-asset-item' });
-      if (item?.missing || !isMediaValue(item)) {
+      if (item?.missing || !(isMediaValue(item) || isDocumentValue(item))) {
         cell.append(el('div', { class: 'nv-asset-missing' }, icon('warning', 14), el('span', { text: T('nodes.asset.missing') })));
+      } else if (isDocumentValue(item)) {
+        cell.append(documentElement(item));
       } else {
         cell.append(mediaElement(item));
       }
@@ -930,7 +972,7 @@
         emit(multi ? current.filter((_, i) => i !== index) : null);
       });
       cell.append(remove);
-      if (item?.file && !multi) cell.append(el('div', { class: 'nv-asset-name', text: item.file }));
+      if (item?.file && !multi && !isDocumentValue(item)) cell.append(el('div', { class: 'nv-asset-name', text: item.file }));
       return cell;
     }
 
@@ -1976,6 +2018,8 @@
     mediaElement,
     mediaUrl,
     isMediaValue,
+    isDocumentValue,
+    documentElement,
     renderValue,
     paramWidget,
     promptFieldOptions,
