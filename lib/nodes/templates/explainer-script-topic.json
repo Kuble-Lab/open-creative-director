@@ -1,0 +1,246 @@
+{
+  "id": "explainer-script-topic",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Explainer video: script for a topic",
+  "description": "Turn a topic into the script of an explainer video: Claude Opus 5.5 researches it on the web (every fact with a numbered source), plans the scenes with narration, text on screen and numbers, and a second pass checks each statement against the research. About 0.30 to 0.50 US dollars for a 2-minute video (research, plan and check together). The run asks for confirmation first. Read the script, edit it if you like and run again: an edited script is only checked, with no new model call.",
+  "requires": [
+    "openrouter"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 120,
+        "title": "Topic",
+        "params": {
+          "prompt": "How does a heat pump work, and what does it cost to run?"
+        }
+      },
+      {
+        "id": "n2",
+        "type": "llm.research",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 120,
+        "title": "Research the topic",
+        "params": {
+          "model": "",
+          "topic": "",
+          "focus": "",
+          "max_results": 8,
+          "language": "en",
+          "include_domains": "",
+          "exclude_domains": ""
+        }
+      },
+      {
+        "id": "n3",
+        "type": "explainer.plan",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 120,
+        "title": "Plan explainer video",
+        "params": {
+          "model": "",
+          "topic": "",
+          "brief": "",
+          "length_seconds": 120,
+          "language": "en",
+          "audience": "",
+          "tone": "factual",
+          "visual_mode": "mix",
+          "format": "landscape",
+          "max_still_share": 0.35,
+          "presenter": "off",
+          "verify": true,
+          "script": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1420,
+        "y": 100,
+        "params": {
+          "label": "Script"
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1420,
+        "y": 300,
+        "params": {
+          "label": "Sources"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n2",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "notes"
+        },
+        "to": {
+          "node": "n3",
+          "port": "notes"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "sources"
+        },
+        "to": {
+          "node": "n3",
+          "port": "sources"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n3",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n3",
+          "port": "script"
+        },
+        "to": {
+          "node": "n4",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n3",
+          "port": "sources"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 520,
+        "y": 420,
+        "w": 520,
+        "h": 260,
+        "text": "Write the topic. Claude Opus 5.5 searches the web (about 0.7 cent a search plus tokens), writes notes in which every fact has a number, and the planner builds the script from them. All together about 0.30 to 0.50 US dollars for 2 minutes, so the run asks for confirmation first. Use Only these domains in Research the topic to keep to sources you trust. A second pass removes what the research does not say. To change the script, copy the Script result into the field Edited script of Plan explainer video and run that node again: it is only checked and passed on, with no model call and no cost."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Explainer video: script for a topic",
+    "description": "Name a topic and choose the language and the length. You get the script of an explainer video with narration, text on screen and the sources.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Topic"
+      },
+      {
+        "node": "n3",
+        "param": "brief",
+        "label": "What matters most (optional)"
+      },
+      {
+        "node": "n3",
+        "param": "language",
+        "label": "Language"
+      },
+      {
+        "node": "n3",
+        "param": "length_seconds",
+        "label": "Length (seconds)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n4",
+        "label": "Script"
+      },
+      {
+        "node": "n5",
+        "label": "Sources"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Erklärvideo: Skript zu einem Thema",
+      "description": "Mach aus einem Thema das Skript eines Erklärvideos: Claude Opus 5.5 recherchiert es im Web (jede Tatsache mit nummerierter Quelle), plant die Szenen mit Sprechtext, Bildschirmtext und Zahlen, und ein zweiter Durchgang prüft jede Aussage gegen die Recherche. Etwa 0.30 bis 0.50 US-Dollar für ein Video von 2 Minuten (Recherche, Plan und Prüfung zusammen). Der Lauf fragt vorher um Bestätigung. Lies das Skript, ändere es nach Wunsch und starte erneut: Ein bearbeitetes Skript wird nur geprüft, ohne neuen Modellaufruf.",
+      "node.n1": "Thema",
+      "node.n2": "Thema recherchieren",
+      "node.n3": "Erklärvideo planen",
+      "param.n1.prompt": "Wie funktioniert eine Wärmepumpe, und was kostet ihr Betrieb?",
+      "note.t1": "Schreibe das Thema. Claude Opus 5.5 sucht im Web (etwa 0.7 Rappen pro Suche plus Tokens), schreibt Notizen, in denen jede Tatsache eine Nummer trägt, und der Planer baut daraus das Skript. Zusammen etwa 0.30 bis 0.50 US-Dollar für 2 Minuten, deshalb fragt der Lauf vorher um Bestätigung. Mit Nur diese Domains in Thema recherchieren bleibst du bei Quellen, denen du vertraust. Ein zweiter Durchgang entfernt, was die Recherche nicht sagt. Um das Skript zu ändern, kopiere das Ergebnis Skript in das Feld Skript (bearbeitet) von Erklärvideo planen und starte diesen Node erneut: Es wird nur geprüft und weitergegeben, ohne Modellaufruf und ohne Kosten.",
+      "param.n2.language": "de",
+      "param.n3.language": "de",
+      "app.title": "Erklärvideo: Skript zu einem Thema",
+      "app.description": "Nenne ein Thema und wähle Sprache und Länge. Du erhältst das Skript eines Erklärvideos mit Sprechtext, Bildschirmtext und den Quellen.",
+      "app.input.n1.prompt": "Thema",
+      "app.input.n3.brief": "Was besonders wichtig ist (optional)",
+      "app.input.n3.language": "Sprache",
+      "app.input.n3.length_seconds": "Länge (Sekunden)",
+      "app.output.n4": "Skript",
+      "app.output.n5": "Quellen"
+    },
+    "es": {
+      "name": "Vídeo explicativo: guion sobre un tema",
+      "description": "Convierte un tema en el guion de un vídeo explicativo: Claude Opus 5.5 lo investiga en la web (cada hecho con una fuente numerada), planifica las escenas con narración, texto en pantalla y cifras, y una segunda pasada comprueba cada afirmación con la investigación. Unos 0,30 a 0,50 dólares para un vídeo de 2 minutos (investigación, plan y comprobación juntos). La ejecución pide antes que lo confirmes. Lee el guion, edítalo si quieres y vuelve a ejecutar: un guion editado solo se comprueba, sin nueva llamada al modelo.",
+      "node.n1": "Tema",
+      "node.n2": "Investigar el tema",
+      "node.n3": "Planificar vídeo explicativo",
+      "param.n1.prompt": "¿Cómo funciona una bomba de calor y cuánto cuesta usarla?",
+      "note.t1": "Escribe el tema. Claude Opus 5.5 busca en la web (unos 0,7 céntimos por búsqueda más tokens), escribe notas en las que cada hecho lleva un número y el planificador construye el guion con ellas. En total unos 0,30 a 0,50 dólares para 2 minutos, por eso la ejecución pide antes que lo confirmes. Con Solo estos dominios en Investigar el tema te quedas con fuentes de confianza. Una segunda pasada elimina lo que la investigación no dice. Para cambiar el guion, copia el resultado Guion en el campo Guion (editado) de Planificar vídeo explicativo y ejecuta ese nodo de nuevo: solo se comprueba y se pasa, sin llamada al modelo y sin coste.",
+      "param.n2.language": "es",
+      "param.n3.language": "es",
+      "app.title": "Vídeo explicativo: guion sobre un tema",
+      "app.description": "Indica un tema y elige el idioma y la duración. Obtienes el guion de un vídeo explicativo con narración, texto en pantalla y las fuentes.",
+      "app.input.n1.prompt": "Tema",
+      "app.input.n3.brief": "Lo que más importa (opcional)",
+      "app.input.n3.language": "Idioma",
+      "app.input.n3.length_seconds": "Duración (segundos)",
+      "app.output.n4": "Guion",
+      "app.output.n5": "Fuentes"
+    }
+  }
+}

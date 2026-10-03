@@ -10,7 +10,7 @@
   const ui = OCD.ui;
   const { el } = ui;
 
-  const REQUIREMENT_LABELS = Object.freeze({ openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', elevenlabs: 'ElevenLabs', rendernode: 'Render node', higgsfield: 'Higgsfield', fal: 'fal.ai' });
+  const REQUIREMENT_LABELS = Object.freeze({ openrouter: 'OpenRouter', ffmpeg: 'ffmpeg', poppler: 'Poppler', elevenlabs: 'ElevenLabs', rendernode: 'Render node', higgsfield: 'Higgsfield', fal: 'fal.ai' });
   // From this many templates on the gallery gets a search field.
   const SEARCH_MIN = 8;
   const CACHE_MS = 5 * 60 * 1000;
