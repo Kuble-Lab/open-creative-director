@@ -439,6 +439,25 @@ async function main() {
       const turboJob = (await store.readSession(sessionId)).jobs.slice(-1)[0];
       assert.equal(turboJob.costEstimateUsd, 0.64, '8 s at 0.08 (turbo 1080P)');
 
+      // the story clips of the music video template (Seedance refuses its images: they show the person of the photo): turbo at 768P for
+      // 5 s from the first frame, 0.04 USD a second
+      resetCalls();
+      const storyClips = require('../lib/nodes/templates').resolveTemplate('music-video', { lang: 'en' }).graph.nodes.find((node) => node.id === 'n10');
+      assert.equal(storyClips.type, 'fal.h3_video');
+      await run('fal.h3_video', { prompt: text('The drummer crosses the harbour at dawn.'), first_frame: first }, storyClips.params);
+      assert.equal(lastSubmit().endpoint, 'minimax/h3-max-turbo/image-to-video');
+      assert.deepEqual(lastSubmit().input, {
+        prompt: 'The drummer crosses the harbour at dawn.',
+        prompt_expansion_mode: 'balanced',
+        resolution: '768P',
+        duration: 5,
+        enable_safety_checker: true,
+        image_url: urlOf(first)
+      });
+      const storyJob = (await store.readSession(sessionId)).jobs.slice(-1)[0];
+      assert.equal(storyJob.costEstimateUsd, 0.2, 'a clip of the music video: 5 s at 0.04');
+      assert.deepEqual(storyJob.pricing, { perSecond: 0.04, durationField: 'duration' });
+
       // last frame alone, and both frames plus audio
       resetCalls();
       const last = await image();

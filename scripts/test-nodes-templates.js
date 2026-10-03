@@ -183,10 +183,11 @@ async function main() {
     assert.match(songNote('en'), /Use as text/);
     assert.match(songNote('de'), /Als Text übernehmen/);
     assert.match(songNote('es'), /Usar como texto/);
-    // music-video: song -> beats and lyric times -> plan -> images and clips for the story and for the singer -> cut to the beat
+    // music-video: song -> beats and lyric times -> plan -> images and clips for the story (H3 Max turbo) and for the singer (lip sync) -> cut
+    // to the beat
     assert.deepEqual(types('music-video'), [
       'input.audio', 'input.image', 'audio.beats', 'audio.lyrics_timing', 'music_video.plan', 'text.template', 'text.template',
-      'image.edit', 'image.edit', 'video.generate', 'fal.h3_lipsync', 'music_video.edit', 'output.result'
+      'image.edit', 'image.edit', 'fal.h3_video', 'fal.h3_lipsync', 'music_video.edit', 'output.result'
     ]);
     assert.deepEqual(byId['music-video'].requires, ['openrouter', 'ffmpeg', 'elevenlabs', 'fal']);
     assert.deepEqual(
@@ -200,8 +201,11 @@ async function main() {
     );
     {
       const musicNode = (id) => byId['music-video'].graph.nodes.find((node) => node.id === id);
-      // a first run is cheap: small video, the lip sync in 768P, few scenes, a share of singer scenes that is not the half
-      assert.equal(musicNode('n10').params.resolution, '480p');
+      // the story clips are H3 Max turbo (768P, 5 s, 0.04 USD a second): Seedance refuses the images of the template, which show the person of
+      // the photo (VIDEO_REAL_PERSON). A first run is cheap otherwise: the lip sync in 768P, few scenes, a share of singer scenes that is not the half
+      assert.deepEqual(musicNode('n10').params, { prompt: '', model: 'turbo', resolution: '768P', aspect_ratio: '16:9', duration: 5, prompt_expansion: 'balanced', seed: null, safety: true });
+      assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get('fal.h3_video'), musicNode('n10').params), musicNode('n10').params, 'every param is one of the node, with a valid value');
+      assert.equal(nodeRegistry.get('fal.h3_video').cost.estimate(musicNode('n10').params), 0.2, 'a clip costs 5 s at 0.04 USD');
       assert.equal(musicNode('n11').params.resolution, '768P');
       assert.ok(musicNode('n5').params.shots_per_minute <= 10 && musicNode('n5').params.performance_share <= 0.3);
       // the pieces that have to agree: the clip length of the plan and of the video, the format of the plan and of both image nodes
@@ -216,6 +220,15 @@ async function main() {
       assert.match(byId['music-video'].description, /music video/i);
       assert.match(byId['music-video'].description, /US dollars/, 'the description names the cost');
       assert.match(byId['music-video'].description, /confirm/, 'and that nothing is charged before the confirmation');
+      for (const lang of ['en', 'de', 'es']) {
+        const description = templates.resolveTemplate('music-video', { lang }).description;
+        assert.match(description, /H3 Max turbo/, `${lang}: the description names the model of the story clips`);
+        assert.match(description, /Seedance/, `${lang}: and why it is not Seedance`);
+        assert.equal(/480p/i.test(description), false, `${lang}: no word of the old video settings`);
+      }
+      assert.match(templates.resolveTemplate('music-video', { lang: 'de' }).graph.nodes.find((node) => node.id === 'n10').title, /Handlungsclips \(H3 Max turbo\)/);
+      assert.match(templates.resolveTemplate('music-video', { lang: 'es' }).graph.nodes.find((node) => node.id === 'n10').title, /Clips de la historia \(H3 Max turbo\)/);
+      assert.equal(byId['music-video'].graph.nodes.find((node) => node.id === 'n10').title, 'Story clips (H3 Max turbo)');
     }
     assert.equal(templates.resolveTemplate('music-video', { lang: 'de' }).name, 'Musikvideo aus Song');
     assert.equal(templates.resolveTemplate('music-video', { lang: 'en' }).name, 'Music video from a song');
@@ -289,7 +302,7 @@ async function main() {
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
       assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video'].includes(item.id)).every((item) => item.available));
-      assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes runs on fal.ai');
+      assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
       assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
       assert.deepEqual(noFal.find((item) => item.id === 'photo-to-3d').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       const originalHasKey = falLib.hasKey;
@@ -414,7 +427,7 @@ async function main() {
       assert.deepEqual(summary['music-video'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 6, providers: ['openrouter', 'elevenlabs', 'fal'] });
       assert.deepEqual(summary['music-video'].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`)), [
         ['input.audio*1', 'input.image*1'], ['audio.beats*1', 'audio.lyrics_timing*1'], ['music_video.plan*1'], ['text.template*2'], ['image.edit*2'],
-        ['video.generate*1', 'fal.h3_lipsync*1'], ['music_video.edit*1'], ['output.result*1']
+        ['fal.h3_video*1', 'fal.h3_lipsync*1'], ['music_video.edit*1'], ['output.result*1']
       ]);
       assert.equal(summary['music-video'].batch, false, 'one song in, the lists are made inside: no Batch mark');
 
@@ -473,6 +486,32 @@ async function main() {
       assert.equal(templates.costSummary(splitGraph('input.text', 1), { registry: priced }).usd, 0.2);
       assert.equal(templates.costSummary(splitGraph('input.text_list'), { registry: priced }).usd, 0.2, 'a list input counts one entry');
       assert.equal(templates.costSummary(chain('test.priced'), { registry: priced }).usd, 0.2, 'no list: unchanged');
+
+      // a list that another node makes (the plan of a music video): how often the nodes behind it run is not known before the run, so
+      // they have no price (counted once it would read as a few cents)
+      priced.register({
+        type: 'test.lister',
+        category: 'utility',
+        label: 'test.lister',
+        inputs: [{ id: 'text', type: 'text' }],
+        outputs: [{ id: 'items', type: 'text[]' }],
+        params: [],
+        execute: async () => ({ variants: [] })
+      });
+      const listedGraph = (...ids) => ({
+        id: 'lister-demo',
+        requires: ['openrouter'],
+        graph: {
+          nodes: [
+            { id: 'a', type: 'input.text', params: { text: 'x' }, x: 0, y: 0 },
+            ...ids.map((id) => ({ id, type: id === 'l' ? 'test.lister' : 'test.priced', params: {}, x: 0, y: 0 }))
+          ],
+          edges: ['a', ...ids].slice(0, -1).map((from, index) => ({ id: `e${index}`, from: { node: from, port: from === 'l' ? 'items' : 'text' }, to: { node: ids[index], port: 'text' } }))
+        }
+      });
+      assert.deepEqual(templates.costSummary(listedGraph('l', 'p'), { registry: priced }), { kind: 'unknown', usd: 0, credits: 0, paidNodes: 1, providers: ['openrouter'] }, 'behind a list from a node: no price');
+      const beforeList = templates.costSummary(listedGraph('q', 'l', 'p'), { registry: priced });
+      assert.deepEqual([beforeList.kind, beforeList.usd, beforeList.paidNodes], ['partial', 0.2, 2], 'what runs once before the list is still priced');
       assert.equal(templates.listTemplates({ lang: 'en' }).find((item) => item.id === 'storyboard-clips').batch, false);
 
       // the engine helper behind it: availability never hides a price
