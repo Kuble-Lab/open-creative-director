@@ -97,7 +97,9 @@ async function testAssets() {
     const image = await store.saveAsset(chat.id, { kind: 'image', buffer: PNG, ext: '.png', prompt: 'p' });
     const upload = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('x'), ext: '.mp4' });
     const svg = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('<svg/>'), ext: '.svg' });
-    const text = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('x'), ext: '.txt' });
+    // a text file is a document now (WP37a); a zip file is still no media
+    const text = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('x'), ext: '.zip' });
+    const note = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('x'), ext: '.txt', prompt: 'note.txt' });
     const pending = await store.reserveAsset(chat.id, { kind: 'video', ext: '.mp4' });
     const ledger = await store.readLedger(chat.id);
     const entry = (id) => ledger.find((item) => item.id === id);
@@ -107,12 +109,14 @@ async function testAssets() {
     assert.equal(assets.valueFromLedgerEntry(chat.id, entry(upload.id)).type, 'video');
     assert.throws(() => assets.valueFromLedgerEntry(chat.id, entry(svg.id)), /SVG/);
     assert.throws(() => assets.valueFromLedgerEntry(chat.id, entry(text.id)), /unsupported/);
+    assert.equal(assets.valueFromLedgerEntry(chat.id, entry(note.id)).type, 'document');
+    assert.equal(assets.valueFromLedgerEntry(chat.id, entry(note.id)).name, 'note.txt');
     assert.throws(() => assets.valueFromLedgerEntry(chat.id, entry(pending.id)), /not finished/);
     assert.equal(assets.typeFromExtension('.M4A'), 'audio');
     assert.equal(assets.typeFromExtension('.svg'), null);
 
     const listed = await assets.listSessionAssets(chat.id);
-    assert.deepEqual(listed.map((item) => item.assetId).sort(), [image.id, upload.id].sort());
+    assert.deepEqual(listed.map((item) => item.assetId).sort(), [image.id, upload.id, note.id].sort());
 
     // copy between sessions keeps the kind and creates a fresh ledger entry
     const copied = await assets.copyAsset(chat.id, image.id, target.id);

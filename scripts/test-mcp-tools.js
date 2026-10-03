@@ -571,7 +571,7 @@ async function run(iso, holder) {
   assert.match(svg.note, /PNG/);
   // wrong type, not base64, empty, nothing known
   await refused(starter.secret, 'upload_asset', { filename: 'run.exe', data_base64: Buffer.from('MZ').toString('base64') }, /Unsupported file type/);
-  await refused(starter.secret, 'upload_asset', { filename: 'doc.pdf', mime_type: 'application/pdf' }, /Unsupported file type/);
+  await refused(starter.secret, 'upload_asset', { filename: 'doc.docx', mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, /Unsupported file type/); // a PDF is a document since WP37a
   await refused(starter.secret, 'upload_asset', { filename: 'a.png', data_base64: 'not base64 !!' }, /not valid base64/);
   await refused(starter.secret, 'upload_asset', { filename: 'a.png', data_base64: '' }, /empty/);
   await refused(starter.secret, 'upload_asset', { filename: 'a.png', data_base64: Buffer.from('<svg').toString('base64'), mime_type: 'image/svg+xml' }, /could not be rasterised|rasterised/);

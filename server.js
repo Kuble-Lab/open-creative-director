@@ -141,6 +141,8 @@ app.use('/assets', (req, res, next) => {
     /* an undecodable path is refused by the handlers below */
   }
   if (/\.svg$/i.test(name)) res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  // An uploaded document (PDF, TXT, MD) is downloaded, never shown as a page of the app's origin.
+  if (/\.(pdf|txt|md)$/i.test(name)) res.setHeader('Content-Disposition', 'attachment');
   next();
 });
 app.use('/assets', async (req, res, next) => {

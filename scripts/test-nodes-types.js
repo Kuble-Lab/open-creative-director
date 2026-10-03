@@ -200,7 +200,7 @@ function testRegistry() {
 async function testBasicNodes() {
   const registry = registryModule.registry;
   const expected = [
-    'input.prompt', 'input.text', 'input.number', 'input.text_list', 'input.image', 'input.video', 'input.audio', 'input.media_list',
+    'input.prompt', 'input.text', 'input.number', 'input.text_list', 'input.image', 'input.video', 'input.audio', 'input.document', 'input.media_list',
     'text.template', 'text.join', 'text.split', 'util.pick', 'util.router', 'output.result'
   ];
   for (const type of expected) {
