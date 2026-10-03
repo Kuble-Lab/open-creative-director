@@ -787,8 +787,10 @@ async function main() {
 
         await push({ jobId: 'j3', assetId: 'vid-002', status: 'running' });
         const failing = jobs.waitForSessionJob(session.id, 'j3', { intervalMs: 10, timeoutMs: 2000 });
+        // the handler first: under load the poll can see the new status before setStatus returns, and a rejection nobody waits for ends the process
+        const rejected = assert.rejects(failing, /provider said no/);
         await setStatus('j3', { status: 'failed', error: 'provider said no' });
-        await assert.rejects(failing, /provider said no/);
+        await rejected;
 
         await push({ jobId: 'j4', assetId: 'vid-003', status: 'running' });
         const controller = new AbortController();
