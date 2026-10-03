@@ -491,7 +491,11 @@ async function main() {
       for (const id of EXPECTED) {
         const cost = summary[id].cost;
         // photo-to-3d is the exception: both of its nodes (background removal, image to 3D) have a price table
-        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' ? 'estimate' : 'unknown', `${id}: the shipped nodes have no price table`);
+        // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
+        // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
+        const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic'].includes(id);
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
+        if (explainerVideo) assert.equal(cost.usd, 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));
         assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
         if (FREE.includes(id)) assert.deepEqual(cost.providers, [], `${id}: nothing is billed`);

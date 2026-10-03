@@ -99,7 +99,7 @@ async function main() {
       const body = JSON.parse(init.body);
       eleven.calls.push({ url, body, key: init.headers['xi-api-key'] });
       if (eleven.fail) return respond(eleven.fail.status, eleven.fail.body);
-      if (eleven.refuse && ('previous_text' in body || 'next_text' in body)) return respond(422, { detail: { message: 'previous_text and next_text are not supported for this model' } });
+      if (eleven.refuse && ('previous_text' in body || 'next_text' in body)) return respond(eleven.refuse.status || 422, eleven.refuse.body || { detail: { message: 'previous_text and next_text are not supported for this model' } });
       const characters = [...body.text];
       const alignment = {
         characters,
@@ -182,6 +182,32 @@ async function run(iso, eleven) {
     assert.ok('previous_text' in eleven.calls[0].body && !('previous_text' in eleven.calls[1].body));
     assert.equal(dropped.contextDropped, true);
     assert.ok(dropped.audio.length > 0);
+    eleven.refuse = false;
+    // the API words the refusal as a rejected model (a 422 that names model_id, or a status unsupported_model): classify() turns it into
+    // ELEVENLABS_MODEL_REJECTED with a message without the field names, but the call is still made once more without the fields
+    for (const [name, refuse] of [
+      ['422 unsupported_model', { status: 422, body: { detail: { status: 'unsupported_model', message: 'previous_text is not supported for model_id eleven_v3' } } }],
+      ['422 naming model_id', { status: 422, body: { detail: [{ loc: ['body', 'previous_text'], msg: 'not allowed for model_id eleven_v3' }] } }],
+      ['400 invalid_request', { status: 400, body: { detail: { status: 'invalid_request', message: 'next_text cannot be used with this model' } } }]
+    ]) {
+      eleven.calls.length = 0;
+      eleven.refuse = refuse;
+      const result = await elevenlabs.ttsWithTimestamps({ text: 'x', voiceId: 'v', modelId: 'eleven_v3', previousText: 'Davor.', nextText: 'Danach.' });
+      assert.equal(eleven.calls.length, 2, `${name}: a second call without the fields`);
+      assert.ok(!('previous_text' in eleven.calls[1].body) && !('next_text' in eleven.calls[1].body), `${name}: the second call has no context`);
+      assert.equal(result.contextDropped, true, name);
+      assert.ok(result.audio.length > 0, name);
+    }
+    // the error itself keeps what the API said (key scrubbed), so that the refusal can be read whatever class it got
+    eleven.fail = { status: 422, body: { detail: { status: 'unsupported_model', message: `previous_text is not supported for model_id eleven_v3 (${KEY})` } } };
+    eleven.calls.length = 0;
+    const rejected = await errorOf(elevenlabs.ttsWithTimestamps({ text: 'x', voiceId: 'v', modelId: 'eleven_v3', previousText: 'Davor.' }));
+    assert.equal(rejected.code, 'ELEVENLABS_MODEL_REJECTED');
+    assert.ok(!/previous_text/.test(rejected.message), 'the message of the class has no field names');
+    assert.ok(/previous_text/.test(rejected.apiMessage) && !rejected.apiMessage.includes(KEY));
+    assert.equal(elevenlabs.refusesContext(rejected), true);
+    assert.equal(eleven.calls.length, 2, 'a real refusal of the model is asked twice: with the fields and without, and then it is an error');
+    eleven.fail = null;
     eleven.refuse = false;
     // other errors are not answered with a second call, and the key does not appear in the message
     for (const [status, body, withContext] of [[401, { detail: { message: 'Invalid API key' } }, true], [422, { detail: { message: 'The text is too short' } }, true], [500, { detail: { message: 'boom' } }, false]]) {

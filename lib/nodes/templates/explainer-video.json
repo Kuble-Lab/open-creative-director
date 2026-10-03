@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Explainer video from a PDF",
-  "description": "Turn a PDF (or a text file) into a finished explainer video: Claude Opus 5.5 plans the scenes and checks every statement against the document, ElevenLabs speaks the narration, Claude draws every scene as motion graphics in your brand (numbers, charts, figures cut out of the PDF) on the render node, and ffmpeg cuts it with voice, captions and a subtitle file. About 2 to 3 US dollars for a 20-page PDF and 2 minutes (script 0.50 to 0.90, voice about 0.15, scenes about 0.10 each). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
+  "description": "Turn a PDF (or a text file) into a finished explainer video: Claude Opus 5.5 plans the scenes and checks every statement against the document, ElevenLabs speaks the narration, Claude draws every scene as motion graphics in your brand (numbers, charts, figures cut out of the PDF) on the render node, and ffmpeg cuts it with voice, captions and a subtitle file. About 2.50 to 3.50 US dollars for a 20-page PDF and 2 minutes (script 0.50 to 0.90, voice about 0.15, scenes about 0.10 each, music about 0.40; it needs a paid ElevenLabs plan, otherwise delete the node Background music). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
   "requires": [
     "openrouter",
     "poppler",
@@ -162,6 +162,21 @@
         "y": 760,
         "params": {
           "label": "Script"
+        }
+      },
+      {
+        "id": "n12",
+        "type": "audio.music",
+        "typeVersion": 1,
+        "x": 1760,
+        "y": 520,
+        "title": "Background music",
+        "params": {
+          "prompt": "Calm, warm instrumental background music for an explainer video: soft piano and light pads, steady and unobtrusive, no vocals, no strong melody that competes with the speech",
+          "plan": "",
+          "length": 120,
+          "instrumental": true,
+          "model": "music_v2_5"
         }
       }
     ],
@@ -407,6 +422,17 @@
           "node": "n11",
           "port": "inputs"
         }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n12",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n8",
+          "port": "music"
+        }
       }
     ],
     "groups": [],
@@ -417,7 +443,7 @@
         "y": 700,
         "w": 760,
         "h": 300,
-        "text": "Upload a PDF, TXT or MD file (up to 50 MB) and choose a branding if you have one. About 2 to 3 US dollars for a 20-page PDF and 2 minutes: the script 0.50 to 0.90 (reading is free), the voice about 0.15, every scene about 0.10 (Claude Opus 5.5 writes it, checks two frames and corrects it if needed), a few cents for each still picture. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Format must be the same in Plan explainer video and in Draw explainer scene. For music, connect an audio file to Cut explainer video. Scenes with a figure of the PDF cut it out of the page images (Read document: Page images = All). A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene."
+        "text": "Upload a PDF, TXT or MD file (up to 50 MB) and choose a branding if you have one. About 2.50 to 3.50 US dollars for a 20-page PDF and 2 minutes: the script 0.50 to 0.90 (reading is free), the voice about 0.15, every scene about 0.10 (Claude Opus 5.5 writes it, checks two frames and corrects it if needed), the music about 0.40, a few cents for each still picture. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Format must be the same in Plan explainer video and in Draw explainer scene. The music comes from Background music (instrumental, 120 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). Scenes with a figure of the PDF cut it out of the page images (Read document: Page images = All). A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene."
       }
     ],
     "viewport": {
@@ -485,7 +511,7 @@
   "i18n": {
     "de": {
       "name": "Erklärvideo aus PDF",
-      "description": "Mach aus einem PDF (oder einer Textdatei) ein fertiges Erklärvideo: Claude Opus 5.5 plant die Szenen und prüft jede Aussage gegen das Dokument, ElevenLabs spricht den Text, Claude zeichnet jede Szene als Motion Graphics in deiner Marke (Zahlen, Diagramme, aus dem PDF ausgeschnittene Abbildungen) auf dem Render-Node, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Etwa 2 bis 3 US-Dollar für ein PDF mit 20 Seiten und 2 Minuten (Skript 0.50 bis 0.90, Stimme etwa 0.15, Szenen je etwa 0.10). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
+      "description": "Mach aus einem PDF (oder einer Textdatei) ein fertiges Erklärvideo: Claude Opus 5.5 plant die Szenen und prüft jede Aussage gegen das Dokument, ElevenLabs spricht den Text, Claude zeichnet jede Szene als Motion Graphics in deiner Marke (Zahlen, Diagramme, aus dem PDF ausgeschnittene Abbildungen) auf dem Render-Node, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Etwa 2.50 bis 3.50 US-Dollar für ein PDF mit 20 Seiten und 2 Minuten (Skript 0.50 bis 0.90, Stimme etwa 0.15, Szenen je etwa 0.10, Musik etwa 0.40; sie braucht ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
       "node.n1": "PDF oder Textdatei",
       "node.n2": "Dokument lesen",
       "node.n3": "Branding",
@@ -495,7 +521,7 @@
       "node.n7": "Erklärszene zeichnen",
       "node.n8": "Erklärvideo schneiden",
       "param.n4.language": "de",
-      "note.t1": "Lade eine PDF-, TXT- oder MD-Datei hoch (bis 50 MB) und wähle ein Branding, falls du eines hast. Etwa 2 bis 3 US-Dollar für ein PDF mit 20 Seiten und 2 Minuten: das Skript 0.50 bis 0.90 (Lesen ist gratis), die Stimme etwa 0.15, jede Szene etwa 0.10 (Claude Opus 5.5 schreibt sie, prüft zwei Bilder und korrigiert bei Bedarf), ein paar Rappen für jedes Standbild. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Das Format muss in Erklärvideo planen und in Erklärszene zeichnen gleich sein. Für Musik verbindest du eine Audiodatei mit Erklärvideo schneiden. Szenen mit einer Abbildung schneiden sie aus den Seitenbildern des PDFs aus (Dokument lesen: Seitenbilder = Alle). Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen.",
+      "note.t1": "Lade eine PDF-, TXT- oder MD-Datei hoch (bis 50 MB) und wähle ein Branding, falls du eines hast. Etwa 2.50 bis 3.50 US-Dollar für ein PDF mit 20 Seiten und 2 Minuten: das Skript 0.50 bis 0.90 (Lesen ist gratis), die Stimme etwa 0.15, jede Szene etwa 0.10 (Claude Opus 5.5 schreibt sie, prüft zwei Bilder und korrigiert bei Bedarf), die Musik etwa 0.40, ein paar Rappen für jedes Standbild. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Das Format muss in Erklärvideo planen und in Erklärszene zeichnen gleich sein. Die Musik kommt von Hintergrundmusik (instrumental, 120 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Szenen mit einer Abbildung schneiden sie aus den Seitenbildern des PDFs aus (Dokument lesen: Seitenbilder = Alle). Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen.",
       "app.title": "Erklärvideo aus PDF",
       "app.description": "Lade ein PDF oder eine Textdatei hoch und erhalte ein fertiges Erklärvideo: Stimme, Motion Graphics in deiner Marke, Untertitel und eine SRT-Datei. Starte zuerst nur den Planer, um das Skript zu prüfen.",
       "app.input.n1.assets": "PDF oder Textdatei",
@@ -507,11 +533,13 @@
       "app.input.n8.captions": "Untertitel",
       "app.output.n9": "Video",
       "app.output.n10": "Untertitel",
-      "app.output.n11": "Skript"
+      "app.output.n11": "Skript",
+      "node.n12": "Hintergrundmusik",
+      "param.n12.prompt": "Ruhige, warme Hintergrundmusik für ein Erklärvideo, instrumental: sanftes Klavier und leichte Flächen, gleichmässig und unauffällig, ohne Gesang, ohne starke Melodie, die mit der Sprache konkurriert"
     },
     "es": {
       "name": "Vídeo explicativo a partir de un PDF",
-      "description": "Convierte un PDF (o un archivo de texto) en un vídeo explicativo terminado: Claude Opus 5.5 planifica las escenas y comprueba cada afirmación con el documento, ElevenLabs lee la narración, Claude dibuja cada escena como motion graphics con tu marca (cifras, gráficos, figuras recortadas del PDF) en el nodo de render, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Unos 2 a 3 dólares para un PDF de 20 páginas y 2 minutos (guion 0,50 a 0,90, voz unos 0,15, escenas unos 0,10 cada una). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
+      "description": "Convierte un PDF (o un archivo de texto) en un vídeo explicativo terminado: Claude Opus 5.5 planifica las escenas y comprueba cada afirmación con el documento, ElevenLabs lee la narración, Claude dibuja cada escena como motion graphics con tu marca (cifras, gráficos, figuras recortadas del PDF) en el nodo de render, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Unos 2,50 a 3,50 dólares para un PDF de 20 páginas y 2 minutos (guion 0,50 a 0,90, voz unos 0,15, escenas unos 0,10 cada una, música unos 0,40; necesita un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
       "node.n1": "PDF o archivo de texto",
       "node.n2": "Leer documento",
       "node.n3": "Branding",
@@ -521,7 +549,7 @@
       "node.n7": "Dibujar escena explicativa",
       "node.n8": "Montar vídeo explicativo",
       "param.n4.language": "es",
-      "note.t1": "Sube un archivo PDF, TXT o MD (hasta 50 MB) y elige un branding si tienes uno. Unos 2 a 3 dólares para un PDF de 20 páginas y 2 minutos: el guion 0,50 a 0,90 (leer es gratis), la voz unos 0,15, cada escena unos 0,10 (Claude Opus 5.5 la escribe, revisa dos fotogramas y la corrige si hace falta), unos céntimos por cada imagen fija. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. El formato debe ser el mismo en Planificar vídeo explicativo y en Dibujar escena explicativa. Para música, conecta un archivo de audio a Montar vídeo explicativo. Las escenas con una figura recortan la figura de las imágenes de página del PDF (Leer documento: Imágenes de página = Todas). El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa.",
+      "note.t1": "Sube un archivo PDF, TXT o MD (hasta 50 MB) y elige un branding si tienes uno. Unos 2,50 a 3,50 dólares para un PDF de 20 páginas y 2 minutos: el guion 0,50 a 0,90 (leer es gratis), la voz unos 0,15, cada escena unos 0,10 (Claude Opus 5.5 la escribe, revisa dos fotogramas y la corrige si hace falta), la música unos 0,40, unos céntimos por cada imagen fija. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. El formato debe ser el mismo en Planificar vídeo explicativo y en Dibujar escena explicativa. La música viene de Música de fondo (instrumental, 120 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). Las escenas con una figura recortan la figura de las imágenes de página del PDF (Leer documento: Imágenes de página = Todas). El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa.",
       "app.title": "Vídeo explicativo a partir de un PDF",
       "app.description": "Sube un PDF o un archivo de texto y obtén un vídeo explicativo terminado: voz, motion graphics con tu marca, subtítulos y un archivo SRT. Ejecuta primero solo el planificador para revisar el guion.",
       "app.input.n1.assets": "PDF o archivo de texto",
@@ -533,7 +561,9 @@
       "app.input.n8.captions": "Subtítulos",
       "app.output.n9": "Vídeo",
       "app.output.n10": "Subtítulos",
-      "app.output.n11": "Guion"
+      "app.output.n11": "Guion",
+      "node.n12": "Música de fondo",
+      "param.n12.prompt": "Música de fondo instrumental, tranquila y cálida, para un vídeo explicativo: piano suave y colchones ligeros, constante y discreta, sin voz, sin una melodía fuerte que compita con la narración"
     }
   }
 }

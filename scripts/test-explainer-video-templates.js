@@ -188,14 +188,26 @@ async function run(iso, eleven) {
     // the logo is not wired: without a branding there is none, and an input that waits for it stops the plan (OUTPUT_EMPTY); the note says how
     assert.ok(!wired.includes(`${B}.logo>${S}.logo`), `${id}: the logo is left out so that the workflow runs with the neutral profile`);
     assert.match(template.graph.notes[0].text, /Logo/);
+    // the chain has its music: instrumental and quiet, made by ElevenLabs and fed into the cut (the task named it: scenes -> music -> cut)
+    const musicNodes = template.graph.nodes.filter((node) => node.type === 'audio.music');
+    assert.equal(musicNodes.length, 1, `${id}: one music node`);
+    assert.equal(musicNodes[0].params.instrumental, true, `${id}: instrumental`);
+    assert.ok(musicNodes[0].params.prompt.length > 20 && /no vocals/.test(musicNodes[0].params.prompt), `${id}: the description asks for no vocals`);
+    assert.equal(musicNodes[0].params.length, 120, `${id}: as long as the default film (the cut repeats it where the film is longer)`);
+    assert.ok(wired.includes(`${musicNodes[0].id}.audio>${E}.music`), `${id}: the music goes into the cut`);
+    assert.equal(nodeOf(template, E).params.music_level, 'quiet', `${id}: quiet under the voice`);
+    assert.equal(nodeOf(template, E).params.ducking, true, `${id}: lowered while the voice speaks`);
     assert.ok(templates.usesRestrictedNodes(template.graph) === false, `${id}: no restricted node`);
     // the cost range is in the description and the note, the hint to the two steps too
     assert.match(template.description, /Run the planner first/);
+    assert.match(template.description, id === 'explainer-video-presenter' ? /topic version, with its music/ : /music about 0\.40/, `${id}: the music price is named`);
+    assert.match(template.description, /paid ElevenLabs plan/, `${id}: and that the music needs a paid plan`);
+    assert.match(template.graph.notes[0].text, /Background music/);
     assert.match(template.graph.notes[0].text, /Edited script/);
     assert.match(template.graph.notes[0].text, /confirmation/);
   }
   const pdf = byId['explainer-video'];
-  assert.deepEqual(types(pdf), ['input.document', 'doc.read', 'input.branding', 'explainer.plan', 'explainer.voice', 'image.generate', 'explainer.scene', 'explainer.edit', 'output.result', 'output.result', 'output.result']);
+  assert.deepEqual(types(pdf), ['input.document', 'doc.read', 'input.branding', 'explainer.plan', 'explainer.voice', 'image.generate', 'explainer.scene', 'explainer.edit', 'output.result', 'output.result', 'output.result', 'audio.music']);
   assert.deepEqual(pdf.requires, ['openrouter', 'poppler', 'elevenlabs', 'rendernode', 'ffmpeg']);
   assert.equal(nodeOf(pdf, 'n2').params.page_images, 'all', 'the figures are cut out of the page images');
   for (const wire of ['n1.documents>n2.documents', 'n2.text>n4.text', 'n2.files>n4.documents', 'n2.info>n4.info', 'n2.pages>n7.pages', 'n2.info>n7.pages_info']) assert.ok(wires(pdf).includes(wire), `the PDF version has ${wire}`);
@@ -243,8 +255,8 @@ async function run(iso, eleven) {
       for (const node of doc.graph.nodes.filter((item) => item.title)) assert.ok(node.title.length > 1);
     }
   }
-  // the cost range is named: PDF 2 to 3 dollars, topic 1.50 to 2.50, presenter 3.50 to 4.50, in every language
-  for (const [id, low, high] of [['explainer-video', '2', '3'], ['explainer-video-topic', '1[.,]5', '2[.,]5'], ['explainer-video-presenter', '3[.,]5', '4[.,]5']]) {
+  // the cost range is named (music of 0.40 included): PDF 2.50 to 3.50 dollars, topic 2 to 3, presenter 4 to 5, in every language
+  for (const [id, low, high] of [['explainer-video', '2[.,]5', '3[.,]5'], ['explainer-video-topic', '2', '3'], ['explainer-video-presenter', '4', '5']]) {
     for (const lang of ['en', 'de', 'es']) {
       const text = resolved(id, lang).description;
       assert.match(text, new RegExp(`${low}0? (to|bis|a) ${high}0?`), `${id}.${lang}: the cost range`);
@@ -263,8 +275,12 @@ async function run(iso, eleven) {
     // 12 scenes: the scenes cost 0.10 each, the voice by its characters; the named range is not below that
     const voice = tools.speechEstimateUsd('x'.repeat(1700), 'eleven_v4');
     const scenes = 13 * 0.1;
-    assert.ok(own(20, 40000) + voice + scenes <= 3, 'PDF: a 20 page PDF and 2 minutes stay within the named 3 dollars');
-    assert.ok(own(20, 40000) + voice + scenes >= 2, 'and are not below the named 2 dollars');
+    const music = tools.musicEstimateUsd(120 * 1000);
+    near(music, 0.4, 1e-9, 'two minutes of music');
+    // mix mode: at most 35 % of the 13 scenes are stills, a few cents each (the notes say so)
+    const stills = 4 * 0.04;
+    assert.ok(own(20, 40000) + voice + scenes + music + stills <= 3.5, 'PDF: a 20 page PDF and 2 minutes (with the music and the stills) stay within the named 3.50 dollars');
+    assert.ok(own(20, 40000) + voice + scenes + music + stills >= 2.5, 'and are not below the named 2.50 dollars');
   }
 
   /* ---------- gallery data ---------- */
@@ -274,7 +290,8 @@ async function run(iso, eleven) {
   for (const id of IDS) {
     assert.equal(listed[id].available, true);
     assert.deepEqual(listed[id].requires, byId[id].requires);
-    assert.equal(listed[id].cost.kind, 'unknown', `${id}: the price depends on the run, never invented`);
+    assert.equal(listed[id].cost.kind, 'partial', `${id}: only the music is priced beforehand ("from"), the rest depends on the run and is never invented`);
+    assert.equal(listed[id].cost.usd, 0.4, `${id}: from 0.40`);
     assert.equal(listed[id].batch, false);
   }
   const without = (key, reason) => Object.fromEntries(templates.listTemplates({ lang: 'en', checks: { ...allOn, [key]: () => reason } }).map((item) => [item.id, item]));
@@ -396,9 +413,31 @@ async function run(iso, eleven) {
     return { variants: [{ video: value }], cost: { usd: 0.3 } };
   };
 
+  // the music: a tone as long as asked for (the real node asks ElevenLabs by the minute: 0.20 USD)
+  const musicCalls = [];
+  const musicDef = real.get('audio.music');
+  const musicExecute = async (ctx, inputs, params) => {
+    const seconds = params.length;
+    const scratch = await assets.createScratchDir(ctx.sessionId);
+    const file = path.join(scratch, 'music.wav');
+    await fsp.writeFile(file, toneWav(seconds, 220, { amplitude: 0.5 }));
+    const value = await ctx.saveOutputFile({ kind: 'audio', ext: '.wav', sourceFile: file, prompt: inputs.prompt.value, cost: tools.musicEstimateUsd(seconds * 1000), duration: seconds });
+    await assets.removeScratchDir(scratch);
+    musicCalls.push({ prompt: inputs.prompt.value, length: seconds, instrumental: params.instrumental });
+    return { variants: [{ audio: value }], cost: { usd: tools.musicEstimateUsd(seconds * 1000) } };
+  };
+  // the loudness of the film in a window (largest sample, 0 to 1)
+  const loudness = async (file, from, to) => {
+    const { samples, rate } = await media.pcm(file);
+    let peak = 0;
+    for (let at = Math.floor(from * rate); at < Math.min(samples.length, Math.floor(to * rate)); at += 1) peak = Math.max(peak, Math.abs(samples[at]));
+    return peak;
+  };
+
   const reset = () => {
     calls.length = 0;
     journal.length = 0;
+    musicCalls.length = 0;
     renders.length = 0;
     pictures.length = 0;
     lipsync.length = 0;
@@ -410,6 +449,7 @@ async function run(iso, eleven) {
   const registry = nodeRegistry.createRegistry();
   for (const type of real.list ? real.list().map((def) => def.type) : []) {
     if (type === 'image.generate') registry.register({ ...imageDef, available: () => true, prepare: undefined, execute: imageExecute });
+    else if (type === 'audio.music') registry.register({ ...musicDef, available: () => true, prepare: undefined, execute: musicExecute });
     else if (type === 'fal.h3_lipsync') registry.register({ ...lipsyncDef, available: () => true, prepare: undefined, validate: undefined, execute: lipsyncExecute });
     else registry.register(real.get(type));
   }
@@ -510,6 +550,14 @@ async function run(iso, eleven) {
     assert.ok(final.captions && JSON.parse(final.captions.value).lines.length >= 12, 'the captions as data');
     const scripts = await standIn.scripts();
     assert.equal(scripts.length, 1, 'the encoder draws the captions once');
+    // the music: made once, instrumental, as long as the default film, and under the whole film (the sources card has no voice: only music)
+    assert.equal(musicCalls.length, 1, 'one piece of music for the whole film');
+    assert.equal(musicCalls[0].instrumental, true);
+    assert.equal(musicCalls[0].length, 120);
+    assert.match(musicCalls[0].prompt, /no vocals|ohne Gesang/);
+    near((await resultOf(id, 'n14')).cost.usd, 0.4, 1e-9, 'two minutes of music at 0.20 USD a minute');
+    const quietTail = await loudness(file, info.duration - 3.2, info.duration - 1.4);
+    assert.ok(quietTail > 0.01 && quietTail < 0.12, `music is heard under the card without a voice, but quietly: ${quietTail}`);
     // the result nodes
     assert.equal(((await resultOf(id, 'n10')).variants[0].result.items?.[0] || (await resultOf(id, 'n10')).variants[0].result).assetId, final.video.assetId);
     assert.match((await resultOf(id, 'n11')).variants[0].result.items?.[0]?.value || (await resultOf(id, 'n11')).variants[0].result.value, /-->/);

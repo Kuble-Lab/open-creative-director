@@ -565,7 +565,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.match(writer.system, /NORMAL FLOW/);
     assert.match(writer.system, /1920x1080 \(landscape\)/);
     assert.match(writer.prompt, /Scene duration: 5.87 s: write data-duration="5.866" exactly/);
-    assert.match(writer.prompt, /Scene brief \(data\):\nScene s1 · role hook/);
+    assert.match(writer.prompt, /Scene brief \(data\):\n<brief>\nScene s1 · role hook/);
     assert.match(writer.prompt, /Cue list \(absolute seconds on tl/);
     assert.match(writer.prompt, /e1 \(title, "Wärme1"\) at \d/);
     assert.match(writer.prompt, /No attached files\./);
@@ -577,7 +577,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     near(Number(cue[1]), Math.max(0.2, first.start - 0.15), 0.011, 'the start of the anchor word less 0.15 s');
     // what the render node got: the policy first in <head>, the exact length, the right format and quality, no placeholders left
     const html = renders[0].html;
-    assert.ok(/<head>\s*<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:\/\/cdn\.jsdelivr\.net;/.test(html), 'the policy is inserted');
+    assert.ok(/<head>\s*<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@3\.14\.2\/dist\/;[^"]*form-action 'none'; base-uri 'none'"/.test(html), 'the policy is inserted');
     assert.match(html, /data-duration="5.866"/);
     assert.equal(renders[0].format, 'landscape');
     assert.equal(renders[0].quality, 'standard');
@@ -823,6 +823,87 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.ok(aborted);
     assert.equal(writerCalls().length, 1, 'an abort is not tried again');
     assert.deepEqual(await scratchLeft(), []);
+  }
+
+  /* ---------- a stop of the run while the model writes: its answer is not rendered ---------- */
+
+  {
+    // the model does not know about the signal: it answers as usual although the run was stopped meanwhile
+    reset();
+    const controller = new AbortController();
+    const stopped = makeCtx();
+    stopped.signal = controller.signal;
+    queue.writer.push((options) => {
+      controller.abort();
+      return goodHtml(options);
+    });
+    const err = await errorOf(exec('explainer.scene', stopped, baseInputs(0), {}));
+    assert.ok(err && err.name === 'AbortError', 'the scene ends with an abort');
+    assert.equal(writerCalls().length, 1);
+    assert.equal(renders.length, 0, 'no job is sent to the render node after the stop');
+    assert.equal(checkCalls().length, 0, 'and no look at frames is paid');
+    assert.deepEqual(await scratchLeft(), []);
+    // the same during the look: the render was done, the scene is not looked at after the stop (no second try either)
+    reset();
+    const midway = new AbortController();
+    const second = makeCtx();
+    second.signal = midway.signal;
+    const waitForJob = second.waitForJob;
+    second.waitForJob = async (job, options) => {
+      const ids = await waitForJob(job, options);
+      midway.abort();
+      return ids;
+    };
+    const late = await errorOf(exec('explainer.scene', second, baseInputs(0), {}));
+    assert.ok(late && late.name === 'AbortError');
+    assert.equal(renders.length, 1);
+    assert.equal(checkCalls().length, 0, 'no look after the stop');
+    // the voice does not call ElevenLabs after a stop
+    reset();
+    const quiet = new AbortController();
+    const voiceCtx = makeCtx();
+    voiceCtx.signal = quiet.signal;
+    quiet.abort();
+    const voiceStopped = await errorOf(exec('explainer.voice', voiceCtx, { narration: textValue('Ein Satz.') }, {}));
+    assert.ok(voiceStopped && voiceStopped.name === 'AbortError');
+    assert.equal(eleven.calls.length, 0, 'no call to ElevenLabs after a stop');
+  }
+
+  /* ---------- the render waits for the scenes before it ---------- */
+
+  {
+    // three scenes send their render soon after each other and stand in the line of the render node: each waits for the ones before it
+    reset();
+    const contexts = [makeCtx(), makeCtx(), makeCtx()];
+    let waiting = 0;
+    let open;
+    const allWaiting = new Promise((resolve) => {
+      open = resolve;
+    });
+    for (const ctx of contexts) {
+      const original = ctx.waitForJob;
+      ctx.waitForJob = async (job, options) => {
+        ctx.waits.push(options);
+        waiting += 1;
+        if (waiting === contexts.length) open();
+        await allWaiting;
+        const before = ctx.waits.length;
+        const ids = await original(job, options);
+        ctx.waits.splice(before, 1); // the original noted the options a second time
+        return ids;
+      };
+    }
+    await Promise.all(contexts.map((ctx, index) => exec('explainer.scene', ctx, baseInputs(index % 2), { vision_check: false })));
+    const timeouts = contexts.map((ctx) => ctx.waits[0].timeoutMs).sort((a, b) => a - b);
+    assert.deepEqual(timeouts, [8 * 60 * 1000, 9 * 60 * 1000, 10 * 60 * 1000], 'a minute more for every job that was sent before and is not done');
+    // alone again: back to the base wait (the counter went down)
+    reset();
+    const alone = makeCtx();
+    await exec('explainer.scene', alone, baseInputs(0), { vision_check: false });
+    assert.deepEqual(alone.waits.map((options) => options.timeoutMs), [8 * 60 * 1000]);
+    // and the wait never goes beyond the time the node itself may run
+    assert.ok(videoNodes.RENDER_WAIT_MAX_MS < sceneDef.timeoutMs && videoNodes.RENDER_WAIT_MAX_MS > videoNodes.RENDER_WAIT_MS);
+    assert.ok(sceneDef.timeoutMs >= 45 * 60 * 1000, 'time for a long film at one render in about 30 s');
   }
 
   /* ---------- the model of an account: Opus, or the model of the list ---------- */

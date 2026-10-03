@@ -136,6 +136,19 @@ function testPure({ editLib, cuesLib, musicEdit }) {
   assert.match(editLib.lengthNote(90, 120), /90 s long, 25 % below the 120 s/);
   assert.equal(editLib.lengthNote(90, null), null);
   assert.equal(editLib.lengthNote(0, 120), null);
+
+  // a voice that is longer than the frames its scene keeps is cut off by the soundtrack: voiceCuts names it (scene and seconds)
+  const cutTimeline = editLib.planTimeline({ durations: [1.2, 2.0, 3.0], fps: 30, transition: 'cut' });
+  const notes = editLib.voiceCuts([{ label: 'Scene s1', seconds: 2 }, { label: 'Scene s2', seconds: 1.6 }, null], cutTimeline);
+  assert.equal(notes.length, 1, 'only the first voice is cut');
+  assert.match(notes[0], /^Scene s1: the voice is 2 s long, but the scene shows 1\.2 s: the last 0\.8 s of the narration are cut off/);
+  assert.deepEqual(editLib.voiceCuts([{ label: 'a', seconds: 1.2 }, { label: 'b', seconds: 2.0 }, { label: 'c', seconds: 3.0 }], cutTimeline), [], 'a voice as long as its scene is not cut');
+  assert.deepEqual(editLib.voiceCuts([{ label: 'a', seconds: 1.2 + 0.4 / 30 }], editLib.planTimeline({ durations: [1.2], fps: 30, transition: 'cut' })), [], 'less than half a frame is no cut');
+  assert.equal(editLib.voiceCuts([{ label: 'a', seconds: 1.2 + 0.7 / 30 }], editLib.planTimeline({ durations: [1.2], fps: 30, transition: 'cut' })).length, 1, 'more than half a frame is');
+  // a crossfade takes frames from the end of the scene: the voice has to fit in what the scene keeps
+  const faded = editLib.planTimeline({ durations: [2, 2], fps: 30, transition: 'crossfade' });
+  assert.ok(faded.owns[0] < faded.frames[0], 'the first scene keeps less than it has');
+  assert.equal(editLib.voiceCuts([{ label: 'a', seconds: 2 }, { label: 'b', seconds: 2 }], faded).length, 1, 'the fade eats the end of the first voice');
 }
 
 /* ---------- the node ---------- */
@@ -514,6 +527,21 @@ async function run(iso) {
     const fps25 = await media.probe(fileOf((await exec(makeCtx(), film.inputs, { transition: 'cut', fps: '25' })).variants[0].video));
     assert.equal(fps25.fps, 25);
     near(fps25.duration, 7.2, 0.1);
+  }
+
+  /* ---------- a voice longer than its scene: the cut is told ---------- */
+
+  {
+    const long = await filmOf([2.0, 1.5]);
+    const shorter = await fileAsset(await media.colourClip('ff0000', 1.2, { size: '160x90' }));
+    const ctx = makeCtx();
+    await exec(ctx, withInputs(long, { scenes: listValue('video', [shorter, long.scenes[1]]) }), { transition: 'cut', fps: '30' });
+    const warnings = ctx.logs.filter((line) => /^Warning: Scene s1: the voice is 2 s long, but the scene shows 1\.2 s: the last 0\.8 s of the narration are cut off/.test(line));
+    assert.equal(warnings.length, 1, ctx.logs.join(' | '));
+    assert.ok(!ctx.logs.some((line) => /Scene s2: the voice/.test(line)), 'the second scene is as long as its voice');
+    const quiet = makeCtx();
+    await exec(quiet, long.inputs, { transition: 'cut', fps: '30' });
+    assert.ok(!quiet.logs.some((line) => /narration are cut off/.test(line)), 'scenes that fit say nothing');
   }
 
   /* ---------- the length against the target ---------- */
