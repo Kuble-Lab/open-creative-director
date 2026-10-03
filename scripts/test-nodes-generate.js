@@ -879,10 +879,10 @@ async function main() {
       assert.equal(result.variants[0].audio.type, 'audio');
       assert.match(result.variants[0].audio.file, /\.mp3$/);
       // paid, with the estimate by character; the run reports it and the tool journals it (for everybody)
-      assert.deepEqual(result.cost, { usd: 0.003 }, '10 characters at 0.30 USD per 1000');
+      assert.deepEqual(result.cost, { usd: 0.0008 }, '10 characters at 0.08 USD per 1000 (the list price)');
       assert.equal(journal.length, journalBefore + 1);
       assert.equal(journal.at(-1).type, 'speech');
-      assert.equal(journal.at(-1).cost, 0.003);
+      assert.equal(journal.at(-1).cost, 0.0008);
       // without a login (local mode) the speech is booked for 'lokal' like every other cost, not for a user of its own
       const anonymous = makeCtx(sessionId);
       anonymous.user = undefined;
@@ -901,34 +901,34 @@ async function main() {
       requests.length = 0;
       await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { model_id: 'eleven_multilingual_v2' });
       assert.equal(journal.at(-1).model, 'elevenlabs/eleven_multilingual_v2');
-      assert.equal(journal.at(-1).cost, 0.003);
+      assert.equal(journal.at(-1).cost, 0.0008);
       await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { model_id: '  ' });
       assert.equal(journal.at(-1).model, 'elevenlabs/eleven_v4', 'blank: the default');
       const turbo = await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { model_id: 'eleven_v4_turbo' });
       assert.deepEqual(requests.map((request) => request.modelId), ['eleven_multilingual_v2', 'eleven_v4', 'eleven_v4_turbo']);
       assert.equal(journal.at(-1).model, 'elevenlabs/eleven_v4_turbo');
-      assert.equal(journal.at(-1).cost, 0.0015, 'a Turbo model is booked at half');
-      assert.deepEqual(turbo.cost, { usd: 0.0015 });
+      assert.equal(journal.at(-1).cost, 0.0004, 'a Turbo model is booked at half');
+      assert.deepEqual(turbo.cost, { usd: 0.0004 });
 
       const tts = oneOf(registry, 'audio.tts');
       assert.equal(tts.paid, true);
       assert.equal(tts.cost.unit, 'usd');
       assert.equal(tts.cost.history, false, 'no guess from an earlier result');
       const estimate = (params, connected = []) => tts.cost.estimate(registry.normalizeParams(tts, params), { connected: new Set(connected) });
-      assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.3);
+      assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.08);
       // the price follows the model: Turbo and Flash count half (price page of ElevenLabs, see tools.js), an unknown model the full price
-      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_v4' }), 0.3);
-      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_multilingual_v2' }), 0.3, 'an older workflow keeps its price');
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_v4' }), 0.08);
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_multilingual_v2' }), 0.08, 'an older workflow keeps its price');
       for (const half of ['eleven_v4_turbo', 'eleven_v3_conversational', 'eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_flash_v2', 'eleven_turbo_v2']) {
-        assert.equal(estimate({ text: 'x'.repeat(1000), model_id: half }), 0.15, half);
+        assert.equal(estimate({ text: 'x'.repeat(1000), model_id: half }), 0.04, half);
       }
-      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'some_future_model' }), 0.3, 'an unknown model: the full price, never less');
-      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: '  ' }), 0.3, 'a blank model is the default');
-      assert.equal(tools.speechEstimateUsd('x'.repeat(1000)), 0.3);
-      assert.equal(tools.speechEstimateUsd('x'.repeat(1000), 'eleven_flash_v2_5'), 0.15);
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'some_future_model' }), 0.08, 'an unknown model: the full price, never less');
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: '  ' }), 0.08, 'a blank model is the default');
+      assert.equal(tools.speechEstimateUsd('x'.repeat(1000)), 0.08);
+      assert.equal(tools.speechEstimateUsd('x'.repeat(1000), 'eleven_flash_v2_5'), 0.04);
       // the budget of a participant reserves the price of the model that is asked for
-      assert.equal(tools.toolEstimateUsd('generate_speech', { text: 'x'.repeat(1000) }), 0.3);
-      assert.equal(tools.toolEstimateUsd('generate_speech', { text: 'x'.repeat(1000), model_id: 'eleven_v4_turbo' }), 0.15);
+      assert.equal(tools.toolEstimateUsd('generate_speech', { text: 'x'.repeat(1000) }), 0.08);
+      assert.equal(tools.toolEstimateUsd('generate_speech', { text: 'x'.repeat(1000), model_id: 'eleven_v4_turbo' }), 0.04);
       withEnv('ELEVENLABS_USD_PER_1K_CHARS', '0.5');
       assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.5);
       assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_flash_v2_5' }), 0.25, 'the setting is the price of a full-price model, Flash counts half of it');

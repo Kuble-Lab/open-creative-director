@@ -264,7 +264,7 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   // the price of the timing: by the length of the song, none while it is not known
   const estimate = (audio) => timing.cost.estimate({}, { inputs: audio === undefined ? {} : { audio } });
   assert.equal(estimate({ type: 'audio', duration: 120 }), tools.lyricsTimingUsd(120));
-  near(tools.lyricsTimingUsd(120), (120 / 3600) * 0.4, 1e-6, 'the default is 0.40 USD per hour');
+  near(tools.lyricsTimingUsd(120), (120 / 3600) * 0.22, 1e-6, 'the default is 0.22 USD per hour, the list price of Scribe v2');
   assert.equal(estimate({ type: 'audio' }), null, 'an uploaded file carries no length');
   assert.equal(estimate({ type: 'audio', duration: 0 }), null);
   assert.equal(estimate({ type: 'list', itemType: 'audio', items: [] }), null);
@@ -272,15 +272,15 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   assert.equal(timing.cost.estimate({}, undefined), null);
   assert.equal(tools.toolEstimateUsd('lyrics_timing', { duration_seconds: 120 }), tools.lyricsTimingUsd(120));
   // the reservation of the tool itself counts a ten minute song while the length is not known, and never more than the longest song
-  near(tools.lyricsTimingUsd(null), (600 / 3600) * 0.4, 1e-6);
+  near(tools.lyricsTimingUsd(null), (600 / 3600) * 0.22, 1e-6);
   assert.equal(tools.toolEstimateUsd('lyrics_timing', {}), tools.lyricsTimingUsd(null));
-  near(tools.lyricsTimingUsd(99999), (tools.TIMING_MAX_SECONDS / 3600) * 0.4, 1e-6);
+  near(tools.lyricsTimingUsd(99999), (tools.TIMING_MAX_SECONDS / 3600) * 0.22, 1e-6);
   const before = process.env.ELEVENLABS_TIMING_USD_PER_HOUR;
   try {
-    process.env.ELEVENLABS_TIMING_USD_PER_HOUR = '0.22';
-    near(tools.lyricsTimingUsd(600), (600 / 3600) * 0.22, 1e-6, 'the price is set in the environment');
+    process.env.ELEVENLABS_TIMING_USD_PER_HOUR = '0.4';
+    near(tools.lyricsTimingUsd(600), (600 / 3600) * 0.4, 1e-6, 'the price is set in the environment');
     process.env.ELEVENLABS_TIMING_USD_PER_HOUR = 'nonsense';
-    near(tools.lyricsTimingUsd(600), (600 / 3600) * 0.4, 1e-6);
+    near(tools.lyricsTimingUsd(600), (600 / 3600) * 0.22, 1e-6);
   } finally {
     if (before === undefined) delete process.env.ELEVENLABS_TIMING_USD_PER_HOUR;
     else process.env.ELEVENLABS_TIMING_USD_PER_HOUR = before;

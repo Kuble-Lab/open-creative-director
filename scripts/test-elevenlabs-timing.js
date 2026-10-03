@@ -125,7 +125,7 @@ async function testSpeechToText() {
   assert.ok(call.options.body instanceof FormData);
   const form = call.options.body;
   assert.equal(form.get('model_id'), eleven.STT_MODEL_ID);
-  assert.equal(eleven.STT_MODEL_ID, 'scribe_v1', 'the model that was tried against a real song');
+  assert.equal(eleven.STT_MODEL_ID, 'scribe_v2', 'the model that was tried against a real song');
   assert.equal(form.get('timestamps_granularity'), 'word');
   assert.equal(form.get('tag_audio_events'), 'false', 'a held note must not turn into (music)');
   assert.equal(form.get('diarize'), 'false');
@@ -143,16 +143,16 @@ async function testSpeechToText() {
   assert.equal(answer.duration, 12.5, 'the length ElevenLabs measured');
 
   // a language and another model by hand
-  await eleven.speechToText({ audio: AUDIO, languageCode: 'de', modelId: 'scribe_v2' });
+  await eleven.speechToText({ audio: AUDIO, languageCode: 'de', modelId: 'scribe_v1' });
   assert.equal(calls[1].options.body.get('language_code'), 'de');
-  assert.equal(calls[1].options.body.get('model_id'), 'scribe_v2');
+  assert.equal(calls[1].options.body.get('model_id'), 'scribe_v1');
   // the model can be swapped by the environment without a code change
   process.env.ELEVENLABS_STT_MODEL = 'scribe_v9';
   try {
     await eleven.speechToText({ audio: AUDIO });
     assert.equal(calls[2].options.body.get('model_id'), 'scribe_v9');
-    await eleven.speechToText({ audio: AUDIO, modelId: 'scribe_v2' });
-    assert.equal(calls[3].options.body.get('model_id'), 'scribe_v2', 'an explicit model wins');
+    await eleven.speechToText({ audio: AUDIO, modelId: 'scribe_v1' });
+    assert.equal(calls[3].options.body.get('model_id'), 'scribe_v1', 'an explicit model wins');
   } finally {
     delete process.env.ELEVENLABS_STT_MODEL;
   }
