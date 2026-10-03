@@ -1476,6 +1476,7 @@
     if (type.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/.test(name)) return 'image';
     if (type.startsWith('video/') || /\.(mp4|webm|mov)$/.test(name)) return 'video';
     if (type.startsWith('audio/') || /\.(mp3|wav|m4a|aac)$/.test(name)) return 'audio';
+    if (type === 'application/pdf' || /\.(pdf|txt|md)$/.test(name)) return 'document';
     return null;
   }
 
@@ -1494,7 +1495,7 @@
       try {
         const value = await uploadFile(node.id, file, { accept: kind });
         notice.remove();
-        if (state.workflow && graphLib.getNode(state.graph, node.id)) applyParams(node.id, { asset: value }, { commit: true }, `asset:${node.id}`);
+        if (state.workflow && graphLib.getNode(state.graph, node.id)) applyParams(node.id, kind === 'document' ? { assets: [value] } : { asset: value }, { commit: true }, `asset:${node.id}`);
       } catch (error) {
         notice.remove();
         ui.toast(ui.T('nodes.toast.uploadFailed', { name: file.name, error: error.message }), { kind: 'error' });

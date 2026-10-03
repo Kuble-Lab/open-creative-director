@@ -13,6 +13,7 @@
   --nv-port-video: #c49bff;
   --nv-port-audio: #5fd3a2;
   --nv-port-model3d: #f08a78;
+  --nv-port-document: #b9cf6e;
   --nv-port-any: #9aa1ab;
   --nv-status-running: var(--accent);
   --nv-status-done: #5fd3a2;
@@ -1224,6 +1225,9 @@
 .nv-port.nv-port-model3d {
   --pc: var(--nv-port-model3d);
 }
+.nv-port.nv-port-document {
+  --pc: var(--nv-port-document);
+}
 .nv-port.nv-port-any {
   --pc: var(--nv-port-any);
 }
@@ -1348,6 +1352,10 @@
 }
 .nv-porttip-type.nv-port-model3d {
   --pc: var(--nv-port-model3d);
+}
+
+.nv-porttip-type.nv-port-document {
+  --pc: var(--nv-port-document);
 }
 
 .nv-porttip-swatch {
@@ -1902,6 +1910,53 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.nv-doc {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--nv-node-border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--nv-port-document);
+}
+
+.nv-doc-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.nv-doc-name {
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nv-doc-detail {
+  margin-top: 1px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.nv-doc-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-faint);
+}
+
+.nv-doc-open:hover,
+.nv-doc-open:focus-visible {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .nv-asset-missing {
@@ -3250,6 +3305,9 @@
 }
 .nv-pal-dot.nv-port-model3d {
   --pc: var(--nv-port-model3d);
+}
+.nv-pal-dot.nv-port-document {
+  --pc: var(--nv-port-document);
 }
 .nv-pal-dot.nv-port-any {
   --pc: var(--nv-port-any);

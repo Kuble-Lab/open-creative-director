@@ -27,6 +27,8 @@ const { textValue, listValue } = require('../lib/nodes/types');
 
 const EXPECTED = [
   'dub-clip',
+  'explainer-script',
+  'explainer-script-topic',
   'frame-chain',
   'hero-variants',
   'image-formats',
@@ -56,6 +58,8 @@ function requirementsOf(type) {
   if (type.startsWith('llm.')) keys.push('openrouter');
   else if (['image.generate', 'image.edit', 'image.relight', 'video.seedance', 'video.generate'].includes(type)) keys.push('openrouter');
   else if (type === 'music_video.plan') keys.push('openrouter', 'ffmpeg');
+  else if (type === 'explainer.plan') keys.push('openrouter');
+  else if (type === 'doc.read') keys.push('poppler');
   else if (['audio.tts', 'audio.music', 'audio.music_plan', 'audio.lyrics_timing'].includes(type)) keys.push('elevenlabs');
   else if (type.startsWith('fal.')) keys.push('fal');
   else if (type === 'video.motion_graphics') keys.push('rendernode');

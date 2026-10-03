@@ -207,7 +207,9 @@ async function main() {
     assert.deepEqual(uploadExtension('application/octet-stream', 'pic.jpeg'), { ext: '.jpg' });
     assert.deepEqual(uploadExtension('image/svg+xml', 'a.svg'), { ext: '.svg', svg: true });
     assert.deepEqual(uploadExtension('application/octet-stream', 'b.SVG'), { ext: '.svg', svg: true });
-    assert.match(uploadExtension('text/plain', 'a.txt').error, /Unsupported/);
+    assert.deepEqual(uploadExtension('text/plain', 'a.txt'), { ext: '.txt' }, 'a text file is a document (WP37a)');
+    assert.deepEqual(uploadExtension('application/pdf', 'a.bin'), { ext: '.pdf' });
+    assert.match(uploadExtension('text/html', 'a.html').error, /Unsupported/);
 
     /* ----- registry and options ----- */
     {
@@ -509,7 +511,8 @@ async function main() {
         assert.equal(evilUpload.status, 415, evilUpload.text);
       }
       assert.equal((await store.readLedger(sessionId)).length, ledgerBeforeBad, 'a refused SVG leaves nothing behind');
-      const text = await request('POST', `/api/workflows/${id}/uploads`, { raw: Buffer.from('hi'), headers: { 'Content-Type': 'text/plain', 'X-Filename': 'a.txt' } });
+      // a text file is a document since WP37a (test-explainer-documents.js); a web page is still refused
+      const text = await request('POST', `/api/workflows/${id}/uploads`, { raw: Buffer.from('<p>hi</p>'), headers: { 'Content-Type': 'text/html', 'X-Filename': 'a.html' } });
       assert.equal(text.status, 415);
 
       // empty body, unknown workflow, bad id
@@ -559,7 +562,8 @@ async function main() {
       chatSessions.push(chat.id);
       const image = await store.saveAsset(chat.id, { kind: 'image', buffer: PNG, ext: '.png', prompt: 'chat image' });
       const pending = await store.reserveAsset(chat.id, { kind: 'video', ext: '.mp4', prompt: 'pending' });
-      const textUpload = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('x'), ext: '.txt' });
+      // an archive: a text file is a document since WP37a and would be imported
+      const textUpload = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('x'), ext: '.zip' });
       const svgUpload = await store.saveAsset(chat.id, { kind: 'upload', buffer: Buffer.from('<svg/>'), ext: '.svg' });
 
       const imported = await api('POST', `/api/workflows/${id}/import-asset`, { sessionId: chat.id, assetId: image.id });

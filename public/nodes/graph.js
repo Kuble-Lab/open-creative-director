@@ -39,7 +39,7 @@
   const CONVERT_NODE_HEIGHT = 200;
   // Sources for missing inputs ("insert with inputs", the fix button of an incomplete card): the node that hands over a
   // value of a base type when the input carries no `suggest` hint, and the footprint used to lay the new cards out.
-  const SOURCE_TYPES = Object.freeze({ image: 'input.image', video: 'input.video', audio: 'input.audio', text: PROMPT_TYPE });
+  const SOURCE_TYPES = Object.freeze({ image: 'input.image', video: 'input.video', audio: 'input.audio', document: 'input.document', text: PROMPT_TYPE });
   const SOURCE_NODE_WIDTH = 340;
   const SOURCE_NODE_GAP = 56;
   const SOURCE_ROW_GAP = 24;
@@ -1164,17 +1164,20 @@
       let best = null;
       for (const candidate of candidates) {
         const list = (dir === 'out' ? candidate.ports.inputs : candidate.ports.outputs) || [];
-        for (const port of list) {
+        for (const [index, port] of list.entries()) {
           if (port.hidden) continue;
           const ok = dir === 'out' ? canConnectTypes(reg, portType, port.type) : canConnectTypes(reg, port.type, portType);
           if (!ok) continue;
           const target = parseType(port.type);
           const exact = target && target.base === source.base;
           const rank = (exact ? 2 : 0) + (port.required ? 1 : 0);
-          if (!best || rank > best.rank) best = { rank, type: def.type, portId: port.id, params: candidate.params };
+          // lead: the dragged type is the FIRST output ("Image input"), not one on the side (the logo of "Branding"); it only
+          // decides between nodes of the same rank and category (see rankPaletteEntries)
+          const lead = dir === 'in' && exact && index === 0 ? 1 : 0;
+          if (!best || rank > best.rank || (rank === best.rank && lead > best.lead)) best = { rank, lead, type: def.type, portId: port.id, params: candidate.params };
         }
       }
-      if (best) results.push({ type: best.type, portId: best.portId, params: best.params, rank: best.rank });
+      if (best) results.push({ type: best.type, portId: best.portId, params: best.params, rank: best.rank, lead: best.lead });
     }
     return results;
   }
@@ -1273,6 +1276,7 @@
         score: hit.score,
         real: hit.real,
         rank: compat ? compat.get(entry.type).rank : 0,
+        lead: compat ? compat.get(entry.type).lead || 0 : 0,
         role: nodeRole(def),
         usable: def && def.available === true ? 0 : 1,
         model: entry.model ? 1 : 0
@@ -1291,7 +1295,7 @@
       // then generators before editors before helpers, models last, the rest alphabetical.
       const pa = a.entry.type === PROMPT_TYPE ? 0 : 1;
       const pb = b.entry.type === PROMPT_TYPE ? 0 : 1;
-      return ca - cb || pa - pb || a.usable - b.usable || a.role - b.role || a.model - b.model || a.entry.label.localeCompare(b.entry.label);
+      return ca - cb || pa - pb || a.usable - b.usable || b.lead - a.lead || a.role - b.role || a.model - b.model || a.entry.label.localeCompare(b.entry.label);
     });
     const out = [];
     let nodes = 0;

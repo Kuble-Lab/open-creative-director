@@ -184,7 +184,7 @@ async function main() {
       assert.ok(defaultRegistry.CATEGORIES.includes('fal'));
       assert.ok(defaultRegistry.publicRegistry().categories.includes('fal'));
       for (const type of types) assert.ok(defaultRegistry.get(type), `${type} in the default registry`);
-      assert.equal(defaultRegistry.list().length, 85, '62 + 12 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes + the captions and the sound wave');
+      assert.equal(defaultRegistry.list().length, 90, '62 + 12 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes + the captions and the sound wave + the five nodes of the explainer foundation (Document, Read documents, Research, Branding, Plan explainer video)');
       assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 12);
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });

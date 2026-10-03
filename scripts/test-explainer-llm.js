@@ -1,0 +1,243 @@
+'use strict';
+
+// The language model adapter for documents and the web (WP37a, lib/nodes/llm.js and lib/discovery.js):
+//   - PDFs as "file" parts with the plugin file-parser (engine native), only for a model whose input modalities contain "file"
+//   - any other model gets the text alone, and so does every chatgpt/ model; onFilesSkipped says so
+//   - plugins are passed through (the web search with its domains), the cited sources come back as citations [{ url, title }]
+//   - unchanged: a call without files and plugins has the payload it always had; costs, journal and the empty answer
+//   - discovery.brainSupportsFiles: "file" in the public list; an unknown model or a failed fetch means no files
+// OpenRouter and the ChatGPT subscription are replaced; a fetch guard refuses everything except localhost.
+
+const assert = require('assert/strict');
+
+const { createIsolatedApp } = require('./support/isolated-app');
+
+const restorers = [];
+function patch(target, key, value) {
+  const original = target[key];
+  target[key] = value;
+  restorers.push(() => {
+    target[key] = original;
+  });
+}
+function restoreAll() {
+  while (restorers.length) restorers.pop()();
+}
+
+async function main() {
+  const attempts = [];
+  const realFetch = global.fetch;
+  global.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : input?.url || String(input);
+    if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(url)) {
+      attempts.push(url);
+      return Promise.reject(new Error(`network access refused in the test: ${url}`));
+    }
+    return realFetch(input, init);
+  };
+  const iso = await createIsolatedApp({ env: { OPENROUTER_API_KEY: 'sk-or-v1-test-key-with-enough-length', ADMIN_EMAILS: 'admin@example.com', SUPERADMIN_EMAILS: '', GTS_API_TOKEN: '' } });
+  try {
+    await run(iso, realFetch);
+  } finally {
+    restoreAll();
+    global.fetch = realFetch;
+    await iso.cleanup();
+  }
+  assert.deepEqual(attempts, [], 'no request left the machine');
+  console.log('test-explainer-llm.js: ok');
+}
+
+async function run(iso, realFetch) {
+  const llm = iso.load('lib/nodes/llm');
+  const or = iso.load('lib/openrouter');
+  const chatgpt = iso.load('lib/chatgpt');
+  const discovery = iso.load('lib/discovery');
+  const costs = iso.load('lib/costs');
+
+  const journal = [];
+  patch(costs, 'recordCost', async (entry) => {
+    journal.push(entry);
+    return entry;
+  });
+  const posts = [];
+  let reply = () => ({ choices: [{ message: { content: 'The answer' } }], usage: { cost: 0.01 } });
+  patch(or, 'postJson', async (route, payload) => {
+    posts.push({ route, payload });
+    return reply(payload);
+  });
+  const streams = [];
+  patch(chatgpt, 'status', () => ({ connected: true }));
+  patch(chatgpt, 'streamResponses', async (options) => {
+    streams.push(options);
+    return { text: 'From ChatGPT', toolCalls: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } };
+  });
+  const realSupportsFiles = discovery.brainSupportsFiles;
+  const realSupportsImages = discovery.brainSupportsImages;
+  const supportsFiles = new Set(['vendor/reads-files']);
+  patch(discovery, 'brainSupportsFiles', async (model) => supportsFiles.has(model));
+  patch(discovery, 'brainSupportsImages', async () => true);
+
+  const PDF = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 test').toString('base64')}`;
+  const files = [{ filename: 'report.pdf', dataUrl: PDF }];
+
+  /* ---------- files: the OpenRouter format ---------- */
+  {
+    const skipped = [];
+    const result = await llm.completeText({ model: 'vendor/reads-files', system: 'sys', prompt: 'Summarise', files, onFilesSkipped: (info) => skipped.push(info), sessionId: 's1' });
+    const { payload } = posts[0];
+    assert.deepEqual(payload.messages[0], { role: 'system', content: 'sys' });
+    assert.deepEqual(payload.messages[1].content, [
+      { type: 'text', text: 'Summarise' },
+      { type: 'file', file: { filename: 'report.pdf', file_data: PDF } }
+    ]);
+    assert.deepEqual(payload.plugins, [{ id: 'file-parser', pdf: { engine: 'native' } }], 'the model reads the PDF itself');
+    assert.equal(result.filesSent, 1);
+    assert.deepEqual(skipped, []);
+    assert.equal(result.usd, 0.01);
+    assert.equal(journal.length, 1, 'the cost is booked as before');
+    assert.equal(journal[0].cost, 0.01);
+    // a different engine on request
+    posts.length = 0;
+    await llm.completeText({ model: 'vendor/reads-files', prompt: 'x', files, pdfEngine: 'mistral-ocr', sessionId: 's1' });
+    assert.deepEqual(posts[0].payload.plugins, [{ id: 'file-parser', pdf: { engine: 'mistral-ocr' } }]);
+    // a file-parser plugin of the caller is kept, not doubled
+    posts.length = 0;
+    await llm.completeText({ model: 'vendor/reads-files', prompt: 'x', files, plugins: [{ id: 'file-parser', pdf: { engine: 'pdf-text' } }], sessionId: 's1' });
+    assert.deepEqual(posts[0].payload.plugins, [{ id: 'file-parser', pdf: { engine: 'pdf-text' } }]);
+    // files and images side by side
+    posts.length = 0;
+    await llm.completeText({ model: 'vendor/reads-files', prompt: 'x', files, images: ['data:image/png;base64,AAAA'], sessionId: 's1' });
+    assert.deepEqual(posts[0].payload.messages[0].content.map((part) => part.type), ['text', 'file', 'image_url']);
+  }
+
+  /* ---------- a model without file support, and ChatGPT: the text alone ---------- */
+  {
+    posts.length = 0;
+    const skipped = [];
+    const result = await llm.completeText({ model: 'vendor/text-only', prompt: 'Summarise', files, onFilesSkipped: (info) => skipped.push(info), sessionId: 's1' });
+    assert.equal(posts[0].payload.messages[0].content, 'Summarise', 'a plain string, no parts');
+    assert.equal(posts[0].payload.plugins, undefined, 'no file-parser without files');
+    assert.equal(result.filesSent, 0);
+    assert.deepEqual(skipped, [{ model: 'vendor/text-only', reason: 'model', count: 1 }]);
+
+    posts.length = 0;
+    const gptSkipped = [];
+    const gpt = await llm.completeText({ model: 'chatgpt/gpt-5.6-sol', prompt: 'Summarise', files, onFilesSkipped: (info) => gptSkipped.push(info), sessionId: 's1' });
+    assert.equal(posts.length, 0, 'the subscription does not go through OpenRouter');
+    assert.equal(streams.length, 1);
+    assert.deepEqual(streams[0].input[0].content.map((part) => part.type), ['input_text'], 'no file part for the subscription');
+    assert.equal(gpt.text, 'From ChatGPT');
+    assert.equal(gpt.filesSent, 0);
+    assert.deepEqual(gpt.citations, []);
+    assert.deepEqual(gptSkipped, [{ model: 'chatgpt/gpt-5.6-sol', reason: 'chatgpt', count: 1 }]);
+  }
+
+  /* ---------- unchanged without files and plugins ---------- */
+  {
+    posts.length = 0;
+    await llm.completeText({ model: 'vendor/text-only', system: 'You are terse', prompt: 'Hi', temperature: 0.3, maxTokens: 200, json: true, sessionId: 's1' });
+    assert.deepEqual(posts[0].payload, {
+      model: 'vendor/text-only',
+      messages: [{ role: 'system', content: 'You are terse' }, { role: 'user', content: 'Hi' }],
+      usage: { include: true },
+      temperature: 0.3,
+      max_tokens: 200,
+      response_format: { type: 'json_object' }
+    });
+    reply = () => ({ choices: [{ message: { content: '  ' } }], usage: { cost: 0 } });
+    await assert.rejects(llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1' }), /empty answer/);
+    reply = () => ({ choices: [{ message: { content: 'ok' } }] });
+    assert.equal((await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1' })).usd, null, 'no reported cost stays null');
+  }
+
+  /* ---------- the web search and its sources ---------- */
+  {
+    posts.length = 0;
+    reply = () => ({
+      choices: [
+        {
+          message: {
+            content: 'Heat pumps reach a seasonal COP of 4.',
+            annotations: [
+              { type: 'url_citation', url_citation: { url: 'https://example.org/a', title: 'Agency report', content: 'x', start_index: 0, end_index: 38 } },
+              { type: 'url_citation', url_citation: { url: 'https://example.org/b', title: '  Second source ', start_index: 0, end_index: 38 } },
+              { type: 'url_citation', url_citation: { url: 'https://example.org/a', title: 'Agency report', start_index: 5, end_index: 20 } },
+              { type: 'something_else', foo: 1 },
+              { type: 'url_citation', url_citation: { title: 'no url' } }
+            ]
+          }
+        }
+      ],
+      usage: { cost: 0.02 }
+    });
+    const plugin = { id: 'web', max_results: 5, include_domains: ['example.org'], exclude_domains: ['spam.test'] };
+    const result = await llm.completeText({ model: 'vendor/text-only', prompt: 'Research', plugins: [plugin], sessionId: 's1' });
+    assert.deepEqual(posts[0].payload.plugins, [plugin], 'the web plugin goes through as given');
+    assert.notEqual(posts[0].payload.plugins[0], plugin, 'a copy: the caller\'s object is not shared');
+    assert.deepEqual(result.citations, [
+      { url: 'https://example.org/a', title: 'Agency report' },
+      { url: 'https://example.org/b', title: 'Second source' }
+    ]);
+    assert.deepEqual(result.citationSpans, [
+      { url: 'https://example.org/a', end: 38 },
+      { url: 'https://example.org/b', end: 38 },
+      { url: 'https://example.org/a', end: 20 }
+    ]);
+    // the web plugin and a file together
+    posts.length = 0;
+    await llm.completeText({ model: 'vendor/reads-files', prompt: 'x', files, plugins: [plugin], sessionId: 's1' });
+    assert.deepEqual(posts[0].payload.plugins.map((item) => item.id), ['web', 'file-parser']);
+    // an answer without annotations has no citations
+    reply = () => ({ choices: [{ message: { content: 'plain' } }], usage: { cost: 0 } });
+    const plain = await llm.completeText({ model: 'vendor/text-only', prompt: 'x', plugins: [plugin], sessionId: 's1' });
+    assert.deepEqual(plain.citations, []);
+    assert.deepEqual(plain.citationSpans, []);
+  }
+
+  /* ---------- discovery: the public model list ---------- */
+  {
+    discovery.resetModalityCache();
+    const list = {
+      data: [
+        { id: 'anthropic/claude-opus-5.5', architecture: { input_modalities: ['text', 'image', 'file'] } },
+        { id: 'vendor/text-only', architecture: { input_modalities: ['text'] } },
+        { id: 'vendor/no-info', architecture: {} }
+      ]
+    };
+    let calls = 0;
+    let failing = false;
+    const guard = global.fetch;
+    global.fetch = async (url) => {
+      if (String(url).startsWith('https://openrouter.ai/')) {
+        calls += 1;
+        if (failing) throw new Error('offline');
+        return { ok: true, json: async () => list };
+      }
+      return guard(url);
+    };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      assert.equal(await realSupportsFiles('anthropic/claude-opus-5.5'), true, '"file" among the input modalities');
+      assert.equal(await realSupportsFiles('vendor/text-only'), false);
+      assert.equal(await realSupportsFiles('vendor/no-info'), false);
+      assert.equal(await realSupportsFiles('vendor/unknown'), false, 'an unknown model gets no files (unlike images)');
+      assert.equal(calls, 1, 'the list is fetched once');
+      discovery.resetModalityCache();
+      failing = true;
+      assert.equal(await realSupportsFiles('anthropic/claude-opus-5.5'), false, 'a failed fetch means no files');
+      assert.equal(await realSupportsImages('anthropic/claude-opus-5.5'), true, 'images keep their rule: unknown or failed means yes');
+      failing = false;
+      assert.equal(await realSupportsFiles('anthropic/claude-opus-5.5'), true, 'the next call tries again after a failure');
+    } finally {
+      console.warn = warn;
+      global.fetch = guard;
+      discovery.resetModalityCache();
+    }
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
