@@ -381,7 +381,7 @@ function testBrand() {
   assert.match(neutral.headline, /^system-ui|^'?[A-Za-z ]+'?, system-ui/);
   // a profile: its colours and fonts
   const brand = {
-    name: 'Kuble',
+    name: 'Acme',
     colors: [
       { role: 'background', name: 'Paper', hex: '#fafafa', usage: '' },
       { role: 'text', name: 'Ink', hex: '#1a1a2e', usage: '' },

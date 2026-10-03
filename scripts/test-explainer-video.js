@@ -1045,7 +1045,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
 
     // the brand: its colours and fonts are in the words of the model
     reset();
-    const created = await brandings.createBranding({ name: 'Kuble Test' });
+    const created = await brandings.createBranding({ name: 'Acme Test' });
     const woff = Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(2000, 7)]);
     const saved = await brandings.saveBrandingAsset(created.id, { buffer: woff, filename: 'brand-sans.woff2' });
     await brandings.saveBrandingAsset(created.id, { buffer: Buffer.alloc(500 * 1024, 1), filename: 'big.woff2' });
