@@ -875,7 +875,7 @@ async function main() {
       });
       const journalBefore = journal.length;
       const result = await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { voice_id: 'voice-9' });
-      assert.deepEqual(requests[0], { text: 'Hallo Welt', voiceId: 'voice-9', modelId: 'eleven_multilingual_v2' });
+      assert.deepEqual(requests[0], { text: 'Hallo Welt', voiceId: 'voice-9', modelId: 'eleven_v4' }, 'a new node speaks with Eleven v4');
       assert.equal(result.variants[0].audio.type, 'audio');
       assert.match(result.variants[0].audio.file, /\.mp3$/);
       // paid, with the estimate by character; the run reports it and the tool journals it (for everybody)
@@ -897,19 +897,64 @@ async function main() {
       assert.equal(issuesOf(registry, 'audio.tts', { text: 'x'.repeat(2501) }, { text: { connected: false, count: 0 } }).length, 1);
       assert.equal(requests.length, 2);
 
+      // a workflow saved with another model runs with that model and is booked at its price; a blank model means the default
+      requests.length = 0;
+      await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { model_id: 'eleven_multilingual_v2' });
+      assert.equal(journal.at(-1).model, 'elevenlabs/eleven_multilingual_v2');
+      assert.equal(journal.at(-1).cost, 0.003);
+      await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { model_id: '  ' });
+      assert.equal(journal.at(-1).model, 'elevenlabs/eleven_v4', 'blank: the default');
+      const turbo = await execute(registry, 'audio.tts', makeCtx(sessionId), { text: text('Hallo Welt') }, { model_id: 'eleven_v4_turbo' });
+      assert.deepEqual(requests.map((request) => request.modelId), ['eleven_multilingual_v2', 'eleven_v4', 'eleven_v4_turbo']);
+      assert.equal(journal.at(-1).model, 'elevenlabs/eleven_v4_turbo');
+      assert.equal(journal.at(-1).cost, 0.0015, 'a Turbo model is booked at half');
+      assert.deepEqual(turbo.cost, { usd: 0.0015 });
+
       const tts = oneOf(registry, 'audio.tts');
       assert.equal(tts.paid, true);
       assert.equal(tts.cost.unit, 'usd');
       assert.equal(tts.cost.history, false, 'no guess from an earlier result');
       const estimate = (params, connected = []) => tts.cost.estimate(registry.normalizeParams(tts, params), { connected: new Set(connected) });
       assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.3);
+      // the price follows the model: Turbo and Flash count half (price page of ElevenLabs, see tools.js), an unknown model the full price
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_v4' }), 0.3);
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_multilingual_v2' }), 0.3, 'an older workflow keeps its price');
+      for (const half of ['eleven_v4_turbo', 'eleven_v3_conversational', 'eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_flash_v2', 'eleven_turbo_v2']) {
+        assert.equal(estimate({ text: 'x'.repeat(1000), model_id: half }), 0.15, half);
+      }
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'some_future_model' }), 0.3, 'an unknown model: the full price, never less');
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: '  ' }), 0.3, 'a blank model is the default');
+      assert.equal(tools.speechEstimateUsd('x'.repeat(1000)), 0.3);
+      assert.equal(tools.speechEstimateUsd('x'.repeat(1000), 'eleven_flash_v2_5'), 0.15);
+      // the budget of a participant reserves the price of the model that is asked for
+      assert.equal(tools.toolEstimateUsd('generate_speech', { text: 'x'.repeat(1000) }), 0.3);
+      assert.equal(tools.toolEstimateUsd('generate_speech', { text: 'x'.repeat(1000), model_id: 'eleven_v4_turbo' }), 0.15);
       withEnv('ELEVENLABS_USD_PER_1K_CHARS', '0.5');
       assert.equal(estimate({ text: 'x'.repeat(1000) }), 0.5);
+      assert.equal(estimate({ text: 'x'.repeat(1000), model_id: 'eleven_flash_v2_5' }), 0.25, 'the setting is the price of a full-price model, Flash counts half of it');
       assert.equal(estimate({ text: 'x'.repeat(5000) }), 1.25, 'capped at 2500 characters, as the tool is');
       assert.equal(estimate({ text: 'x'.repeat(1000) }, ['text']), null, 'a text through a connection: unknown, not 0');
       assert.equal(estimate({ text: '' }), null);
       assert.equal(registry.publicDescriptor(tts).provider, 'elevenlabs');
       assert.equal(registry.publicDescriptor(tts).paid, true);
+
+      // the model is a choice from the list of the speech models, Eleven v4 for a new node. The server never checks the value against
+      // the list, so a workflow saved with another model (an old id included) stays valid.
+      const modelParam = registry.publicDescriptor(tts).params.find((param) => param.id === 'model_id');
+      assert.deepEqual(
+        { kind: modelParam.kind, optionsSource: modelParam.optionsSource, default: modelParam.default, noDefaultEntry: modelParam.noDefaultEntry },
+        { kind: 'select', optionsSource: 'elevenlabs-tts-models', default: 'eleven_v4', noDefaultEntry: true }
+      );
+      assert.equal(tools.DEFAULT_ELEVENLABS_MODEL_ID, 'eleven_v4');
+      assert.equal(registry.normalizeParams(tts, {}).model_id, 'eleven_v4', 'a new node');
+      assert.equal(registry.normalizeParams(tts, { model_id: 'eleven_multilingual_v2' }).model_id, 'eleven_multilingual_v2', 'a saved model is kept');
+      for (const saved of ['eleven_multilingual_v2', 'eleven_monolingual_v1', 'some_future_model']) {
+        assert.deepEqual(registry.checkParams(tts, registry.normalizeParams(tts, { model_id: saved })), [], `${saved} stays valid`);
+      }
+      // the Director's tool says the same default
+      const speechTool = tools.toolDefinitions().find((tool) => tool.function.name === 'generate_speech');
+      assert.equal(speechTool.function.parameters.properties.model_id.default, 'eleven_v4');
+      assert.match(speechTool.function.parameters.properties.model_id.description, /Defaults to eleven_v4/);
     }
 
     /* ----- audio.music and audio.music_plan ----- */

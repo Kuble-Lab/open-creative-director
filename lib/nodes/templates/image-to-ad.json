@@ -13,7 +13,7 @@
       { "id": "n4", "type": "text.template", "typeVersion": 1, "x": 880, "y": 200, "title": "Video prompt", "params": { "template": "{{a}}\n\nCamera and motion: {{b}}. Vertical 9:16 advertising shot, natural motion, no text." } },
       { "id": "n5", "type": "video.seedance", "typeVersion": 1, "x": 1280, "y": 100, "title": "Animate still", "params": { "prompt": "", "duration": 6, "aspect_ratio": "9:16", "resolution": "720p" } },
       { "id": "n6", "type": "input.text", "typeVersion": 1, "x": 880, "y": 640, "title": "Voice-over script", "params": { "text": "Meet the new morning ritual. Crafted with care, made to be enjoyed slowly." } },
-      { "id": "n7", "type": "audio.tts", "typeVersion": 1, "x": 1280, "y": 640, "title": "Voice-over", "params": { "text": "", "voice_id": "21m00Tcm4TlvDq8ikWAM", "model_id": "eleven_multilingual_v2" } },
+      { "id": "n7", "type": "audio.tts", "typeVersion": 1, "x": 1280, "y": 640, "title": "Voice-over", "params": { "text": "", "voice_id": "21m00Tcm4TlvDq8ikWAM", "model_id": "eleven_v4" } },
       { "id": "n8", "type": "video.merge_audio", "typeVersion": 1, "x": 1680, "y": 340, "title": "Mix voice-over", "params": { "mode": "replace", "audio_volume": 1, "video_volume": 1, "length": "video" } },
       { "id": "n9", "type": "output.result", "typeVersion": 1, "x": 2080, "y": 380, "params": { "label": "Vertical ad" } }
     ],

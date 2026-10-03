@@ -183,7 +183,7 @@ async function main() {
 
   const created = [];
   const chatSessions = [];
-  const originals = { hasKey: elevenlabs.hasKey, listVoices: elevenlabs.listVoices };
+  const originals = { hasKey: elevenlabs.hasKey, listVoices: elevenlabs.listVoices, listModels: elevenlabs.listModels };
   const sseClients = [];
   const chatFolder = `API-Nodes-${Date.now().toString(36)}`;
 
@@ -240,6 +240,26 @@ async function main() {
         throw new Error('boom');
       };
       assert.equal((await api('GET', '/api/nodes/options/elevenlabs-voices')).status, 502);
+
+      // the speech models: a list for everybody. Where ElevenLabs cannot be asked (no key; fetch is shut in this block) the built-in
+      // list comes back, never an error, where the voices answer 503.
+      const realFetch = global.fetch;
+      global.fetch = async () => {
+        throw new Error('no network in this test');
+      };
+      try {
+        elevenlabs.hasKey = () => false;
+        const builtIn = await api('GET', '/api/nodes/options/elevenlabs-tts-models');
+        assert.equal(builtIn.status, 200);
+        assert.deepEqual(builtIn.json.options, elevenlabs.TTS_MODELS_FALLBACK.map((model) => ({ value: model.model_id, label: model.name })));
+        assert.equal(builtIn.json.options[0].value, 'eleven_v4');
+      } finally {
+        global.fetch = realFetch;
+      }
+      elevenlabs.listModels = async () => [{ model_id: 'eleven_v4', name: 'Eleven v4' }, { model_id: 'x_model', name: 'Model X' }];
+      const speechModels = await api('GET', '/api/nodes/options/elevenlabs-tts-models');
+      assert.equal(speechModels.status, 200);
+      assert.deepEqual(speechModels.json.options, [{ value: 'eleven_v4', label: 'Eleven v4' }, { value: 'x_model', label: 'Model X' }]);
 
       // without an injected Higgsfield catalogue (this private app has none) the routes answer 503
       assert.equal((await api('GET', '/api/nodes/options/higgsfield-image-models')).status, 503);
@@ -1102,6 +1122,7 @@ async function main() {
   } finally {
     elevenlabs.hasKey = originals.hasKey;
     elevenlabs.listVoices = originals.listVoices;
+    elevenlabs.listModels = originals.listModels;
     for (const client of sseClients) client.destroy();
     for (const wfId of created) {
       try {

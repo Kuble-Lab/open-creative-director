@@ -9,7 +9,7 @@
     "nodes": [
       { "id": "n1", "type": "input.image", "typeVersion": 1, "x": 80, "y": 80, "title": "Portrait", "params": { "asset": null } },
       { "id": "n2", "type": "input.text", "typeVersion": 1, "x": 80, "y": 420, "title": "Speech text", "params": { "text": "Hello and welcome. Today I want to show you how a single photo can start talking. Thanks for watching, and see you soon." } },
-      { "id": "n3", "type": "audio.tts", "typeVersion": 1, "x": 520, "y": 420, "title": "Voice", "params": { "text": "", "voice_id": "21m00Tcm4TlvDq8ikWAM", "model_id": "eleven_multilingual_v2" } },
+      { "id": "n3", "type": "audio.tts", "typeVersion": 1, "x": 520, "y": 420, "title": "Voice", "params": { "text": "", "voice_id": "21m00Tcm4TlvDq8ikWAM", "model_id": "eleven_v4" } },
       { "id": "n4", "type": "fal.h3_lipsync", "typeVersion": 1, "x": 960, "y": 200, "title": "Lip sync", "params": { "resolution": "768P", "transcription": false, "seed": null, "safety": true } },
       { "id": "n5", "type": "output.result", "typeVersion": 1, "x": 1400, "y": 240, "params": { "label": "Talking portrait" } }
     ],

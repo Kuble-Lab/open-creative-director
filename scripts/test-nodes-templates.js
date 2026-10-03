@@ -132,6 +132,10 @@ async function main() {
     assert.deepEqual(types('hero-variants'), ['input.text', 'llm.prompt_enhancer', 'image.generate', 'image.resize', 'output.result']);
     assert.equal(byId['hero-variants'].graph.nodes.find((node) => node.type === 'image.generate').params.count, 4);
     assert.ok(types('image-to-ad').includes('llm.image_describer') && types('image-to-ad').includes('audio.tts') && types('image-to-ad').includes('video.merge_audio'));
+    // a new workflow starts with the default speech model (Eleven v4), like a new node
+    const speechNodes = all.flatMap((template) => template.graph.nodes.filter((item) => item.type === 'audio.tts').map((item) => ({ id: template.id, params: item.params })));
+    assert.deepEqual(speechNodes.map((item) => item.id).sort(), ['image-to-ad', 'talking-portrait']);
+    for (const item of speechNodes) assert.equal(item.params.model_id, 'eleven_v4', `${item.id}: the voice speaks with the default model`);
     assert.ok(types('series-shots').includes('input.text_list') && types('series-shots').includes('video.concat'));
     assert.ok(byId['series-shots'].graph.nodes.find((node) => node.type === 'input.text_list').params.text.split('\n').length === 3);
     assert.ok(types('frame-chain').filter((type) => type === 'video.seedance').length === 2 && types('frame-chain').includes('video.extract_frame'));

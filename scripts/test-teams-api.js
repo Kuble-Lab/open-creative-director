@@ -1313,6 +1313,19 @@ async function testBudgetTools(ctx) {
       assert.ok(forParticipant.body.options.every((item) => item.value === '' || [VIDEO_SEEDANCE, VIDEO_KLING].includes(item.value)));
     }
   }
+  // the speech models are no private data: participants and guests get the same list as internal people (here the built-in list: no
+  // key, and the guard above refuses the network)
+  {
+    const lists = [];
+    for (const as of [STAFF, PAB, GUEST]) {
+      const res = await api('/api/nodes/options/elevenlabs-tts-models', { as });
+      assert.equal(res.status, 200, as);
+      lists.push(res.body.options);
+    }
+    assert.deepEqual(lists[1], lists[0], 'the speech models: the same list for participants');
+    assert.deepEqual(lists[2], lists[0], 'and for guests');
+    assert.equal(lists[0][0].value, 'eleven_v4');
+  }
   await sleep(1100);
   teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
   restoreAll();
