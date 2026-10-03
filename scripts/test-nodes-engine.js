@@ -144,7 +144,8 @@ function buildEnvironment() {
       unit: 'usd',
       history: false,
       estimate: (params, context) => {
-        state.estimateContexts.push({ nodeId: context.nodeId, connected: [...context.connected] });
+        const inputs = Object.fromEntries(Object.entries(context.inputs).map(([port, value]) => [port, value.value]));
+        state.estimateContexts.push({ nodeId: context.nodeId, connected: [...context.connected], inputs });
         return context.connected.has('in') ? null : params.text.length * 0.01;
       }
     },
@@ -737,11 +738,16 @@ async function main() {
       assert.deepEqual(first.totals, { paidNodes: 2, usd: 0.04, credits: 0, unknownNodes: 1 });
       const seen = Object.fromEntries(env.state.estimateContexts.map((entry) => [entry.nodeId, entry.connected]));
       assert.deepEqual(seen, { typed: [], wired: ['in'] }, 'the estimate is told which inputs are connected and which node it is');
+      // ... and what the node receives now: its own field, but nothing from a node before it that has yet to run
+      const received = Object.fromEntries(env.state.estimateContexts.map((entry) => [entry.nodeId, entry.inputs]));
+      assert.deepEqual(received, { typed: { in: 'abcd' }, wired: {} }, 'inputs: known values only, never an earlier result of a stale node');
+      env.state.estimateContexts = [];
       // after a real run the plan still does not guess from the last result
       const record = await run(engine, wf.id, { mode: 'node', nodeIds: ['typed', 'wired'] });
       assert.ok(Math.abs(record.cost.usd - 1) < 1e-9);
       const again = await engine.plan(wf.id, { mode: 'node', nodeIds: ['typed', 'wired'], force: true });
       assert.equal(again.nodes.wired.estimate, null, 'no earlier cost is used: the length stays unknown');
+      assert.deepEqual(env.state.estimateContexts.filter((entry) => entry.nodeId === 'wired').pop().inputs, { in: 'hello' }, 'with the node before up to date its value reaches the estimate');
       assert.ok(Math.abs(again.nodes.typed.estimate.usd - 0.04) < 1e-9);
       assert.equal(again.totals.unknownNodes, 1);
 

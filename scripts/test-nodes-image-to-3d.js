@@ -499,7 +499,7 @@ async function run(iso) {
     assert.equal(descriptor.provider, 'fal');
     assert.equal(descriptor.cost.hasEstimate, true);
     // before the free node, which stays last
-    assert.deepEqual(nodesFal.definitions.map((item) => item.type).slice(-3), ['fal.image_to_3d', 'fal.remove_background', 'fal.model']);
+    assert.deepEqual(nodesFal.definitions.map((item) => item.type).slice(-4), ['fal.image_to_3d', 'fal.remove_background', 'fal.video_segment', 'fal.model']);
     // open to participants like the background removal: no Higgsfield node, no credits
     assert.equal(registryModule.isRestricted(descriptor), false);
     hasKey = false;
@@ -531,7 +531,7 @@ async function run(iso) {
     // the source and the date are in the code next to the numbers
     const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-fal.js'), 'utf8');
     assert.match(source, /llms\.txt[\s\S]{0,300}2026-10-02|2026-10-02[\s\S]{0,400}llms\.txt/);
-    assert.match(source, /UNCERTAIN/, 'the unit of the SAM 3D price is flagged as uncertain');
+    assert.match(source, /billed 1\.00 unit = 0\.02 USD/, 'the unit of the SAM 3D price is confirmed by a billed run');
 
     const estimate = (raw, views = []) => def().cost.estimate(params(raw), { connected: new Set(views) });
     // Tripo: 0.20 / 0.30 / 0.40, geometry detailed +0.20, PBR and face limit cost nothing extra

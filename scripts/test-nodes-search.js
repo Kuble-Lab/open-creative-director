@@ -594,6 +594,28 @@ function testVideoGridSynonyms() {
   assert.ok(entry && entry.def.available === true && !entry.def.restricted);
 }
 
+function testVideoSegmentSynonyms() {
+  // segmenting a video with SAM 3 (WP33): the words of the task lead to it, in the three languages
+  const first = (lang, query) => search(lang, 'participant', query).map((entry) => entry.type);
+  assert.equal(first('de', 'video segmentieren')[0], 'fal.video_segment');
+  assert.ok(first('de', 'segmentieren').slice(0, 3).includes('fal.video_segment'));
+  assert.ok(first('de', 'rotoscoping').slice(0, 3).includes('fal.video_segment'));
+  assert.ok(first('de', 'person freistellen').slice(0, 3).includes('fal.video_segment'));
+  assert.equal(first('en', 'segment video')[0], 'fal.video_segment');
+  assert.ok(first('en', 'rotoscope').slice(0, 3).includes('fal.video_segment'));
+  assert.ok(first('en', 'matte').slice(0, 3).includes('fal.video_segment'));
+  assert.ok(first('en', 'sam 3').slice(0, 3).includes('fal.video_segment'));
+  assert.equal(first('es', 'segmentar vídeo')[0], 'fal.video_segment');
+  assert.ok(first('es', 'rotoscopia').slice(0, 3).includes('fal.video_segment'));
+  // the image cutout keeps its words: "remove background" does not lead to the video node
+  assert.equal(first('de', 'hintergrund entfernen')[0], 'fal.remove_background');
+  const background = first('en', 'remove background');
+  assert.ok(background.includes('fal.remove_background') && (!background.includes('fal.video_segment') || background.indexOf('fal.video_segment') > background.indexOf('fal.remove_background')));
+  // open to everyone, like the other fal nodes
+  const entry = search('de', 'participant', 'video segmentieren').find((item) => item.type === 'fal.video_segment');
+  assert.ok(entry && !entry.def.restricted);
+}
+
 function testSearchTextNormalization() {
   // a text of only separators is no search (the palette uses the same test for its group headings)
   assert.equal(graphLib.normalizeSearch('-'), '');
@@ -612,6 +634,7 @@ const tests = [
   testNodesBeforeModelsOnTies,
   testImageEditingSynonyms,
   testVideoGridSynonyms,
+  testVideoSegmentSynonyms,
   testSearchTextNormalization,
   testZoomNodeRename,
   testOldWorkflowsStillLoad,

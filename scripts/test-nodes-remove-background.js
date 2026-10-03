@@ -212,7 +212,7 @@ async function main() {
 
     /* ---------- registry ---------- */
     {
-      assert.deepEqual(nodesFal.definitions.map((item) => item.type).slice(-2), ['fal.remove_background', 'fal.model'], 'before the free node, which stays last');
+      assert.deepEqual(nodesFal.definitions.map((item) => item.type).slice(-3), ['fal.remove_background', 'fal.video_segment', 'fal.model'], 'before the free node, which stays last');
       const node = def();
       assert.equal(node.category, 'fal');
       assert.equal(node.paid, true);
