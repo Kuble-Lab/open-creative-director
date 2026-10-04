@@ -168,6 +168,8 @@ async function run(iso, { eleven, setVoiceBytes }) {
 <body><div id="main-composition" data-composition-id="main" data-width="${width}" data-height="${height}" data-start="0" data-duration="${duration}"><h1 id="t">Titel</h1>${attached}
 <script>const tl = gsap.timeline({paused:true}); tl.from('#t',{opacity:0,duration:0.5},0.3); tl.to({}, {duration:0.01}, ${duration - 0.01}); window.__timelines = window.__timelines || {}; window.__timelines['main'] = tl;</script></div></body></html>`;
   };
+  // the document the fake writer answers with when nobody queued one, for a scene of the length of the tests
+  const goodHtmlFor = () => goodHtml({ system: 'data-duration="5.866" data-width="1920" data-height="1080"', prompt: '' });
   const fakeComplete = async (options) => {
     const kind = /^You write ONE scene/.test(options.system || '') ? 'writer' : /^You check frames/.test(options.system || '') ? 'check' : 'other';
     calls.push({ kind, options: JSON.parse(JSON.stringify({ ...options, onReplaced: undefined })) });
@@ -175,6 +177,8 @@ async function run(iso, { eleven, setVoiceBytes }) {
     let value = next === null ? (kind === 'writer' ? goodHtml(options) : '{"ok": true, "blockers": [], "minor": []}') : next;
     if (typeof value === 'function') value = value(options);
     if (value instanceof Error) throw value;
+    // { text, usage }: an answer with the token counts of the provider
+    if (value && typeof value === 'object' && value.withUsage) return { text: value.text, usd: USD[kind] ?? 0, usage: value.withUsage, citations: [], citationSpans: [] };
     return { text: typeof value === 'string' ? value : JSON.stringify(value), usd: USD[kind] ?? 0, citations: [], citationSpans: [] };
   };
   llm.completeText = fakeComplete;
@@ -799,6 +803,88 @@ async function run(iso, { eleven, setVoiceBytes }) {
     await exec('explainer.scene', flaky, baseInputs(0), {});
     assert.equal(writerCalls().length, 2);
     assert.ok(flaky.logs.some((line) => /attempt 1 of 3: the model failed \(the model is overloaded\)/.test(line)));
+  }
+
+  /* ---------- an empty answer is billed, logged, and after the token limit the next try gets more room (WP40 part C) ---------- */
+
+  {
+    // what llm.completeText throws for an empty answer (lib/nodes/llm.js): the cost, the reason and the tokens are on the error
+    const emptyError = (finishReason, usd = 0.2) => Object.assign(
+      new Error(`The model returned an empty answer (finish_reason ${finishReason}, 9000 output tokens, 8950 of them reasoning)`),
+      { emptyAnswer: true, usd, finishReason, completionTokens: 9000, reasoningTokens: 8950 }
+    );
+
+    // empty at the limit: the failed try is paid, the log names why, the next try may use more, and a good scene follows
+    reset();
+    queue.writer.push(emptyError('length'));
+    const lengthCtx = makeCtx();
+    const lengthResult = await exec('explainer.scene', lengthCtx, baseInputs(0, { brand: NEUTRAL }), {});
+    assert.equal(writerCalls().length, 2);
+    assert.equal(sceneLib.MAX_TOKENS_RETRY, 16000);
+    assert.equal(writerCalls()[0].options.maxTokens, sceneLib.MAX_TOKENS, 'the first try as ever');
+    assert.equal(writerCalls()[1].options.maxTokens, sceneLib.MAX_TOKENS_RETRY, 'after "length" the next try has more room');
+    assert.ok(lengthCtx.logs.some((line) => /attempt 1 of 3: the model failed \(The model returned an empty answer \(finish_reason length, 9000 output tokens, 8950 of them reasoning\)\)/.test(line)), lengthCtx.logs.join(' | '));
+    assert.ok(lengthCtx.logs.some((line) => /attempt 1 of 3: the limit of 9000 tokens was reached before any code: the next try may use 16000/.test(line)), lengthCtx.logs.join(' | '));
+    near(lengthResult.cost.usd, 0.2 + USD.writer + USD.check, 1e-9, 'the cost of the empty try is in the cost of the node');
+
+    // the raised limit stays for the tries after it (an empty answer again does not raise it further)
+    reset();
+    queue.writer.push(emptyError('length'), emptyError('length'));
+    const twice = makeCtx();
+    const twiceResult = await exec('explainer.scene', twice, baseInputs(0), {});
+    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 16000, 16000]);
+    assert.equal(twice.logs.filter((line) => /the limit of \d+ tokens was reached/.test(line)).length, 1, 'said once');
+    near(twiceResult.cost.usd, 0.4 + USD.writer + USD.check, 1e-9);
+
+    // the last try has no next one: no promise in the log
+    reset();
+    queue.writer.push(emptyError('length'));
+    const lastTry = makeCtx();
+    await exec('explainer.scene', lastTry, baseInputs(0), { max_retries: 0 });
+    assert.equal(writerCalls().length, 1);
+    assert.ok(!lastTry.logs.some((line) => /may use 16000/.test(line)));
+
+    // empty for another reason: the same limit, and still paid
+    reset();
+    queue.writer.push(emptyError('stop', 0.05));
+    const stopCtx = makeCtx();
+    const stopResult = await exec('explainer.scene', stopCtx, baseInputs(0), {});
+    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 9000]);
+    assert.ok(stopCtx.logs.some((line) => /attempt 1 of 3: the model failed \(The model returned an empty answer \(finish_reason stop/.test(line)));
+    assert.ok(!stopCtx.logs.some((line) => /tokens was reached/.test(line)));
+    near(stopResult.cost.usd, 0.05 + USD.writer + USD.check, 1e-9);
+
+    // a failed answer with no reported cost adds nothing; a plain failure (no usd on the error) neither
+    reset();
+    queue.writer.push(emptyError('length', null));
+    const unknown = await exec('explainer.scene', makeCtx(), baseInputs(0), {});
+    near(unknown.cost.usd, USD.writer + USD.check, 1e-9);
+
+    // the same for the look at the frames: a failed call that was billed counts for the node
+    reset();
+    queue.check.push(Object.assign(new Error('The model returned an empty answer (finish_reason length)'), { emptyAnswer: true, usd: 0.04, finishReason: 'length' }));
+    const lookCtx = makeCtx();
+    const looked = await exec('explainer.scene', lookCtx, baseInputs(0), {});
+    assert.ok(lookCtx.logs.some((line) => /the check could not be made \(The model returned an empty answer/.test(line)), lookCtx.logs.join(' | '));
+    near(looked.cost.usd, USD.writer + 0.04, 1e-9, 'the failed look is paid, and there is no second look');
+    assert.equal(writerCalls()[0].options.maxTokens, 9000);
+    assert.equal(checkCalls()[0].options.maxTokens, 1200, 'the look keeps its small limit');
+
+    // a good answer: one line with the tokens, when the provider reported them
+    reset();
+    queue.writer.push({ text: goodHtmlFor(), withUsage: { completion_tokens: 3100, completion_tokens_details: { reasoning_tokens: 420 } } });
+    const usedCtx = makeCtx();
+    await exec('explainer.scene', usedCtx, baseInputs(0), {});
+    assert.ok(usedCtx.logs.some((line) => line === 's1: attempt 1 of 3: the model used 3100 output tokens, 420 of them thinking'), usedCtx.logs.join(' | '));
+    reset();
+    queue.writer.push({ text: goodHtmlFor(), withUsage: { completion_tokens: 800 } });
+    const partCtx = makeCtx();
+    await exec('explainer.scene', partCtx, baseInputs(0), {});
+    assert.ok(partCtx.logs.some((line) => line === 's1: attempt 1 of 3: the model used 800 output tokens'), partCtx.logs.join(' | '));
+    reset();
+    const quietCtx = makeCtx();
+    await exec('explainer.scene', quietCtx, baseInputs(0), {});
+    assert.ok(!quietCtx.logs.some((line) => /the model used/.test(line)), 'no usage reported, no line');
   }
 
   /* ---------- a stop of the run, the budget, the rights of the account: no retry, no fixed scene ---------- */

@@ -1100,6 +1100,37 @@ async function run(iso, eleven) {
     await exec('explainer.scene', sceneCtx(), { brief: textValue(lists.briefs[1]), timing: timingOf(lists.narration[1]) }, { vision_check: false });
     assert.match(calls.find((call) => call.kind === 'writer').options.system, /style "typography"/);
 
+    // the fixed scene of the style (WP40 part C): not a static title but the spoken words, each at the second the voice starts it; the
+    // key words of the plan are large and in the accent colour; the other modes keep the title scene
+    reset();
+    answers.writer.push('no', 'no', 'no');
+    const stood = sceneCtx();
+    const standResult = await exec('explainer.scene', stood, inputs(1), {});
+    assert.equal(renders.length, 1, 'only the fixed scene is rendered');
+    const fixedHtml = renders[0].html;
+    const spoken = JSON.parse(timingOf(lists.narration[1]).value).words;
+    const second = (value) => `${Math.round(value * 100) / 100}`;
+    const escaped = (value) => value.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
+    for (const word of spoken) {
+      assert.ok(new RegExp(`<span class="w[ k]*" id="w\\d+" data-at="${second(word.start).replace('.', '\\.')}" style="font-size:\\d+px">${escaped(word.text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`).test(fixedHtml), `the word "${word.text}" appears at ${second(word.start)} s`);
+      assert.ok(fixedHtml.includes(`'#w${spoken.indexOf(word)}',{opacity:0,y:20},{opacity:1,y:0,duration:0.24,ease:'power2.out'},${second(word.start)});`), `the timeline has the word "${word.text}" at its start`);
+    }
+    const planned = lists.shots.scenes[1].typography.keywords;
+    assert.ok(planned.length > 0, 'the plan names key words');
+    assert.ok(/class="w k"/.test(fixedHtml), 'the key words are marked');
+    assert.ok(!/<h1/.test(fixedHtml), 'no static title');
+    assert.equal(sceneLib.checkCode(fixedHtml.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''), { format: 'landscape', assets: 0 }).length, 0, 'it passes the check of the code');
+    assert.match(fixedHtml, /font-family:'Inter Tight'/, 'the fonts of the style');
+    assert.ok(stood.logs.some((line) => /the fixed scene stands in after 3 tries/.test(line)), stood.logs.join(' | '));
+    assert.ok(standResult.variants[0].video, 'a video came out');
+    // the same node, the other mode: the title scene as ever
+    reset();
+    const motionLists = planLib.outputsOf(buildTypo(typoAnswer(), { lengthSeconds: 50, visualMode: 'motion' }).script);
+    answers.writer.push('no', 'no', 'no');
+    await exec('explainer.scene', sceneCtx(), { brief: textValue(motionLists.briefs[1]), timing: timingOf(motionLists.narration[1]), shots: textValue(JSON.stringify(motionLists.shots)) }, {});
+    assert.match(renders[0].html, /<h1 id="title">/, 'the title scene stays in the other modes');
+    assert.doesNotMatch(renders[0].html, /class="w/);
+
     // a brand with colours and fonts that have no file: its colours, and the default font for what has no embedded file
     reset();
     const brand = textValue(JSON.stringify({ name: 'Acme', colors: [{ role: 'background', hex: '#101820' }, { role: 'text', hex: '#f2f2f2' }, { role: 'accent', hex: '#ff6b35' }], fonts: [{ role: 'headline', family: 'Acme Display', weights: '700' }, { role: 'body', family: 'Acme Text', weights: '400' }] }));
@@ -1156,7 +1187,9 @@ async function run(iso, eleven) {
     const mix = sceneDef.cost.estimate({ model: '', vision_check: true }, { config: { defaultBrain: 'vendor/default-brain' }, inputs: { shots: textValue(JSON.stringify({ visual_mode: 'mix' })) } });
     near(base.usd, 0.1, 1e-9);
     assert.deepEqual(mix, base, 'the other modes: the same price as before');
-    near(typo.usd, 0.13, 1e-9, 'a typography scene is about 0.13 USD');
+    near(typo.usd, 0.28, 1e-9, 'a typography scene is 0.28 USD (measured in a live test on 2026-10-04, with the look)');
+    const typoNoCheck = sceneDef.cost.estimate({ model: '', vision_check: false }, { config: { defaultBrain: 'vendor/default-brain' }, inputs: { shots: textValue(JSON.stringify({ visual_mode: 'typography' })) } });
+    near(typoNoCheck.usd, 0.25, 1e-9, 'without the look: 0.03 USD less');
 
     // the key of the cache: the style is in it, the font of the app is in the stamp (and only for the style)
     const stampTypo = await sceneDef.cacheStamp({}, { inputs: { shots: textValue(JSON.stringify({ visual_mode: 'typography' })) } });
@@ -1389,11 +1422,11 @@ async function run(iso, eleven) {
     assert.equal(journal.filter((entry) => /image|picture|fal|clip/i.test(String(entry.type))).length, 0, 'no picture or clip is booked');
     const sceneCost = (await resultOf(id, 'n8')).cost;
     near(sceneCost.usd, 6 * (USD.writer + USD.check), 1e-9);
-    // the plan after the run: a scene costs 0.13 once the shot list says typography
+    // the plan after the run: a scene costs 0.28 once the shot list says typography
     const priced = await engine.plan(id, { mode: 'all', user: STAFF, overrides: { n8: { quality: 'high' } } });
     assert.equal(priced.valid, true, JSON.stringify(priced.issues));
     assert.equal(priced.nodes.n8.executions, 6);
-    near(priced.nodes.n8.estimate.usd, 0.13, 1e-9, '0.13 USD per scene in the style');
+    near(priced.nodes.n8.estimate.usd, 0.28, 1e-9, '0.28 USD per scene in the style');
     assert.deepEqual(await fsp.readdir(store.sessionAssetDir(created.sessionId)).then((names) => names.filter((name) => name.startsWith('.nodes-'))), [], 'no scratch folder is left');
   }
 
