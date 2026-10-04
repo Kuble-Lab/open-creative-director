@@ -185,7 +185,7 @@
   function formatUsd(usd) {
     const value = Number(usd);
     if (!Number.isFinite(value) || value <= 0) return '$0';
-    return `$${value < 0.01 ? value.toFixed(3) : value.toFixed(2)}`;
+    return `$${value < 0.01 ? (Math.round(value * 1000) / 1000).toFixed(3) : (Math.round(value * 100) / 100).toFixed(2)}`;
   }
 
   /* ---------- what a voice is like ---------- */
