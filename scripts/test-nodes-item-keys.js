@@ -38,6 +38,7 @@ const briefOf = (id, kind = 'motion') => `Scene ${id} · role point · kind ${ki
 
 function buildRegistry(calls) {
   const registry = createRegistry();
+  calls.failOn = null; // the id of a scene whose execution fails
   let counter = 0;
   // the planner: the briefs and timings as lists, the shot list and the info text of the documents as one text each
   registry.register({
@@ -105,6 +106,7 @@ function buildRegistry(calls) {
     available: () => true,
     execute: async (ctx, inputs) => {
       const selected = videoNodes.sceneSelection(inputs);
+      if (calls.failOn && selected.brief.id === calls.failOn) throw new Error('boom');
       counter += 1;
       calls.push({ node: ctx.nodeId, item: ctx.itemIndex, id: selected.brief.id });
       return { variants: [{ video: media('video', `v${counter}`) }], cost: { usd: 0.1 } };
@@ -325,12 +327,9 @@ async function main() {
     }
 
     /* ----- an entry of an older version: its keys are renewed when it is the hit of a run, and then one change runs one scene ----- */
-    {
-      const old = await makeWorkflow(sceneNodes(), sceneEdges);
-      assert.equal((await run(old.id, { mode: 'all' })).status, 'completed');
-      const current = [...(await results(old.id, 'sc')).history[0].itemKeys];
-      // the keys an older version wrote: over every input completely (no hook), from the inputs the run resolved
-      const wfResults = await wfStore.readResults(old.id);
+    // the keys an older version wrote: over every input completely (no hook), from the inputs the run resolved
+    const legacyKeysOf = async (workflowId) => {
+      const wfResults = await wfStore.readResults(workflowId);
       const made = (id, port) => wfResults.nodes[id].history[0].variants[0][port];
       const resolved = {
         inputs: {
@@ -348,8 +347,15 @@ async function main() {
       };
       const registered = registry.get('explainer.scene');
       const params = registry.normalizeParams(registered, {});
-      assert.deepEqual(computeItemKeys(registered, params, resolved), current, 'the keys of the run are those of the hook');
+      const current = computeItemKeys(registered, params, resolved);
       const legacy = computeItemKeys({ ...registered, itemKeyInputs: undefined }, params, resolved);
+      return { current, legacy };
+    };
+    {
+      const old = await makeWorkflow(sceneNodes(), sceneEdges);
+      assert.equal((await run(old.id, { mode: 'all' })).status, 'completed');
+      const { current, legacy } = await legacyKeysOf(old.id);
+      assert.deepEqual([...(await results(old.id, 'sc')).history[0].itemKeys], current, 'the keys of the run are those of the hook');
       assert.notDeepEqual(legacy, current);
       await wfStore.updateResults(old.id, (all) => {
         all.nodes.sc.history[0].itemKeys = legacy;
@@ -362,6 +368,52 @@ async function main() {
       assert.deepEqual((await results(old.id, 'sc')).history[0].itemKeys, current, 'the keys of the entry are the current ones');
       // so one changed shot runs one scene
       await change(old, 'plan', { shots: shotsJson(shotScenes({ s3: { ...shotScenes().s3, title: 'Neu' } })) }, ['s3']);
+    }
+
+    /* ----- an entry of an older version, one scene asked for again (mode items): only that scene runs, the plan prices only it ----- */
+    {
+      const old = await makeWorkflow(sceneNodes(), sceneEdges);
+      assert.equal((await run(old.id, { mode: 'all' })).status, 'completed');
+      const { current, legacy } = await legacyKeysOf(old.id);
+      await wfStore.updateResults(old.id, (all) => {
+        all.nodes.sc.history[0].itemKeys = legacy;
+      });
+      calls.length = 0;
+      const plan = await engine.plan(old.id, { mode: 'items', nodeId: 'sc', items: [2] });
+      assert.equal(plan.nodes.sc.executions, 1, 'the plan counts the one scene');
+      assert.equal(plan.nodes.sc.reusedItems, 4);
+      assert.equal(Math.round(plan.totals.usd * 1000) / 1000, 0.1, 'the plan prices the one scene');
+      const record = await run(old.id, { mode: 'items', nodeId: 'sc', items: [2] });
+      assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
+      assert.deepEqual(ran('sc'), ['s3'], 'only the asked scene runs');
+      const nodeResults = await results(old.id, 'sc');
+      assert.equal(nodeResults.history.length, 2);
+      const selected = nodeResults.history.find((item) => item.id === nodeResults.selected.entry);
+      assert.deepEqual([...selected.itemKeys], current, 'the new entry has the current keys');
+    }
+
+    /* ----- a failed run of an older version kept its scenes under the old keys: they are not paid twice ----- */
+    {
+      const old = await makeWorkflow(sceneNodes(), sceneEdges);
+      calls.failOn = 's3';
+      const failed = await run(old.id, { mode: 'all' });
+      calls.failOn = null;
+      assert.equal(failed.status, 'failed');
+      const kept = (await results(old.id, 'sc')).partial;
+      assert.ok(kept.items[0] && kept.items[1], 'the first two scenes are kept');
+      const finished = Object.keys(kept.items).length;
+      const { current, legacy } = await legacyKeysOf(old.id);
+      assert.deepEqual([...kept.itemKeys], current);
+      await wfStore.updateResults(old.id, (all) => {
+        all.nodes.sc.partial.itemKeys = legacy;
+      });
+      calls.length = 0;
+      const plan = await engine.plan(old.id, { mode: 'all' });
+      assert.equal(plan.nodes.sc.executions, 5 - finished, 'the plan does not count the kept scenes');
+      const again = await run(old.id, { mode: 'all' });
+      assert.equal(again.status, 'completed', JSON.stringify(again.nodes));
+      assert.equal(ran('sc').length, 5 - finished, 'the kept scenes do not run again');
+      assert.ok(!ran('sc').includes('s1') && !ran('sc').includes('s2'));
     }
 
     /* ---------- explainer.voice ---------- */
