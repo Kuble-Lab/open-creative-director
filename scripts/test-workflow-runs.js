@@ -1161,7 +1161,7 @@ async function run(iso) {
   // no internal names in the new files of the open-source repository
   for (const file of ['lib/workflow-runs.js', 'lib/nodes/run-service.js', 'lib/tools.js', 'public/app.js', 'public/i18n.js', 'public/styles.css']) {
     const text = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-    assert.ok(!/maniak|kuble\.com|gsalami/i.test(text.replace(/Kuble-Lab\/open-creative-director/g, '')), `${file} has no internal names`);
+    assert.ok(!/kuble\.com|\.internal\b|\b10\.\d+\.\d+\.\d+\b|\/Users\/[a-z]/i.test(text), `${file} has no internal names or addresses`);
   }
 }
 

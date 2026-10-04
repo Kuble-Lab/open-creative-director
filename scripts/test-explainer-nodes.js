@@ -231,7 +231,7 @@ async function run(iso) {
   const planDef = real.get('explainer.plan');
   assert.equal(planDef.category, 'llm');
   assert.equal(planDef.paid, true);
-  assert.deepEqual(planDef.inputs.map((port) => [port.id, port.type]), [['documents', 'document[]'], ['text', 'text'], ['topic', 'text'], ['notes', 'text'], ['sources', 'text'], ['info', 'text'], ['brand', 'text'], ['brief', 'text']]);
+  assert.deepEqual(planDef.inputs.map((port) => [port.id, port.type]), [['documents', 'document[]'], ['text', 'text'], ['own_text', 'text'], ['topic', 'text'], ['notes', 'text'], ['sources', 'text'], ['info', 'text'], ['brand', 'text'], ['brief', 'text']]);
   assert.ok(planDef.inputs.every((port) => !port.required), 'every input is optional');
   assert.deepEqual(planDef.outputs.map((port) => [port.id, port.type]), [
     ['script', 'text'], ['narration', 'text[]'], ['narration_context', 'text[]'], ['briefs', 'text[]'], ['image_prompts', 'text[]'], ['clip_prompts', 'text[]'], ['shots', 'text'], ['sources', 'text'], ['presenter', 'text[]']
@@ -244,7 +244,7 @@ async function run(iso) {
   assert.equal(pp('language').initial, 'auto');
   assert.deepEqual(pp('tone').options, ['factual', 'friendly', 'promotional']);
   assert.equal(pp('tone').default, 'factual');
-  assert.deepEqual(pp('visual_mode').options, ['motion', 'mix', 'ai_video']);
+  assert.deepEqual(pp('visual_mode').options, ['motion', 'mix', 'ai_video', 'typography']); // WP40: the style typography is the fourth
   assert.equal(pp('visual_mode').default, 'mix');
   assert.deepEqual(pp('format').options, ['landscape', 'portrait']);
   assert.deepEqual([pp('max_still_share').default, pp('max_still_share').min, pp('max_still_share').max], [0.35, 0, 0.5]);

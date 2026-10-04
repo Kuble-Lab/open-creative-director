@@ -671,6 +671,88 @@ function testFallback() {
   assert.ok(markup.includes('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;x&quot;'));
 }
 
+// The fixed scene of the style "typography" (WP40 part C): the spoken words at the second the voice starts them, key words large and in the
+// accent colour, line by line; every other style keeps the title scene byte for byte.
+function testTypographyFallback() {
+  const tokens = scene.typographyTokens(null);
+  const words = ['Sie', 'ist', 'die', 'Botschaft.', 'Nicht', 'nur', 'was', 'du', 'sagst,', 'sondern', 'wie', 'du', 'es', 'sagst.'].map((text, index) => ({ text, start: Math.round((0.3 + index * 0.42) * 100) / 100 }));
+  const keywords = ['Botschaft', 'wie'];
+  for (const format of ['landscape', 'portrait']) {
+    const html = scene.fallbackHtml({ format, duration: 7, tokens, style: 'typography', words, keywords, scene: { title: 'Sie ist die Botschaft' } });
+    // every spoken word, with its start on the element and on the timeline
+    words.forEach((word, index) => {
+      assert.ok(html.includes(`id="w${index}" data-at="${word.start}"`), `${format}: "${word.text}" carries its start ${word.start}`);
+      assert.ok(html.includes(`>${word.text}</span>`));
+      assert.ok(html.includes(`tl.fromTo('#w${index}',{opacity:0,y:20},{opacity:1,y:0,duration:0.24,ease:'power2.out'},${word.start});`), `${format}: the timeline shows "${word.text}" at ${word.start}`);
+    });
+    assert.ok(!html.includes('<h1'), 'no static title');
+    // key words (the plan): large, in the accent colour; the others smaller
+    const sizes = (re) => [...html.matchAll(re)].map((match) => Number(match[1]));
+    const keySizes = sizes(/class="w k" id="w\d+" data-at="[\d.]+" style="font-size:(\d+)px"/g);
+    const plainSizes = sizes(/class="w" id="w\d+" data-at="[\d.]+" style="font-size:(\d+)px"/g);
+    assert.equal(keySizes.length, 2, 'Botschaft and wie');
+    assert.equal(plainSizes.length, 12);
+    assert.ok(Math.min(...keySizes) > Math.max(...plainSizes), `${format}: key words are larger`);
+    assert.ok(Math.min(...plainSizes) >= scene.MIN_FONT_PX, 'no word below the smallest size of the style');
+    assert.ok(html.includes(`.w.k { font-family:${tokens.headline}; font-weight:800; color:${tokens.accent};`));
+    assert.ok(html.includes(`font-family:${tokens.body}; font-weight:500; color:${tokens.fg};`));
+    // lines: three to five words, a break after a full stop; the line before moves up and fades, the one before it goes
+    const lines = [...html.matchAll(/<div class="line" id="l(\d+)">([\s\S]*?)<\/div>/g)].map((match) => (match[2].match(/<span /g) || []).length);
+    assert.equal(lines.reduce((sum, count) => sum + count, 0), words.length, 'every word stands in one line');
+    assert.ok(lines.every((count) => count >= 1 && count <= 5), `${format}: at most five words in a line (${lines})`);
+    if (format === 'landscape') {
+      assert.deepEqual(lines, [4, 5, 5], 'broken after the full stop and at five words');
+      assert.ok(/tl\.to\('#l0',\{y:-\d+,opacity:0\.35,[^}]*\},1\.98\);/.test(html), 'the first line moves up and fades when the second starts');
+      assert.ok(/tl\.to\('#l0',\{y:-\d+,opacity:0,[^}]*\},4\.08\);/.test(html), 'and is gone when the third starts');
+    } else {
+      // the narrow page: a line is also broken where it would be wider than the page, so the key word stands alone
+      assert.ok(lines.length > 3, `portrait: ${lines.length} lines`);
+    }
+    // the area ends above the free band; a timeline of the exact length; the exact length in the root element
+    const { height } = scene.formatOf(format);
+    const line = /\.line \{ position:absolute; left:\d+px; top:(\d+)px; width:\d+px; height:(\d+)px;/.exec(html);
+    assert.ok(Number(line[1]) + Number(line[2]) <= height * (1 - scene.FREE_BAND_PERCENT[format] / 100), `${format}: the current line ends at ${Number(line[1]) + Number(line[2])} of ${height}`);
+    assert.ok(html.includes('data-duration="6.999"') && html.includes('{duration:0.01}, 6.989);'));
+    // it is accepted like the scene of the model, and with the source line and the policy of the app
+    const fixed = scene.fixDuration(html, 7).html;
+    assert.deepEqual(scene.checkCode(fixed, { format, assets: 0 }), [], `${format}: passes the check of the code`);
+    assert.equal(motionHtml.checkComposition(scene.withCsp(scene.withSourceLine(fixed, 'Quelle, S. 2', { format, tokens })), format), null);
+    assert.ok(!/https?:\/\/(?!cdn\.jsdelivr)/.test(html));
+    // deterministic
+    assert.equal(scene.fallbackHtml({ format, duration: 7, tokens, style: 'typography', words, keywords }), scene.typographyFallbackHtml({ format, duration: 7, tokens, words, keywords }));
+    assert.equal(html, scene.fallbackHtml({ format, duration: 7, tokens, style: 'typography', words, keywords, scene: { title: 'anything else' } }), 'the title of the brief plays no part');
+  }
+  // a very long word makes its line smaller as a whole, never below the smallest size; no key words: all words alike
+  const long = scene.fallbackHtml({ duration: 5, tokens, style: 'typography', words: [{ text: 'Donaudampfschifffahrtsgesellschaftskapitän', start: 0.4 }, { text: 'ja', start: 1.2 }], keywords: ['Donaudampfschifffahrtsgesellschaftskapitän'] });
+  assert.ok(Number(/class="w k" id="w0"[^>]*font-size:(\d+)px/.exec(long)[1]) >= scene.MIN_FONT_PX);
+  assert.deepEqual(scene.checkCode(long, { assets: 0 }), []);
+  const plain = scene.fallbackHtml({ duration: 5, tokens, style: 'typography', words: [{ text: 'eins', start: 0.4 }, { text: 'zwei', start: 1.2 }] });
+  assert.ok(!/class="w k"/.test(plain));
+  // marks in the words cannot break the page, and no web address gets in
+  const markup = scene.fallbackHtml({ duration: 5, tokens, style: 'typography', words: [{ text: '<b>&"x"', start: 0.4 }, { text: 'https://example.org/x', start: 1 }] });
+  assert.ok(markup.includes('&lt;b&gt;&amp;&quot;x&quot;') && !markup.includes('<b>&'));
+  assert.deepEqual(scene.checkCode(markup, { assets: 0 }), []);
+  // times outside the scene are kept inside it; words without a time are left out
+  const clamped = scene.fallbackHtml({ duration: 3, tokens, style: 'typography', words: [{ text: 'früh', start: -2 }, { text: 'ohne', start: undefined }, { text: 'spät', start: 99 }, { text: 'zurück', start: 1 }] });
+  assert.ok(/data-at="0" style="[^"]*">früh/.test(clamped) && /data-at="2.95" style="[^"]*">spät/.test(clamped) && !clamped.includes('ohne'));
+  assert.ok(/data-at="2.95" style="[^"]*">zurück/.test(clamped), 'a time that runs back is held');
+  // the keywords of the brief as the planner writes them
+  assert.deepEqual(scene.briefKeywords('Scene s1 · role point\nLayout: stack (x)\nStress (huge, accent colour): Botschaft | 42 % | wie\nCamera: x'), ['Botschaft', '42 %', 'wie']);
+  assert.deepEqual(scene.briefKeywords('Scene s1\nTitle: x'), []);
+  // a keyword of several words marks each of them; a number with its sign
+  const several = scene.fallbackHtml({ duration: 5, tokens, style: 'typography', words: [{ text: '42', start: 0.4 }, { text: 'Prozent', start: 0.8 }, { text: 'mehr', start: 1.2 }], keywords: ['42 Prozent'] });
+  assert.equal((several.match(/class="w k"/g) || []).length, 2);
+
+  // no words (the closing card of the sources has none), or another style: the title scene, byte for byte
+  const base = { format: 'landscape', duration: 5.867, tokens, scene: { title: 'Der See sinkt', bullets: ['55 cm weniger'], numbers: [] }, elements: [{ id: 'e1', type: 'title' }], cues: [{ id: 'e1', at: 0.4 }] };
+  const before = scene.fallbackHtml(base);
+  assert.match(before, /<h1 id="title">Der See sinkt<\/h1>/);
+  assert.equal(scene.fallbackHtml({ ...base, style: 'typography', words: [], keywords }), before, 'typography without words');
+  assert.equal(scene.fallbackHtml({ ...base, style: '', words, keywords }), before, 'no style');
+  assert.equal(scene.fallbackHtml({ ...base, style: 'motion', words, keywords }), before, 'motion');
+  assert.equal(scene.fallbackHtml({ ...base, words, keywords }), before, 'words alone change nothing');
+}
+
 // The source line as the app puts it into a scene (withSourceLine): where it goes, how it looks, and that no text can break the page.
 function testSourceElement() {
   assert.equal(scene.SOURCE_FONT_PX, 26);
@@ -768,5 +850,6 @@ testBriefAndReferences();
 testPrompts();
 testVerdict();
 testFallback();
+testTypographyFallback();
 testSourceElement();
 console.log('test-explainer-scene.js: ok');
