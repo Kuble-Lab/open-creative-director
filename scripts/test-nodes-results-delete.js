@@ -354,6 +354,21 @@ async function startApp() {
       return { variants: [{ out: textValue('slow') }] };
     }
   });
+  // a node whose preparation takes a while: the start phase of a run (results read, no run record yet) stays open
+  const prep = { delayMs: 0, executions: 0 };
+  registry.register({
+    type: 't.prep',
+    category: 'text',
+    inputs: [],
+    outputs: [{ id: 'out', type: 'text' }],
+    prepare: async () => {
+      await sleep(prep.delayMs);
+    },
+    execute: async () => {
+      prep.executions += 1;
+      return { variants: [{ out: textValue(`made ${prep.executions}`) }] };
+    }
+  });
   const wfStore = createWorkflowsStore({ dir: tmpDir, registry, events: bus });
   const engine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { maxActiveRuns: 2 } });
   const app = express();
@@ -369,7 +384,7 @@ async function startApp() {
     const text = await response.text();
     return { status: response.status, body: text ? JSON.parse(text) : null };
   };
-  return { tmpDir, wfStore, engine, server, call };
+  return { tmpDir, wfStore, engine, server, call, prep };
 }
 
 async function testRoutes() {
@@ -431,6 +446,38 @@ async function testRoutes() {
     assert.equal(await exists(workflow.sessionId, entries[0].value.file), true);
     engine.cancel(workflow.id, runId);
     await engine.whenFinished(workflow.id, runId).catch(() => {});
+
+    // the start phase of a run counts as active too: the results are read, but there is no run record yet
+    {
+      const { workflow: starting } = await wfStore.createWorkflow({ name: 'Start phase', graph: { nodes: [node('p', 't.prep')], edges: [] } });
+      created.push(starting);
+      const first = await engine.start(starting.id, { mode: 'all' });
+      await engine.whenFinished(starting.id, first);
+      assert.equal(env.prep.executions, 1);
+      const startBase = `/api/workflows/${starting.id}/results/p`;
+      env.prep.delayMs = 500;
+      const second = engine.start(starting.id, { mode: 'all', force: true });
+      await sleep(100);
+      assert.equal(engine.activeRun(starting.id), null, 'no run record yet: the start phase is still open');
+      assert.equal(engine.isBusy(starting.id), true);
+      const early = await call('DELETE', startBase);
+      assert.equal(early.status, 409, 'deleting the results during the start phase is refused');
+      assert.equal(early.body.code, 'RUN_ACTIVE');
+      assert.equal((await call('DELETE', `/api/workflows/${starting.id}`)).status, 409, 'so is deleting the workflow');
+      assert.equal((await wfStore.readResults(starting.id)).nodes.p.history.length, 1);
+      await engine.whenFinished(starting.id, await second);
+      assert.equal(engine.isBusy(starting.id), false);
+      env.prep.delayMs = 0;
+      // the other order: a delete that holds the lock of the results is complete before a run takes its picture of them
+      const held = wfStore.deleteResults(starting.id, 'p', { assertIdle: async () => { await sleep(250); } });
+      await sleep(50);
+      const late = await engine.start(starting.id, { mode: 'all' });
+      await held;
+      const lateRecord = await engine.whenFinished(starting.id, late);
+      assert.equal(lateRecord.nodes.p.status, 'done', 'a run that starts while results go does not take the deleted result from the cache');
+      const execBefore = env.prep.executions;
+      assert.equal(execBefore, 3);
+    }
 
     // all results of the node
     const all = await call('DELETE', base);
@@ -928,6 +975,15 @@ async function testController() {
     entry(menuOf()).onClick();
     await sleep(5);
     assert.equal(dialogs[0].title, T('nodes.history.deleteAll.title'));
+    // a node that holds only the items of a failed run (no history entry): the entry is there, the question names the partial results
+    state.results = { version: 1, nodes: { n1: { selected: null, history: [], partial: { itemKeys: [], items: {} } } } };
+    assert.ok(entry(menuOf()), 'partial results only: the entry is there');
+    dialogs.length = 0;
+    entry(menuOf()).onClick();
+    await sleep(5);
+    assert.equal(dialogs[0].title, T('nodes.history.deleteAll.title'));
+    assert.equal(dialogs[0].message, T('nodes.history.deleteAll.messageKept', { name: 'Bildnode', count: 0 }));
+    assert.doesNotMatch(dialogs[0].message, /\(0\)/);
     state.results = { version: 1, nodes: {} };
     assert.equal(entry(menuOf()), undefined, 'no results: no entry');
   } finally {
@@ -943,7 +999,7 @@ function testWording() {
   const names = keys.map((row) => row[0]);
   for (const key of [
     'nodes.history.delete', 'nodes.history.deleteEntry', 'nodes.history.deleteAll', 'nodes.history.deleteEntry.title', 'nodes.history.deleteEntry.message',
-    'nodes.history.deleteEntry.confirm', 'nodes.history.deleteAll.title', 'nodes.history.deleteAll.message', 'nodes.history.deleteAll.confirm',
+    'nodes.history.deleteEntry.confirm', 'nodes.history.deleteAll.title', 'nodes.history.deleteAll.message', 'nodes.history.deleteAll.messageKept', 'nodes.history.deleteAll.confirm',
     'nodes.history.deleteKeep', 'nodes.history.deleted', 'nodes.history.deletedAll', 'nodes.history.filesKept', 'nodes.history.deleteFailed',
     'nodes.history.deleteBusy', 'nodes.history.deleteGone', 'nodes.run.menu.deleteResults'
   ]) {
@@ -959,7 +1015,7 @@ function testWording() {
   }
   // the question says what happens, in every language: not undone, the file goes unless needed, the next run calculates again
   const message = (key, index) => keys.find((row) => row[0] === key)[index];
-  for (const key of ['nodes.history.deleteEntry.message', 'nodes.history.deleteAll.message']) {
+  for (const key of ['nodes.history.deleteEntry.message', 'nodes.history.deleteAll.message', 'nodes.history.deleteAll.messageKept']) {
     assert.match(message(key, 1), /nicht rückgängig/);
     assert.match(message(key, 1), /gelöscht, wenn nichts anderes/);
     assert.match(message(key, 1), /rechnet diesen Node neu/);

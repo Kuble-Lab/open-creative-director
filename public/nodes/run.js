@@ -1302,14 +1302,16 @@
       const all = !entryId;
       const node = nodeResults(S().results, nodeId);
       const count = node && Array.isArray(node.history) ? node.history.length : 0;
-      if (all ? !count : !(node && (node.history || []).some((entry) => entry.id === entryId))) return false;
+      // "Delete all" also covers a node that holds only the items a failed run kept (no history entry, but files)
+      const keptItems = Boolean(node && node.partial);
+      if (all ? !count && !keptItems : !(node && (node.history || []).some((entry) => entry.id === entryId))) return false;
       if (runState.active || starting) {
         ui.toast(T('nodes.history.deleteBusy'), { kind: 'warn' });
         return false;
       }
       const confirmed = await ui.confirmDialog({
         title: T(all ? 'nodes.history.deleteAll.title' : 'nodes.history.deleteEntry.title'),
-        message: T(all ? 'nodes.history.deleteAll.message' : 'nodes.history.deleteEntry.message', { name: titleOf(nodeId), count }),
+        message: T(all ? (count ? 'nodes.history.deleteAll.message' : 'nodes.history.deleteAll.messageKept') : 'nodes.history.deleteEntry.message', { name: titleOf(nodeId), count }),
         confirmLabel: T(all ? 'nodes.history.deleteAll.confirm' : 'nodes.history.deleteEntry.confirm'),
         cancelLabel: T('nodes.history.deleteKeep'),
         danger: true,
@@ -1505,8 +1507,8 @@
           });
         }
         // all results of the node: asked about first, nothing can bring them back
-        const history = (nodeResults(S().results, nodeId) || {}).history;
-        if (Array.isArray(history) && history.length) {
+        const stored = nodeResults(S().results, nodeId) || {};
+        if ((Array.isArray(stored.history) && stored.history.length) || stored.partial) {
           items.push({ separator: true }, { label: T('nodes.run.menu.deleteResults'), icon: 'trash', danger: true, disabled: busy, onClick: () => deleteResult(nodeId) });
         }
         return items;
