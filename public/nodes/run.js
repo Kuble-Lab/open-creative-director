@@ -391,7 +391,9 @@
     }
     if (planStatus === 'unavailable') return { status: 'unavailable', message: planNode.reason || null };
     if (planStatus === 'stale' || planStatus === 'forced') {
-      if (category === 'input') return { status: runStatus || null };
+      // An input node is never "not run" or out of date because of its own fields (it is free and always runs first), except one that
+      // reads state of the app besides them (a branding, plan.stamped): when that changed, it shows out of date like the nodes after it.
+      if (category === 'input') return planNode.stamped && hasResults ? { status: 'stale' } : { status: runStatus || null };
       return { status: hasResults ? 'stale' : 'notrun' };
     }
     return { status: runStatus || null };
@@ -1040,9 +1042,10 @@
       });
     }
 
-    async function confirmPaid(info) {
+    // `all`: the question of "Run all again" (nothing is taken from the cache), with its own title and texts.
+    async function confirmPaid(info, { all = false } = {}) {
       const body = el('div', { class: 'nv-confirm' });
-      body.append(el('p', { class: 'nv-confirm-intro', text: T('nodes.run.confirm.intro') }));
+      body.append(el('p', { class: 'nv-confirm-intro', text: T(all ? 'nodes.run.confirmAll.intro' : 'nodes.run.confirm.intro') }));
       const list = el('ul', { class: 'nv-confirm-list' });
       for (const row of info.paid) {
         const item = el('li', {});
@@ -1068,18 +1071,29 @@
         body.append(el('h3', { class: 'nv-confirm-sub', text: T('nodes.run.confirm.warnings') }), issueList(info.warnings));
       }
       return ui.dialog({
-        title: T('nodes.run.confirm.title', { count: info.paid.length }),
+        title: all ? T('nodes.run.confirmAll.title') : T('nodes.run.confirm.title', { count: info.paid.length }),
         body,
         width: 480,
         focus: 'cancel',
         buttons: [
           { label: T('nodes.common.cancel'), value: false, cancel: true },
-          { label: T('nodes.run.confirm.start'), value: true, primary: true, enter: false }
+          { label: T(all ? 'nodes.run.confirmAll.start' : 'nodes.run.confirm.start'), value: true, primary: true, enter: false }
         ]
       });
     }
 
-    async function startRun({ mode, nodeIds, force, nodeId, items }) {
+    // "Run all again" with nothing that costs money: still asked once, because every node runs again (local renders take their time).
+    function confirmAllFree() {
+      return ui.confirmDialog({
+        title: T('nodes.run.confirmAll.title'),
+        message: T('nodes.run.confirmAll.free'),
+        confirmLabel: T('nodes.run.confirmAll.start'),
+        cancelLabel: T('nodes.common.cancel'),
+        focus: 'cancel'
+      });
+    }
+
+    async function startRun({ mode, nodeIds, force, nodeId, items, again = false }) {
       const st = S();
       if (!st.workflow || !st.reg) return;
       if (runState.active || starting) {
@@ -1129,8 +1143,10 @@
           return;
         }
         if (info.needsConfirm) {
-          const confirmed = await confirmPaid(info);
+          const confirmed = await confirmPaid(info, { all: again });
           if (!confirmed) return;
+        } else if (again) {
+          if (!(await confirmAllFree())) return;
         }
         try {
           const started = await api.startRun(id, { ...request, rev: S().rev });
@@ -1161,6 +1177,12 @@
 
     function runNode(nodeId) {
       return startRun({ mode: 'node', nodeIds: [nodeId], force: true });
+    }
+
+    // Every node runs again, nothing comes from the cache (like "Run again" of the app view). The plan with force says what it costs; the
+    // question shows that, and "Cancel" leaves everything as it was.
+    function runAllAgain() {
+      return startRun({ mode: 'all', force: true, again: true });
     }
 
     function runFrom(nodeId) {
@@ -1490,6 +1512,7 @@
         return items;
       });
       OCD.extensions.workflowMenu.push(() => [
+        { label: T('nodes.run.menu.runAllAgain'), icon: 'refresh', disabled: runState.active || starting, hint: T('nodes.run.menu.runAllAgainHint'), onClick: () => runAllAgain() },
         { label: T('nodes.run.menu.zip'), icon: 'zip', disabled: !hasOutputResults(), onClick: () => downloadZip() }
       ]);
 
@@ -1498,6 +1521,7 @@
         dispatch(event);
       });
       bus.on('run:all', () => startRun({ mode: 'all', force: false }));
+      bus.on('run:allAgain', () => runAllAgain());
       bus.on('run:selection', () => runSelection());
       bus.on('selection', () => updateTopbar());
       bus.on('graph', (graph) => {
@@ -1565,6 +1589,7 @@
       runNode,
       runFrom,
       runSelection,
+      runAllAgain,
       cancelRun,
       selectVariant,
       deleteResult,

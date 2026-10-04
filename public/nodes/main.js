@@ -689,6 +689,17 @@
     registryWatcher.check();
   }
 
+  // A branding (or another setting a node reads) may have been changed elsewhere, in the chat or in another tab, while this page was in the
+  // background: the plan is asked again when the page comes back, so the cards show what is out of date. Not more often than every 5 s.
+  let lastPlanCheck = 0;
+  function recheckPlan() {
+    if (!state.active || !state.workflow || !runController) return;
+    const now = Date.now();
+    if (now - lastPlanCheck < 5000) return;
+    lastPlanCheck = now;
+    runController.refreshPlan();
+  }
+
   /* ---------- routing ---------- */
 
   function parseHash() {
@@ -2723,7 +2734,7 @@
         },
         uploadFile,
         app: appApi(),
-        run: { ...runController.inspectorApi, runAll: () => runController.startRun({ mode: 'all', force: false }), sendToChat: sendNodeToChat, selectNode: selectNodeById },
+        run: { ...runController.inspectorApi, runAll: () => runController.startRun({ mode: 'all', force: false }), runAllAgain: () => runController.runAllAgain(), sendToChat: sendNodeToChat, selectNode: selectNodeById },
         onRendered: (slot, ctx) => bus.emit('inspector', { slot, selection: ctx.selection, graph: ctx.graph })
       }
     });
@@ -2819,6 +2830,11 @@
       if (document.visibilityState === 'visible') recheckRegistry();
     });
     global.addEventListener('focus', recheckRegistry);
+    // the plan also looks again, for a branding that was changed in the chat or in another tab (not more often than every 5 s)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') recheckPlan();
+    });
+    global.addEventListener('focus', recheckPlan);
     global.addEventListener('resize', () => canvas && canvas.relayout());
     global.addEventListener('hashchange', route);
 
