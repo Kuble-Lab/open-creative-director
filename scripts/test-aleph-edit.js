@@ -451,6 +451,19 @@ async function main() {
       const outside = path.join(tmpDir, 'outside.mp4');
       await fsp.writeFile(outside, 'x');
       await assert.rejects(publicrefsReal.publishFile(sessionId, outside), /./);
+      // the tool takes a file only from a scratch folder of the session and only a video (defence in depth, review)
+      const folder = store.sessionAssetDir(sessionId);
+      const inFolder = path.join(folder, 'loose.mp4');
+      await fsp.writeFile(inFolder, 'x');
+      await assert.rejects(call({ model: ALEPH, prompt: 'x', video_file: inFolder }), /Arbeitsordner/, 'a file of the asset folder that no node cut');
+      await assert.rejects(call({ model: ALEPH, prompt: 'x', video_file: outside }), /Arbeitsordner/);
+      const scratchFolder = await assets.createScratchDir(sessionId);
+      await fsp.writeFile(path.join(scratchFolder, 'secret.json'), '{}');
+      await assert.rejects(call({ model: ALEPH, prompt: 'x', video_file: path.join(scratchFolder, 'secret.json') }), /MP4 oder WebM/, "not a video");
+      await assert.rejects(call({ model: ALEPH, prompt: 'x', video_file: path.join(scratchFolder, '..', 'loose.mp4') }), /Arbeitsordner/, 'no way out of the folder');
+      await assets.removeScratchDir(scratchFolder);
+      await fsp.rm(inFolder, { force: true });
+      assert.equal(payloads.length, 0);
     }
   } finally {
     restoreAll();

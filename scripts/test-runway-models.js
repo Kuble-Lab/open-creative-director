@@ -21,6 +21,8 @@ const os = require('os');
 const path = require('path');
 const vm = require('vm');
 const zlib = require('zlib');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 
 const store = require('../lib/store');
 const or = require('../lib/openrouter');
@@ -30,6 +32,7 @@ const tools = require('../lib/tools');
 const imageSize = require('../lib/image-size');
 const videoModels = require('../lib/video-models');
 const videoNodeModels = require('../lib/video-node-models');
+const ffmpegLib = require('../lib/ffmpeg');
 const assets = require('../lib/nodes/assets');
 const generate = require('../lib/nodes/nodes-generate');
 const nodesBasic = require('../lib/nodes/nodes-basic');
@@ -294,6 +297,20 @@ function testFrameRatio() {
   assert.equal(videoModels.frameRatioProblem(RUNWAY, null), null);
   assert.equal(videoModels.frameRatioProblem(RUNWAY, { width: 0, height: 10 }), null);
   assert.equal(videoModels.frameRatioProblem('vendor/unknown', { width: 1, height: 3 }), null);
+  // a start image that is there but whose size cannot be read is not taken on trust by a model with a format limit (fail closed)
+  const unreadable = videoModels.frameRatioProblem(RUNWAY, null, { requireSize: true });
+  assert.deepEqual(plain(unreadable), { allowed: ['16:9', '9:16'], unreadable: true, width: 0, height: 0, ratio: null });
+  assert.equal(videoModels.frameRatioProblem(KLING, null, { requireSize: true }), null, 'a model without a limit takes it');
+  assert.equal(videoModels.frameRatioProblem(RUNWAY, { width: 1920, height: 1080 }, { requireSize: true }), null, 'a size that is read is checked as before');
+  const refusal = videoModels.frameRatioRefusal({ name: 'Runway Gen-4.5' }, unreadable);
+  assert.equal(refusal.code, 'VIDEO_FRAME_UNREADABLE');
+  assert.equal(refusal.status, 409);
+  assert.deepEqual(plain(refusal.data), { model: 'Runway Gen-4.5', allowed: '16:9 / 9:16' });
+  assert.match(refusal.message, /could not be read/);
+  assert.match(refusal.message, /Nothing was charged/);
+  assert.match(refusal.messageDe, /nicht lesen/);
+  assert.match(refusal.messageDe, /nichts berechnet/);
+  assert.equal(refusal.messageDe.includes('ß'), false);
   // the refusal: a stable code, both languages, the figures as data, a statement that nothing was charged
   const error = videoModels.frameRatioRefusal({ name: 'Runway Gen-4.5' }, problem(1000, 1000));
   assert.equal(error.code, 'VIDEO_FRAME_RATIO');
@@ -425,6 +442,28 @@ async function testPayloadAndNode(sessionId) {
   assert.deepEqual(built.payload.frame_images.map((frame) => [frame.type, frame.frame_type]), [['image_url', 'first_frame']]);
   assert.equal('aspect_ratio' in built.payload, false, 'the first frame sets the format');
   assert.equal('input_references' in built.payload, false, 'no references');
+  // a start image whose size cannot be read is refused by the model with the format limit (nothing is sent), not passed on unchecked
+  const unreadableImage = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'upload', buffer: Buffer.concat([pngOf(160, 90).subarray(0, 8), Buffer.from('this is not a picture')]), ext: '.png', prompt: 'seed' })).id);
+  refused = await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: unreadableImage.assetId, duration_seconds: 5 }, { capabilities }).catch((error) => error);
+  assert.equal(refused.code, 'VIDEO_FRAME_UNREADABLE');
+  assert.equal(payloads.length, 0, 'nothing was sent');
+  // ... while a JPEG with long metadata in front of the picture (the header reader gives up after 256 KB) is read by ffprobe
+  if (ffmpegLib.binaries().available) {
+    const scratchDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-runway-jpeg-'));
+    const jpegFile = path.join(scratchDir, 'plain.jpg');
+    await promisify(execFile)(ffmpegLib.binaries().ffmpeg, ['-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=1', '-frames:v', '1', jpegFile]);
+    const plainJpeg = await fsp.readFile(jpegFile);
+    const filler = Buffer.alloc(60000, 0x41);
+    const segments = [];
+    for (let index = 0; index < 5; index += 1) segments.push(Buffer.from([0xff, 0xef, 0xea, 0x62]), filler.subarray(0, 0xea62 - 2));
+    const heavy = Buffer.concat([plainJpeg.subarray(0, 2), ...segments, plainJpeg.subarray(2)]);
+    const heavyAsset = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'upload', buffer: heavy, ext: '.jpg', prompt: 'seed' })).id);
+    assert.equal(await videoModels.firstFrameSize(sessionId, heavyAsset.assetId) !== null, true, 'the size comes from ffprobe');
+    assert.deepEqual(plain(await videoModels.firstFrameSize(sessionId, heavyAsset.assetId)), { width: 160, height: 90 });
+    const fine = await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: heavyAsset.assetId, duration_seconds: 5 }, { capabilities });
+    assert.equal(fine.payload.model, RUNWAY);
+    await fsp.rm(scratchDir, { recursive: true, force: true });
+  }
   // the same square image is fine for a model without that restriction
   const other = await tools.buildVideoPayload(toolCtx(KLING), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: square.assetId, duration_seconds: 5 }, { capabilities: { resolutions: ['720p'], durations: { min: 3, max: 15 }, aspectRatios: ['16:9'] } });
   assert.equal(other.payload.model, KLING);
@@ -539,6 +578,10 @@ async function testPayloadAndNode(sessionId) {
     // the text of the code in every language, with a value for every placeholder
     const nodeTexts = loadNodeTexts();
     for (const lang of ['de', 'en', 'es']) {
+      const unreadableText = nodeTexts[lang]['nodes.issue.VIDEO_FRAME_UNREADABLE'];
+      assert.ok(unreadableText, `${lang}: VIDEO_FRAME_UNREADABLE`);
+      assert.equal(unreadableText.includes('ß'), false);
+      for (const name of new Set((unreadableText.match(/\{[a-zA-Z]+\}/g) || []).map((item) => item.slice(1, -1)))) assert.ok(['model', 'allowed'].includes(name), `${lang}: {${name}} is given`);
       const message = nodeTexts[lang]['nodes.issue.VIDEO_FRAME_RATIO'];
       assert.ok(message, `${lang}: VIDEO_FRAME_RATIO`);
       assert.equal(message.includes('ß'), false);

@@ -893,6 +893,18 @@ async function testBudgetAsyncJobs() {
     })();
     const evaRun = await budget.beginRun(eva, { runId: 'r2', estimateUsd: 8 });
     budget.settleJob({ budgetKey: evaRun.key }, 1); // one node of the run was booked
+    // a node that learns its price while it runs adds the rest to the reservation of its run (before: 8 - 1 = 7 left in the run)
+    assert.equal(budget.extendRun(eva, evaRun.key, 2), true);
+    assert.equal((await budget.status(eva)).reservedUsd, 9, 'the run holds 7 + 2');
+    assert.equal(budget.extendRun(eva, evaRun.key, 0), false);
+    assert.equal(budget.extendRun(view('admin@example.com'), evaRun.key, 2), false, 'admins and internal people have no budget');
+    const lateRun = await budget.beginRun(eva, { runId: 'r2b', estimateUsd: 0 });
+    assert.equal((await budget.status(eva)).reservedUsd, 9);
+    assert.equal(budget.extendRun(eva, lateRun.key, 1.5), true, 'a run that reserved nothing gets a reservation');
+    assert.equal((await budget.status(eva)).reservedUsd, 10.5);
+    lateRun.release();
+    assert.equal((await budget.status(eva)).reservedUsd, 9);
+    budget.settleJob({ budgetKey: evaRun.key }, 2); // the 2 USD are booked again: back to 7 for the hand-over below
     const holds = await budget.detachRun(eva, evaRun.key, 2);
     assert.equal(holds.length, 2);
     assert.deepEqual(holds.map((item) => item.usd), [3.5, 3.5], '7 USD that are left are split over the two open jobs');

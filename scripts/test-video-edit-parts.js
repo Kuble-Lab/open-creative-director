@@ -614,6 +614,92 @@ async function main() {
       assert.equal(falCalls.upload.length + falCalls.submit.length, 0);
     }
 
+    /* ----- a field with a part number stays in the node: the part is made ONCE for these numbers ----- */
+    {
+      const promptRedo = textValue('Redo case');
+      reset();
+      await run({ video: long, prompt: promptRedo });
+      assert.equal(falCalls.submit.length, 4);
+      reset();
+      await run({ video: long, prompt: promptRedo }, { redo_parts: '2' });
+      assert.equal(falCalls.submit.length, 1, 'part 2 is made again');
+      const newest = (await store.readSession(sessionId)).jobs.filter((job) => job.partKey).slice(-1)[0];
+      assert.equal(newest.partRedo, '2', 'the job carries the numbers it was made for');
+      assert.equal((await store.readSession(sessionId)).jobs.filter((job) => job.partKey).slice(-5, -1).every((job) => !job.partRedo), true, 'the other jobs of this video carry none');
+      assert.ok(logs.some((line) => /a later run with the numbers 2 takes it as it is/.test(line)));
+      // every later run of the node with the field unchanged (a changed option above, "Run all") pays nothing
+      reset();
+      const later = await run({ video: long, prompt: promptRedo }, { redo_parts: '2' });
+      assert.equal(falCalls.submit.length, 0, 'the field still says 2: no second payment for part 2');
+      assert.equal(later.cost, undefined);
+      assert.ok(logs.some((line) => /already made again for these numbers/.test(line)));
+      reset();
+      await run({ video: long, prompt: promptRedo }, { redo_parts: '2', keep_audio: false });
+      assert.equal(falCalls.submit.length, 0, 'also after a change of an option that is not part of a part');
+      // other numbers make a part again; the numbers written in another way are the same numbers
+      reset();
+      await run({ video: long, prompt: promptRedo }, { redo_parts: '3' });
+      assert.deepEqual(falCalls.submit.map((call) => path.basename(call.input.video_url)), ['part-3.mp4']);
+      reset();
+      await run({ video: long, prompt: promptRedo }, { redo_parts: ' 3; ' });
+      assert.equal(falCalls.submit.length, 0, 'the same numbers');
+      // "Run again" over the finished result makes the listed part once more (a third attempt for a part that is still not right)
+      reset();
+      await run({ video: long, prompt: promptRedo }, { redo_parts: '3' }, { forced: true, forcedSince: new Date(Date.now() + 1000).toISOString() });
+      assert.deepEqual(falCalls.submit.map((call) => path.basename(call.input.video_url)), ['part-3.mp4']);
+    }
+
+    /* ----- "Run again": everything again over a finished result; after a failed run only what is missing ----- */
+    {
+      const promptAgain = textValue('Again case');
+      reset();
+      await run({ video: long, prompt: promptAgain });
+      assert.equal(falCalls.submit.length, 4);
+      const timeOfResult = new Date().toISOString();
+      await sleep(15);
+      // the engine says ctx.forced only over a finished result (test-nodes-engine-rerun.js); here the node: all parts older than it again
+      reset();
+      const failing = new Set([2]);
+      const originalSubmit = fal.submit;
+      let seenSubmits = 0;
+      patch(fal, 'submit', async (endpoint, input) => {
+        const result = await originalSubmit(endpoint, input);
+        seenSubmits += 1;
+        if (failing.has(seenSubmits)) behaviour.failJob.add(result.requestId);
+        return result;
+      });
+      const failed = await run({ video: long, prompt: promptAgain }, {}, { forced: true, forcedSince: timeOfResult }).catch((err) => err);
+      assert.equal(failed.code, 'VIDEO_EDIT_PARTS_FAILED');
+      assert.equal(falCalls.submit.length, 4, 'every part was made again');
+      // "Retry" under the error: the same finished result is still the one that was put aside; the three parts made after it are kept
+      reset();
+      failing.clear();
+      behaviour.failJob.clear();
+      const second = await run({ video: long, prompt: promptAgain }, {}, { forced: true, forcedSince: timeOfResult });
+      assert.equal(falCalls.submit.length, 1, 'only the part that failed');
+      assert.equal(path.basename(falCalls.submit[0].input.video_url), 'part-2.mp4');
+      assert.equal(await framesOf(filmFile(second)), 1284);
+      near(second.cost.usd, behaviour.cost, 'only the new part is paid');
+      restorers.pop()();
+      // and without a finished result (the engine passes forced:false) the failed run is simply gone on with
+      reset();
+      const promptNone = textValue('Never finished');
+      const originalSubmit2 = fal.submit;
+      let count2 = 0;
+      patch(fal, 'submit', async (endpoint, input) => {
+        const result = await originalSubmit2(endpoint, input);
+        count2 += 1;
+        if (count2 === 3) behaviour.failJob.add(result.requestId);
+        return result;
+      });
+      const brokenOnce = await run({ video: long, prompt: promptNone }).catch((err) => err);
+      assert.equal(brokenOnce.code, 'VIDEO_EDIT_PARTS_FAILED');
+      restorers.pop()();
+      reset();
+      await run({ video: long, prompt: promptNone }, {}, { forced: false });
+      assert.equal(falCalls.submit.length, 1, 'only part 3 again');
+    }
+
     /* ----- a part fails: the finished ones are not paid again ----- */
     {
       reset();
@@ -825,6 +911,123 @@ async function main() {
       assert.equal(maxrates.length, 2);
       assert.ok(maxrates.every((rate) => rate > 3000000 && rate < 6000000), `about 16 MB over 26.7 s: ${maxrates}`);
       restorers.pop()();
+    }
+
+    /* ----- a LATER part that is too heavy stops the run before the first part is paid ----- */
+    {
+      reset();
+      const realRun = ffmpeg.runProcess;
+      let cuts = 0;
+      patch(ffmpeg, 'runProcess', async (command, args, options) => {
+        const result = await realRun(command, args, options);
+        if (args.includes('-frames:v') && args.includes('-an') && args.includes('-maxrate')) {
+          cuts += 1;
+          if (cuts === 2) await fsp.truncate(args[args.length - 1], 17 * 1024 * 1024);
+        }
+        return result;
+      });
+      const watched = [];
+      const error = await run({ video: long, prompt: textValue('Second part too heavy') }, { model: 'runway_aleph' }, { watchJob: (job) => watched.push(job) }).catch((err) => err);
+      assert.equal(error.code, 'VIDEO_EDIT_PART_TOO_HEAVY', error.message);
+      assert.equal(error.data.n, 2);
+      assert.equal(orPayloads.length, 0, 'part 1 was not started: nothing is paid for a film that cannot be finished');
+      assert.equal(watched.length, 0);
+      assert.deepEqual(await scratchLeftovers(), []);
+      restorers.pop()();
+      // the same through fal (Kling, 100 MB): a cut that fails on the third part starts nothing either
+      reset();
+      let cutsKling = 0;
+      patch(ffmpeg, 'runProcess', async (command, args, options) => {
+        if (args.includes('-frames:v') && args.includes('-an') && args.includes('-maxrate')) {
+          cutsKling += 1;
+          if (cutsKling === 3) throw new Error('disk full');
+        }
+        return realRun(command, args, options);
+      });
+      const cutError = await run({ video: long, prompt: textValue('Third part cannot be cut') }).catch((err) => err);
+      assert.match(cutError.message, /part 3 could not be cut/);
+      assert.equal(falCalls.upload.length + falCalls.submit.length, 0, 'nothing was uploaded or queued');
+      restorers.pop()();
+    }
+
+    /* ----- jobs that were started belong to the run even if it fails before it waits for them ----- */
+    {
+      reset();
+      const watched = [];
+      const originalUpload = fal.uploadFile;
+      let uploads = 0;
+      patch(fal, 'uploadFile', async (file, options) => {
+        uploads += 1;
+        if (uploads === 3) throw new Error('upload broke off');
+        return originalUpload(file, options);
+      });
+      const error = await run({ video: long, prompt: textValue('Third upload fails') }, {}, { watchJob: (job) => watched.push(job) }).catch((err) => err);
+      assert.match(error.message, /upload broke off/);
+      assert.equal(falCalls.submit.length, 2, 'two jobs were started');
+      assert.equal(watched.length, 2, 'both are known to the run, so it can give them their share of the reservation');
+      assert.deepEqual(watched.map((job) => typeof job.jobId), ['string', 'string']);
+      restorers.pop()();
+      assert.deepEqual(await scratchLeftovers(), []);
+    }
+
+    /* ----- the reservation: what the plan did not cover is added to the run before the first part starts ----- */
+    {
+      const extended = [];
+      const events = [];
+      let participant = true;
+      patch(access, 'viewerOf', () => (participant ? { active: true, kind: 'participant', email: 'p@example.test' } : { active: false, kind: 'local' }));
+      patch(budget, 'status', async () => ({ remainingUsd: 50, spentUsd: 0, limitUsd: 50 }));
+      patch(budget, 'begin', async () => budget.NOOP_GRANT);
+      patch(budget, 'extendRun', (viewer, key, usd) => {
+        extended.push({ key, usd: Math.round(usd * 1e6) / 1e6, submitsBefore: falCalls.submit.length });
+        events.push('extend');
+        return true;
+      });
+      const withRun = (reservedUsd) => ({ reservedUsd, toolCtx: { nodeView: true, sessionId, config: {}, user: 'tester', budgetKey: 'run:test', emit() {} } });
+      // the plan knew nothing (an upload of unknown length): the sum of the parts is added, once, before anything is started
+      reset();
+      await run({ video: long, prompt: textValue('Reserve all') }, {}, withRun(0));
+      assert.equal(extended.length, 1);
+      assert.equal(extended[0].key, 'run:test');
+      near(extended[0].usd, 7.49, 'the parts together', 1e-5);
+      assert.equal(extended[0].submitsBefore, 0, 'before the first part');
+      // the plan knew the whole price: nothing to add
+      extended.length = 0;
+      reset();
+      await run({ video: long, prompt: textValue('Reserve none') }, {}, withRun(7.49));
+      assert.equal(extended.length, 0);
+      // the plan knew a part of it: the rest
+      reset();
+      await run({ video: long, prompt: textValue('Reserve rest') }, {}, withRun(5));
+      near(extended[0].usd, 2.49, 'only the rest', 1e-5);
+      // nothing to make (all parts are there): nothing is reserved
+      extended.length = 0;
+      reset();
+      await run({ video: long, prompt: textValue('Reserve rest') }, {}, withRun(0));
+      assert.equal(extended.length, 0, 'finished parts need no reservation');
+      // a person without a budget reserves nothing
+      participant = false;
+      reset();
+      await run({ video: long, prompt: textValue('No budget') }, {}, withRun(0));
+      assert.equal(extended.length, 0);
+      for (let index = 0; index < 4; index += 1) restorers.pop()();
+    }
+
+    /* ----- the length of an uploaded video is known to the plan ----- */
+    {
+      const scratch = await assets.createScratchDir(sessionId);
+      const copy = path.join(scratch, 'upload.mp4');
+      await fsp.copyFile(longFile, copy);
+      const uploaded = await assets.saveUploadFile(sessionId, { sourceFile: copy, ext: '.mp4', name: 'long.mp4' });
+      await assets.removeScratchDir(scratch);
+      near(uploaded.duration, 53.5, 'the ledger holds the length of the upload', 0.1);
+      near(def.cost.estimate(normalised({ in_parts: true }), { inputs: { video: uploaded } }), 7.49, 'the plan prices the parts of an upload', 1e-5);
+      // a file that is no video has no length and the upload still works
+      const notVideo = path.join(await assets.createScratchDir(sessionId), 'upload.mp4');
+      await fsp.writeFile(notVideo, 'not a video');
+      const bare = await assets.saveUploadFile(sessionId, { sourceFile: notVideo, ext: '.mp4', name: 'bad.mp4' });
+      assert.equal('duration' in bare, false);
+      await assets.removeScratchDir(path.dirname(notVideo));
     }
 
     /* ----- stopped runs ----- */
