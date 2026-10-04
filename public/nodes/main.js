@@ -21,6 +21,7 @@
   const LS_CLIPBOARD = 'ocd-nodes-clipboard';
   const LS_DRAWER = 'ocd-nodes-drawer';
   const LS_INSPECTOR = 'ocd-nodes-inspector';
+  const LS_ASSISTANT_MODEL = 'ocd-nodes-assistant-model';
   const SS_RETURN = 'ocd-nodes-return';
   const SAVE_DELAY = 800;
   const VIEWPORT_SAVE_DELAY = 1600;
@@ -2763,7 +2764,10 @@
       plan: () => api.plan(state.workflow.id, { mode: 'all', force: false }),
       showNodes,
       getLang: currentLang,
-      onToggle: setAssistantOpen
+      onToggle: setAssistantOpen,
+      // the language models of the chat (app.js), and the choice of this person in this browser (lsGet / lsSet guard the storage)
+      getModelChoices: () => (global.OCBrain ? global.OCBrain.choices() : null),
+      modelStore: { read: () => lsGet(LS_ASSISTANT_MODEL) || '', write: (model) => lsSet(LS_ASSISTANT_MODEL, model) }
     });
     bus.on('workflow:open', () => assistant.workflowChanged());
     bus.on('workflow:close', () => assistant.workflowChanged());

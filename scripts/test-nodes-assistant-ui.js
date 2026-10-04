@@ -5,6 +5,8 @@
 //   P   the pure part: the canvas as data, the history, the proposal -> a sub graph, the notes about adjusted values, the
 //       cost of the inserted nodes from the engine plan, the texts of failures (in three languages)
 //   G   the proposal goes into the real graph model as ONE insertion; what was there stays; wrong links are skipped
+//   M   the language model of the next question: the list of the chat in the panel, the default, the saved choice (and the
+//       fallback when it is not allowed any more), the model that answered under the answer
 //   C   the controller on a small fake DOM: opening, asking, answering, the links to the node help, the card with undo and
 //       cost, the conversation per workflow, errors with and without "ask again", the keys
 //   W   static checks of the wiring: script order, no HTML from strings, every CSS class has a rule, every text exists in
@@ -487,7 +489,9 @@ function harness(lang = 'de', options = {}) {
     },
     showNodes: (ids) => calls.show.push(ids),
     getLang: () => lang,
-    onToggle: (open, opts) => calls.toggles.push([open, Boolean(opts && opts.focus)])
+    onToggle: (open, opts) => calls.toggles.push([open, Boolean(opts && opts.focus)]),
+    ...(options.choices ? { getModelChoices: options.choices } : {}),
+    ...(options.store ? { modelStore: options.store } : {})
   });
   // the access object of the page is absent here: a person without restrictions
   void history;
@@ -497,7 +501,9 @@ function harness(lang = 'de', options = {}) {
     messages: () => host.all('.nv-asst-msg'),
     bots: () => host.all('.is-bot').filter((node) => node.classes.has('nv-asst-msg')),
     send: () => host.querySelector('.nv-asst-send'),
-    form: () => host.querySelector('form')
+    form: () => host.querySelector('form'),
+    modelRow: () => host.querySelector('.nv-asst-modelrow'),
+    modelSelect: () => host.querySelector('.nv-asst-model-select')
   };
   const answerWith = async (value, index = 0) => {
     queue[index].resolve(value);
@@ -577,6 +583,7 @@ async function testControllerBasics() {
   assert.equal(h.calls.help[0].type, 'video.generate');
   assert.equal(h.calls.help[0].anchor, mentions[0], 'the popover opens at the link');
   assert.equal(h.host.all('.nv-asst-meta').length, 0, 'no cost line for the subscription');
+  assert.deepEqual(h.host.all('.nv-asst-model').map((node) => node.textContent), [h.T('nodes.assistant.answeredBy', { model: 'm' })], 'but the model that answered is named');
   assert.equal(h.view.input().value, 'Noch eine Frage', 'what was typed while waiting stays in the field');
   assert.equal(h.view.send().disabled, false, 'and can be sent now');
 
@@ -929,6 +936,187 @@ async function testLongConversation() {
   assert.equal(last.at(-1).text, 'Answer 44');
 }
 
+/* ---------- M: the language model of the next question ---------- */
+
+const CHAT_MODELS = ['openai/gpt-6.1-sol', 'anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5', 'chatgpt/gpt-6.1-sol'];
+const CHAT_NAMES = { 'openai/gpt-6.1-sol': '6.1 Sol', 'anthropic/claude-opus-5.5': 'claude-opus-5.5', 'chatgpt/gpt-6.1-sol': 'GPT 6.1 Sol (Abo)' };
+const chatChoices = (models = CHAT_MODELS, defaultModel = 'openai/gpt-6.1-sol') => ({ models, defaultModel, labelOf: (model) => CHAT_NAMES[model] || model.split('/').pop() });
+
+function testModelPure() {
+  // the options: the list of the chat as it is, each model once, named like the chat names it
+  const choices = assistant.modelChoices(chatChoices([...CHAT_MODELS, 'openai/gpt-6.1-sol', '', 7, null]));
+  assert.deepEqual(choices.options, [
+    { value: 'openai/gpt-6.1-sol', label: '6.1 Sol' },
+    { value: 'anthropic/claude-opus-5.5', label: 'claude-opus-5.5' },
+    { value: 'anthropic/claude-sonnet-5.5', label: 'claude-sonnet-5.5' },
+    { value: 'chatgpt/gpt-6.1-sol', label: 'GPT 6.1 Sol (Abo)' }
+  ]);
+  assert.equal(choices.defaultModel, 'openai/gpt-6.1-sol');
+  // a default that is not on the list: the first model; nothing at all: no options, no default
+  assert.equal(assistant.modelChoices(chatChoices(CHAT_MODELS, 'some/other')).defaultModel, 'openai/gpt-6.1-sol');
+  assert.deepEqual(assistant.modelChoices({ models: [], defaultModel: 'x' }), { options: [], defaultModel: '' });
+  for (const nothing of [null, undefined, 7, 'x', {}, { models: 'no' }]) assert.deepEqual(assistant.modelChoices(nothing), { options: [], defaultModel: '' }, String(nothing));
+  // a name function that fails or answers nothing: the id
+  assert.deepEqual(assistant.modelChoices({ models: ['a/b'], defaultModel: 'a/b', labelOf: () => { throw new Error('x'); } }).options, [{ value: 'a/b', label: 'a/b' }]);
+  assert.deepEqual(assistant.modelChoices({ models: ['a/b'], defaultModel: 'a/b', labelOf: () => '' }).options, [{ value: 'a/b', label: 'a/b' }]);
+  assert.deepEqual(assistant.modelChoices({ models: ['a/b'], defaultModel: 'a/b' }).options, [{ value: 'a/b', label: 'a/b' }]);
+
+  // the model of the next question: the saved one while it is on the list, else the default of a new chat
+  const list = chatChoices();
+  assert.equal(assistant.pickModel('anthropic/claude-opus-5.5', list), 'anthropic/claude-opus-5.5');
+  assert.equal(assistant.pickModel('', list), 'openai/gpt-6.1-sol', 'nothing saved: the default');
+  assert.equal(assistant.pickModel(null, list), 'openai/gpt-6.1-sol');
+  assert.equal(assistant.pickModel(undefined, list), 'openai/gpt-6.1-sol');
+  assert.equal(assistant.pickModel('some/removed-model', list), 'openai/gpt-6.1-sol', 'a saved model that is not on the list any more: the default');
+  assert.equal(assistant.pickModel('chatgpt/gpt-6.1-sol', chatChoices(['openai/gpt-6.1-sol', 'anthropic/claude-opus-5.5'])), 'openai/gpt-6.1-sol', 'a participant who lost the subscription model');
+  assert.equal(assistant.pickModel(7, list), 'openai/gpt-6.1-sol');
+  assert.equal(assistant.pickModel('anthropic/claude-opus-5.5', null), '', 'no list: no model, the server decides');
+  assert.equal(assistant.pickModel('anthropic/claude-opus-5.5', { models: [] }), '');
+  // the default that is not on the list: the first model (the only one that is sure to be allowed)
+  assert.equal(assistant.pickModel('', chatChoices(['x/one', 'x/two'], 'x/gone')), 'x/one');
+}
+
+async function testModelChoice() {
+  const memory = () => {
+    const store = { value: '', writes: [], read() { return store.value; }, write(model) { store.writes.push(model); store.value = model; } };
+    return store;
+  };
+  const optionsOf = (h) => h.view.modelSelect().children.map((option) => [option.attrs.value, option.textContent]);
+  const blocked = { read: () => { throw new Error('storage'); }, write: () => { throw new Error('storage'); } };
+
+  // the list: the models of the chat with the names of the chat, the default of a new chat selected
+  const store = memory();
+  const h = harness('de', { choices: () => chatChoices(), store });
+  assert.equal(h.view.modelRow().classes.has('hidden'), false, 'painted when the panel is built');
+  h.panel.open();
+  assert.deepEqual(optionsOf(h), [['openai/gpt-6.1-sol', '6.1 Sol'], ['anthropic/claude-opus-5.5', 'claude-opus-5.5'], ['anthropic/claude-sonnet-5.5', 'claude-sonnet-5.5'], ['chatgpt/gpt-6.1-sol', 'GPT 6.1 Sol (Abo)']]);
+  assert.equal(h.view.modelSelect().value, 'openai/gpt-6.1-sol', 'the model of a new chat');
+  assert.equal(h.view.modelSelect().disabled, false);
+  assert.equal(h.view.modelSelect().getAttribute('aria-label'), h.T('nodes.assistant.modelLabel'));
+  assert.equal(h.host.querySelector('.nv-asst-model-label').textContent, 'Modell');
+  assert.deepEqual(store.writes, [], 'looking is not choosing: nothing is saved');
+
+  // the first question carries the default model
+  h.panel.ask('Was ist das?');
+  assert.equal(h.calls.ask[0].body.model, 'openai/gpt-6.1-sol');
+  await h.answerWith({ answer: 'Antwort.', mentions: [], usage: { model: 'openai/gpt-6.1-sol', billing: 'usd', usd: 0.01, calls: 1, replaced: false } });
+  // under the answer: the model that answered, by the name of the chat
+  assert.deepEqual(h.host.all('.nv-asst-model').map((node) => node.textContent), ['Antwort von 6.1 Sol']);
+
+  // choosing another model: saved, and used for the next question
+  const select = h.view.modelSelect();
+  select.value = 'anthropic/claude-opus-5.5';
+  select.fire('change');
+  assert.deepEqual(store.writes, ['anthropic/claude-opus-5.5']);
+  assert.equal(h.view.modelSelect().value, 'anthropic/claude-opus-5.5');
+  h.panel.ask('Und jetzt?');
+  assert.equal(h.calls.ask[1].body.model, 'anthropic/claude-opus-5.5');
+  await h.answerWith({ answer: 'Mit Opus.', mentions: [], usage: { model: 'anthropic/claude-opus-5.5', billing: 'usd', usd: 0.09, calls: 1, replaced: false } }, 1);
+  assert.deepEqual(h.host.all('.nv-asst-model').map((node) => node.textContent), ['Antwort von 6.1 Sol', 'Antwort von claude-opus-5.5'], 'every answer says which model gave it');
+  // a replacement for the subscription: the model that really answered, marked, and the note about it stays
+  h.view.modelSelect().value = 'chatgpt/gpt-6.1-sol';
+  h.view.modelSelect().fire('change');
+  h.panel.ask('Mit Abo');
+  assert.equal(h.calls.ask[2].body.model, 'chatgpt/gpt-6.1-sol');
+  await h.answerWith({ answer: 'Ersatz.', mentions: [], usage: { model: 'openai/gpt-6.1-sol', billing: 'usd', usd: 0.02, calls: 1, replaced: true } }, 2);
+  assert.equal(h.host.all('.nv-asst-model').at(-1).textContent, 'Antwort von 6.1 Sol (Ersatz)');
+  assert.match(h.host.all('.nv-asst-note').map((node) => node.textContent).join('|'), /kostete \$0\.0200/);
+  // an answer without a model in the usage names none; one with a model that is not on the list is named by its short id
+  h.panel.ask('Ohne Angabe');
+  await h.answerWith({ answer: 'Ohne.', mentions: [], usage: { billing: 'subscription', usd: 0, calls: 1 } }, 3);
+  assert.equal(h.host.all('.nv-asst-model').length, 3);
+  h.panel.ask('Unbekanntes Modell');
+  await h.answerWith({ answer: 'Fremd.', mentions: [], usage: { model: 'vendor/model-x', billing: 'usd', usd: 0.01, calls: 1 } }, 4);
+  assert.equal(h.host.all('.nv-asst-model').at(-1).textContent, 'Antwort von model-x');
+
+  // the choice stays in this browser: a new panel (a reload) starts with it
+  const again = harness('de', { choices: () => chatChoices(), store });
+  again.panel.open();
+  assert.equal(again.view.modelSelect().value, 'chatgpt/gpt-6.1-sol', 'the saved model is selected again');
+  again.panel.ask('Nach dem Neuladen');
+  assert.equal(again.calls.ask[0].body.model, 'chatgpt/gpt-6.1-sol');
+
+  // the saved model is not on the list any more (the role changed, the configuration changed): the default again, and the
+  // old choice is never sent
+  const reduced = harness('en', { choices: () => chatChoices(['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5']), store });
+  reduced.panel.open();
+  assert.equal(reduced.view.modelSelect().value, 'openai/gpt-6.1-sol', 'back to the default');
+  assert.deepEqual(optionsOf(reduced).map((row) => row[0]), ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5']);
+  reduced.panel.ask('Question');
+  assert.equal(reduced.calls.ask[0].body.model, 'openai/gpt-6.1-sol');
+  assert.equal(JSON.stringify(reduced.calls.ask[0].body).includes('chatgpt/'), false);
+  assert.equal(store.value, 'chatgpt/gpt-6.1-sol', 'the saved text is left alone until the person chooses again');
+
+  // a list that is not there yet when the panel is built (the configuration loads late): read again when the panel opens
+  let loaded = null;
+  const late = harness('de', { choices: () => loaded, store: memory() });
+  late.panel.open();
+  assert.equal(late.view.modelRow().classes.has('hidden'), true, 'no list yet: no row');
+  late.panel.ask('Ohne Liste');
+  assert.equal('model' in late.calls.ask[0].body, false, 'without a list the request carries no model: the server takes the model of a new chat');
+  late.panel.close();
+  loaded = chatChoices();
+  late.panel.open();
+  assert.equal(late.view.modelRow().classes.has('hidden'), false);
+  assert.equal(late.view.modelSelect().value, 'openai/gpt-6.1-sol');
+  // not wired at all (no bridge to the chat, no store): the panel works as before
+  const bare = harness('de');
+  bare.panel.open();
+  assert.equal(bare.view.modelRow().classes.has('hidden'), true);
+  bare.panel.ask('Wie bisher');
+  assert.equal('model' in bare.calls.ask[0].body, false);
+
+  // a store or a list that throws never breaks the panel
+  const broken = harness('de', { choices: () => { throw new Error('config'); }, store: blocked });
+  broken.panel.open();
+  assert.equal(broken.view.modelRow().classes.has('hidden'), true);
+  broken.panel.ask('Trotzdem');
+  assert.equal(broken.calls.ask.length, 1);
+  const flaky = harness('de', { choices: () => chatChoices(), store: blocked });
+  flaky.panel.open();
+  assert.equal(flaky.view.modelSelect().value, 'openai/gpt-6.1-sol', 'storage blocked: the default');
+  flaky.view.modelSelect().value = 'anthropic/claude-sonnet-5.5';
+  assert.doesNotThrow(() => flaky.view.modelSelect().fire('change'));
+  assert.equal(flaky.view.modelSelect().value, 'anthropic/claude-sonnet-5.5', 'the choice holds for this page when nothing can be saved');
+  flaky.panel.ask('Ohne Speicher');
+  assert.equal(flaky.calls.ask[0].body.model, 'anthropic/claude-sonnet-5.5');
+
+  // a single model (a participant with one allowed model): shown, but nothing to choose
+  const single = harness('de', { choices: () => chatChoices(['anthropic/claude-sonnet-5.5'], 'anthropic/claude-sonnet-5.5'), store: memory() });
+  single.panel.open();
+  assert.equal(single.view.modelRow().classes.has('hidden'), false);
+  assert.equal(single.view.modelSelect().disabled, true);
+  assert.equal(single.view.modelSelect().value, 'anthropic/claude-sonnet-5.5');
+  single.panel.ask('Eine Wahl');
+  assert.equal(single.calls.ask[0].body.model, 'anthropic/claude-sonnet-5.5');
+
+  // the server refuses a model (a stale tab): the sentence of the server is shown, no "ask again" that would fail the same way
+  const refused = harness('de', { choices: () => chatChoices(), store: memory() });
+  refused.panel.open();
+  refused.panel.ask('Gesperrt?');
+  await refused.failWith(Object.assign(new Error('Das Modell des Assistenten ist für dein Konto nicht freigegeben.'), { status: 403, code: 'FORBIDDEN_FOR_ROLE' }));
+  assert.match(refused.host.querySelector('.nv-asst-bubble.is-error').textContent, /Modell des Assistenten/);
+  assert.equal(refused.host.querySelector('.nv-asst-retry'), null);
+  // the list is still there: another model can be chosen and asked
+  refused.view.modelSelect().value = 'anthropic/claude-sonnet-5.5';
+  refused.view.modelSelect().fire('change');
+  refused.panel.ask('Anderes Modell');
+  assert.equal(refused.calls.ask[1].body.model, 'anthropic/claude-sonnet-5.5');
+
+  // the texts exist in three languages; a repaint (language change) keeps the choice
+  const en = harness('en', { choices: () => chatChoices(), store: memory() });
+  en.panel.open();
+  assert.equal(en.host.querySelector('.nv-asst-model-label').textContent, 'Model');
+  assert.equal(en.view.modelSelect().getAttribute('aria-label'), 'Language model for the next question');
+  en.view.modelSelect().value = 'anthropic/claude-opus-5.5';
+  en.view.modelSelect().fire('change');
+  en.panel.relabel();
+  assert.equal(en.view.modelSelect().value, 'anthropic/claude-opus-5.5', 'the choice survives a repaint');
+  const es = harness('es', { choices: () => chatChoices(), store: memory() });
+  es.panel.open();
+  assert.equal(es.host.querySelector('.nv-asst-model-label').textContent, 'Modelo');
+}
+
 /* ---------- W: wiring ---------- */
 
 function testWiring() {
@@ -965,6 +1153,20 @@ function testWiring() {
   assert.match(main, /OCD\.assistant\.createAssistant\(/);
   assert.match(main, /insert: \(sub, options\) => insertSubgraph\(sub, options\)/);
   assert.match(main, /plan: \(\) => api\.plan\(state\.workflow\.id/);
+  // the model list: the models, names and default come from the chat (app.js offers them, filtered for the role); the saved
+  // choice goes through the guarded storage helpers of main.js, never straight to localStorage
+  const app = read('public/app.js');
+  assert.match(app, /window\.OCBrain = \{\s*choices: \(\) => \(\{\s*models: offeredBrainModels\(\),\s*defaultModel: String\(state\.config\?\.defaultBrain \|\| ''\),\s*labelOf: \(model\) => brainLabel\(model\)\.shortName/);
+  assert.match(main, /getModelChoices: \(\) => \(global\.OCBrain \? global\.OCBrain\.choices\(\) : null\)/);
+  assert.match(main, /modelStore: \{ read: \(\) => lsGet\(LS_ASSISTANT_MODEL\) \|\| '', write: \(model\) => lsSet\(LS_ASSISTANT_MODEL, model\) \}/);
+  assert.match(main, /const LS_ASSISTANT_MODEL = 'ocd-nodes-assistant-model'/);
+  assert.match(app, /function offeredBrainModels\(\) \{[^}]*restricted && String\(model\)\.startsWith\('chatgpt\/'\)/s, 'participants and guests get no subscription model in the list');
+  assert.ok(app.indexOf('<script') < 0 && read('public/index.html').indexOf('src="app.js"') < read('public/index.html').indexOf('src="nodes/main.js"'), 'app.js runs before the node view');
+  // the list sits above the input; on a phone its text is 16 px (no zoom on focus) and it is as tall as a finger
+  const css2 = read('public/nodes/nodes.css');
+  assert.match(css2, /\.nv-asst-modelrow \{[^}]*display: flex/);
+  assert.match(css2, /@media \(max-width: 700px\) \{[\s\S]*?\.nv-asst-input,\s*\.nv-asst-model-select \{\s*font-size: 16px/);
+  assert.match(css2, /\.nv-asst-model-select \{\s*min-height: 40px/);
   assert.match(main, /historyRevision: \(\) => state\.history\.revision/);
   assert.match(main, /for \(const id of result\.ids\.edges \|\| \[\]\) reserveId\(id\)/, 'the new connections are reserved as well');
   const insertBody = main.slice(main.indexOf('function insertSubgraph(sub, options = {}) {'), main.indexOf('function revealBounds'));
@@ -1001,7 +1203,9 @@ function testWiring() {
   testCostOfInserted();
   testFailure();
   testInsertIntoGraph();
+  testModelPure();
   await testControllerBasics();
+  await testModelChoice();
   await testEscapeAndKeys();
   await testInsertCard();
   await testCardWithRealHistory();

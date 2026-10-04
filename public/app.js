@@ -3098,6 +3098,16 @@ function offeredBrainModels() {
   return (state.config?.brainModels || []).filter((model) => !(restricted && String(model).startsWith('chatgpt/')));
 }
 
+// The language models for the assistant of the node view: the list, the names and the default of the chat (the same
+// models the person may choose for a chat; read when the panel needs them, the configuration may not be loaded yet).
+window.OCBrain = {
+  choices: () => ({
+    models: offeredBrainModels(),
+    defaultModel: String(state.config?.defaultBrain || ''),
+    labelOf: (model) => brainLabel(model).shortName
+  })
+};
+
 // Participants and guests: a line above the chat says when the budget is used up or running low. Chats and results
 // stay readable; only paid actions are locked (the server enforces it, this only explains).
 function renderBudgetBanner() {

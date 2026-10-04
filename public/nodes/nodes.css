@@ -7408,7 +7408,8 @@ button.nv-scene-preview:focus-visible {
   padding-left: 16px;
 }
 
-.nv-asst-meta {
+.nv-asst-meta,
+.nv-asst-model {
   margin: 0;
   font-size: 11.5px;
   color: var(--text-faint);
@@ -7456,6 +7457,31 @@ button.nv-scene-preview:focus-visible {
   display: none;
 }
 
+/* the language model of the next question: a line above the input */
+.nv-asst-modelrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.nv-asst-model-label {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.nv-asst-model-select {
+  flex: 1;
+  min-height: 34px;
+  text-overflow: ellipsis;
+}
+
+.nv-asst-model-select:disabled {
+  opacity: 0.8;
+  cursor: default;
+}
+
 .nv-asst-hint {
   margin: 7px 2px 0;
   font-size: 11px;
@@ -7494,8 +7520,13 @@ button.nv-scene-preview:focus-visible {
     bottom: auto;
   }
 
-  .nv-asst-input {
+  .nv-asst-input,
+  .nv-asst-model-select {
     font-size: 16px;
+  }
+
+  .nv-asst-model-select {
+    min-height: 40px;
   }
 
   .nv-asst-send {
