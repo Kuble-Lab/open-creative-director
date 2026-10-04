@@ -546,6 +546,133 @@ async function main() {
       await assert.rejects(engine.start(wf.id, { mode: 'items', nodeId: 'l', items: [0] }), { code: 'INVALID_REQUEST', reason: 'ITEMS_NO_LIST' });
     }
 
+    /* ----- the same item twice in a list: every one keeps its own result ----- */
+    {
+      reset();
+      const wf = await makeWorkflow([node('l', 't.words', { items: 'x,x,x' }), node('m', 't.scene')], edges('l.items>m.in'));
+      const first = await run(wf.id, { mode: 'all' });
+      assert.equal(first.status, 'completed', JSON.stringify(first.nodes));
+      assert.deepEqual(ranItems('m'), ['x', 'x', 'x'], 'three executions: the same prompt is asked for three variants');
+      const before = await selectedList(wf.id, 'm');
+      assert.equal(new Set(before).size, 3, 'three different results');
+      // a new item at the end: the three x keep their own results, only y runs
+      await setParams(wf.id, 'l', { items: 'x,x,x,y' });
+      await run(wf.id, { mode: 'node', nodeIds: ['l'], force: true });
+      const plan = await engine.plan(wf.id, { mode: 'all' });
+      assert.equal(plan.nodes.m.reusedItems, 3);
+      assert.equal(plan.nodes.m.executions, 1);
+      env.calls.length = 0;
+      await run(wf.id, { mode: 'all' });
+      assert.deepEqual(ranItems('m'), ['y']);
+      const after = await selectedList(wf.id, 'm');
+      assert.deepEqual(after.slice(0, 3), before, 'the three x are not replaced by copies of the first');
+      // fewer of them: the first ones stay
+      await setParams(wf.id, 'l', { items: 'x,x' });
+      await run(wf.id, { mode: 'node', nodeIds: ['l'], force: true });
+      env.calls.length = 0;
+      await run(wf.id, { mode: 'all' });
+      assert.equal(env.calls.length, 0, 'nothing runs for a shorter list');
+      assert.deepEqual(await selectedList(wf.id, 'm'), before.slice(0, 2));
+      // one more of them than stored: the extra one runs, the others keep their results
+      await setParams(wf.id, 'l', { items: 'x,y,x,x,x' });
+      await run(wf.id, { mode: 'node', nodeIds: ['l'], force: true });
+      const planMore = await engine.plan(wf.id, { mode: 'all' });
+      assert.equal(planMore.nodes.m.executions, 1, 'only the fourth x is new (y is in the history)');
+      env.calls.length = 0;
+      await run(wf.id, { mode: 'all' });
+      assert.deepEqual(ranItems('m'), ['x']);
+      const mixed = await selectedList(wf.id, 'm');
+      assert.deepEqual([mixed[0], mixed[2], mixed[3]], [before[0], before[1], before[2]]);
+      assert.equal(mixed[1], after[3], 'y comes from the history');
+      assert.equal(new Set(mixed).size, 5);
+
+      // a run of single items on repeated items: the asked one is made again, the others keep their own place
+      reset();
+      const wf2 = await makeWorkflow([node('l', 't.words', { items: 'x,x,x' }), node('m', 't.scene')], edges('l.items>m.in'));
+      await run(wf2.id, { mode: 'all' });
+      const old = await selectedList(wf2.id, 'm');
+      env.calls.length = 0;
+      const again = await run(wf2.id, { mode: 'items', nodeId: 'm', items: [1] });
+      assert.equal(again.status, 'completed', JSON.stringify(again.nodes));
+      assert.deepEqual(ranItems('m'), ['x']);
+      const now = await selectedList(wf2.id, 'm');
+      assert.equal(now[0], old[0]);
+      assert.notEqual(now[1], old[1]);
+      assert.equal(now[2], old[2], 'the third x is its own result, not a copy of the first');
+    }
+
+    /* ----- a failed run of single items: what it made and paid is not paid again by the same request ----- */
+    {
+      reset();
+      const wf = await makeWorkflow([node('l', 't.words', { items: 'a,b,c,d' }), node('m', 't.scene')], edges('l.items>m.in'));
+      await run(wf.id, { mode: 'all' });
+      const old = await selectedList(wf.id, 'm');
+      env.calls.length = 0;
+      env.failOn.value = 'd';
+      const failed = await run(wf.id, { mode: 'items', nodeId: 'm', items: [1, 3] });
+      assert.equal(failed.nodes.m.status, 'error');
+      assert.deepEqual(ranItems('m'), ['b'], 'b was made, d failed');
+      assert.equal(usd(failed), 0.5);
+      const partial = (await results(wf.id, 'm')).partial;
+      assert.deepEqual(partial.forcedItems, [1, 3], 'the partial results know which items were asked for');
+      const paidB = partial.items[1].variant.out.value;
+      assert.notEqual(paidB, old[1]);
+      env.failOn.value = null;
+      // the plan of the retry only counts d
+      const plan = await engine.plan(wf.id, { mode: 'items', nodeId: 'm', items: [1, 3] });
+      assert.equal(plan.nodes.m.executions, 1);
+      assert.equal(plan.nodes.m.reusedItems, 3, 'a and c from the selected entry, b from the failed attempt');
+      assert.equal(plan.totals.usd, 0.5);
+      env.calls.length = 0;
+      const retry = await run(wf.id, { mode: 'items', nodeId: 'm', items: [1, 3] });
+      assert.equal(retry.status, 'completed', JSON.stringify(retry.nodes));
+      assert.deepEqual(ranItems('m'), ['d'], 'only d is made and paid now');
+      assert.equal(usd(retry), 0.5);
+      const list = await selectedList(wf.id, 'm');
+      assert.equal(list[1], paidB, 'the new b of the first attempt is the one in the result');
+      assert.equal(list[0], old[0]);
+      assert.equal(list[2], old[2]);
+      assert.notEqual(list[3], old[3]);
+      assert.equal((await results(wf.id, 'm')).partial, undefined);
+
+      // a different request does not take it: a failed run of {1,3} is not the answer to a request for {1}
+      env.failOn.value = 'd';
+      await run(wf.id, { mode: 'items', nodeId: 'm', items: [1, 3] });
+      env.failOn.value = null;
+      env.calls.length = 0;
+      const otherPlan = await engine.plan(wf.id, { mode: 'items', nodeId: 'm', items: [0] });
+      assert.equal(otherPlan.nodes.m.executions, 1);
+      // the partial of an ordinary forced run of the whole node is not taken for an asked item either
+      await wfStore.updateResults(wf.id, (data) => {
+        delete data.nodes.m.partial.forcedItems;
+      });
+      const noMark = await engine.plan(wf.id, { mode: 'items', nodeId: 'm', items: [1, 3] });
+      assert.equal(noMark.nodes.m.executions, 2, 'without the mark of a run of single items the asked items are paid again');
+    }
+
+    /* ----- a selected entry from before the keys existed: single items are refused, not taken from another entry ----- */
+    {
+      reset();
+      const wf = await makeWorkflow([node('l', 't.words', { items: 'a,b' }), node('m', 't.scene')], edges('l.items>m.in'));
+      await run(wf.id, { mode: 'all' });
+      await run(wf.id, { mode: 'node', nodeIds: ['m'], force: true });
+      const entries = (await results(wf.id, 'm')).history;
+      assert.equal(entries.length, 2);
+      // the older entry has no keys and is the selected one; the newer one (not selected) has keys
+      const older = entries[1];
+      await wfStore.updateResults(wf.id, (data) => {
+        const target = data.nodes.m.history.find((entry) => entry.id === older.id);
+        delete target.itemKeys;
+        data.nodes.m.selected = { entry: older.id, variant: 0 };
+      });
+      env.calls.length = 0;
+      const plan = await engine.plan(wf.id, { mode: 'items', nodeId: 'm', items: [0] });
+      assert.equal(plan.nodes.m.status, 'invalid');
+      assert.equal(plan.nodes.m.reasonCode, 'ITEMS_NO_LIST');
+      await assert.rejects(engine.start(wf.id, { mode: 'items', nodeId: 'm', items: [0] }), { code: 'INVALID_REQUEST', reason: 'ITEMS_NO_LIST' });
+      assert.equal(env.calls.length, 0, 'nothing runs and nothing is paid');
+    }
+
     /* ----- an optional input behind an output that stays empty works without it; a required one still refuses ----- */
     {
       reset();
