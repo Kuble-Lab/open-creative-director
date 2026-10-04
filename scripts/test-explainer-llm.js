@@ -73,6 +73,8 @@ async function run(iso, realFetch) {
   });
   const realSupportsFiles = discovery.brainSupportsFiles;
   const realSupportsImages = discovery.brainSupportsImages;
+  const realIsRestricted = iso.load('lib/access').isRestricted;
+  const realBrainModelAllowed = iso.load('lib/access').brainModelAllowed;
   const supportsFiles = new Set(['vendor/reads-files']);
   patch(discovery, 'brainSupportsFiles', async (model) => supportsFiles.has(model));
   patch(discovery, 'brainSupportsImages', async () => true);
@@ -148,6 +150,84 @@ async function run(iso, realFetch) {
     await assert.rejects(llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1' }), /empty answer/);
     reply = () => ({ choices: [{ message: { content: 'ok' } }] });
     assert.equal((await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1' })).usd, null, 'no reported cost stays null');
+  }
+
+  /* ---------- an empty answer is billed all the same (WP40 part C) ---------- */
+  {
+    posts.length = 0;
+    journal.length = 0;
+    reply = () => ({
+      choices: [{ message: { content: '' }, finish_reason: 'length' }],
+      usage: { cost: 0.2, completion_tokens: 9000, completion_tokens_details: { reasoning_tokens: 8950 } }
+    });
+    const caught = await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's-empty', maxTokens: 9000 }).then(() => null, (err) => err);
+    assert.ok(caught, 'the call still fails');
+    assert.match(caught.message, /^The model returned an empty answer/);
+    assert.match(caught.message, /finish_reason length, 9000 output tokens, 8950 of them reasoning/, 'the detail is in the message');
+    assert.equal(caught.usd, 0.2);
+    assert.equal(caught.finishReason, 'length');
+    assert.equal(caught.completionTokens, 9000);
+    assert.equal(caught.reasoningTokens, 8950);
+    assert.equal(journal.length, 1, 'the reported cost of the empty call is booked');
+    assert.equal(journal[0].cost, 0.2);
+    assert.equal(journal[0].sessionId, 's-empty');
+    assert.equal(journal[0].model, 'vendor/text-only');
+
+    // no reported cost: nothing is booked (as before); the error says null and keeps what is known
+    journal.length = 0;
+    reply = () => ({ choices: [{ message: { content: ' ' }, finish_reason: 'stop' }] });
+    const free = await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's-empty' }).then(() => null, (err) => err);
+    assert.match(free.message, /^The model returned an empty answer \(finish_reason stop\)$/);
+    assert.equal(free.usd, null);
+    assert.equal(free.completionTokens, null);
+    assert.equal(journal.length, 0, 'no cost reported, nothing to book');
+
+    // the budget key settles the cost too
+    const budget = iso.load('lib/budget');
+    const settled = [];
+    patch(budget, 'settle', (key, cost) => settled.push({ key, cost }));
+    reply = () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { cost: 0.05 } });
+    await assert.rejects(llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's-empty', budgetKey: 'run-1' }), /empty answer/);
+    assert.deepEqual(settled, [{ key: 'run-1', cost: 0.05 }], 'the budget key of the run is charged');
+
+    // a participant without a reported cost is charged the flat amount, like for any other call
+    journal.length = 0;
+    const access = iso.load('lib/access');
+    patch(access, 'isRestricted', () => true);
+    patch(access, 'brainModelAllowed', () => true);
+    reply = () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }] });
+    const flat = await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's-empty', unknownCostUsd: 0.07 }).then(() => null, (err) => err);
+    assert.equal(flat.usd, null);
+    assert.equal(flat.bookedUsd, 0.07);
+    assert.deepEqual(journal.map((entry) => entry.cost), [0.07], 'the same rule bookUnknown as for a successful call');
+    access.isRestricted = realIsRestricted;
+    access.brainModelAllowed = realBrainModelAllowed;
+  }
+
+  /* ---------- the same when a subscription call is replaced by OpenRouter ---------- */
+  {
+    posts.length = 0;
+    journal.length = 0;
+    streams.length = 0;
+    patch(chatgpt, 'status', () => ({ connected: false }));
+    reply = () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { cost: 0.11, completion_tokens: 500 } });
+    const replaced = await llm.completeText({ model: 'chatgpt/gpt-5.6-sol', prompt: 'Hi', sessionId: 's-empty' }).then(() => null, (err) => err);
+    assert.equal(streams.length, 0, 'the subscription was not used');
+    assert.equal(posts.length, 1, 'the call went through OpenRouter');
+    assert.equal(replaced.usd, 0.11);
+    assert.equal(replaced.model, 'openai/gpt-5.6-sol', 'the error names the model that was billed');
+    assert.deepEqual(journal.map((entry) => [entry.model, entry.cost]), [['openai/gpt-5.6-sol', 0.11]], 'booked under the replacement model');
+    assert.match(replaced.message, /finish_reason length, 500 output tokens\)$/, 'no reasoning count where none was reported');
+    // the subscription itself: an empty answer costs nothing and books nothing, as before
+    journal.length = 0;
+    patch(chatgpt, 'status', () => ({ connected: true }));
+    const original = chatgpt.streamResponses;
+    patch(chatgpt, 'streamResponses', async () => ({ text: ' ', toolCalls: [], usage: null }));
+    await assert.rejects(llm.completeText({ model: 'chatgpt/gpt-5.6-sol', prompt: 'Hi', sessionId: 's-empty' }), /empty answer/);
+    assert.equal(journal.length, 0);
+    chatgpt.streamResponses = original;
+    chatgpt.status = () => ({ connected: true });
+    reply = () => ({ choices: [{ message: { content: 'ok' } }], usage: { cost: 0.01 } });
   }
 
   /* ---------- the web search and its sources ---------- */
