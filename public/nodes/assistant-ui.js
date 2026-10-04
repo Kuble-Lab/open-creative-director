@@ -834,7 +834,7 @@
       for (const item of Array.isArray(answer.insert.nodes) ? answer.insert.nodes : []) {
         if (item && typeof item.ref === 'string') refNames.set(item.ref, (typeof item.label === 'string' && item.label.trim()) || typeLabelOf(item.type));
       }
-      const result = deps.insert(built.sub, { history: 'insert-assistant' });
+      const result = deps.insert(built.sub, { history: 'insert-assistant', fresh: true });
       if (!result) {
         message.notes.push({ kind: 'warn', text: T('nodes.assistant.insertFailed') });
         return;

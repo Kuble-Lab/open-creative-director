@@ -168,8 +168,10 @@ async function run(iso) {
     assert.match(topic.description, /0[.,]30/, `${lang}: and that of the topic version`);
     assert.match(topic.description, /0[.,]50/);
     assert.match(pdf.description, /Opus 5\.5/);
-    assert.equal(pdf.graph.nodes.find((node) => node.id === 'n3').params.language, lang, `${lang}: the script is written in the language of the person`);
-    assert.equal(topic.graph.nodes.find((node) => node.id === 'n2').params.language, lang);
+    // WP38d: the language follows the input in every language of the interface (it used to be the language of the interface)
+    assert.equal(pdf.graph.nodes.find((node) => node.id === 'n3').params.language, 'auto', `${lang}: the script follows the language of the input`);
+    assert.equal(topic.graph.nodes.find((node) => node.id === 'n2').params.language, 'auto');
+    assert.equal(topic.graph.nodes.find((node) => node.id === 'n3').params.language, 'auto');
     assert.ok(pdf.graph.notes[0].text.length > 200);
     assert.match(pdf.graph.notes[0].text, lang === 'de' ? /Skript \(bearbeitet\)/ : lang === 'es' ? /Guion \(editado\)/ : /Edited script/, `${lang}: the note names the field of the second step as the node calls it`);
   }

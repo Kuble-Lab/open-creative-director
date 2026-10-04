@@ -175,6 +175,14 @@
     return out;
   }
 
+  // The params of a NEW node: the defaults, where a param says `initial` for what a new node starts with (the language of the explainer
+  // nodes is "auto" there). `default` stays what a saved node without the param runs with. Mirrors registry.initialParams on the server.
+  function initialParams(def) {
+    const out = paramDefaults(def);
+    for (const param of def?.params || []) if (param.initial !== undefined) out[param.id] = clone(param.initial);
+    return out;
+  }
+
   // Params with defaults filled in (what the server computes before running a node).
   function effectiveParams(def, node) {
     return { ...paramDefaults(def), ...(isPlainObject(node.params) ? node.params : {}) };
@@ -427,7 +435,7 @@
   function addNode(reg, graph, type, options = {}) {
     const def = reg.types.get(type);
     const id = options.id || nextId('n', graph, options.reserved);
-    const params = { ...paramDefaults(def), ...(isPlainObject(options.params) ? clone(options.params) : {}) };
+    const params = { ...initialParams(def), ...(isPlainObject(options.params) ? clone(options.params) : {}) };
     const node = { id, type, typeVersion: def?.version || 1, x: finiteOr(options.x, 0), y: finiteOr(options.y, 0), params };
     if (options.title) node.title = String(options.title).slice(0, 120);
     return { graph: { ...graph, nodes: [...graph.nodes, node] }, node };
@@ -761,6 +769,7 @@
   //                    graph goes to the right of, or below, the existing content)
   //   options.avoid    with `at`: move down while the items would overlap existing ones (default off)
   //   options.reg      registry index: unknown node types are refused, params get their defaults
+  //   options.fresh    the nodes are new (not copies of saved ones): params that are not given get the `initial` value of a new node
   //   options.sizes    measured card sizes of the existing nodes; options.reserved ids not to be reused
   //   sub.links        (the assistant) connections that are checked one by one against the graph as it is while they
   //                    are added: [{ from: { node, port, existing? }, to: { node, port, existing? } }]. A side with
@@ -789,7 +798,8 @@
     }
     const prepared = nodes.map((node) => {
       const def = options.reg ? options.reg.types.get(node.type) : null;
-      const params = { ...(def ? paramDefaults(def) : {}), ...(isPlainObject(node.params) ? clone(node.params) : {}) };
+      // options.fresh: nodes that are new (the assistant): what a node from the palette starts with; copies and templates keep the defaults
+      const params = { ...(def ? (options.fresh ? initialParams(def) : paramDefaults(def)) : {}), ...(isPlainObject(node.params) ? clone(node.params) : {}) };
       return { ...clone(node), typeVersion: node.typeVersion || def?.version || 1, params };
     });
     const clip = copySelection(
@@ -2051,6 +2061,7 @@
     nextId,
     indexRegistry,
     paramDefaults,
+    initialParams,
     effectiveParams,
     portsFor,
     findPort,

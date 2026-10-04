@@ -83,6 +83,16 @@ function testRegistryCoverage() {
     }
   }
   assert.deepEqual([...new Set(missing)], [], `registry strings without translation: ${[...new Set(missing)].join(', ')}`);
+  // WP38d: the wording of an option for one parameter, nodes.option.<param>.<value> (node-ui.js optionLabelOf): it must belong to a real
+  // select param that offers this value, in every language
+  const scoped = Object.keys(window.I18N.de).filter((key) => /^nodes\.option\.[a-z_]+\..+$/.test(key));
+  assert.ok(scoped.includes('nodes.option.language.auto'), 'the language of the explainer nodes says "same as input"');
+  for (const key of scoped) {
+    const [, , param, ...rest] = key.split('.');
+    const value = rest.join('.');
+    const offered = payload.nodeTypes.some((def) => def.params.some((item) => item.id === param && item.kind === 'select' && (item.options || []).some((option) => String(option && typeof option === 'object' ? option.value : option) === value)));
+    assert.ok(offered, `${key}: no select param ${param} offers the option ${value}`);
+  }
   assert.ok(payload.nodeTypes.length >= 73);
 }
 

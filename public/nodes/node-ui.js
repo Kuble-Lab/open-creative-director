@@ -65,6 +65,9 @@
   const portLabel = (id) => tr(`nodes.port.${id}`, humanize(id));
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
   const optionLabel = (value) => tr(`nodes.option.${value}`, String(value));
+  // The label of an option of one parameter: nodes.option.<param>.<value> where the parameter has its own wording (the language of the
+  // explainer nodes says "Same as input" for "auto"), else the label of the value for every parameter.
+  const optionLabelOf = (param, value) => tr(`nodes.option.${param && param.id}.${value}`, optionLabel(value));
 
   // Longest suggestion of a provider that is shown on one line behind an error text.
   const SUGGESTION_SHORT = 280;
@@ -532,7 +535,7 @@
     return {
       state: 'ready',
       options: (param.options || []).map((option) =>
-        option && typeof option === 'object' ? { value: String(option.value), label: String(option.label ?? option.value) } : { value: String(option), label: optionLabel(option) }
+        option && typeof option === 'object' ? { value: String(option.value), label: String(option.label ?? option.value) } : { value: String(option), label: optionLabelOf(param, option) }
       ),
       error: null
     };
@@ -1984,6 +1987,7 @@
     portLabel,
     paramLabel,
     optionLabel,
+    optionLabelOf,
     hasIssueText,
     issueText,
     connectText,

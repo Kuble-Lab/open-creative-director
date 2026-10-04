@@ -164,6 +164,10 @@ async function testHelp(A, registry, registryModule) {
   const ttsList = [{ value: 'eleven_v4', label: 'Eleven v4' }, { value: 'eleven_v4_turbo', label: 'Eleven v4 Turbo' }];
   const ttsHelp = A.helpText(descriptors.find((descriptor) => descriptor.type === 'audio.tts'), dictDe, new Map([['elevenlabs-tts-models', ttsList]]));
   assert.match(ttsHelp, /model_id "Sprachmodell" \(select, default "eleven_v4", one of: eleven_v4 \(Eleven v4\) \| eleven_v4_turbo \(Eleven v4 Turbo\)\)/);
+  // WP38d: the language of the explainer nodes: a new node starts with auto, and the list says what the options are
+  for (const type of ['llm.research', 'explainer.plan']) {
+    assert.match(A.helpText(descriptors.find((descriptor) => descriptor.type === type), dictDe, new Map()), /language "Sprache" \(select, default "auto", one of: auto \| en \| de \| es\)/, `${type}: the list for the model`);
+  }
   const mediaHelp = A.helpText(descriptors.find((descriptor) => descriptor.type === 'input.media_list'), dictDe, new Map());
   assert.match(mediaHelp, /Ports follow the param kind: kind=image: out items:image\[\]; kind=video: out items:video\[\]/);
   assert.match(mediaHelp, /Files .* are added by the person/, 'media params are not offered');
@@ -427,6 +431,12 @@ function testProposals(A, registry, typesLib, registryModule) {
     ['a.bogus:unknown_param', 'a.count:clamped', 'a.prompt:clipped', 'i.asset:media_param', 'm.assets:media_param', 't.max_tokens:not_a_number'].sort()
   );
   assert.deepEqual(codes(check({ nodes: [node('a', 'image.generate', { aspect_ratio: '5:7' })] })), ['bad_option']);
+  // WP38d: "auto" (same as input) is a language of the explainer nodes for the assistant too; anything else is refused; a node it does not
+  // set starts with auto (the page fills it in)
+  assert.deepEqual(codes(check({ nodes: [node('a', 'llm.research', { language: 'auto' }), node('b', 'explainer.plan', { language: 'auto' }), node('c', 'explainer.plan', { language: 'de' })] })), []);
+  assert.deepEqual(check({ nodes: [node('a', 'explainer.plan', { language: 'auto' })] }).insert.nodes[0].params, { language: 'auto' });
+  assert.deepEqual(codes(check({ nodes: [node('a', 'explainer.plan', { language: 'same' })] })), ['bad_option']);
+  assert.deepEqual(codes(check({ nodes: [node('a', 'llm.research', { language: 'fr' })] })), ['bad_option']);
   assert.deepEqual(codes(check({ nodes: [node('a', 'input.prompt', 'text')] })), ['bad_params']);
   assert.equal(check({ nodes: [node('a', 'input.prompt', null)] }).insert.nodes[0].params && Object.keys(check({ nodes: [node('a', 'input.prompt', null)] }).insert.nodes[0].params).length, 0);
 
