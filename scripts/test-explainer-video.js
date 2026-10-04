@@ -6,7 +6,7 @@
 //     without it, a scene without narration makes no call and costs nothing, no times from the API = estimated words, the price by
 //     the characters (estimate per scene and booking)
 //   scene: the model is asked in the right words (contract, cue list, attached pictures), the code is checked before it is rendered, the
-//     render gets the policy and the exact length, a failed attempt is answered in the same conversation (code problem, render error,
+//     render gets the policy, the exact length and the source line that the app puts in (the model is not told its text), a failed attempt is answered in the same conversation (code problem, render error,
 //     blockers of the look at two frames), after the last try the fixed scene stands in (or the node stops), the look can be switched
 //     off, stills and figures are found by the number of the scene, a clip scene is a plain stand-in, the fonts of the brand are embedded,
 //     the video is silent and exactly as long as the voice plus 0.4 s (frame exact), the price and its booking, the errors
@@ -569,7 +569,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.match(writer.prompt, /Cue list \(absolute seconds on tl/);
     assert.match(writer.prompt, /e1 \(title, "Wärme1"\) at \d/);
     assert.match(writer.prompt, /No attached files\./);
-    assert.match(writer.prompt, /Source line to show: "Pegelbericht 2026, S\. 2"|Source line to show: "[^"]*"|No source line\./, 'the source line is computed from the references');
+    assert.doesNotMatch(writer.prompt, /source line/i, 'the model is not asked for a source line');
     assert.deepEqual(writer.history, [], 'the first call has no history');
     // the cue list is the one the code computed from the word times
     const cue = /e1 \(title, "Wärme1"\) at ([\d.]+)/.exec(writer.prompt);
@@ -579,6 +579,12 @@ async function run(iso, { eleven, setVoiceBytes }) {
     const html = renders[0].html;
     assert.ok(/<head>\s*<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@3\.14\.2\/dist\/;[^"]*form-action 'none'; base-uri 'none'"/.test(html), 'the policy is inserted');
     assert.match(html, /data-duration="5.866"/);
+    // the source line is the app's: the first child of the root element, from the references of the scene (no document titles here: as
+    // they are), at the very bottom (16 px from the lower edge, 115 px from the sides), and the model's own code has none
+    assert.match(html, /<div id="main-composition"[^>]*>\n<div id="oc-source" style="[^"]*bottom:16px[^"]*">D1 S\. 2<\/div>/, 'the app puts the source line in');
+    assert.match(html, /<div id="oc-source" style="position:absolute;left:115px;right:115px;bottom:16px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:26px;/);
+    assert.equal((html.match(/id="oc-source"/g) || []).length, 1);
+    assert.ok(!goodHtml(writer).includes('oc-source') && !goodHtml(writer).includes('D1 S. 2'), 'what the model wrote has none');
     assert.equal(renders[0].format, 'landscape');
     assert.equal(renders[0].quality, 'standard');
     // the check: two frames, the schedule of the cues, the rules of the judge
@@ -740,6 +746,8 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.match(renders[0].html, /data-duration="5.866"/);
     assert.match(renders[0].html, /Content-Security-Policy/, 'the fixed scene gets the policy as well');
     assert.equal(sceneLib.checkCode(renders[0].html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''), { format: 'landscape', assets: 0 }).length, 0, 'the fixed scene passes the check of the code');
+    assert.match(renders[0].html, /<div id="main-composition"[^>]*>\n<div id="oc-source"[^>]*>D1 S\. 2<\/div>/, 'the fixed scene gets the source line from the app as well');
+    assert.ok(!/id="src"/.test(renders[0].html), 'and has none of its own');
     assert.ok(ctx.logs.some((line) => /the fixed scene stands in after 3 tries \(last problem: The answer is not an HTML document|the fixed scene stands in after 3 tries/.test(line)), ctx.logs.join(' | '));
     // the third conversation holds both failed answers
     const third = writerCalls()[2].options.history;
@@ -974,6 +982,54 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.match(renders[0].html, /Ken|scale/, 'with a slow zoom');
   }
 
+  /* ---------- the source line is the app's: pages of one document together, none for the card, the same in portrait, the title first ---------- */
+
+  {
+    // several pages of one document come together, other documents after them; the titles come from the info text
+    reset();
+    const withPages = (id, fields) => textValue(JSON.stringify({ ...out.shots, ...fields.shots, scenes: out.shots.scenes.map((entry) => (entry.id === id ? { ...entry, ...fields.entry } : entry)) }));
+    const manyPages = withPages('s1', { entry: { source_refs: ['D1 S. 1', 'D1 S. 2', 'D2 S. 3', 'D1 S. 2'] } });
+    await exec('explainer.scene', makeCtx(), baseInputs(0, { shots: manyPages, pages_info: pagesInfo }), { vision_check: false });
+    assert.match(renders[0].html, /<div id="oc-source"[^>]*>Pegelbericht 2026, S\. 1, 2 · Anhang, S\. 3<\/div>/, 'the title once, the pages together');
+    assert.doesNotMatch(writerCalls()[0].options.prompt, /Pegelbericht|Anhang/, 'the model never sees the text');
+
+    // a scene without references (the sources card) has no source line, in the code of the model or in the fixed scene
+    reset();
+    await exec('explainer.scene', makeCtx(), baseInputs(sceneIndex('s6'), { pages_info: pagesInfo }), { vision_check: false });
+    assert.equal(renders.length, 1);
+    assert.ok(!renders[0].html.includes('oc-source'), 'no references: no element');
+    reset();
+    queue.writer.push('no', 'no', 'no');
+    await exec('explainer.scene', makeCtx(), baseInputs(sceneIndex('s6'), { pages_info: pagesInfo }), {});
+    assert.ok(!renders[0].html.includes('oc-source'), 'the fixed scene of the card has none either');
+
+    // portrait: 65 px at the sides, 29 px from the bottom, and the writer is told to keep the lower 16 % free
+    reset();
+    await exec('explainer.scene', makeCtx(), baseInputs(0, { shots: withPages('s1', { shots: { format: 'portrait' } }), pages_info: pagesInfo }), { format: 'portrait', vision_check: false });
+    assert.match(renders[0].html, /<div id="oc-source" style="position:absolute;left:65px;right:65px;bottom:29px;/);
+    assert.match(writerCalls()[0].options.system, /Keep the lower 16% of the frame free of text and important content/);
+    reset();
+    await exec('explainer.scene', makeCtx(), baseInputs(0, { pages_info: pagesInfo }), { vision_check: false });
+    assert.match(writerCalls()[0].options.system, /Keep the lower 20% of the frame free of text and important content/);
+
+    // the brand: the font of the brand and its muted colour are the ones of the line
+    reset();
+    const brand = textValue(JSON.stringify({ name: 'Acme', colors: [{ role: 'background', hex: '#fafafa' }, { role: 'text', hex: '#1a1a2e' }], fonts: [{ role: 'body', family: 'Brand Text', weights: '400' }] }));
+    await exec('explainer.scene', makeCtx(), baseInputs(0, { brand, pages_info: pagesInfo }), { vision_check: false });
+    const tokens = sceneLib.brandTokens(JSON.parse(brand.value));
+    const lineStyle = /<div id="oc-source" style="([^"]*)"/.exec(renders[0].html)[1];
+    assert.ok(lineStyle.includes(`color:${tokens.muted}`) && lineStyle.includes("font-family:'Brand Text', system-ui"), lineStyle);
+
+    // the title that opens the scene comes at 0.2 s whatever its word: the cue list says so, and the log notes it
+    reset();
+    const late = withPages('s1', { entry: { elements: [{ id: 'e1', type: 'title', content: 'Titel 1', anchor: 'Winter1' }, { id: 'e2', type: 'bullet', content: 'Stichwort 1', anchor: 'Haus1' }] } });
+    const opening = makeCtx();
+    await exec('explainer.scene', opening, baseInputs(0, { shots: late }), { vision_check: false });
+    assert.match(writerCalls()[0].options.prompt, /e1 \(title, "Winter1"\) at 0\.2; e2 \(bullet, "Haus1"\) at [\d.]+/);
+    assert.ok(Number(/e2 \(bullet, "Haus1"\) at (\d+(?:\.\d+)?)/.exec(writerCalls()[0].options.prompt)[1]) > 4, 'the other element keeps the time of its word (the second "Haus1", late in the narration)');
+    assert.ok(opening.logs.some((line) => /^s1: cue: e1: the title comes at the start of the scene, [\d.]+ s earlier than its anchor "Winter1" would have put it$/.test(line)), opening.logs.join(' | '));
+  }
+
   /* ---------- a figure of a PDF page: cut out with a margin, found by document and page ---------- */
 
   {
@@ -984,7 +1040,8 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.equal(sent.images.length, 1, 'the cut-out figure is sent to the model as an image');
     assert.match(sent.prompt, /\{\{asset:1\}\} = image \(png, 168x78 px\): a figure cut out of a page of the document/);
     assert.match(sent.prompt, /page 2 of the document, cut to the figure/);
-    assert.match(sent.prompt, /Source line to show: "Anhang, S\. 2"/, 'the title of the document from the info text');
+    assert.match(renders[0].html, /<div id="oc-source"[^>]*>Anhang, S\. 2<\/div>/, 'the title of the document from the info text');
+    assert.ok(!sent.prompt.includes('Anhang'), 'the model is not told the text of the source line');
     // the asset that was cut: 84 % x 26 % of the page image number 5 (document 2, page 2), the margin of 2 % around the figure
     const figureId = /(\w+-\d+|[a-z]+_?\d+)\.png/.exec(renders[0].html)[0];
     const figureAsset = (await store.readLedger(sessionId)).find((entry) => entry.file === figureId);
@@ -1070,7 +1127,8 @@ async function run(iso, { eleven, setVoiceBytes }) {
     const html = renders[0].html;
     assert.match(html, /@font-face\{font-family:'Brand Sans';src:url\(data:font\/woff2;base64,[A-Za-z0-9+/=]{100,}\) format\('woff2'\)/);
     assert.ok(html.indexOf('Content-Security-Policy') < html.indexOf('@font-face'));
-    assert.ok(!html.includes("font-family:'Big Serif'"), 'a font file of 500 KB is not embedded');
+    // (the stack of the source line names the family too, the system font stands in: only a @font-face rule would be an embedded file)
+    assert.ok(!html.includes("@font-face{font-family:'Big Serif'"), 'a font file of 500 KB is not embedded');
     assert.ok(ctx.logs.some((line) => /font: Big Serif: 500 KB is above 400 KB: the system font is used/.test(line)), ctx.logs.join(' | '));
     assert.ok(Buffer.byteLength(html) < 2 * 1024 * 1024);
     // a participant has no brandings: the system font, with a log

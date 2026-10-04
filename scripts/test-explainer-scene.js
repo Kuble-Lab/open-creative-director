@@ -10,9 +10,14 @@
 //   - the Content-Security-Policy is inserted first in <head> (also without a head, behind a <header>, behind an early script, and a
 //     policy of the model is taken out); it forbids forms and <base>, and scripts other than the GSAP package
 //   - the exact length in data-duration, the code fence, the fonts of the brand (at most two files, 400 KB each)
-//   - the brand tokens: contrast, fallbacks; the source line; the brief; where a figure is on the page images and how it is cut
-//   - the prompts carry the layout rules and the cue list, the verdict is read strictly, the retry message names the problems
-//   - the fixed scene passes the same check, in both formats, with the cues of its elements
+//   - the brand tokens: contrast, fallbacks; the source line (pages of one document together); the brief; where a figure is on the page
+//     images and how it is cut
+//   - the source line is an element of the app (withSourceLine): first child of the root, or before the last </body>, or at the end; no
+//     text, no change; the text and the style cannot break the page; the position, the size and the free band at the bottom
+//   - the prompts carry the layout rules and the cue list, but not the source line; the verdict is read strictly, the retry message names
+//     the problems
+//   - the fixed scene passes the same check, in both formats, with the cues of its elements, keeps its column above the free band and has no
+//     source line of its own
 
 const assert = require('assert/strict');
 const scene = require('../lib/explainer-scene');
@@ -454,6 +459,32 @@ function testBriefAndReferences() {
   assert.equal(scene.sourceLine([], documents), '');
   assert.equal(scene.sourceLine(['nonsense'], documents), '');
   assert.ok(scene.sourceLine(Array.from({ length: 30 }, (_x, i) => `S. ${i + 1}`), documents).length <= 140);
+  // the pages of one document come together: the title once, the word for a page once (the live test: "..., S. 1 · ..., S. 2")
+  const report = [{ title: 'Kurzbericht Lindensee 2026 (fiktive Testdaten)' }, { title: 'Anhang' }];
+  const TITLE = 'Kurzbericht Lindensee 2026 (fiktive Testdaten)';
+  assert.equal(scene.sourceLine(['S. 1', 'S. 2'], report), `${TITLE}, S. 1, 2`);
+  assert.equal(scene.sourceLine(['S. 1', 'S. 2', 'S. 3', 'S. 2', 'S. 1'], report), `${TITLE}, S. 1, 2, 3`, 'no page twice');
+  assert.equal(scene.sourceLine(['S. 4-5', 'S. 7'], report), `${TITLE}, S. 4-5, 7`, 'a range stays a range');
+  assert.equal(scene.sourceLine(['S. 4 – 5'], report), `${TITLE}, S. 4–5`, 'blanks inside a range are taken out');
+  assert.equal(scene.sourceLine(['S. 3', 'S. 1', 'S. 2'], report), `${TITLE}, S. 3, 1, 2`, 'the order of the references, not sorted');
+  // several documents: in the order of their first appearance, the notes at their place
+  assert.equal(scene.sourceLine(['D1 S. 3', 'D2 S. 1', 'D1 S. 1', '[2]', 'D2 S. 2', '[2]'], report), `${TITLE}, S. 3, 1 · Anhang, S. 1, 2 · [2]`);
+  assert.equal(scene.sourceLine(['[2]', 'D2 S. 1', '[1]', 'S. 4'], report), `[2] · Anhang, S. 1 · [1] · ${TITLE}, S. 4`);
+  // the word for a page is the one of the first reference, and it stands once
+  assert.equal(scene.sourceLine(['p. 2', 'p. 3'], report), `${TITLE}, p. 2, 3`);
+  assert.equal(scene.sourceLine(['Seite 4', 'Seite 5'], report), `${TITLE}, Seite 4, 5`);
+  assert.equal(scene.sourceLine(['S. 1', 'p. 2'], report), `${TITLE}, S. 1, 2`, 'one word for the page');
+  // no title: the references as they are, the pages of one document together
+  assert.equal(scene.sourceLine(['S. 2', 'S. 3'], []), 'S. 2, 3');
+  assert.equal(scene.sourceLine(['D2 S. 5', 'D2 S. 6', 'S. 1'], []), 'D2 S. 5, 6 · S. 1');
+  assert.equal(scene.sourceLine(['[1]', '[2]', '[1]'], []), '[1] · [2]');
+  // too long: cut after a whole entry, never in the middle of a page number
+  const sixty = Array.from({ length: 60 }, (_x, i) => `S. ${i + 1}`);
+  const whole = `${TITLE}, S. ${sixty.map((_x, i) => i + 1).join(', ')}`;
+  const cut = scene.sourceLine(sixty, report);
+  assert.ok(cut.length <= 140 && cut.endsWith('…'), cut);
+  assert.ok(whole.startsWith(cut.slice(0, -1)) && whole[cut.length - 1] === ',', `cut at a comma: ${cut}`);
+  assert.ok(scene.sourceLine(['S. 1'], [{ title: 'x'.repeat(300) }]).length <= 140, 'a title that is too long alone is cut as well');
 
   // where a figure is among the page images of all PDFs
   const info = {
@@ -493,12 +524,15 @@ function testPrompts() {
   for (const rule of [
     'NORMAL FLOW',
     'Never place two text elements independently with position:absolute on the same row',
-    'absolute positioning only for decorative layers, highlights over an image, and the source line',
+    'absolute positioning only for decorative layers and highlights over an image.',
     'Highlights over an attached image are placed in percent of the displayed image box and enclose only the target element',
     'original aspect ratio',
     'Minimum font size 54px',
     'At most 25 words on screen',
-    '30px'
+    'Keep the lower 20% of the frame free of text and important content',
+    'subtitles are burnt in there later, and the app adds the small source line at the very bottom itself',
+    'Decorative shapes (backgrounds, gradients) may extend into it',
+    'Do not write a source line or a "Source:" note'
   ]) {
     assert.ok(system.toLowerCase().includes(rule.toLowerCase()), `the layout rule "${rule}"`);
   }
@@ -508,7 +542,11 @@ function testPrompts() {
   assert.ok(!/no address of any kind except that one/.test(scene.writerSystemPrompt({ format: 'landscape', duration: 4 })) === false);
   const portrait = scene.writerSystemPrompt({ format: 'portrait', duration: 4, tokens });
   assert.ok(portrait.includes('data-width="1080" data-height="1920"') && portrait.includes('1080x1920 (portrait)'));
-  assert.ok(portrait.includes('lower 16%'));
+  assert.ok(portrait.includes('lower 16%') && !portrait.includes('lower 20%'), 'the free band is 16 % in portrait');
+  assert.ok(system.includes('lower 20%') && !system.includes('lower 16%'), 'and 20 % in landscape');
+  // the source line is the app's: the model is not asked to show one, and the old rules are gone
+  assert.ok(!system.includes('and the source line'), 'the source line is no use of absolute positioning for the model');
+  assert.ok(!/If a source line is given/.test(system) && !system.includes('30px') && !system.includes('only the thin source line'));
   assert.ok(!system.includes('(embedded'.repeat(2)));
   assert.ok(!scene.writerSystemPrompt({ format: 'landscape', duration: 4, tokens }).includes('(embedded, use it as it is)'), 'the font is called embedded only where it is');
 
@@ -516,15 +554,16 @@ function testPrompts() {
     brief: 'Scene s1 · role hook · kind motion · about 8.9 s · landscape · language de\nTitle: X',
     duration: 5.867,
     cues: [{ id: 'e1', type: 'title', anchor: 'Lindensee', at: 0.45 }, { id: 'e2', type: 'bullet', anchor: '', at: 2.1 }],
-    assets: [{ kind: 'still', ext: 'png' }, { kind: 'figure', ext: 'png', width: 800, height: 400, caption: 'page 2 of the document, cut to the figure' }, { kind: 'logo', ext: 'png' }],
-    source: 'Pegelbericht, S. 2'
+    assets: [{ kind: 'still', ext: 'png' }, { kind: 'figure', ext: 'png', width: 800, height: 400, caption: 'page 2 of the document, cut to the figure' }, { kind: 'logo', ext: 'png' }]
   });
   assert.ok(user.includes('Scene duration: 5.87 s: write data-duration="5.866" exactly'));
   assert.ok(user.includes('e1 (title, "Lindensee") at 0.45; e2 (bullet) at 2.1'));
   assert.ok(user.includes('{{asset:1}} = image (png): a still picture for the BACKGROUND'));
   assert.ok(user.includes('{{asset:2}} = image (png, 800x400 px): a figure cut out of a page'));
   assert.ok(user.includes('{{asset:3}} = image (png): the logo of the brand'));
-  assert.ok(user.includes('Source line to show: "Pegelbericht, S. 2"'));
+  assert.ok(!/source line/i.test(user), 'the request names no source line');
+  // even a caller that still hands the text over does not tell it to the model
+  assert.ok(!scene.writerUserPrompt({ brief: 'x', duration: 4, source: 'Pegelbericht, S. 2' }).includes('Pegelbericht'), 'the model does not get the text of the source line');
   assert.ok(user.includes('Scene brief (data):\n<brief>\nScene s1 · role hook'));
   assert.ok(/Title: X\n<\/brief>\nCue list/.test(user), 'the brief ends before the cue list');
   // text of the document cannot close the delimiter or play a section of the request
@@ -538,8 +577,8 @@ function testPrompts() {
   // the contract tells the model what is refused
   const contract = scene.writerSystemPrompt({ format: 'landscape', duration: 4 });
   for (const word of ['location', 'innerHTML', 'setAttribute', 'static HTML']) assert.ok(contract.includes(word), `the contract names ${word}`);
-  const bare = scene.writerUserPrompt({ brief: 'x', duration: 4, cues: [], assets: [], source: '' });
-  assert.ok(bare.includes('No attached files.') && bare.includes('No source line.') && bare.includes('none: show the title at 0.3'));
+  const bare = scene.writerUserPrompt({ brief: 'x', duration: 4, cues: [], assets: [] });
+  assert.ok(bare.includes('No attached files.') && bare.includes('none: show the title at 0.3') && !/source line/i.test(bare));
 
   // the check
   assert.match(scene.checkSystemPrompt(), /\{"ok": boolean, "blockers": \[string\], "minor": \[string\]\}/);
@@ -583,14 +622,23 @@ function testFallback() {
   const elements = [{ id: 'e1', type: 'title' }, { id: 'e2', type: 'bullet' }, { id: 'e3', type: 'bullet' }];
   const cues = [{ id: 'e1', at: 0.4 }, { id: 'e2', at: 2.5 }, { id: 'e3', at: 4.1 }];
   for (const format of ['landscape', 'portrait']) {
-    const html = scene.fallbackHtml({ format, duration: 5.867, tokens, scene: { title: 'Der See sinkt', bullets: ['55 cm weniger', 'seit 2020', 'noch ein Punkt', 'vierter wird weggelassen'] }, elements, cues, source: 'Pegelbericht, S. 2' });
+    const html = scene.fallbackHtml({ format, duration: 5.867, tokens, scene: { title: 'Der See sinkt', bullets: ['55 cm weniger', 'seit 2020', 'noch ein Punkt', 'vierter wird weggelassen'] }, elements, cues });
     const secured = scene.withCsp(scene.fixDuration(html, 5.867).html);
     // (the check runs on the code before the policy is added, as the node does: the policy names the host of GSAP itself)
     assert.deepEqual(scene.checkCode(scene.fixDuration(html, 5.867).html, { format, assets: 0 }), [], `${format}: the fixed scene passes the check of the code`);
     assert.equal(motionHtml.checkComposition(secured, format), null);
     assert.ok(html.includes('Der See sinkt') && html.includes('55 cm weniger') && html.includes('noch ein Punkt'));
     assert.ok(!html.includes('vierter'), 'at most three bullets');
-    assert.ok(html.includes('Pegelbericht, S. 2'));
+    // no source line of its own: the app puts one in (withSourceLine), for this scene as for the scene of the model
+    assert.ok(!/id="src"|#src|sourceAt/.test(html) && !html.includes('oc-source'), 'the fixed scene has no source line of its own');
+    const withSource = scene.withSourceLine(scene.fixDuration(html, 5.867).html, 'Pegelbericht, S. 2', { format, tokens });
+    assert.deepEqual(scene.checkCode(withSource, { format, assets: 0 }), [], `${format}: with the source line it still passes the check of the code`);
+    assert.equal(motionHtml.checkComposition(scene.withCsp(withSource), format), null);
+    assert.ok(withSource.includes('>Pegelbericht, S. 2</div>'));
+    // the column of the content ends above the free band for the subtitles (20 % landscape, 16 % portrait), the source line below it
+    const column = /#col \{ position:absolute; left:\d+px; top:(\d+)px; width:\d+px; height:(\d+)px;/.exec(html);
+    const { height } = scene.formatOf(format);
+    assert.ok(Number(column[1]) + Number(column[2]) <= height * (1 - scene.FREE_BAND_PERCENT[format] / 100), `${format}: the column ends at ${Number(column[1]) + Number(column[2])} of ${height}`);
     // every part comes at its cue
     assert.ok(html.includes("'#title',{opacity:0,y:30},{opacity:1,y:0,duration:0.6,ease:'power2.out'},0.4"));
     assert.ok(html.includes("'#i0'") && html.includes('},2.5);') && html.includes('},4.1);'));
@@ -609,13 +657,101 @@ function testFallback() {
   assert.deepEqual(scene.checkCode(bare, { format: 'landscape', assets: 0 }), []);
   assert.ok(!bare.includes('<ul>'));
   // no web address in the page, whatever the text: the scheme is taken out
-  const url = scene.fallbackHtml({ duration: 4, tokens, scene: { title: 'Siehe https://example.org/x', bullets: ['http://a.b/c'] }, source: 'Quelle: https://example.org' });
+  const url = scene.fallbackHtml({ duration: 4, tokens, scene: { title: 'Siehe https://example.org/x', bullets: ['http://a.b/c'] } });
   assert.deepEqual(scene.checkCode(url, { format: 'landscape', assets: 0 }), []);
   assert.ok(!/https?:\/\/(?!cdn\.jsdelivr)/.test(url));
+  const urlSource = scene.withSourceLine(url, 'Quelle: https://example.org', { tokens });
+  assert.deepEqual(scene.checkCode(urlSource, { format: 'landscape', assets: 0 }), [], 'a web address in the source line does not make the scene invalid');
+  assert.ok(urlSource.includes('>Quelle: example.org</div>') && !/https?:\/\/(?!cdn\.jsdelivr)/.test(urlSource));
   // markup in the text cannot break the page
   const markup = scene.fallbackHtml({ duration: 4, tokens, scene: { title: '<script>alert(1)</script> & "x"', bullets: ['<b>'] } });
   assert.ok(!markup.includes('<script>alert(1)'));
   assert.ok(markup.includes('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;x&quot;'));
+}
+
+// The source line as the app puts it into a scene (withSourceLine): where it goes, how it looks, and that no text can break the page.
+function testSourceElement() {
+  assert.equal(scene.SOURCE_FONT_PX, 26);
+  assert.equal(scene.SOURCE_BOTTOM_SHARE, 0.015);
+  assert.deepEqual({ ...scene.FREE_BAND_PERCENT }, { landscape: 20, portrait: 16 });
+  const tokens = scene.brandTokens({ colors: [{ role: 'background', hex: '#fafafa' }, { role: 'text', hex: '#1a1a2e' }, { role: 'accent', hex: '#e8590c' }], fonts: [{ role: 'body', family: 'Brand Text' }] });
+  const page = goodScene();
+  const elementOf = (html) => /<div id="oc-source" style="([^"]*)">([^<]*)<\/div>/.exec(html);
+  const declarationsOf = (style) => Object.fromEntries(style.split(';').map((part) => [part.slice(0, part.indexOf(':')), part.slice(part.indexOf(':') + 1)]));
+
+  // with a root element: its first child, and nothing else changes
+  const lined = scene.withSourceLine(page, 'Pegelbericht 2026, S. 1, 2', { format: 'landscape', tokens });
+  const rootTag = /<div id="main-composition"[^>]*>/.exec(page)[0];
+  assert.ok(lined.includes(`${rootTag}\n<div id="oc-source" style="`), 'the first child of the root element');
+  assert.equal((lined.match(/id="oc-source"/g) || []).length, 1);
+  assert.equal(lined.replace(/\n<div id="oc-source"[^]*?<\/div>/, ''), page, 'the rest of the code is as it was');
+  assert.deepEqual(scene.checkCode(lined), [], 'a good scene stays good');
+  assert.equal(elementOf(lined)[2], 'Pegelbericht 2026, S. 1, 2');
+  // landscape: 115 px at the sides (6 % of the width), 16 px from the bottom (1.5 % of the height)
+  const style = declarationsOf(elementOf(lined)[1]);
+  assert.deepEqual(
+    { ...style, 'font-family': undefined },
+    { position: 'absolute', left: '115px', right: '115px', bottom: '16px', 'text-align': 'right', 'white-space': 'nowrap', overflow: 'hidden', 'text-overflow': 'ellipsis', 'font-size': '26px', 'line-height': '1.2', color: tokens.muted, 'z-index': '2147483647', 'pointer-events': 'none', 'font-family': undefined }
+  );
+  assert.ok(style['font-family'].startsWith("'Brand Text', system-ui"), style['font-family']);
+  assert.ok(!/opacity|transition|animation/.test(elementOf(lined)[1]) && !/data-start|class="clip"/.test(elementOf(lined)[0]), 'static: no animation, nothing on the timeline');
+  // portrait: 65 px at the sides, 29 px from the bottom
+  const tall = declarationsOf(elementOf(scene.withSourceLine(goodScene({ width: 1080, height: 1920 }), 'x', { format: 'portrait', tokens }))[1]);
+  assert.deepEqual([tall.left, tall.right, tall.bottom, tall['font-size']], ['65px', '65px', '29px', '26px']);
+  // it sits below the subtitles that are burnt in (65 px, two lines, 6 % of the height from the bottom: ends 65 px above the bottom in
+  // landscape, 115 px in portrait) and below the free band
+  const line = Math.round(26 * 1.2);
+  assert.ok(16 + line < 65 && 29 + line < 115, 'the line is lower than the subtitles in both formats');
+  assert.ok(1080 - 16 - line > 1080 * 0.8 && 1920 - 29 - line > 1920 * 0.84, 'and inside the free band');
+  // without a tokens argument: the neutral look; the format defaults to landscape
+  assert.equal(declarationsOf(elementOf(scene.withSourceLine(page, 'x'))[1]).bottom, '16px');
+
+  // no root element: before the last </body>, or at the end
+  const noRoot = '<!doctype html><html><body><p>a</p></body></html>';
+  assert.equal(scene.withSourceLine(noRoot, 'S. 1').replace(/<div id="oc-source"[^]*?<\/div>\n?/, ''), noRoot);
+  assert.ok(/<p>a<\/p><div id="oc-source"[^>]*>S\. 1<\/div>\n<\/body><\/html>$/.test(scene.withSourceLine(noRoot, 'S. 1')));
+  const twoBodies = '<body><p>a</p></body><!-- </body> --><body></body>';
+  const into = scene.withSourceLine(twoBodies, 'S. 1');
+  assert.ok(into.indexOf('oc-source') > into.indexOf('<!-- </body> -->'), 'before the LAST </body>');
+  assert.ok(into.endsWith('\n</body>') && into.indexOf('oc-source') < into.lastIndexOf('</body>'));
+  assert.ok(/^<p>fragment<\/p>\n<div id="oc-source"/.test(scene.withSourceLine('<p>fragment</p>', 'S. 1')), 'a fragment: at the end');
+  assert.ok(/^\n<div id="oc-source"[^>]*>S\. 1<\/div>$/.test(scene.withSourceLine('', 'S. 1')));
+
+  // no text: the code stays as it is
+  for (const empty of ['', '   ', '\n\t', null, undefined, 'https://']) assert.equal(scene.withSourceLine(page, empty, { tokens }), page, `empty source: ${JSON.stringify(empty)}`);
+
+  // text with <, " and &: escaped, and no tag comes of it
+  const hostile = scene.withSourceLine(page, 'A <b>bold</b> & "quoted" <script>alert(1)</script> report, S. 1', { tokens });
+  assert.equal(elementOf(hostile)[2], 'A &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; &lt;script&gt;alert(1)&lt;/script&gt; report, S. 1');
+  assert.equal((hostile.match(/<script/g) || []).length, (page.match(/<script/g) || []).length, 'no script was added');
+  assert.ok(!hostile.includes('<b>'));
+  assert.deepEqual(scene.checkCode(hostile), [], 'the check of the code finds nothing in it');
+  // words that the check forbids in code are only text here (it reads the visible text of a page as text)
+  assert.deepEqual(scene.checkCode(scene.withSourceLine(page, 'Bericht zur location, top.x, innerHTML und parent.y', { tokens })), []);
+  // a web address loses its scheme; blanks and line breaks become one blank
+  assert.equal(elementOf(scene.withSourceLine(page, 'Quelle:\n  https://example.org/a   S. 2', { tokens }))[2], 'Quelle: example.org/a S. 2');
+  // a placeholder of an attached file in a title (the render would refuse the page): no placeholder is left
+  const placeholder = scene.withSourceLine(page, 'Bericht {{asset:9}} und {{ asset : 1 }}', { tokens });
+  assert.ok(!/\{\{\s*asset\s*:\s*\d+\s*\}\}/.test(placeholder), 'no {{asset:N}} in the page');
+  assert.ok(elementOf(placeholder)[2].includes('&#123;&#123;asset:9}}'), elementOf(placeholder)[2]);
+
+  // tokens that were made another way cannot break the attribute either: no quote, bracket, semicolon or backslash gets in, no
+  // declaration is added, no tag is opened, and a colour that is no colour is replaced
+  const evil = { ...tokens, body: `x"><script>alert(1)</script>{}; background:red\\ \n"`, muted: 'red" onmouseover="alert(1)' };
+  const broken = scene.withSourceLine(page, 'S. 1', { tokens: evil });
+  assert.equal((broken.match(/<script/g) || []).length, (page.match(/<script/g) || []).length);
+  assert.ok(!broken.includes('onmouseover'));
+  const brokenStyle = elementOf(broken);
+  assert.ok(brokenStyle, 'the element is still one element with one attribute');
+  assert.equal(brokenStyle[1].split(';').length, 14, 'no declaration was added');
+  assert.equal(declarationsOf(brokenStyle[1]).color, scene.brandTokens(null).muted, 'the colour that is none is replaced');
+  assert.ok(!/["<>{}\\\n]/.test(declarationsOf(brokenStyle[1])['font-family']), declarationsOf(brokenStyle[1])['font-family']);
+  assert.equal(declarationsOf(elementOf(scene.withSourceLine(page, 'S. 1', { tokens: { ...tokens, body: '', muted: '' } }))[1])['font-family'], scene.brandTokens(null).body, 'no font: the system font');
+  // the font name of a brand cannot break out either, through fontStack
+  const quoted = scene.brandTokens({ fonts: [{ role: 'body', family: `x'"; } </style><script>alert(1)</script> {` }] });
+  const fromBrand = scene.withSourceLine(page, 'S. 1', { tokens: quoted });
+  assert.equal((fromBrand.match(/<script/g) || []).length, (page.match(/<script/g) || []).length);
+  assert.equal(declarationsOf(elementOf(fromBrand)[1]).bottom, '16px', 'the declarations after the font are all there');
 }
 
 testCodeCheck();
@@ -630,4 +766,5 @@ testBriefAndReferences();
 testPrompts();
 testVerdict();
 testFallback();
+testSourceElement();
 console.log('test-explainer-scene.js: ok');

@@ -6,6 +6,7 @@
 //   - the lines of the subtitles and the timing JSON in the format of audio.lyrics_timing (words name their lines)
 //   - the cues of the elements: found, found as a similar word, found by its first strong word, not found (spread evenly),
 //     without an anchor, the minimum time, the order, an anchor that is said earlier, a scene without words, the latest time
+//   - the title that opens a scene comes at the minimum time whatever its anchor says; the other elements keep their times
 
 const assert = require('assert/strict');
 const cues = require('../lib/explainer-cues');
@@ -146,7 +147,7 @@ function testCues() {
   // found: the start of the anchor word minus 0.15 s
   const found = cues.cuesFor(
     [
-      { id: 'e1', type: 'title', content: 'Lindensee', anchor: 'Lindensee' },
+      { id: 'e1', type: 'bullet', content: 'Lindensee', anchor: 'Lindensee' },
       { id: 'e2', type: 'bullet', content: 'Sommer', anchor: 'Sommer' },
       { id: 'e3', type: 'bullet', content: 'Prognose', anchor: 'Prognose' }
     ],
@@ -170,13 +171,13 @@ function testCues() {
   assert.equal(atZero.cues[0].at, 0.2);
 
   // found as a similar word: Lindenseen ~ Lindensee, with a note
-  const similar = cues.cuesFor([{ id: 'e1', type: 'title', content: 'x', anchor: 'Lindenseen' }], timing, duration);
+  const similar = cues.cuesFor([{ id: 'e1', type: 'bullet', content: 'x', anchor: 'Lindenseen' }], timing, duration);
   assert.equal(similar.cues[0].found, true);
   near(similar.cues[0].at, start('Lindensee') - 0.15, 0.002);
   assert.match(similar.notes[0], /e1.*similar/);
 
   // found by its first strong word: the phrase "Lindensee schrumpft" is not there word for word, but its first word is
-  const strong = cues.cuesFor([{ id: 'e1', type: 'title', content: 'x', anchor: 'Lindensee schrumpft' }], timing, duration);
+  const strong = cues.cuesFor([{ id: 'e1', type: 'bullet', content: 'x', anchor: 'Lindensee schrumpft' }], timing, duration);
   assert.equal(strong.cues[0].found, true, 'the first strong word of the phrase counts');
   near(strong.cues[0].at, start('Lindensee') - 0.15, 0.002);
 
@@ -244,6 +245,42 @@ function testCues() {
   // the latest time: a word at the very end is not later than 0.3 s before the end of the scene
   const late = cues.cuesFor([{ id: 'e1', type: 'bullet', content: 'x', anchor: 'Ende' }], { words: wordsAt(['Alles', 'zum', 'Ende'], { first: 0.5, step: 1.5 }), duration: 5 }, 5.4);
   assert.ok(late.cues[0].at <= 5.4 - 0.3 + 1e-9);
+
+  // the title opens the scene: a title tied to a word far into the narration (the live test: "vier Massnahmen", six words in, two seconds
+  // of an empty scene) comes at the minimum time all the same; the other elements keep the times they have with a bullet in its place
+  const tied = [
+    { id: 'e1', type: 'title', content: 'Vier Massnahmen', anchor: 'Sommer' },
+    { id: 'e2', type: 'bullet', content: 'x', anchor: 'Prognose' },
+    { id: 'e3', type: 'bullet', content: 'x', anchor: 'düster' }
+  ];
+  const opened = cues.cuesFor(tied, timing, duration);
+  assert.equal(opened.cues[0].at, cues.MIN_CUE, 'the title is at the minimum time');
+  assert.equal(opened.cues[0].found, true, 'it still says that its anchor was found');
+  const control = cues.cuesFor([{ ...tied[0], type: 'bullet' }, tied[1], tied[2]], timing, duration);
+  assert.ok(control.cues[0].at > 1.5, `without the rule the title waits for its word: ${control.cues[0].at}`);
+  assert.deepEqual(opened.cues.slice(1).map((cue) => cue.at), control.cues.slice(1).map((cue) => cue.at), 'the others keep their times');
+  for (let index = 1; index < opened.cues.length; index += 1) assert.ok(opened.cues[index].at >= opened.cues[index - 1].at, 'the order holds');
+  assert.equal(opened.notes.length, 1);
+  assert.match(opened.notes[0], /^e1: the title comes at the start of the scene, [\d.]+ s earlier than its anchor "Sommer" would have put it$/);
+  near(Number(/, ([\d.]+) s earlier/.exec(opened.notes[0])[1]), control.cues[0].at - cues.MIN_CUE, 0.0006, 'the note names how much earlier');
+  // a title that comes no more than 0.3 s earlier is moved without a note: the word at 0.5 s gives a cue at 0.35 s, the word at 0.8 s one at 0.65 s
+  const small = cues.cuesFor([{ id: 'e1', type: 'title', content: 'x', anchor: 'b' }], { words: wordsAt(['a', 'b', 'c'], { first: 0.2, step: 0.3 }), duration: 3 }, 3.4);
+  assert.equal(small.cues[0].at, cues.MIN_CUE);
+  assert.deepEqual(small.notes, [], '0.1 s earlier is not worth a note');
+  const edge = cues.cuesFor([{ id: 'e1', type: 'title', content: 'x', anchor: 'c' }], { words: wordsAt(['a', 'b', 'c'], { first: 0.2, step: 0.3 }), duration: 3 }, 3.4);
+  assert.equal(edge.cues[0].at, cues.MIN_CUE);
+  assert.equal(edge.notes.length, 1, 'a cue at 0.65 s is 0.45 s earlier');
+  // only the FIRST element, and only a title: a title behind a bullet keeps its time, a bullet is never moved
+  const behind = cues.cuesFor([{ id: 'e1', type: 'bullet', content: 'x', anchor: 'Seit' }, { id: 'e2', type: 'title', content: 'x', anchor: 'Prognose' }], timing, duration);
+  near(behind.cues[1].at, start('Prognose') - 0.15, 0.002, 'a title that is not first is timed by its anchor');
+  const bulletFirst = cues.cuesFor([{ id: 'e1', type: 'bullet', content: 'x', anchor: 'Prognose' }], timing, duration);
+  near(bulletFirst.cues[0].at, start('Prognose') - 0.15, 0.002);
+  // a title without an anchor, or whose anchor is not said: the minimum time as before, nothing to note
+  const loose = cues.cuesFor([{ id: 'e1', type: 'title', content: 'x', anchor: '' }, { id: 'e2', type: 'bullet', content: 'x', anchor: 'Sommer' }], timing, duration);
+  assert.equal(loose.cues[0].at, cues.MIN_CUE);
+  assert.ok(!loose.notes.some((note) => /the title comes/.test(note)));
+  // a scene without words keeps its own start (the sources card: the title at 0.3 s, then the lines)
+  assert.deepEqual(cues.cuesFor([{ id: 'e1', type: 'title', anchor: '' }, { id: 'e2', type: 'bullet', anchor: '' }], { words: [], duration: 4 }, 4.4).cues.map((cue) => cue.at), [0.3, 0.65]);
 
   // a scene without words (the sources card): staggered from 0.3 s
   const silent = cues.cuesFor(

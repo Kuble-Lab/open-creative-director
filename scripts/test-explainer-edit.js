@@ -11,6 +11,8 @@
 //   - intro and outro (hard cut, their own sound), clips of the shots (trimmed, slowed down, held), 16:9 and 9:16
 //   - the length against the target (a warning above 15 %), the codes of the errors, no scratch folders left behind
 //   - the caption script reaches the encoder once, shifted (with a stand-in for libass where the ffmpeg has none)
+//   - the sound is brought to -16 LUFS (measured by loudnorm, one gain, a limiter): the helpers (pure), a quiet sine and a loud one measured
+//     with another meter (ebur128), the film, the log line, a film without sound, a call that fails (the sound stays as it is)
 // A private copy of the app runs in a temp directory; nothing is paid, nothing leaves the machine. Skipped when ffmpeg is missing.
 
 const assert = require('assert/strict');
@@ -108,6 +110,42 @@ function testPure({ editLib, cuesLib, musicEdit }) {
   assert.throws(() => editLib.soundtrackArgs({ voices: [{ file: '/a' }], timeline: cut, outputFile: '/o' }), /Every scene needs a voice/);
   assert.throws(() => editLib.soundtrackArgs({ voices: [{}, {}, {}], timeline: { ...cut, fps: 29.97 }, outputFile: '/o' }), /does not divide/);
   assert.deepEqual(editLib.MUSIC_LEVELS, { off: 0, quiet: 0.12, medium: 0.25, loud: 0.45 });
+
+  // the loudness: the call that measures, what is read from it, the gain (between -12 and +20 dB, steps of 0.1 dB), the call that applies it
+  assert.deepEqual(editLib.loudnessProbeArgs('/f.wav'), ['-nostdin', '-hide_banner', '-nostats', '-i', '/f.wav', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json', '-f', 'null', '-']);
+  assert.ok(!editLib.loudnessProbeArgs('/f.wav').includes('-v'), 'no "-v error": loudnorm writes its block at the level info');
+  const block = '[Parsed_loudnorm_0 @ 0x1] \n{\n\t"input_i" : "-23.45",\n\t"input_tp" : "-4.50",\n\t"input_lra" : "5.40",\n\t"input_thresh" : "-33.94",\n\t"output_i" : "-16.41",\n\t"target_offset" : "0.41"\n}\n';
+  assert.equal(editLib.readLoudness(`Input #0, wav, from 'x.wav':\n  Duration: 00:00:05.00\n${block}[out#0/null @ 0x2] video:0KiB audio:1875KiB`), -23.45);
+  assert.equal(editLib.readLoudness(`{"input_i":"-30.1"}\n${block}`), -23.45, 'the last block counts');
+  assert.equal(editLib.readLoudness('{broken json}\n{"input_i":"-20.5"}'), -20.5, 'a block that is no JSON is passed over');
+  assert.equal(editLib.readLoudness('{"input_i": -19.2}'), -19.2, 'a number as well as a text');
+  for (const nothing of ['{"input_i" : "-inf", "input_tp" : "-inf"}', '{"input_i":"inf"}', '{"input_tp":"-3"}', '{"input_i":""}', '{"input_i":"abc"}', '{"input_i":null}', '[1,2]', 'no block at all', '', undefined, null]) {
+    assert.equal(editLib.readLoudness(nothing), null, `nothing to read in ${JSON.stringify(nothing)}`);
+  }
+  assert.equal(editLib.TARGET_LUFS, -16);
+  assert.equal(editLib.gainFor(-23), 7);
+  assert.equal(editLib.gainFor(-23.04), 7, 'rounded to 0.1 dB');
+  assert.equal(editLib.gainFor(-23.06), 7.1);
+  assert.equal(editLib.gainFor(-9.3), -6.7);
+  assert.equal(editLib.gainFor(-16), 0);
+  assert.ok(Object.is(editLib.gainFor(-16.04), 0), 'a gain that rounds to nothing is 0, not -0');
+  assert.equal(editLib.gainFor(-36), 20, 'exactly +20 dB is still allowed');
+  assert.equal(editLib.gainFor(-40), 20, 'a very quiet sound: at most +20 dB');
+  assert.equal(editLib.gainFor(-70), 20);
+  assert.equal(editLib.gainFor(-4), -12, 'exactly -12 dB is still allowed');
+  assert.equal(editLib.gainFor(-2), -12, 'a very loud sound: at most -12 dB');
+  assert.equal(editLib.gainFor(0), -12);
+  assert.deepEqual([editLib.GAIN_MIN_DB, editLib.GAIN_MAX_DB], [-12, 20]);
+  for (const nothing of [null, undefined, NaN, -Infinity, Infinity, '-20', {}]) assert.equal(editLib.gainFor(nothing), null, `no gain for ${String(nothing)}`);
+  assert.deepEqual(editLib.normalizeArgs({ inputFile: '/in.wav', outputFile: '/out.wav', gainDb: 7 }), ['-nostdin', '-v', 'error', '-y', '-i', '/in.wav', '-af', 'volume=7dB,alimiter=limit=0.84:attack=5:release=50:level=disabled', '-c:a', 'pcm_s16le', '-ar', '48000', '/out.wav']);
+  assert.equal(editLib.normalizeArgs({ inputFile: 'a', outputFile: 'b', gainDb: -7.3 })[7], 'volume=-7.3dB,alimiter=limit=0.84:attack=5:release=50:level=disabled');
+  assert.equal(editLib.normalizeArgs({ inputFile: 'a', outputFile: 'b', gainDb: 0 })[7], 'volume=0dB,alimiter=limit=0.84:attack=5:release=50:level=disabled', 'the limiter works at 0 dB too');
+  assert.throws(() => editLib.normalizeArgs({ inputFile: 'a', outputFile: 'b', gainDb: NaN }), /Invalid number/);
+  assert.equal(editLib.SOUND_LIMIT, 0.84);
+  assert.ok(Math.abs(20 * Math.log10(editLib.SOUND_LIMIT) + 1.5) < 0.05, 'the limit is about -1.5 dBFS');
+  assert.equal(editLib.levelNote(7), 'sound: +7.0 dB to -16 LUFS');
+  assert.equal(editLib.levelNote(-7.3), 'sound: -7.3 dB to -16 LUFS');
+  assert.equal(editLib.levelNote(0), 'sound: +0.0 dB to -16 LUFS');
 
   // the word times of the scenes in the times of the film
   const first = cuesLib.timingOf([{ text: 'Eins.', start: 0.2, end: 0.6 }, { text: 'Zwei', start: 0.8, end: 1.1 }, { text: 'drei.', start: 1.2, end: 1.6 }], 1.7);
@@ -222,8 +260,34 @@ async function run(iso) {
       logs
     };
   }
-  const exec = (ctx, inputs, raw = {}) => def.execute(ctx, inputs, real.normalizeParams(def, { resolution: '720p', captions: 'off', music_level: 'medium', ...raw }));
   const fileOf = (value) => assets.assetFilePath(value);
+  // The cut brings the sound to -16 LUFS and logs the gain ("sound: -7.3 dB to -16 LUFS"). The level assertions of this test were made for the
+  // voices and the music as they are made (a tone of 0.5, music at a quarter of that), so the sound of a film is read back by the gain of its
+  // log (filmPcm) and the numbers mean what they always meant; that the film is really at -16 LUFS is measured on its own (the loudness
+  // tests below), and a gain that the log names wrongly would show in these levels.
+  const gains = new Map();
+  const gainOf = (ctx) => {
+    const found = ctx.logs.map((line) => /^sound: ([+-]\d+(?:\.\d+)?) dB to -16 LUFS$/.exec(line)).find(Boolean);
+    return found ? Number(found[1]) : null;
+  };
+  const exec = async (ctx, inputs, raw = {}) => {
+    const result = await def.execute(ctx, inputs, real.normalizeParams(def, { resolution: '720p', captions: 'off', music_level: 'medium', ...raw }));
+    gains.set(fileOf(result.variants[0].video), gainOf(ctx));
+    return result;
+  };
+  const filmPcm = async (file) => {
+    const pcm = await media.pcm(file);
+    const gain = gains.get(file);
+    if (typeof gain !== 'number') return pcm;
+    const back = 10 ** (-gain / 20);
+    return { ...pcm, samples: pcm.samples.map((value) => value * back) };
+  };
+  // Another meter than the one the node uses (loudnorm): ebur128 gives the integrated loudness (LUFS) and the true peak (dBFS) of a file.
+  const meter = async (file) => {
+    const { stderr } = await ffmpegLib.runProcess(bins.ffmpeg, ['-nostdin', '-hide_banner', '-nostats', '-i', file, '-af', 'ebur128=peak=true', '-f', 'null', '-']);
+    const summary = stderr.slice(stderr.lastIndexOf('Summary'));
+    return { lufs: Number(/I:\s+(-?[\d.]+) LUFS/.exec(summary)[1]), peak: Number(/Peak:\s+(-?[\d.]+) dBFS/.exec(summary)[1]) };
+  };
 
   // voices: one tone each; the scene is the voice plus 0.4 s
   const TONES = [1000, 1500, 2000, 2500, 3000, 3500];
@@ -289,7 +353,7 @@ async function run(iso) {
     assert.equal(await media.colourAt(file, 3.0), COLOURS[1]);
     assert.equal(await media.colourAt(file, 5.5), COLOURS[2]);
     // the voices: each begins exactly where its scene begins, ends with its length, and the 0.4 s after it are silent
-    const { samples, rate } = await media.pcm(file);
+    const { samples, rate } = await filmPcm(file);
     const starts = [0, 2.4, 4.3];
     voices.forEach((voice, index) => {
       const onset = onsetOf(samples, rate, TONES[index], { from: Math.max(0, starts[index] - 0.2) });
@@ -305,6 +369,13 @@ async function run(iso) {
     // the log: real length, and no warning without a wish
     assert.ok(ctx.logs.some((line) => /3 scenes, 7.2 s at 30 fps, 1280x720/.test(line)), ctx.logs.join(' | '));
     assert.ok(!ctx.logs.some((line) => /Warning/.test(line)));
+    // the sound: the log names the gain, and another meter finds the film at -16 LUFS, under the limit of -1.5 dBFS (a little more for the
+    // encoder)
+    assert.equal(ctx.logs.filter((line) => /^sound: /.test(line)).length, 1, 'one line about the sound');
+    assert.match(ctx.logs.find((line) => /^sound: /.test(line)), /^sound: -\d+\.\d dB to -16 LUFS$/, 'the tones of the test are loud: the film is made quieter');
+    const loudFilm = await meter(file);
+    near(loudFilm.lufs, -16, 1.5, `the film is at -16 LUFS: ${loudFilm.lufs}`);
+    assert.ok(loudFilm.peak < -1, `the peak stays under the limit: ${loudFilm.peak} dBFS`);
     assert.deepEqual(await scratchLeft(), [], 'no scratch folder is left');
     // the subtitles and the captions of the film
     const lines = out.subtitles.value.split('\n\n');
@@ -328,7 +399,7 @@ async function run(iso) {
     near(info.frames, 200, 1, 'three scenes, two fades of 8 frames');
     near(info.duration, 200 / 30, 0.06);
     const starts = [0, 64 / 30, 113 / 30];
-    const { samples, rate } = await media.pcm(file);
+    const { samples, rate } = await filmPcm(file);
     voices.forEach((voice, index) => {
       near(onsetOf(samples, rate, TONES[index], { from: Math.max(0, starts[index] - 0.2) }), starts[index], 0.03, `voice ${index + 1} at the start of its picture`);
       near(endOf(samples, rate, TONES[index]), starts[index] + voice, 0.03);
@@ -357,7 +428,7 @@ async function run(iso) {
     const timeline = editLib.planTimeline({ durations: many.map((voice) => cuesLib.sceneDuration(voice)), fps: 30, transition: 'crossfade' });
     const info = await media.probe(file);
     near(info.frames, timeline.totalFrames, 1);
-    const { samples, rate } = await media.pcm(file);
+    const { samples, rate } = await filmPcm(file);
     for (let index = 0; index < 12; index += 1) {
       const start = timeline.starts[index] / 30;
       const frequency = TONES[index % TONES.length];
@@ -380,6 +451,94 @@ async function run(iso) {
     assert.equal(captions.words.length, 6, 'the card adds no words');
   }
 
+  /* ---------- the loudness: a quiet sound is brought to -16 LUFS, a loud one down, the limiter holds the peaks ---------- */
+
+  {
+    // the helpers on real files, measured with the other meter: a sine at -30 dBFS (about -33 LUFS) goes up by 17 dB, a loud one down by the
+    // 12 dB that are allowed at most
+    const through = async (name, amplitude, { frequency = 1000, gainDb = null } = {}) => {
+      const input = path.join(workDir, `${name}.wav`);
+      await fsp.writeFile(input, toneWav(6, frequency, { amplitude }));
+      const before = await meter(input);
+      const measured = editLib.readLoudness((await ffmpegLib.runProcess(bins.ffmpeg, editLib.loudnessProbeArgs(input))).stderr);
+      const gain = gainDb === null ? editLib.gainFor(measured) : gainDb;
+      const output = path.join(workDir, `${name}-level.wav`);
+      await ffmpegLib.runProcess(bins.ffmpeg, editLib.normalizeArgs({ inputFile: input, outputFile: output, gainDb: gain }));
+      return { before, measured, gain, after: await meter(output), samples: (await media.pcm(output)).samples };
+    };
+    const quietSine = await through('quiet-sine', 10 ** (-30 / 20));
+    near(quietSine.measured, quietSine.before.lufs, 0.3, 'loudnorm and ebur128 agree on the loudness of the sound');
+    near(quietSine.gain, 17, 0.5);
+    near(quietSine.after.lufs, -16, 1.5, `a sine at -30 dBFS is brought to -16 LUFS: ${quietSine.after.lufs}`);
+    const loudSine = await through('loud-sine', 0.9);
+    assert.equal(loudSine.gain, -12, 'a sound that is 12 dB or more above the target is lowered by 12 dB');
+    near(loudSine.after.lufs, loudSine.before.lufs - 12, 0.3, 'by exactly the gain');
+    near(loudSine.after.lufs, -16, 1.5);
+    // the limiter: 6 dB more than the sound has room for is held under 0.84 (about -1.5 dBFS), not cut off flat
+    const limited = await through('limited-sine', 0.5, { gainDb: 6 });
+    assert.ok(limited.after.peak <= -1.2, `held under the limit: ${limited.after.peak} dBFS`);
+    const top = limited.samples.reduce((peak, value) => Math.max(peak, Math.abs(value)), 0);
+    assert.ok(top <= 0.85 && top > 0.7, `the highest sample is at the limit of 0.84: ${top}`);
+    // and a sound that is at the target already (a sine whose peak is at -13 dBFS: -16 LUFS) is left where it is
+    const even = await through('even-sine', 10 ** (-13 / 20));
+    near(even.after.lufs, -16, 1.5);
+    assert.ok(Math.abs(even.gain) <= 0.5 + 1e-9, `already near the target: ${even.gain} dB`);
+
+    // a film without any sound to measure (silent scenes only): the film is made, the log says that the sound stays as it is
+    const mute = await filmOf([0, 0]);
+    const muteCtx = makeCtx();
+    const muteResult = await exec(muteCtx, mute.inputs, { transition: 'cut', fps: '30' });
+    assert.ok(muteCtx.logs.some((line) => /^sound: the loudness could not be measured \(no sound to measure\): left as it is$/.test(line)), muteCtx.logs.join(' | '));
+    assert.ok(!muteCtx.logs.some((line) => /dB to -16 LUFS/.test(line)));
+    assert.ok((await media.probe(fileOf(muteResult.variants[0].video))).hasAudio, 'the film has its (silent) sound');
+    assert.deepEqual(await scratchLeft(), []);
+
+    // a call that fails does not end the node: the sound stays as it is, the log says why. Once for the measuring, once for the change.
+    const realRun = ffmpegLib.runProcess;
+    const failing = (text) => async (command, args, options) => {
+      if (args.some((arg) => String(arg).includes(text))) throw new Error(`ffmpeg ist fehlgeschlagen (Exit 1): No such filter: ${text}`);
+      return realRun(command, args, options);
+    };
+    const quietFilm = await filmOf([2.0, 1.5]);
+    for (const text of ['loudnorm', 'alimiter']) {
+      ffmpegLib.runProcess = failing(text);
+      let broken;
+      try {
+        broken = makeCtx();
+        const result = await exec(broken, quietFilm.inputs, { transition: 'cut', fps: '30' });
+        const file = fileOf(result.variants[0].video);
+        assert.ok(broken.logs.some((line) => new RegExp(`^sound: the loudness could not be set \\(ffmpeg ist fehlgeschlagen \\(Exit 1\\): No such filter: ${text}\\): left as it is$`).test(line)), broken.logs.join(' | '));
+        assert.equal(gains.get(file), null, 'no gain was applied');
+        const level = amplitudeAt((await media.pcm(file)).samples, 48000, 1000, 0.3, 1.8);
+        near(level, 0.5, 0.06, `${text} fails: the voice is at the level it has been made with`);
+      } finally {
+        ffmpegLib.runProcess = realRun;
+      }
+      assert.deepEqual(await scratchLeft(), []);
+    }
+    // the end of the run is not a failure to be passed over: an abort ends the node
+    const stopping = makeCtx();
+    const controller = new AbortController();
+    stopping.signal = controller.signal;
+    ffmpegLib.runProcess = async (command, args, options) => {
+      if (args.some((arg) => String(arg).includes('loudnorm'))) {
+        controller.abort();
+        const err = new Error('Aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      return realRun(command, args, options);
+    };
+    try {
+      const aborted = await errorOf(exec(stopping, quietFilm.inputs, { transition: 'cut', fps: '30' }));
+      assert.ok(aborted, 'an abort while the sound is measured ends the node');
+      assert.ok(!stopping.logs.some((line) => /left as it is/.test(line)), 'and is not taken for a failed measurement');
+    } finally {
+      ffmpegLib.runProcess = realRun;
+    }
+    assert.deepEqual(await scratchLeft(), []);
+  }
+
   /* ---------- music ---------- */
 
   {
@@ -389,7 +548,7 @@ async function run(iso) {
     const run = async (extra, raw = {}) => {
       const result = await exec(makeCtx(), withInputs(cardFilm, { music, ...extra }), { transition: 'cut', fps: '30', fade_out: 0, ...raw });
       const file = fileOf(result.variants[0].video);
-      return { ...(await media.pcm(file)), info: await media.probe(file) };
+      return { ...(await filmPcm(file)), info: await media.probe(file) };
     };
     const cardStart = 2.4 + 1.9;
     const medium = await run({}, { music_level: 'medium', ducking: false });
@@ -419,11 +578,11 @@ async function run(iso) {
     assert.ok(level(loud) > 3 * level(quiet));
     // no music: nothing at that pitch
     const none = await exec(makeCtx(), cardFilm.inputs, { transition: 'cut', fps: '30', fade_out: 0 });
-    const noMusic = await media.pcm(fileOf(none.variants[0].video));
+    const noMusic = await filmPcm(fileOf(none.variants[0].video));
     assert.ok(amplitudeAt(noMusic.samples, noMusic.rate, 200, cardStart + 1.0, cardStart + 3.5) < 0.005);
     // the fade-out at the end takes the sound down with the picture
     const faded = await exec(makeCtx(), withInputs(cardFilm, { music }), { transition: 'cut', fps: '30', fade_out: 2, music_level: 'loud', ducking: false });
-    const fadedAudio = await media.pcm(fileOf(faded.variants[0].video));
+    const fadedAudio = await filmPcm(fileOf(faded.variants[0].video));
     const total = (await media.probe(fileOf(faded.variants[0].video))).duration;
     assert.ok(amplitudeAt(fadedAudio.samples, fadedAudio.rate, 200, total - 0.3, total - 0.05) < 0.5 * amplitudeAt(fadedAudio.samples, fadedAudio.rate, 200, cardStart + 1, cardStart + 1.25));
     assert.deepEqual(await scratchLeft(), []);
@@ -445,7 +604,7 @@ async function run(iso) {
     const info = await media.probe(file);
     // 60 + 72 + 57 + 45 frames, less one frame at each hard cut and the fade between the scenes
     near(info.frames, 224, 1);
-    const { samples, rate } = await media.pcm(file);
+    const { samples, rate } = await filmPcm(file);
     near(onsetOf(samples, rate, 700), 0, 0.03, 'the intro speaks from the first moment');
     near(endOf(samples, rate, 700), 59 / 30, 0.05, 'its sound is not faded away (one frame is the price of a hard cut)');
     near(onsetOf(samples, rate, 1000, { from: 1.5 }), 59 / 30, 0.03, 'the first voice comes with the first scene');
@@ -465,7 +624,7 @@ async function run(iso) {
     // an intro without a sound is silence at its place
     const silentIntro = await fileAsset(await media.colourClip('c0c0c0', 2.0));
     const silent = await exec(makeCtx(), withInputs(twoScenes, { intro: silentIntro }), { transition: 'cut', fps: '30' });
-    const silentSound = await media.pcm(fileOf(silent.variants[0].video));
+    const silentSound = await filmPcm(fileOf(silent.variants[0].video));
     near(onsetOf(silentSound.samples, silentSound.rate, 1000), 2.0, 0.03, 'the first voice after two seconds of silence');
     assert.deepEqual(await scratchLeft(), []);
   }
@@ -495,7 +654,7 @@ async function run(iso) {
     assert.equal(await media.colourAt(file, thirdStart + 1.4), '0000ff');
     assert.equal(await media.colourAt(file, thirdStart + 4.3), '0000ff', 'the last frame is held to the end of the scene');
     // the voice of a clip scene is the voice of the scene
-    const { samples, rate } = await media.pcm(file);
+    const { samples, rate } = await filmPcm(file);
     near(onsetOf(samples, rate, TONES[1], { from: secondStart - 0.2 }), secondStart, 0.03);
     near(onsetOf(samples, rate, TONES[2], { from: thirdStart - 0.2 }), thirdStart, 0.03);
 

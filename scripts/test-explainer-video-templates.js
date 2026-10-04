@@ -622,8 +622,14 @@ async function run(iso, eleven) {
     assert.equal(attachedTo(2), 1, 'the figure of scene 2');
     assert.match(writerCalls().find((call) => sceneNumber(call) === 2).options.prompt, /a figure cut out of a page of the document/);
     assert.deepEqual([1, 3, 4, 5, 6, 7, 8].map(attachedTo), [0, 1, 0, 0, 0, 1, 0], 'the stills of scenes 3 and 7, nothing else');
-    // the source line of the scenes names the document by its title, not by its file name
-    assert.match(writerCalls().find((call) => sceneNumber(call) === 1).options.prompt, /Marktbericht/);
+    // the source line of the scenes names the document by its title, not by its file name; the app puts it into the code of the scene, the
+    // model is never told its text
+    const renderOf = (k) => renders.find((entry) => entry.html.includes(`>Titel ${k}</h1>`));
+    assert.match(renderOf(1).html, /<div id="oc-source"[^>]*>Marktbericht, S\. 1<\/div>/);
+    assert.match(renderOf(2).html, /<div id="oc-source"[^>]*>Marktbericht, S\. 2<\/div>/);
+    assert.ok(writerCalls().filter((call) => sceneNumber(call) <= 12).every((call) => !/Marktbericht/.test(call.options.prompt)), 'the model does not see the source line');
+    // the closing card of the sources has ONE line for the document, with both pages
+    assert.match(writerCalls().find((call) => sceneNumber(call) === 13).options.prompt, /Title: Quellen\nBullets:\n- Marktbericht \(S\. 1, 2\)\n/);
     assert.equal(pictures.length, 2);
     const final = (await resultOf(id, 'n8')).variants[0];
     assert.equal((await media.probe(assets.assetFilePath(final.video))).hasAudio, true);
