@@ -168,10 +168,38 @@ async function run(iso) {
     assert.match(topic.description, /0[.,]30/, `${lang}: and that of the topic version`);
     assert.match(topic.description, /0[.,]50/);
     assert.match(pdf.description, /Opus 5\.5/);
-    assert.equal(pdf.graph.nodes.find((node) => node.id === 'n3').params.language, lang, `${lang}: the script is written in the language of the person`);
-    assert.equal(topic.graph.nodes.find((node) => node.id === 'n2').params.language, lang);
+    // WP38d: the language follows the input in every language of the interface (it used to be the language of the interface)
+    assert.equal(pdf.graph.nodes.find((node) => node.id === 'n3').params.language, 'auto', `${lang}: the script follows the language of the input`);
+    assert.equal(topic.graph.nodes.find((node) => node.id === 'n2').params.language, 'auto');
+    assert.equal(topic.graph.nodes.find((node) => node.id === 'n3').params.language, 'auto');
     assert.ok(pdf.graph.notes[0].text.length > 200);
     assert.match(pdf.graph.notes[0].text, lang === 'de' ? /Skript \(bearbeitet\)/ : lang === 'es' ? /Guion \(editado\)/ : /Edited script/, `${lang}: the note names the field of the second step as the node calls it`);
+  }
+  // WP33c: the two templates that take a PDF say in the description and in the note that only PDFs with rights are to be used and that
+  // figures from the PDF appear in the video; the templates without a PDF do not say it
+  {
+    const rights = {
+      en: /Use only PDFs you have the rights to: figures from the PDF (can appear|appear) in the video/,
+      de: /Verwende nur PDFs, an denen du die Rechte hast: Abbildungen daraus (können im Video erscheinen|erscheinen im Video)/,
+      es: /Usa solo PDF sobre los que tengas los derechos: las figuras del PDF (pueden aparecer|aparecen) en el vídeo/
+    };
+    for (const id of ['explainer-script', 'explainer-video']) {
+      for (const lang of ['en', 'de', 'es']) {
+        const template = resolved(id, lang);
+        assert.match(template.description, rights[lang], `${id} ${lang}: the sentence about the rights in the description`);
+        assert.match(template.graph.notes[0].text, rights[lang], `${id} ${lang}: and in the note`);
+        assert.equal(template.description.match(new RegExp(rights[lang].source, 'g')).length, 1, `${id} ${lang}: said once`);
+        assert.ok(template.description.trimEnd().endsWith('.') && !/\s{2}/.test(template.description), `${id} ${lang}: the description still ends in a sentence`);
+      }
+    }
+    for (const id of ['explainer-script-topic', 'explainer-video-topic', 'explainer-video-presenter']) {
+      for (const lang of ['en', 'de', 'es']) assert.doesNotMatch(resolved(id, lang).description, /rights|Rechte|derechos/, `${id} ${lang}: no PDF, no sentence`);
+    }
+    // the three languages are complete: the German and Spanish text are not the English one
+    for (const id of ['explainer-script', 'explainer-video']) {
+      assert.notEqual(resolved(id, 'de').description, resolved(id, 'en').description);
+      assert.notEqual(resolved(id, 'es').description, resolved(id, 'en').description);
+    }
   }
   assert.match(resolved('explainer-script', 'en').description, /confirmation/);
   assert.match(resolved('explainer-script', 'de').description, /Bestätigung/);

@@ -204,6 +204,59 @@
   color: var(--text);
 }
 
+/* a voice: the list and the play button of the trial listening (voice-preview.js) */
+.nv-voice-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nv-voice-pick .nv-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nv-voice-play {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border, #2d323b);
+  border-radius: 8px;
+  background: var(--bg-raised, #1b1e24);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nv-voice-play:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.nv-voice-play[data-state='playing'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.nv-voice-play[data-state='error'] {
+  border-color: var(--danger);
+}
+
+.nv-voice-play:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* a finger needs a bigger target */
+@media (pointer: coarse) {
+  .nv-voice-play {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
 /* a model that does not fit the connections of the node: selectable, but marked */
 .nv-select option[data-misfit] {
   color: #e5c07b;
@@ -1635,12 +1688,44 @@
 .nv-media.nv-alpha,
 .nv-thumb.nv-alpha,
 .nv-appleaf-frame .nv-media.nv-alpha,
-.nv-viewer-video.nv-alpha {
+.nv-viewer-video.nv-alpha,
+.nv-viewer-img.nv-alpha,
+.nv-ap-thumb .nv-alpha {
   background-color: var(--nv-checker-b);
   background-image: linear-gradient(45deg, var(--nv-checker-a) 25%, transparent 25%, transparent 75%, var(--nv-checker-a) 75%),
     linear-gradient(45deg, var(--nv-checker-a) 25%, transparent 25%, transparent 75%, var(--nv-checker-a) 75%);
   background-position: 0 0, 8px 8px;
   background-size: 16px 16px;
+}
+
+/* The chequerboard sits behind the picture itself, never in the empty margins of its frame. An image or a video with object-fit:
+   contain that is smaller than its frame leaves bars, and the background of the element would fill them too. So a media element with
+   alpha takes the shape of its picture instead: automatic width and height with a maximum (the browser keeps the proportions of an
+   image and a video), centred in the frame. In a grid whose cells are filled (object-fit: cover) nothing is left over and the
+   element keeps the cell. */
+.nv-media.nv-alpha,
+.nv-appleaf-frame .nv-media.nv-alpha {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.nv-asset-preview.is-grid .nv-media.nv-alpha {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.nv-appout-body.is-grid .nv-appleaf-frame .nv-media.nv-alpha {
+  aspect-ratio: auto;
+  max-height: 280px;
+}
+
+.nv-ap-thumb .nv-alpha {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .nv-alpha-hint {
@@ -4418,6 +4503,35 @@
   text-align: center;
 }
 
+.nv-history-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.nv-history-footer {
+  display: flex;
+  margin-top: 10px;
+}
+
+.nv-history-delete,
+.nv-history-delete-all {
+  color: var(--text-dim);
+}
+
+/* a phone: a button a finger hits, the "delete all" one as wide as the row */
+@media (max-width: 640px) {
+  .nv-history-delete,
+  .nv-history-delete-all {
+    min-height: 36px;
+  }
+
+  .nv-history-footer .nv-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
 .nv-history-badge {
   position: absolute;
   top: 8px;
@@ -4854,7 +4968,8 @@ button.nv-scene-preview:focus-visible {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.3;
-  opacity: 0;
+  /* always faintly there, so people find the switch without hovering over the field first */
+  opacity: 0.5;
   transition: opacity 0.14s ease, color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
 
@@ -4862,6 +4977,13 @@ button.nv-scene-preview:focus-visible {
 .nv-expose:focus-visible,
 .nv-expose.is-on {
   opacity: 1;
+}
+
+/* touch screens have no hover: the switch is fully visible there */
+@media (hover: none) {
+  .nv-expose {
+    opacity: 1;
+  }
 }
 
 .nv-expose:hover {
@@ -5561,6 +5683,10 @@ button.nv-scene-preview:focus-visible {
 
 .nv-ap-thumb {
   display: grid;
+  /* one cell of the size of the tile: with an implicit auto row a tall picture is as high as it is and runs out of the tile
+     (max-height: 100% and height: 100% do not resolve against an auto row) */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   width: 100%;
   aspect-ratio: 1;
@@ -7376,7 +7502,8 @@ button.nv-scene-preview:focus-visible {
   padding-left: 16px;
 }
 
-.nv-asst-meta {
+.nv-asst-meta,
+.nv-asst-model {
   margin: 0;
   font-size: 11.5px;
   color: var(--text-faint);
@@ -7424,6 +7551,31 @@ button.nv-scene-preview:focus-visible {
   display: none;
 }
 
+/* the language model of the next question: a line above the input */
+.nv-asst-modelrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.nv-asst-model-label {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.nv-asst-model-select {
+  flex: 1;
+  min-height: 34px;
+  text-overflow: ellipsis;
+}
+
+.nv-asst-model-select:disabled {
+  opacity: 0.8;
+  cursor: default;
+}
+
 .nv-asst-hint {
   margin: 7px 2px 0;
   font-size: 11px;
@@ -7462,8 +7614,13 @@ button.nv-scene-preview:focus-visible {
     bottom: auto;
   }
 
-  .nv-asst-input {
+  .nv-asst-input,
+  .nv-asst-model-select {
     font-size: 16px;
+  }
+
+  .nv-asst-model-select {
+    min-height: 40px;
   }
 
   .nv-asst-send {

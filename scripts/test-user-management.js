@@ -311,6 +311,8 @@ const FOREIGN_WORKFLOW_ROUTES = (id) => [
   ['POST', `/api/workflows/${id}/runs/run-1/cancel`, {}],
   ['GET', `/api/workflows/${id}/outputs.zip`],
   ['PATCH', `/api/workflows/${id}/results/n1`, { entry: 'e' }],
+  ['DELETE', `/api/workflows/${id}/results/n1`],
+  ['DELETE', `/api/workflows/${id}/results/n1/entries/e`],
   ['GET', `/api/workflows/${id}/events`]
 ];
 
@@ -792,6 +794,7 @@ const ADMIN_ONLY_ROUTES = [
   ['DELETE', '/api/roles/abc'],
   ['POST', '/api/roles/generate', { name: 'x', brief: 'y' }],
   ['POST', '/api/brandings/import', {}],
+  ['PATCH', '/api/brandings/abc', { speaker: null }],
   ['DELETE', '/api/brandings/abc'],
   ['PUT', '/api/folders/Leer/profile', { guidelines: 'x' }],
   ['POST', '/api/folders/Leer/profile/context-files', { name: 'a.md', text: 'x' }],

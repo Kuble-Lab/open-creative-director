@@ -32,8 +32,10 @@
     if (/iphone|ipad|ipod/i.test(agent) || (/macintosh/i.test(agent) && nav.maxTouchPoints > 1)) return true;
     return /safari/i.test(agent) && !/chrome|chromium|crios|fxios|edg|opr\/|android/i.test(agent);
   }
+  // Only for WebM: a MOV with alpha (ProRes 4444, HEVC with alpha) is another case, and the text is about VP9.
+  const isWebm = (value) => /\.webm(?:[?#]|$)/i.test(String(value.file || value.url || ''));
   function alphaHint(value) {
-    return hasAlpha(value) && value.type === 'video' && isSafariBrowser() ? el('div', { class: 'nv-alpha-hint', text: T('nodes.preview.alphaSafari') }) : null;
+    return hasAlpha(value) && value.type === 'video' && isWebm(value) && isSafariBrowser() ? el('div', { class: 'nv-alpha-hint', text: T('nodes.preview.alphaSafari') }) : null;
   }
 
   // Video sources get a media fragment so browsers paint the first frame as poster.
@@ -371,6 +373,7 @@
     if (!value) {
       wrap.append(icon('file', 14));
     } else if (value.type === 'image' && isMedia(value)) {
+      wrap.classList.toggle('nv-alpha', hasAlpha(value));
       wrap.append(el('img', { src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' }));
     } else if (value.type === 'video' && isMedia(value)) {
       wrap.classList.toggle('nv-alpha', hasAlpha(value));
@@ -477,7 +480,7 @@
       counter.textContent = list.length > 1 ? `${index + 1} / ${list.length}` : '';
       actions.textContent = '';
       if (value.type === 'image') {
-        const img = el('img', { class: 'nv-viewer-img', src: ui.mediaUrl(value), alt: '', draggable: 'false' });
+        const img = el('img', { class: `nv-viewer-img${alphaClass(value)}`, src: ui.mediaUrl(value), alt: '', draggable: 'false' });
         zoom.img = img;
         stage.append(img);
       } else if (value.type === 'video') {

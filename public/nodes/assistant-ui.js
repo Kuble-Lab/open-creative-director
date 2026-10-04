@@ -12,8 +12,11 @@
 //   costOfInserted    the price of the inserted nodes from the engine plan (a node without an estimate is "unknown", never 0)
 //   requestHistory    the last turns for the next question
 //   failure           an error of the endpoint -> { kind, text }
-// Part 2 (createAssistant) is the browser glue: the panel in place of the inspector (a sheet on a phone), the conversation
-// per workflow (kept until the page reloads, never saved), links to the node help, the card "N nodes inserted" with undo
+//   modelChoices      the language models of the chat -> the options of the list in the panel
+//   pickModel         the model for the next question: the saved one while it is on the list, else the default
+// Part 2 (createAssistant) is the browser glue: the panel in place of the inspector (a sheet on a phone), the list of the
+// language models (the choice is kept by deps.modelStore, the conversation is never saved), the conversation per workflow
+// (kept until the page reloads), links to the node help, the card "N nodes inserted" with undo
 // and the cost, keyboard use. Everything is built with el() and textContent; no HTML from strings.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -225,6 +228,36 @@
     return { kind: 'error', text: T('nodes.assistant.error.generic', { error: (error && error.message) || `HTTP ${status}` }), retry: true };
   }
 
+  /* ---------- the model of the panel ---------- */
+
+  // choices: { models: [id], defaultModel, labelOf(id) } (the models of the chat, already filtered for the role). Returns
+  // { options: [{ value, label }], defaultModel }: ids once each, a name from labelOf (else the id), and a default that is on the list.
+  function modelChoices(choices) {
+    const source = isPlain(choices) ? choices : {};
+    const seen = new Set();
+    const options = [];
+    for (const model of Array.isArray(source.models) ? source.models : []) {
+      if (typeof model !== 'string' || !model || seen.has(model)) continue;
+      seen.add(model);
+      let label = '';
+      try {
+        label = typeof source.labelOf === 'function' ? String(source.labelOf(model) || '') : '';
+      } catch (_) {
+        label = '';
+      }
+      options.push({ value: model, label: label || model });
+    }
+    const wanted = typeof source.defaultModel === 'string' ? source.defaultModel : '';
+    return { options, defaultModel: seen.has(wanted) ? wanted : options.length ? options[0].value : '' };
+  }
+
+  // The model for the next question: the saved choice while it is still on the list, else the default (the model of a new
+  // chat), '' when there is no list at all (then the request carries no model and the server decides, as before).
+  function pickModel(saved, choices) {
+    const { options, defaultModel } = modelChoices(choices);
+    return typeof saved === 'string' && options.some((option) => option.value === saved) ? saved : defaultModel;
+  }
+
   const pure = {
     LIMITS,
     COLUMN,
@@ -238,6 +271,8 @@
     adjustedLines,
     costOfInserted,
     failure,
+    modelChoices,
+    pickModel,
     clip
   };
 
@@ -246,7 +281,9 @@
   // deps: { OCD, host (the <aside>), help (node-help.js: openPopover(type, anchor)), getWorkflowId(), getGraph(), getReg(),
   //   getSelection() -> [nodeId], getWarnings() -> [{ node?, message }], canInsert(), insert(sub, options) -> result | null
   //   (main.js insertSubgraph), historyRevision(), undo(), flushSave(), plan() -> Promise<plan>, showNodes(ids),
-  //   getLang(), onToggle(open, options) }
+  //   getLang(), onToggle(open, options),
+  //   getModelChoices() -> { models, defaultModel, labelOf } (the models of the chat; none: no list in the panel),
+  //   modelStore: { read() -> id | '', write(id) } (the saved choice of this person; every access guarded by the owner) }
   function createAssistant(deps) {
     const OCD = deps.OCD;
     const ui = OCD.ui;
@@ -261,6 +298,7 @@
     let open = false;
     let nextId = 1;
     let budget = null;
+    let chosenModel = ''; // the model picked in the panel since the page loaded
 
     const access = () => (typeof window !== 'undefined' ? window.OCAccess : null);
     const restricted = () => {
@@ -305,9 +343,22 @@
       send.setAttribute('aria-label', T('nodes.assistant.send'));
       const form = el('form', { class: 'nv-asst-form' }, input, send);
       const hint = el('p', { class: 'nv-asst-hint', text: T('nodes.assistant.hint') });
-      const foot = el('footer', { class: 'nv-asst-foot' }, form, hint);
+      const modelSelect = el('select', { class: 'nv-input nv-select nv-asst-model-select', 'aria-label': T('nodes.assistant.modelLabel'), title: T('nodes.assistant.modelTitle') });
+      const modelRow = el('div', { class: 'nv-asst-modelrow hidden' }, el('span', { class: 'nv-asst-model-label', text: T('nodes.assistant.model') }), modelSelect);
+      const foot = el('footer', { class: 'nv-asst-foot' }, modelRow, form, hint);
       host.append(head, budgetLine, list, foot);
-      Object.assign(view, { head, fresh, close, budgetLine, list, input, send, form, hint });
+      Object.assign(view, { head, fresh, close, budgetLine, list, input, send, form, hint, modelRow, modelSelect });
+      modelSelect.addEventListener('change', () => {
+        const wanted = modelSelect.value;
+        if (!wanted) return;
+        chosenModel = wanted; // holds for this page even when the browser keeps nothing
+        try {
+          if (deps.modelStore && typeof deps.modelStore.write === 'function') deps.modelStore.write(wanted);
+        } catch (_) {
+          /* the choice stays for this page */
+        }
+        paintModels();
+      });
 
       form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -326,6 +377,7 @@
         }
       });
       paintBudget();
+      paintModels();
     }
 
     // The panel is a typing place: its keys never reach the canvas shortcuts (delete, space, arrows ...), except Escape,
@@ -356,6 +408,51 @@
       const busy = Boolean(current && current.busy);
       if (view.send) view.send.disabled = busy || !view.input.value.trim();
       if (view.input) view.input.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+
+    /* ----- the model of the next question ----- */
+
+    function readModelChoices() {
+      try {
+        return typeof deps.getModelChoices === 'function' ? deps.getModelChoices() : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function savedModel() {
+      try {
+        return deps.modelStore && typeof deps.modelStore.read === 'function' ? String(deps.modelStore.read() || '') : '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    // The model that answers the next question ('' = none to name: the server takes the model of a new chat).
+    function currentModel() {
+      return pickModel(chosenModel || savedModel(), readModelChoices());
+    }
+
+    // The list shows the models of the chat; the saved choice if it is still on the list, else the default. The list is
+    // read again every time the panel opens (the configuration may have loaded since, or the role may have changed).
+    function paintModels() {
+      const select = view.modelSelect;
+      const row = view.modelRow;
+      if (!select || !row) return;
+      const { options } = modelChoices(readModelChoices());
+      row.classList.toggle('hidden', !options.length);
+      select.textContent = '';
+      for (const option of options) select.append(el('option', { value: option.value, text: option.label }));
+      select.value = currentModel();
+      // a single model: nothing to choose, but the person still sees which one answers
+      select.disabled = options.length < 2;
+    }
+
+    function modelName(model) {
+      const found = modelChoices(readModelChoices()).options.find((option) => option.value === model);
+      if (found) return found.label;
+      const text = String(model || '');
+      return text.split('/').pop() || text;
     }
 
     function paintBudget() {
@@ -471,6 +568,7 @@
         for (const line of message.adjusted) list.append(el('li', { text: line }));
         wrap.append(el('div', { class: 'nv-asst-note is-warn' }, icon('warning', 13), el('div', {}, el('strong', { text: T('nodes.assistant.adjusted.title') }), list)));
       }
+      if (message.modelLine) wrap.append(el('p', { class: 'nv-asst-model', text: message.modelLine }));
       if (message.meta && message.meta.length) wrap.append(el('p', { class: 'nv-asst-meta', text: message.meta.join(' · ') }));
       return wrap;
     }
@@ -669,6 +767,9 @@
         history,
         lang: deps.getLang()
       };
+      // the model of the list in the panel (a saved model that is not allowed any more is not sent: the default is)
+      const model = currentModel();
+      if (model) body.model = model;
       let answer = null;
       let problem = null;
       try {
@@ -707,12 +808,14 @@
     function answerMessage(current, answer) {
       const reg = deps.getReg();
       const mentions = (Array.isArray(answer.mentions) ? answer.mentions : []).filter((type, index, all) => typeof type === 'string' && reg && reg.types.has(type) && all.indexOf(type) === index);
-      const message = { role: 'assistant', text: String(answer.answer || ''), mentions, notes: [], meta: [], adjusted: [] };
+      const message = { role: 'assistant', text: String(answer.answer || ''), mentions, notes: [], meta: [], modelLine: '', adjusted: [] };
       if (answer.budget) setBudget(answer.budget);
       const usage = isPlain(answer.usage) ? answer.usage : {};
       if (usage.replaced) {
         message.notes.push({ kind: 'warn', text: isNumber(usage.usd) ? T('nodes.assistant.replaced', { amount: OCD.run.formatUsd(usage.usd) }) : T('nodes.assistant.replacedUnknown') });
       }
+      // which model answered, small under the answer; a replacement for the subscription is said again in the note above
+      if (typeof usage.model === 'string' && usage.model) message.modelLine = T(usage.replaced ? 'nodes.assistant.answeredByReplaced' : 'nodes.assistant.answeredBy', { model: modelName(usage.model) });
       if (usage.billing === 'usd' && !usage.replaced) message.meta.push(isNumber(usage.usd) ? T('nodes.assistant.questionCost', { amount: OCD.run.formatUsd(usage.usd) }) : T('nodes.assistant.questionCostUnknown'));
       const quota = isPlain(answer.quota) ? answer.quota : null;
       if (quota && isNumber(quota.remaining) && quota.remaining <= QUOTA_NOTE_AT) message.meta.push(T('nodes.assistant.quotaLow', { remaining: quota.remaining, minutes: Math.max(1, Math.round((Number(quota.windowSeconds) || 600) / 60)) }));
@@ -731,7 +834,7 @@
       for (const item of Array.isArray(answer.insert.nodes) ? answer.insert.nodes : []) {
         if (item && typeof item.ref === 'string') refNames.set(item.ref, (typeof item.label === 'string' && item.label.trim()) || typeLabelOf(item.type));
       }
-      const result = deps.insert(built.sub, { history: 'insert-assistant' });
+      const result = deps.insert(built.sub, { history: 'insert-assistant', fresh: true });
       if (!result) {
         message.notes.push({ kind: 'warn', text: T('nodes.assistant.insertFailed') });
         return;
@@ -781,6 +884,7 @@
       if (open) {
         if (changed) paintAll();
         paintBudget();
+        paintModels();
         if (options.focus !== false) view.input.focus({ preventScroll: true });
       }
       if (changed && deps.onToggle) deps.onToggle(open, options);

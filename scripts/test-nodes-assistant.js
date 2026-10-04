@@ -65,13 +65,14 @@ async function main() {
     testAnswers(A);
     await testRoundTrip(A, registry);
     testLimitAndTexts(A);
+    testQuestionEstimate(A);
     testSources();
   } finally {
     await iso.cleanup();
     guard.restore();
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
-  console.log('Assistent (Server): Hilfeauswahl, Katalog, Canvas als Daten, strenge Prüfung der Vorschläge, Nachfrage, Antworten lesen, Grenze, Texte.');
+  console.log('Assistent (Server): Hilfeauswahl, Katalog, Canvas als Daten, strenge Prüfung der Vorschläge, Nachfrage, Antworten lesen, Grenze, Modell-Reservierung, Texte.');
   console.log('test-nodes-assistant.js: ok');
 }
 
@@ -163,6 +164,10 @@ async function testHelp(A, registry, registryModule) {
   const ttsList = [{ value: 'eleven_v4', label: 'Eleven v4' }, { value: 'eleven_v4_turbo', label: 'Eleven v4 Turbo' }];
   const ttsHelp = A.helpText(descriptors.find((descriptor) => descriptor.type === 'audio.tts'), dictDe, new Map([['elevenlabs-tts-models', ttsList]]));
   assert.match(ttsHelp, /model_id "Sprachmodell" \(select, default "eleven_v4", one of: eleven_v4 \(Eleven v4\) \| eleven_v4_turbo \(Eleven v4 Turbo\)\)/);
+  // WP38d: the language of the explainer nodes: a new node starts with auto, and the list says what the options are
+  for (const type of ['llm.research', 'explainer.plan']) {
+    assert.match(A.helpText(descriptors.find((descriptor) => descriptor.type === type), dictDe, new Map()), /language "Sprache" \(select, default "auto", one of: auto \| en \| de \| es\)/, `${type}: the list for the model`);
+  }
   const mediaHelp = A.helpText(descriptors.find((descriptor) => descriptor.type === 'input.media_list'), dictDe, new Map());
   assert.match(mediaHelp, /Ports follow the param kind: kind=image: out items:image\[\]; kind=video: out items:video\[\]/);
   assert.match(mediaHelp, /Files .* are added by the person/, 'media params are not offered');
@@ -240,6 +245,12 @@ function testCanvas(A, registry) {
   assert.equal(request.lang, 'es');
   assert.deepEqual(request.history, [{ role: 'user', text: 'a' }, { role: 'assistant', text: 'b' }]);
   assert.equal(A.parseRequest({ ...body, lang: 'fr' }).lang, 'en', 'an unknown language falls back to English');
+  // the model of the panel: optional, a text, trimmed; nothing chosen is ''
+  assert.equal(request.model, '');
+  assert.equal(A.parseRequest({ ...body, model: '  anthropic/claude-sonnet-5.5 ' }).model, 'anthropic/claude-sonnet-5.5');
+  assert.equal(A.parseRequest({ ...body, model: null }).model, '');
+  assert.equal(A.parseRequest({ ...body, model: '   ' }).model, '');
+  for (const model of [7, true, ['a'], {}, 'x'.repeat(201)]) assert.throws(() => A.parseRequest({ ...body, model }), (error) => error.code === 'INVALID_REQUEST', JSON.stringify(model).slice(0, 30));
   const many = Array.from({ length: 20 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', text: `t${index}` }));
   assert.equal(A.parseRequest({ ...body, history: many }).history.length, A.LIMITS.historyTurns, 'a short history');
   for (const bad of [
@@ -273,6 +284,25 @@ function testCanvas(A, registry) {
   assert.ok(!json.includes('secret-name'), 'no media reference reaches the model');
   assert.equal(parsed.nodes.find((node) => node.id === 'n4').params, undefined);
   assert.equal(parsed.nodes.find((node) => node.id === 'n7').outputs[0], 'items');
+
+  // WP38d (review): a param with `initial` is shown against the value a new node starts with, the one the help calls "default":
+  // a node saved with the old default "en" (or without the param, which runs as "en") is shown, one with "auto" is not
+  const languages = JSON.parse(A.canvasForPrompt(A.sanitizeCanvas({
+    nodes: [
+      { id: 'a1', type: 'llm.research', params: { language: 'en' } },
+      { id: 'a2', type: 'llm.research', params: { language: 'auto' } },
+      { id: 'a3', type: 'llm.research', params: {} },
+      { id: 'a4', type: 'explainer.plan', params: { language: 'de' } },
+      { id: 'a5', type: 'explainer.plan', params: { language: 'auto' } }
+    ],
+    edges: []
+  }), registry, dict));
+  const languageOf = (id) => (languages.nodes.find((node) => node.id === id).params || {}).language;
+  assert.equal(languageOf('a1'), 'en', 'a saved en differs from the start value auto');
+  assert.equal(languageOf('a2'), undefined, 'auto is what a new node starts with: not listed');
+  assert.equal(languageOf('a3'), 'en', 'a node without the param runs as en');
+  assert.equal(languageOf('a4'), 'de');
+  assert.equal(languageOf('a5'), undefined);
 
   // a huge canvas is cut, selected nodes stay, the size is capped
   const big = A.sanitizeCanvas({
@@ -420,6 +450,12 @@ function testProposals(A, registry, typesLib, registryModule) {
     ['a.bogus:unknown_param', 'a.count:clamped', 'a.prompt:clipped', 'i.asset:media_param', 'm.assets:media_param', 't.max_tokens:not_a_number'].sort()
   );
   assert.deepEqual(codes(check({ nodes: [node('a', 'image.generate', { aspect_ratio: '5:7' })] })), ['bad_option']);
+  // WP38d: "auto" (same as input) is a language of the explainer nodes for the assistant too; anything else is refused; a node it does not
+  // set starts with auto (the page fills it in)
+  assert.deepEqual(codes(check({ nodes: [node('a', 'llm.research', { language: 'auto' }), node('b', 'explainer.plan', { language: 'auto' }), node('c', 'explainer.plan', { language: 'de' })] })), []);
+  assert.deepEqual(check({ nodes: [node('a', 'explainer.plan', { language: 'auto' })] }).insert.nodes[0].params, { language: 'auto' });
+  assert.deepEqual(codes(check({ nodes: [node('a', 'explainer.plan', { language: 'same' })] })), ['bad_option']);
+  assert.deepEqual(codes(check({ nodes: [node('a', 'llm.research', { language: 'fr' })] })), ['bad_option']);
   assert.deepEqual(codes(check({ nodes: [node('a', 'input.prompt', 'text')] })), ['bad_params']);
   assert.equal(check({ nodes: [node('a', 'input.prompt', null)] }).insert.nodes[0].params && Object.keys(check({ nodes: [node('a', 'input.prompt', null)] }).insert.nodes[0].params).length, 0);
 
@@ -746,6 +782,46 @@ function testLimitAndTexts(A) {
   assert.equal(A.localizeError(Object.assign(new Error('Workflow not found'), { code: 'WORKFLOW_NOT_FOUND' }), 'de').code, 'WORKFLOW_NOT_FOUND');
   assert.equal(A.localizeError(Object.assign(new Error('Project not found'), { code: 'NOT_FOUND' }), 'de').code, 'WORKFLOW_NOT_FOUND');
   assert.equal(A.COST_USD, 0.05);
+}
+
+// The reservation of one question follows the price of the model (USD per million tokens, input and output).
+function testQuestionEstimate(A) {
+  const priced = 'anthropic/claude-opus-5.5'; // 4 and 20
+  const cheap = 'anthropic/claude-sonnet-5.5'; // 2 and 10
+  // no known price, no model, a subscription model: the flat amount, as before the choice of the model
+  for (const model of ['some/unknown-model', '', undefined, 'chatgpt/gpt-6.1-sol', 'openai/gpt-5.6-luna']) {
+    assert.equal(A.questionEstimateUsd({ model, system: 'x'.repeat(50000), prompt: 'y'.repeat(50000) }), A.COST_USD, String(model));
+  }
+  // never below the flat amount
+  assert.equal(A.questionEstimateUsd({ model: cheap, prompt: 'hi', maxTokens: 10 }), A.COST_USD);
+  // prompt tokens (characters / 3) times the input price plus the longest answer times the output price, rounded up to 0.0001
+  const system = 'x'.repeat(3000);
+  const prompt = 'y'.repeat(27000);
+  const tokens = 10000;
+  assert.equal(A.questionEstimateUsd({ model: priced, system, prompt }), Math.ceil((tokens * 4 + A.LIMITS.maxTokens * 20) / 1e6 * 1e4) / 1e4);
+  assert.equal(A.questionEstimateUsd({ model: priced, system, prompt }), 0.11, 'about 11 cents for Opus 5.5 with a prompt of 30 000 characters');
+  assert.equal(A.questionEstimateUsd({ model: cheap, system, prompt }), 0.055);
+  assert.ok(A.questionEstimateUsd({ model: priced, system, prompt }) > A.questionEstimateUsd({ model: cheap, system, prompt }), 'the dearer model reserves more');
+  assert.ok(A.questionEstimateUsd({ model: priced, prompt: 'y'.repeat(60000) }) > A.questionEstimateUsd({ model: priced, prompt: 'y'.repeat(6000) }), 'a longer prompt reserves more');
+  assert.equal(A.questionEstimateUsd({ model: priced, system, prompt, maxTokens: 7000 }), Math.ceil((tokens * 4 + 7000 * 20) / 1e6 * 1e4) / 1e4, 'the longest answer counts');
+  assert.equal(A.questionEstimateUsd({ model: priced }), Math.max(A.COST_USD, Math.ceil(A.LIMITS.maxTokens * 20 / 1e6 * 1e4) / 1e4), 'an empty prompt: the answer only');
+  assert.equal(A.questionEstimateUsd(), A.COST_USD);
+
+  // Decision of the product owner: a model without a known price reserves with the dearest known price of the models the person may
+  // choose (at least the flat amount); subscription models still reserve the flat amount; a priced model keeps its own price
+  const unknown = 'some/unknown-model';
+  const opusReserve = A.questionEstimateUsd({ model: priced, system, prompt });
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [unknown, cheap, priced, 'openai/gpt-5.6-luna'] }), opusReserve, 'the dearest priced model of the list');
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [unknown, cheap] }), A.questionEstimateUsd({ model: cheap, system, prompt }), 'the list has only the cheaper one');
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [cheap, 'chatgpt/gpt-6.1-sol', unknown] }), A.questionEstimateUsd({ model: cheap, system, prompt }), 'a subscription model has no price');
+  assert.ok(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [priced] }) > A.COST_USD, 'above the flat amount');
+  assert.equal(A.questionEstimateUsd({ model: unknown, prompt: 'hi', maxTokens: 10, choosable: [cheap] }), A.COST_USD, 'never below the flat amount');
+  // no priced model in the list: the dearest price the app knows at all (too little is never reserved)
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: ['a/b', 'c/d'] }), opusReserve);
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [] }), opusReserve, 'an empty list: the same');
+  // a priced model and a subscription model are not changed by the list
+  assert.equal(A.questionEstimateUsd({ model: cheap, system, prompt, choosable: [priced] }), A.questionEstimateUsd({ model: cheap, system, prompt }));
+  assert.equal(A.questionEstimateUsd({ model: 'chatgpt/gpt-6.1-sol', system, prompt, choosable: [priced] }), A.COST_USD);
 }
 
 /* ---------- static checks of the source ---------- */

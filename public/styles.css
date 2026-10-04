@@ -1709,6 +1709,30 @@ code {
   margin-top: 12px;
 }
 
+.branding-speaker {
+  margin-top: 12px;
+}
+
+.branding-speaker-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-dim, var(--text));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.branding-speaker-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.branding-speaker-hint {
+  margin: 6px 0 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .branding-manager-action {
   display: inline-flex;
   align-items: center;

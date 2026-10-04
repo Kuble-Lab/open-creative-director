@@ -243,7 +243,8 @@ async function run(iso, eleven) {
     assert.match(resolved(id, 'es').name, NAMES[id][2]);
     for (const lang of ['en', 'de', 'es']) {
       const doc = resolved(id, lang);
-      assert.equal(doc.graph.nodes.find((node) => node.id === 'n4').params.language, lang, `${id}.${lang}: the script is written in the language of the person`);
+      // WP38d: the language follows the input in every language of the interface (it used to be the language of the interface)
+      assert.equal(doc.graph.nodes.find((node) => node.id === 'n4').params.language, 'auto', `${id}.${lang}: the script follows the language of the input`);
       assert.match(doc.graph.notes[0].text, lang === 'de' ? /Skript \(bearbeitet\)/ : lang === 'es' ? /Guion \(editado\)/ : /Edited script/, `${lang}: the note names the field of the second step as the node calls it`);
       assert.match(doc.description, lang === 'de' ? /Starte zuerst nur den Planer/ : lang === 'es' ? /Ejecuta primero solo el planificador/ : /Run the planner first/);
       assert.match(doc.description, lang === 'de' ? /Bestätigung/ : lang === 'es' ? /confirmes/ : /confirmation/);

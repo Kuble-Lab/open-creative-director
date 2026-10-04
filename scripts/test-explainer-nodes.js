@@ -213,17 +213,19 @@ async function run(iso) {
   assert.equal(rp('model').optionsSource, 'brain-models');
   assert.equal(rp('model').default, '');
   assert.deepEqual([rp('max_results').default, rp('max_results').min, rp('max_results').max], [8, 1, 20]);
-  assert.deepEqual(rp('language').options, ['en', 'de', 'es']);
+  // WP38d: "same as input" first; the default stays en for a saved node without the param, a new node starts with auto (param.initial)
+  assert.deepEqual(rp('language').options, ['auto', 'en', 'de', 'es']);
   assert.equal(rp('language').default, 'en');
+  assert.equal(rp('language').initial, 'auto');
   assert.equal(rp('include_domains').default, '');
   assert.equal(rp('exclude_domains').default, '');
 
   const brandingDef = real.get('input.branding');
   assert.equal(brandingDef.category, 'input');
   assert.ok(!brandingDef.paid);
-  assert.deepEqual(brandingDef.outputs.map((port) => [port.id, port.type]), [['brand', 'text'], ['logo', 'image']]);
+  assert.deepEqual(brandingDef.outputs.map((port) => [port.id, port.type]), [['brand', 'text'], ['logo', 'image'], ['voice', 'text']]); // WP38f: the speaker voice is the third output
   assert.equal(brandingDef.params[0].optionsSource, 'brandings');
-  assert.deepEqual(brandingDef.emptyOutputs({ branding: '' }), ['logo']);
+  assert.deepEqual(brandingDef.emptyOutputs({ branding: '' }), ['logo', 'voice']); // WP38f: no branding, no voice either
   assert.deepEqual(brandingDef.emptyOutputs({ branding: 'abc' }), []);
 
   const planDef = real.get('explainer.plan');
@@ -237,7 +239,9 @@ async function run(iso) {
   const pp = (id) => planDef.params.find((param) => param.id === id);
   assert.equal(pp('model').optionsSource, 'brain-models');
   assert.deepEqual([pp('length_seconds').default, pp('length_seconds').min, pp('length_seconds').max], [120, 30, 300]);
-  assert.deepEqual(pp('language').options, ['en', 'de', 'es']);
+  assert.deepEqual(pp('language').options, ['auto', 'en', 'de', 'es']);
+  assert.equal(pp('language').default, 'en');
+  assert.equal(pp('language').initial, 'auto');
   assert.deepEqual(pp('tone').options, ['factual', 'friendly', 'promotional']);
   assert.equal(pp('tone').default, 'factual');
   assert.deepEqual(pp('visual_mode').options, ['motion', 'mix', 'ai_video']);

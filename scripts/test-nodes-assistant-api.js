@@ -7,6 +7,8 @@
 //       is run, the workflow is never changed, the language of the answer
 //   D   the canvas is data (fenced, no media), the Director's prompt file is not read
 //   R   an invalid proposal is asked once more, then only the answer; broken JSON from the model
+//   C   the model the person chooses in the panel: one of the language models of the chat, else 403 FORBIDDEN_MODEL; the
+//       reservation of a question follows the price of that model
 //   B   participants: model list, budget check, booking of the real cost, message when the budget is gone, one reservation
 //       per question (questions at the same time cannot run past the budget), a flat charge when the provider reports no cost
 //   F   limit per person, provider failures, no model at all, logs with metadata only
@@ -30,8 +32,12 @@ const P2 = 'p2@gmail.example';
 const P3 = 'p3@gmail.example';
 const P4 = 'p4@gmail.example';
 const P5 = 'p5@gmail.example';
+const P6 = 'p6@gmail.example';
+const P7 = 'p7@gmail.example';
+const P8 = 'p8@gmail.example';
 const GUEST = 'guest@gmail.example';
-const LIST = ['openai/gpt-5.6-luna', 'google/gemini-3.1-pro'];
+const PRICED = 'anthropic/claude-opus-5.5'; // a model with a known price (4 and 20 USD per million tokens)
+const LIST = ['openai/gpt-5.6-luna', 'google/gemini-3.1-pro', PRICED];
 const OPUS = 'anthropic/claude-opus-4.6';
 const SUBSCRIPTION_MODEL = 'chatgpt/gpt-6.1-sol';
 
@@ -122,7 +128,7 @@ async function main() {
     guard.restore();
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
-  console.log('Assistent (HTTP): Berechtigung, Modell wie im Chat, Abo und Liste der Teilnehmenden, Budget, Nachfrage, Grenze, Logs ohne Inhalte.');
+  console.log('Assistent (HTTP): Berechtigung, Modell wie im Chat, Modellwahl im Panel, Abo und Liste der Teilnehmenden, Budget nach Modellpreis, Nachfrage, Grenze, Logs ohne Inhalte.');
   console.log('test-nodes-assistant-api.js: ok');
 }
 
@@ -182,12 +188,14 @@ async function run(iso, output) {
   assert.ok(flow.id);
   const team = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Kurs', budgetUsd: 5 } })).body.team;
   assert.equal((await api(`/api/teams/${team.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P1] } })).status, 201);
-  const tiny = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Klein', budgetUsd: 0.06 } })).body.team;
+  const tiny = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Klein', budgetUsd: 0.2 } })).body.team;
   assert.equal((await api(`/api/teams/${tiny.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P2, P3] } })).status, 201);
-  const parallel = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Gleichzeitig', budgetUsd: 0.05 } })).body.team;
+  const parallel = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Gleichzeitig', budgetUsd: 0.15 } })).body.team;
   assert.equal((await api(`/api/teams/${parallel.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P4] } })).status, 201);
   const flat = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Pauschale', budgetUsd: 1 } })).body.team;
   assert.equal((await api(`/api/teams/${flat.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P5] } })).status, 201);
+  const priced = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Teuer', budgetUsd: 5 } })).body.team;
+  assert.equal((await api(`/api/teams/${priced.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P6] } })).status, 201);
 
   // ============ E: permission, request, shape ============
   // as for editing: a stranger does not see the workflow, an anonymous caller is not confirmed
@@ -402,15 +410,15 @@ async function run(iso, output) {
   await ask(flow.id, STAFF);
   assert.match(subscription.calls[0].prompt, /image\.higgsfield/);
 
-  // a model chosen by a stale tab or a hand-made request has no say: the assistant takes the model of the list. The
-  // rules of the model list are enforced by completeText as well:
+  // a model that is not on the list is refused by the route (section C); the rules of the model list are enforced by
+  // completeText as well:
   const llm = iso.load('lib/nodes/llm');
   const access = iso.load('lib/access');
   await assert.rejects(llm.completeText({ model: OPUS, prompt: 'x', user: P1, restrictedModels: LIST }), (error) => error instanceof access.RoleRestrictedError && error.feature === 'models');
 
   // budget gone: a clear message in the language of the interface, no model call
   reset();
-  await costs.recordCost({ ts: new Date().toISOString(), sessionId: 'x', type: 'brain', model: LIST[0], cost: 0.06, user: P2 });
+  await costs.recordCost({ ts: new Date().toISOString(), sessionId: 'x', type: 'brain', model: LIST[0], cost: 0.2, user: P2 });
   const dry = await makeFlow(P2, 'Leer');
   for (const [lang, pattern] of [['de', /Budget ist aufgebraucht/], ['en', /budget is used up/], ['es', /presupuesto se ha agotado/]]) {
     response = await ask(dry.id, P2, { lang });
@@ -428,7 +436,7 @@ async function run(iso, output) {
   assert.equal(response.body.code, 'BUDGET_EXHAUSTED');
   // the budget runs out during the question: the answer is kept, the second try is not made
   const edge = await makeFlow(P3, 'Knapp');
-  sayViaOpenRouter({ text: { answer: 'Erster Versuch.', insert: BAD_INSERT }, cost: 0.06 });
+  sayViaOpenRouter({ text: { answer: 'Erster Versuch.', insert: BAD_INSERT }, cost: 0.2 });
   response = await ask(edge.id, P3);
   assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(openrouter.calls.length, 1, 'the second try was refused before it reached the provider');
@@ -437,7 +445,9 @@ async function run(iso, output) {
   assert.equal(response.body.answer, 'Erster Versuch.');
   assert.equal(response.body.budget.remainingUsd, 0);
 
-  // one question reserves a flat amount while it runs: questions at the same time cannot run past the budget
+  // one question reserves its estimate while it runs (the dearest price of the person's list for a model without a price): questions at
+  // the same time cannot run past the budget. The budgets of this section were 0.05 to 0.06 when the reservation was a flat 5 cents; they
+  // are raised to what covers one reservation (decision of the product owner, review WP38), the checks are the same.
   reset();
   const budgetLib = iso.load('lib/budget');
   const crowded = await makeFlow(P4, 'Gleichzeitig');
@@ -496,6 +506,147 @@ async function run(iso, output) {
   sayViaSubscription('Nimm {"duration": 8} und fertig.');
   response = await ask(flow.id, STAFF);
   assert.deepEqual([response.status, response.body.answer], [200, 'Nimm {"duration": 8} und fertig.']);
+
+  // ============ C: the model chosen in the panel ============
+  const modelCalls = () => openrouter.calls.map((call) => call.payload.model);
+  // an internal person: any language model of the chat list, the subscription one as well; the usage names the model
+  reset();
+  sayViaOpenRouter({ text: { answer: 'Mit Opus.', mentions: [] }, cost: 0.03 });
+  response = await ask(flow.id, STAFF, { model: OPUS });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.deepEqual(modelCalls(), [OPUS], 'the chosen model answers');
+  assert.equal(subscription.calls.length, 0, 'not the subscription, although that is the model of a new chat');
+  assert.equal(response.body.usage.model, OPUS);
+  assert.equal(response.body.usage.billing, 'usd');
+  assert.equal(response.body.usage.usd, 0.03);
+  const quotaBefore = response.body.quota.remaining;
+  reset();
+  sayViaSubscription({ answer: 'Mit dem Abo.', mentions: [] });
+  response = await ask(flow.id, STAFF, { model: 'chatgpt/gpt-5.6-sol' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.deepEqual(subscription.calls.map((call) => call.model), ['chatgpt/gpt-5.6-sol']);
+  assert.equal(response.body.usage.model, 'chatgpt/gpt-5.6-sol');
+  assert.equal(response.body.quota.remaining, quotaBefore - 1);
+  // a blank model or null is no choice: the model of a new chat, as before
+  for (const none of ['', '   ', null]) {
+    reset();
+    sayViaSubscription({ answer: 'Standard.', mentions: [] });
+    response = await ask(flow.id, STAFF, { model: none });
+    assert.equal(response.status, 200, JSON.stringify(none));
+    assert.deepEqual(subscription.calls.map((call) => call.model), [SUBSCRIPTION_MODEL]);
+  }
+  // a model that is not on the list of the person is refused before a question is counted or paid (all three languages)
+  reset();
+  const quotaNow = response.body.quota.remaining;
+  const refusedTexts = [];
+  for (const [lang, pattern] of [['de', /Modell des Assistenten/], ['en', /assistant's model is not available/], ['es', /modelo del asistente no está disponible/]]) {
+    for (const model of ['some/unknown-model', 'chatgpt/not-a-model']) {
+      response = await ask(flow.id, STAFF, { model, lang });
+      assert.equal(response.status, 403, `${lang} ${model}`);
+      assert.equal(response.body.code, 'FORBIDDEN_FOR_ROLE');
+      assert.match(response.body.error, pattern);
+      assert.equal(response.body.error.includes('ß'), false);
+    }
+    refusedTexts.push(response.body.error);
+  }
+  assert.equal(new Set(refusedTexts).size, 3, 'one sentence per language');
+  assert.equal(subscription.calls.length + openrouter.calls.length, 0, 'no model call for a model that is not allowed');
+  sayViaSubscription({ answer: 'Nach den Absagen.', mentions: [] });
+  response = await ask(flow.id, STAFF);
+  assert.equal(response.body.quota.remaining, quotaNow - 1, 'the refusals did not count as questions');
+  // not a text
+  for (const model of [7, ['x'], {}, 'x'.repeat(201)]) {
+    response = await ask(flow.id, STAFF, { model });
+    assert.equal(response.status, 400, JSON.stringify(model).slice(0, 30));
+    assert.equal(response.body.code, 'INVALID_REQUEST');
+  }
+  assert.equal(subscription.calls.length + openrouter.calls.length, 1, 'only the question that was meant to run');
+
+  // a participant: a model of their list goes; the subscription, a model of the full list and an unknown one are 403
+  reset();
+  sayViaOpenRouter({ text: { answer: 'Mit Gemini.', mentions: [] }, cost: 0.01 });
+  response = await ask(own.id, P1, { model: LIST[1] });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.deepEqual(modelCalls(), [LIST[1]]);
+  assert.equal(response.body.usage.model, LIST[1]);
+  const spentBefore = response.body.budget.spentUsd;
+  reset();
+  for (const model of [OPUS, SUBSCRIPTION_MODEL, 'openai/gpt-5.2', 'some/unknown-model']) {
+    response = await ask(own.id, P1, { model });
+    assert.equal(response.status, 403, model);
+    assert.equal(response.body.code, 'FORBIDDEN_FOR_ROLE');
+    assert.match(response.body.error, /Modell des Assistenten ist für dein Konto nicht freigegeben/);
+  }
+  assert.equal(subscription.calls.length + openrouter.calls.length, 0);
+  sayViaOpenRouter({ text: { answer: 'Ohne Wahl.', mentions: [] }, cost: 0.01 });
+  response = await ask(own.id, P1);
+  assert.equal(response.status, 200);
+  assert.deepEqual(modelCalls(), [LIST[0]], 'without a model: the first of the list, as before');
+  assert.ok(Math.abs(response.body.budget.spentUsd - (spentBefore + 0.01)) < 1e-9, 'the refusals cost nothing');
+  // the reservation follows the price of the model: a model without a price reserves the flat amount, a priced model
+  // what its prompt and the longest answer cost
+  reset();
+  const A = require('../lib/nodes/assistant');
+  const pricedFlow = await makeFlow(P6, 'Teuer');
+  sayViaOpenRouter({ text: { answer: 'Teuer 1.', mentions: [] }, cost: 0.02, delay: 400 }, { text: { answer: 'Billig.', mentions: [] }, cost: 0.02, delay: 400 });
+  const slow = ask(pricedFlow.id, P6, { model: PRICED });
+  let reservedPriced = 0;
+  for (let waited = 0; waited < 40 && !reservedPriced; waited += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    reservedPriced = budgetLib.defaultBudget.reservedFor(P6);
+  }
+  assert.equal((await slow).status, 200);
+  const sentSize = openrouter.calls[0].payload.messages.reduce((sum, message) => sum + String(message.content).length, 0);
+  const expected = A.questionEstimateUsd({ model: PRICED, prompt: 'x'.repeat(sentSize) });
+  assert.ok(expected > 0.07, `a priced model reserves more than the flat amount (${expected})`);
+  assert.ok(Math.abs(reservedPriced - expected) < 1e-9, `reserved ${reservedPriced}, expected ${expected}`);
+  assert.equal(budgetLib.defaultBudget.reservedFor(P6), 0, 'the reservation ends with the question');
+  const slowFlat = ask(pricedFlow.id, P6, { model: LIST[0] });
+  let reservedFlat = 0;
+  for (let waited = 0; waited < 40 && !reservedFlat; waited += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    reservedFlat = budgetLib.defaultBudget.reservedFor(P6);
+  }
+  assert.equal((await slowFlat).status, 200);
+  // product owner's decision (review WP38): a model without a known price reserves with the dearest known price of the person's list
+  // (their list holds Opus 5.5), not the flat amount
+  const sentFlat = openrouter.calls[1].payload.messages.reduce((sum, message) => sum + String(message.content).length, 0);
+  const expectedFlat = A.questionEstimateUsd({ model: LIST[0], prompt: 'x'.repeat(sentFlat), choosable: LIST });
+  assert.ok(expectedFlat > 0.07, `a model without a price reserves more than the flat amount (${expectedFlat})`);
+  assert.equal(expectedFlat, A.questionEstimateUsd({ model: PRICED, prompt: 'x'.repeat(sentFlat) }), 'the price of the dearest model of the list');
+  assert.ok(Math.abs(reservedFlat - expectedFlat) < 1e-9, `reserved ${reservedFlat}, expected ${expectedFlat}`);
+  // a budget that would do for the flat amount but not for the price of the model: refused before the provider is asked
+  const tight = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Knapp teuer', budgetUsd: Math.round((expected - 0.01) * 100) / 100 } })).body.team;
+  assert.equal((await api(`/api/teams/${tight.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P7] } })).status, 201);
+  const tightFlow = await makeFlow(P7, 'Knapp teuer');
+  reset();
+  response = await ask(tightFlow.id, P7, { model: PRICED });
+  assert.equal(response.status, 402, JSON.stringify(response.body));
+  assert.equal(response.body.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(openrouter.calls.length, 0, 'refused before the provider was asked');
+  assert.ok(response.body.budget.remainingUsd >= 0.05, 'the flat amount would have fitted');
+  // a model without a known price needs the same as the dearest model of the list: refused as well, nothing asked
+  reset();
+  response = await ask(tightFlow.id, P7, { model: LIST[0] });
+  assert.equal(response.status, 402, JSON.stringify(response.body));
+  assert.equal(response.body.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(openrouter.calls.length, 0);
+  // a subscription-free person whose budget covers the dearest price asks with it
+  const roomy = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Genug', budgetUsd: 5 } })).body.team;
+  assert.equal((await api(`/api/teams/${roomy.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P8] } })).status, 201);
+  const roomyFlow = await makeFlow(P8, 'Genug');
+  sayViaOpenRouter({ text: { answer: 'Das passt.', mentions: [] }, cost: 0.01 });
+  response = await ask(roomyFlow.id, P8, { model: LIST[0] });
+  assert.equal(response.status, 200, 'enough budget for the reservation');
+  // the provider reports no cost for a priced model: the estimate is booked instead of the flat amount
+  reset();
+  sayViaOpenRouter({ text: { answer: 'Ohne Kostenangabe.', mentions: [] }, noCost: true });
+  const pricedBefore = (await costs.readCosts()).filter((entry) => entry.user === P6).length;
+  response = await ask(pricedFlow.id, P6, { model: PRICED });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.usage.usd, null);
+  const pricedRows = (await costs.readCosts()).filter((entry) => entry.user === P6).slice(pricedBefore);
+  assert.deepEqual(pricedRows.map((entry) => [entry.model, entry.cost]), [[PRICED, expected]], 'the estimate of the model is booked');
 
   // ============ F: limit per person, failures, no model, logs ============
   reset();

@@ -391,7 +391,9 @@
     }
     if (planStatus === 'unavailable') return { status: 'unavailable', message: planNode.reason || null };
     if (planStatus === 'stale' || planStatus === 'forced') {
-      if (category === 'input') return { status: runStatus || null };
+      // An input node is never "not run" or out of date because of its own fields (it is free and always runs first), except one that
+      // reads state of the app besides them (a branding, plan.stamped): when that changed, it shows out of date like the nodes after it.
+      if (category === 'input') return planNode.stamped && hasResults ? { status: 'stale' } : { status: runStatus || null };
       return { status: hasResults ? 'stale' : 'notrun' };
     }
     return { status: runStatus || null };
@@ -859,6 +861,12 @@
     /* ----- events ----- */
 
     function dispatch(event) {
+      // results deleted in another tab (or by another person): take over what is left
+      if (event.type === 'results_changed') {
+        refreshResults();
+        schedulePlan(0);
+        return;
+      }
       const before = runState;
       runState = reduce(runState, event);
       if (event.type === 'node_result' && event.entry && event.nodeId) {
@@ -1034,9 +1042,10 @@
       });
     }
 
-    async function confirmPaid(info) {
+    // `all`: the question of "Run all again" (nothing is taken from the cache), with its own title and texts.
+    async function confirmPaid(info, { all = false } = {}) {
       const body = el('div', { class: 'nv-confirm' });
-      body.append(el('p', { class: 'nv-confirm-intro', text: T('nodes.run.confirm.intro') }));
+      body.append(el('p', { class: 'nv-confirm-intro', text: T(all ? 'nodes.run.confirmAll.intro' : 'nodes.run.confirm.intro') }));
       const list = el('ul', { class: 'nv-confirm-list' });
       for (const row of info.paid) {
         const item = el('li', {});
@@ -1062,18 +1071,29 @@
         body.append(el('h3', { class: 'nv-confirm-sub', text: T('nodes.run.confirm.warnings') }), issueList(info.warnings));
       }
       return ui.dialog({
-        title: T('nodes.run.confirm.title', { count: info.paid.length }),
+        title: all ? T('nodes.run.confirmAll.title') : T('nodes.run.confirm.title', { count: info.paid.length }),
         body,
         width: 480,
         focus: 'cancel',
         buttons: [
           { label: T('nodes.common.cancel'), value: false, cancel: true },
-          { label: T('nodes.run.confirm.start'), value: true, primary: true, enter: false }
+          { label: T(all ? 'nodes.run.confirmAll.start' : 'nodes.run.confirm.start'), value: true, primary: true, enter: false }
         ]
       });
     }
 
-    async function startRun({ mode, nodeIds, force, nodeId, items }) {
+    // "Run all again" with nothing that costs money: still asked once, because every node runs again (local renders take their time).
+    function confirmAllFree() {
+      return ui.confirmDialog({
+        title: T('nodes.run.confirmAll.title'),
+        message: T('nodes.run.confirmAll.free'),
+        confirmLabel: T('nodes.run.confirmAll.start'),
+        cancelLabel: T('nodes.common.cancel'),
+        focus: 'cancel'
+      });
+    }
+
+    async function startRun({ mode, nodeIds, force, nodeId, items, again = false }) {
       const st = S();
       if (!st.workflow || !st.reg) return;
       if (runState.active || starting) {
@@ -1123,8 +1143,10 @@
           return;
         }
         if (info.needsConfirm) {
-          const confirmed = await confirmPaid(info);
+          const confirmed = await confirmPaid(info, { all: again });
           if (!confirmed) return;
+        } else if (again) {
+          if (!(await confirmAllFree())) return;
         }
         try {
           const started = await api.startRun(id, { ...request, rev: S().rev });
@@ -1155,6 +1177,12 @@
 
     function runNode(nodeId) {
       return startRun({ mode: 'node', nodeIds: [nodeId], force: true });
+    }
+
+    // Every node runs again, nothing comes from the cache (like "Run again" of the app view). The plan with force says what it costs; the
+    // question shows that, and "Cancel" leaves everything as it was.
+    function runAllAgain() {
+      return startRun({ mode: 'all', force: true, again: true });
     }
 
     function runFrom(nodeId) {
@@ -1260,6 +1288,56 @@
     function page(nodeId, delta) {
       const step = stepVariant(S().results, nodeId, delta);
       if (step) selectVariant(nodeId, step.entry, step.variant);
+    }
+
+    /* ----- deleting results (WP38e) ----- */
+
+    // Deletes one history entry of a node (entryId), or all results of the node (entryId left out), after the confirmation. Nothing
+    // is changed locally before the server has answered: it says which results are left and what became of the files. The card, the
+    // preview, the history and the scene table follow through the paint; the plan tells the nodes below that they are out of date.
+    // Resolves true when something was deleted.
+    async function deleteResult(nodeId, entryId) {
+      const id = workflowId();
+      if (!id) return false;
+      const all = !entryId;
+      const node = nodeResults(S().results, nodeId);
+      const count = node && Array.isArray(node.history) ? node.history.length : 0;
+      // "Delete all" also covers a node that holds only the items a failed run kept (no history entry, but files)
+      const keptItems = Boolean(node && node.partial);
+      if (all ? !count && !keptItems : !(node && (node.history || []).some((entry) => entry.id === entryId))) return false;
+      if (runState.active || starting) {
+        ui.toast(T('nodes.history.deleteBusy'), { kind: 'warn' });
+        return false;
+      }
+      const confirmed = await ui.confirmDialog({
+        title: T(all ? 'nodes.history.deleteAll.title' : 'nodes.history.deleteEntry.title'),
+        message: T(all ? (count ? 'nodes.history.deleteAll.message' : 'nodes.history.deleteAll.messageKept') : 'nodes.history.deleteEntry.message', { name: titleOf(nodeId), count }),
+        confirmLabel: T(all ? 'nodes.history.deleteAll.confirm' : 'nodes.history.deleteEntry.confirm'),
+        cancelLabel: T('nodes.history.deleteKeep'),
+        danger: true,
+        focus: 'cancel'
+      });
+      if (!confirmed) return false;
+      try {
+        const answer = all ? await api.deleteResults(id, nodeId) : await api.deleteResultEntry(id, nodeId, entryId);
+        if (workflowId() !== id) return true;
+        S().results = replaceNodeResults(S().results, nodeId, answer.node);
+        const kept = answer.files && answer.files.kept ? answer.files.kept : 0;
+        ui.toast(`${T(all ? 'nodes.history.deletedAll' : 'nodes.history.deleted')}${kept ? ` ${T('nodes.history.filesKept', { count: kept })}` : ''}`);
+      } catch (error) {
+        if (workflowId() !== id) return false;
+        if (error.status === 404) {
+          // gone already (deleted in another tab): show what is there now
+          ui.toast(T('nodes.history.deleteGone'), { kind: 'warn' });
+          await refreshResults();
+        } else {
+          ui.toast(error.code === 'RUN_ACTIVE' ? T('nodes.history.deleteBusy') : T('nodes.history.deleteFailed', { error: error.message }), { kind: 'error' });
+        }
+        return false;
+      }
+      schedulePlan(0);
+      schedulePaint();
+      return true;
     }
 
     /* ----- viewer, downloads ----- */
@@ -1381,6 +1459,7 @@
       runItems,
       scenes: scenesOf,
       selectVariant,
+      deleteResult,
       openResult,
       downloadResult,
       downloadZip,
@@ -1427,9 +1506,15 @@
             onClick: () => adoptText(nodeId)
           });
         }
+        // all results of the node: asked about first, nothing can bring them back
+        const stored = nodeResults(S().results, nodeId) || {};
+        if ((Array.isArray(stored.history) && stored.history.length) || stored.partial) {
+          items.push({ separator: true }, { label: T('nodes.run.menu.deleteResults'), icon: 'trash', danger: true, disabled: busy, onClick: () => deleteResult(nodeId) });
+        }
         return items;
       });
       OCD.extensions.workflowMenu.push(() => [
+        { label: T('nodes.run.menu.runAllAgain'), icon: 'refresh', disabled: runState.active || starting, hint: T('nodes.run.menu.runAllAgainHint'), onClick: () => runAllAgain() },
         { label: T('nodes.run.menu.zip'), icon: 'zip', disabled: !hasOutputResults(), onClick: () => downloadZip() }
       ]);
 
@@ -1438,6 +1523,7 @@
         dispatch(event);
       });
       bus.on('run:all', () => startRun({ mode: 'all', force: false }));
+      bus.on('run:allAgain', () => runAllAgain());
       bus.on('run:selection', () => runSelection());
       bus.on('selection', () => updateTopbar());
       bus.on('graph', (graph) => {
@@ -1505,8 +1591,10 @@
       runNode,
       runFrom,
       runSelection,
+      runAllAgain,
       cancelRun,
       selectVariant,
+      deleteResult,
       page,
       openResult,
       downloadZip,

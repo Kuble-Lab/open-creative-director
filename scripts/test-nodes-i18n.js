@@ -83,6 +83,16 @@ function testRegistryCoverage() {
     }
   }
   assert.deepEqual([...new Set(missing)], [], `registry strings without translation: ${[...new Set(missing)].join(', ')}`);
+  // WP38d: the wording of an option for one parameter, nodes.option.<param>.<value> (node-ui.js optionLabelOf): it must belong to a real
+  // select param that offers this value, in every language
+  const scoped = Object.keys(window.I18N.de).filter((key) => /^nodes\.option\.[a-z_]+\..+$/.test(key));
+  assert.ok(scoped.includes('nodes.option.language.auto'), 'the language of the explainer nodes says "same as input"');
+  for (const key of scoped) {
+    const [, , param, ...rest] = key.split('.');
+    const value = rest.join('.');
+    const offered = payload.nodeTypes.some((def) => def.params.some((item) => item.id === param && item.kind === 'select' && (item.options || []).some((option) => String(option && typeof option === 'object' ? option.value : option) === value)));
+    assert.ok(offered, `${key}: no select param ${param} offers the option ${value}`);
+  }
   assert.ok(payload.nodeTypes.length >= 73);
 }
 
@@ -221,7 +231,7 @@ function testPortDescriptions() {
 
   // generic texts for all port ids, and the last-resort texts for all seven base types on both sides
   const ids = new Set(ports.map((p) => p.port));
-  assert.equal(ids.size, 90, 'the registry has 90 port ids (66 incl. depth of the depth map + the 15 of the explainer foundation: documents, info, pages, files, topic, focus, sources, brand, logo, script, narration, briefs, image_prompts, clip_prompts, presenter + the 9 of the explainer production: narration_context, context, stills, pages_info, scenes, music, intro, outro, subtitles)');
+  assert.equal(ids.size, 91, 'the registry has 91 port ids (66 incl. depth of the depth map + the 15 of the explainer foundation: documents, info, pages, files, topic, focus, sources, brand, logo, script, narration, briefs, image_prompts, clip_prompts, presenter + the 9 of the explainer production: narration_context, context, stills, pages_info, scenes, music, intro, outro, subtitles + voice of the speaker voice, WP38f)');
   for (const id of ids) assert.ok(window.I18N.de[`nodes.portdesc.${id}`], `generic description for port id ${id}`);
   for (const base of ['text', 'number', 'image', 'video', 'audio', 'document', 'model3d', 'any']) {
     for (const dir of ['in', 'out']) assert.ok(window.I18N.de[`nodes.portdesc.type.${base}.${dir}`], `type description ${base}.${dir}`);

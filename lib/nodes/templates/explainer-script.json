@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Explainer video: script from a PDF",
-  "description": "Turn a PDF (or a text file) into the script of an explainer video: the text is read on this computer, then Claude Opus 5.5 plans the scenes with narration, text on screen, numbers and a page for every statement, and a second pass checks each statement against the document. A 20-page PDF for a 2-minute video costs about 0.50 to 0.90 US dollars (reading is free). The run asks for confirmation first. Read the script, edit it if you like and run again: an edited script is only checked, with no new model call.",
+  "description": "Turn a PDF (or a text file) into the script of an explainer video: the text is read on this computer, then Claude Opus 5.5 plans the scenes with narration, text on screen, numbers and a page for every statement, and a second pass checks each statement against the document. A 20-page PDF for a 2-minute video costs about 0.50 to 0.90 US dollars (reading is free). The language follows your input automatically; to use another, set Language in Plan explainer video or in the app view. The run asks for confirmation first. Read the script, edit it if you like and run again: an edited script is only checked, with no new model call. Use only PDFs you have the rights to: figures from the PDF can appear in the video made from this script.",
   "requires": [
     "openrouter",
     "poppler"
@@ -46,7 +46,7 @@
           "topic": "",
           "brief": "",
           "length_seconds": 120,
-          "language": "en",
+          "language": "auto",
           "audience": "",
           "tone": "factual",
           "visual_mode": "mix",
@@ -144,7 +144,7 @@
         "y": 420,
         "w": 520,
         "h": 260,
-        "text": "Upload a PDF, TXT or MD file (up to 50 MB). Reading it is free. Planning costs tokens: about 0.50 to 0.90 US dollars for 20 pages and 2 minutes, so the run asks for confirmation first. The planner gets the pages as text with page marks and, where the model can read files, the PDF itself. Every statement carries its page, and a second pass removes what the document does not say. To change the script, copy the Script result into the field Edited script of Plan explainer video and run that node again: it is only checked and passed on, with no model call and no cost."
+        "text": "Upload a PDF, TXT or MD file (up to 50 MB). Reading it is free. Planning costs tokens: about 0.50 to 0.90 US dollars for 20 pages and 2 minutes, so the run asks for confirmation first. The planner gets the pages as text with page marks and, where the model can read files, the PDF itself. Every statement carries its page, and a second pass removes what the document does not say. The language follows your input automatically; to use another, set Language in Plan explainer video or in the app view. To change the script, copy the Script result into the field Edited script of Plan explainer video and run that node again: it is only checked and passed on, with no model call and no cost. Use only PDFs you have the rights to: figures from the PDF can appear in the video made from this script."
       }
     ],
     "viewport": {
@@ -156,7 +156,7 @@
   "app": {
     "enabled": true,
     "title": "Explainer video: script from a PDF",
-    "description": "Upload a PDF or text file, choose the language and the length. You get the script of an explainer video with narration, text on screen and the sources.",
+    "description": "Upload a PDF or text file, choose the length (the language follows your text). You get the script of an explainer video with narration, text on screen and the sources.",
     "inputs": [
       {
         "node": "n1",
@@ -193,14 +193,13 @@
   "i18n": {
     "de": {
       "name": "Erklärvideo: Skript aus PDF",
-      "description": "Mach aus einem PDF (oder einer Textdatei) das Skript eines Erklärvideos: Der Text wird auf diesem Rechner gelesen, dann plant Claude Opus 5.5 die Szenen mit Sprechtext, Bildschirmtext, Zahlen und einer Seitenangabe zu jeder Aussage, und ein zweiter Durchgang prüft jede Aussage gegen das Dokument. Ein PDF mit 20 Seiten für ein Video von 2 Minuten kostet etwa 0.50 bis 0.90 US-Dollar (das Lesen ist gratis). Der Lauf fragt vorher um Bestätigung. Lies das Skript, ändere es nach Wunsch und starte erneut: Ein bearbeitetes Skript wird nur geprüft, ohne neuen Modellaufruf.",
+      "description": "Mach aus einem PDF (oder einer Textdatei) das Skript eines Erklärvideos: Der Text wird auf diesem Rechner gelesen, dann plant Claude Opus 5.5 die Szenen mit Sprechtext, Bildschirmtext, Zahlen und einer Seitenangabe zu jeder Aussage, und ein zweiter Durchgang prüft jede Aussage gegen das Dokument. Ein PDF mit 20 Seiten für ein Video von 2 Minuten kostet etwa 0.50 bis 0.90 US-Dollar (das Lesen ist gratis). Die Sprache folgt automatisch deiner Eingabe; für eine andere stellst du Sprache in Erklärvideo planen oder in der App-Ansicht um. Der Lauf fragt vorher um Bestätigung. Lies das Skript, ändere es nach Wunsch und starte erneut: Ein bearbeitetes Skript wird nur geprüft, ohne neuen Modellaufruf. Verwende nur PDFs, an denen du die Rechte hast: Abbildungen daraus können im Video erscheinen, das aus diesem Skript entsteht.",
       "node.n1": "PDF oder Textdatei",
       "node.n2": "Dokument lesen",
       "node.n3": "Erklärvideo planen",
-      "note.t1": "Lade eine PDF-, TXT- oder MD-Datei hoch (bis 50 MB). Das Lesen ist gratis. Das Planen kostet Tokens: etwa 0.50 bis 0.90 US-Dollar für 20 Seiten und 2 Minuten, deshalb fragt der Lauf vorher um Bestätigung. Der Planer erhält die Seiten als Text mit Seitenmarken und, wo das Modell Dateien lesen kann, auch das PDF selbst. Jede Aussage trägt ihre Seite, und ein zweiter Durchgang entfernt, was das Dokument nicht sagt. Um das Skript zu ändern, kopiere das Ergebnis Skript in das Feld Skript (bearbeitet) von Erklärvideo planen und starte diesen Node erneut: Es wird nur geprüft und weitergegeben, ohne Modellaufruf und ohne Kosten.",
-      "param.n3.language": "de",
+      "note.t1": "Lade eine PDF-, TXT- oder MD-Datei hoch (bis 50 MB). Das Lesen ist gratis. Das Planen kostet Tokens: etwa 0.50 bis 0.90 US-Dollar für 20 Seiten und 2 Minuten, deshalb fragt der Lauf vorher um Bestätigung. Der Planer erhält die Seiten als Text mit Seitenmarken und, wo das Modell Dateien lesen kann, auch das PDF selbst. Jede Aussage trägt ihre Seite, und ein zweiter Durchgang entfernt, was das Dokument nicht sagt. Die Sprache folgt automatisch deiner Eingabe; für eine andere stellst du Sprache in Erklärvideo planen oder in der App-Ansicht um. Um das Skript zu ändern, kopiere das Ergebnis Skript in das Feld Skript (bearbeitet) von Erklärvideo planen und starte diesen Node erneut: Es wird nur geprüft und weitergegeben, ohne Modellaufruf und ohne Kosten. Verwende nur PDFs, an denen du die Rechte hast: Abbildungen daraus können im Video erscheinen, das aus diesem Skript entsteht.",
       "app.title": "Erklärvideo: Skript aus PDF",
-      "app.description": "Lade ein PDF oder eine Textdatei hoch und wähle Sprache und Länge. Du erhältst das Skript eines Erklärvideos mit Sprechtext, Bildschirmtext und den Quellen.",
+      "app.description": "Lade ein PDF oder eine Textdatei hoch und wähle die Länge (die Sprache folgt deinem Text). Du erhältst das Skript eines Erklärvideos mit Sprechtext, Bildschirmtext und den Quellen.",
       "app.input.n1.assets": "PDF oder Textdatei",
       "app.input.n3.brief": "Was besonders wichtig ist (optional)",
       "app.input.n3.language": "Sprache",
@@ -210,14 +209,13 @@
     },
     "es": {
       "name": "Vídeo explicativo: guion a partir de un PDF",
-      "description": "Convierte un PDF (o un archivo de texto) en el guion de un vídeo explicativo: el texto se lee en este equipo, luego Claude Opus 5.5 planifica las escenas con narración, texto en pantalla, cifras y una página para cada afirmación, y una segunda pasada comprueba cada afirmación con el documento. Un PDF de 20 páginas para un vídeo de 2 minutos cuesta unos 0,50 a 0,90 dólares (la lectura es gratis). La ejecución pide antes que lo confirmes. Lee el guion, edítalo si quieres y vuelve a ejecutar: un guion editado solo se comprueba, sin nueva llamada al modelo.",
+      "description": "Convierte un PDF (o un archivo de texto) en el guion de un vídeo explicativo: el texto se lee en este equipo, luego Claude Opus 5.5 planifica las escenas con narración, texto en pantalla, cifras y una página para cada afirmación, y una segunda pasada comprueba cada afirmación con el documento. Un PDF de 20 páginas para un vídeo de 2 minutos cuesta unos 0,50 a 0,90 dólares (la lectura es gratis). El idioma sigue automáticamente tu entrada; para otro, ajusta Idioma en Planificar vídeo explicativo o en la vista de app. La ejecución pide antes que lo confirmes. Lee el guion, edítalo si quieres y vuelve a ejecutar: un guion editado solo se comprueba, sin nueva llamada al modelo. Usa solo PDF sobre los que tengas los derechos: las figuras del PDF pueden aparecer en el vídeo que se haga con este guion.",
       "node.n1": "PDF o archivo de texto",
       "node.n2": "Leer documento",
       "node.n3": "Planificar vídeo explicativo",
-      "note.t1": "Sube un archivo PDF, TXT o MD (hasta 50 MB). Leerlo es gratis. Planificar cuesta tokens: unos 0,50 a 0,90 dólares para 20 páginas y 2 minutos, por eso la ejecución pide antes que lo confirmes. El planificador recibe las páginas como texto con marcas de página y, donde el modelo puede leer archivos, también el propio PDF. Cada afirmación lleva su página y una segunda pasada elimina lo que el documento no dice. Para cambiar el guion, copia el resultado Guion en el campo Guion (editado) de Planificar vídeo explicativo y ejecuta ese nodo de nuevo: solo se comprueba y se pasa, sin llamada al modelo y sin coste.",
-      "param.n3.language": "es",
+      "note.t1": "Sube un archivo PDF, TXT o MD (hasta 50 MB). Leerlo es gratis. Planificar cuesta tokens: unos 0,50 a 0,90 dólares para 20 páginas y 2 minutos, por eso la ejecución pide antes que lo confirmes. El planificador recibe las páginas como texto con marcas de página y, donde el modelo puede leer archivos, también el propio PDF. Cada afirmación lleva su página y una segunda pasada elimina lo que el documento no dice. El idioma sigue automáticamente tu entrada; para otro, ajusta Idioma en Planificar vídeo explicativo o en la vista de app. Para cambiar el guion, copia el resultado Guion en el campo Guion (editado) de Planificar vídeo explicativo y ejecuta ese nodo de nuevo: solo se comprueba y se pasa, sin llamada al modelo y sin coste. Usa solo PDF sobre los que tengas los derechos: las figuras del PDF pueden aparecer en el vídeo que se haga con este guion.",
       "app.title": "Vídeo explicativo: guion a partir de un PDF",
-      "app.description": "Sube un PDF o un archivo de texto y elige el idioma y la duración. Obtienes el guion de un vídeo explicativo con narración, texto en pantalla y las fuentes.",
+      "app.description": "Sube un PDF o un archivo de texto y elige la duración (el idioma sigue tu texto). Obtienes el guion de un vídeo explicativo con narración, texto en pantalla y las fuentes.",
       "app.input.n1.assets": "PDF o archivo de texto",
       "app.input.n3.brief": "Lo que más importa (opcional)",
       "app.input.n3.language": "Idioma",

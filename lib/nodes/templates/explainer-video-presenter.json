@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Explainer video with a presenter (portrait)",
-  "description": "Turn a topic into a portrait explainer video (9:16) that a presenter opens and closes on camera: Claude Opus 5.5 researches and plans, ElevenLabs speaks the scenes and the two presenter lines, H3 Max lip sync (fal.ai) lets your photo speak them, Claude draws the scenes in between as motion graphics in your brand, and ffmpeg cuts it with voice, captions and a subtitle file. Use a photo only with the consent of the person. About 4 to 5 US dollars for 2 minutes (the topic version, with its music, plus about 1.4 for the two lip-sync clips; the music needs a paid ElevenLabs plan, otherwise delete the node Background music). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
+  "description": "Turn a topic into a portrait explainer video (9:16) that a presenter opens and closes on camera: Claude Opus 5.5 researches and plans, ElevenLabs speaks the scenes and the two presenter lines, H3 Max lip sync (fal.ai) lets your photo speak them, Claude draws the scenes in between as motion graphics in your brand, and ffmpeg cuts it with voice, captions and a subtitle file. Use a photo only with the consent of the person. About 4 to 5 US dollars for 2 minutes (the topic version, with its music, plus about 1.4 for the two lip-sync clips; the music needs a paid ElevenLabs plan, otherwise delete the node Background music). The language follows your topic automatically (research, script, voice and captions); to use another, set Language in Research the topic and in Plan explainer video to the same value, or choose it in the app view. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. The voice comes from the branding if it has a speaker voice; otherwise the voice chosen in the node applies.",
   "requires": [
     "openrouter",
     "elevenlabs",
@@ -58,7 +58,7 @@
           "topic": "",
           "focus": "",
           "max_results": 8,
-          "language": "en",
+          "language": "auto",
           "include_domains": "",
           "exclude_domains": ""
         }
@@ -86,7 +86,7 @@
           "topic": "",
           "brief": "",
           "length_seconds": 120,
-          "language": "en",
+          "language": "auto",
           "audience": "",
           "tone": "factual",
           "visual_mode": "mix",
@@ -606,6 +606,28 @@
           "node": "n9",
           "port": "music"
         }
+      },
+      {
+        "id": "e32",
+        "from": {
+          "node": "n3",
+          "port": "voice"
+        },
+        "to": {
+          "node": "n5",
+          "port": "voice"
+        }
+      },
+      {
+        "id": "e33",
+        "from": {
+          "node": "n3",
+          "port": "voice"
+        },
+        "to": {
+          "node": "n12",
+          "port": "voice"
+        }
       }
     ],
     "groups": [],
@@ -616,7 +638,7 @@
         "y": 760,
         "w": 760,
         "h": 300,
-        "text": "Only use a photo of a person who has agreed that their picture and a synthetic voice are used in a video (consent). The presenter opens and closes the video on camera: the planner writes the two lines, ElevenLabs speaks them and H3 Max lip sync (fal.ai) lets the photo speak. The format is portrait (9:16): use an upright photo of the face. About 4 to 5 US dollars for 2 minutes: the topic version (about 2 to 3, with the music) plus about 1.4 for two lip-sync clips of about 8 s each. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Format must be portrait in Plan explainer video and in Draw explainer scene. The music comes from Background music (instrumental, 120 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene."
+        "text": "Only use a photo of a person who has agreed that their picture and a synthetic voice are used in a video (consent). The presenter opens and closes the video on camera: the planner writes the two lines, ElevenLabs speaks them and H3 Max lip sync (fal.ai) lets the photo speak. The format is portrait (9:16): use an upright photo of the face. About 4 to 5 US dollars for 2 minutes: the topic version (about 2 to 3, with the music) plus about 1.4 for two lip-sync clips of about 8 s each. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. The language follows your topic automatically (research, script, voice and captions); to use another, set Language in Research the topic and in Plan explainer video to the same value, or choose it in the app view. Format must be portrait in Plan explainer video and in Draw explainer scene. The music comes from Background music (instrumental, 120 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene. The voice comes from the branding if it has a speaker voice; otherwise the voice chosen in the node applies."
       }
     ],
     "viewport": {
@@ -668,12 +690,12 @@
       {
         "node": "n5",
         "param": "voice_id",
-        "label": "Voice of the scenes"
+        "label": "Voice of the scenes (if the branding has none)"
       },
       {
         "node": "n12",
         "param": "voice_id",
-        "label": "Voice of the presenter"
+        "label": "Voice of the presenter (if the branding has none)"
       }
     ],
     "outputs": [
@@ -698,7 +720,7 @@
   "i18n": {
     "de": {
       "name": "Erklärvideo mit Moderation (Hochformat)",
-      "description": "Mach aus einem Thema ein Erklärvideo im Hochformat (9:16), das eine Moderatorin oder ein Moderator vor der Kamera eröffnet und abschliesst: Claude Opus 5.5 recherchiert und plant, ElevenLabs spricht die Szenen und die beiden Moderationstexte, H3 Max Lip Sync (fal.ai) lässt dein Foto sie sprechen, Claude zeichnet die Szenen dazwischen als Motion Graphics in deiner Marke, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Verwende ein Foto nur mit Einwilligung der Person. Etwa 4 bis 5 US-Dollar für 2 Minuten (die Themen-Version mit ihrer Musik plus etwa 1.40 für die zwei Lip-Sync-Clips; die Musik braucht ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
+      "description": "Mach aus einem Thema ein Erklärvideo im Hochformat (9:16), das eine Moderatorin oder ein Moderator vor der Kamera eröffnet und abschliesst: Claude Opus 5.5 recherchiert und plant, ElevenLabs spricht die Szenen und die beiden Moderationstexte, H3 Max Lip Sync (fal.ai) lässt dein Foto sie sprechen, Claude zeichnet die Szenen dazwischen als Motion Graphics in deiner Marke, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Verwende ein Foto nur mit Einwilligung der Person. Etwa 4 bis 5 US-Dollar für 2 Minuten (die Themen-Version mit ihrer Musik plus etwa 1.40 für die zwei Lip-Sync-Clips; die Musik braucht ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Die Sprache folgt automatisch deinem Thema (Recherche, Skript, Stimme und Untertitel); für eine andere stellst du Sprache in Thema recherchieren und in Erklärvideo planen auf denselben Wert oder wählst sie in der App-Ansicht. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Die Stimme kommt aus dem Branding, falls es eine Sprecherstimme hat; sonst gilt die Wahl im Node.",
       "node.n1": "Thema",
       "node.n6": "Was besonders wichtig ist (optional)",
       "node.n14": "Foto der Moderation",
@@ -714,9 +736,7 @@
       "node.n8": "Erklärszene zeichnen",
       "node.n9": "Erklärvideo schneiden",
       "param.n1.prompt": "Wie funktioniert eine Wärmepumpe, und was kostet ihr Betrieb?",
-      "param.n2.language": "de",
-      "param.n4.language": "de",
-      "note.t1": "Verwende nur ein Foto einer Person, die damit einverstanden ist, dass ihr Bild und eine synthetische Stimme in einem Video vorkommen (Einwilligung). Die Moderation eröffnet und schliesst das Video vor der Kamera: Der Planer schreibt die zwei Texte, ElevenLabs spricht sie und H3 Max Lip Sync (fal.ai) lässt das Foto sprechen. Das Format ist Hochformat (9:16): nimm ein aufrechtes Foto des Gesichts. Etwa 4 bis 5 US-Dollar für 2 Minuten: die Themen-Version (etwa 2 bis 3, mit der Musik) plus etwa 1.40 für zwei Lip-Sync-Clips von je etwa 8 s. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Das Format muss in Erklärvideo planen und in Erklärszene zeichnen Hochformat sein. Die Musik kommt von Hintergrundmusik (instrumental, 120 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen.",
+      "note.t1": "Verwende nur ein Foto einer Person, die damit einverstanden ist, dass ihr Bild und eine synthetische Stimme in einem Video vorkommen (Einwilligung). Die Moderation eröffnet und schliesst das Video vor der Kamera: Der Planer schreibt die zwei Texte, ElevenLabs spricht sie und H3 Max Lip Sync (fal.ai) lässt das Foto sprechen. Das Format ist Hochformat (9:16): nimm ein aufrechtes Foto des Gesichts. Etwa 4 bis 5 US-Dollar für 2 Minuten: die Themen-Version (etwa 2 bis 3, mit der Musik) plus etwa 1.40 für zwei Lip-Sync-Clips von je etwa 8 s. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Die Sprache folgt automatisch deinem Thema (Recherche, Skript, Stimme und Untertitel); für eine andere stellst du Sprache in Thema recherchieren und in Erklärvideo planen auf denselben Wert oder wählst sie in der App-Ansicht. Das Format muss in Erklärvideo planen und in Erklärszene zeichnen Hochformat sein. Die Musik kommt von Hintergrundmusik (instrumental, 120 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen. Die Stimme kommt aus dem Branding, falls es eine Sprecherstimme hat; sonst gilt die Wahl im Node.",
       "app.title": "Erklärvideo mit Moderation (Hochformat)",
       "app.description": "Nenne ein Thema und füge ein Foto der Moderation hinzu (mit Einwilligung): Die Moderation eröffnet und schliesst das Hochformat-Video vor der Kamera, dazwischen laufen Motion Graphics mit Stimme und Untertiteln. Starte zuerst nur den Planer, um das Skript zu prüfen.",
       "app.input.n1.prompt": "Thema",
@@ -726,8 +746,8 @@
       "app.input.n4.language": "Sprache des Skripts",
       "app.input.n2.language": "Sprache der Recherche",
       "app.input.n4.length_seconds": "Länge (Sekunden)",
-      "app.input.n5.voice_id": "Stimme der Szenen",
-      "app.input.n12.voice_id": "Stimme der Moderation",
+      "app.input.n5.voice_id": "Stimme der Szenen (falls das Branding keine hat)",
+      "app.input.n12.voice_id": "Stimme der Moderation (falls das Branding keine hat)",
       "app.output.n10": "Video",
       "app.output.n11": "Untertitel",
       "app.output.n17": "Skript",
@@ -737,7 +757,7 @@
     },
     "es": {
       "name": "Vídeo explicativo con presentador (vertical)",
-      "description": "Convierte un tema en un vídeo explicativo vertical (9:16) que un presentador abre y cierra ante la cámara: Claude Opus 5.5 investiga y planifica, ElevenLabs lee las escenas y las dos frases del presentador, H3 Max lip sync (fal.ai) hace que tu foto las diga, Claude dibuja las escenas intermedias como motion graphics con tu marca, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Usa una foto solo con el consentimiento de la persona. Unos 4 a 5 dólares para 2 minutos (la versión de tema con su música más unos 1,40 por los dos clips de lip sync; la música necesita un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
+      "description": "Convierte un tema en un vídeo explicativo vertical (9:16) que un presentador abre y cierra ante la cámara: Claude Opus 5.5 investiga y planifica, ElevenLabs lee las escenas y las dos frases del presentador, H3 Max lip sync (fal.ai) hace que tu foto las diga, Claude dibuja las escenas intermedias como motion graphics con tu marca, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Usa una foto solo con el consentimiento de la persona. Unos 4 a 5 dólares para 2 minutos (la versión de tema con su música más unos 1,40 por los dos clips de lip sync; la música necesita un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). El idioma sigue automáticamente tu tema (investigación, guion, voz y subtítulos); para otro, pon Idioma en Investigar el tema y en Planificar vídeo explicativo en el mismo valor, o elígelo en la vista de app. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. La voz viene del branding si este tiene una voz de locución; si no, vale la elección del nodo.",
       "node.n1": "Tema",
       "node.n6": "Lo que más importa (opcional)",
       "node.n14": "Foto del presentador",
@@ -753,9 +773,7 @@
       "node.n8": "Dibujar escena explicativa",
       "node.n9": "Montar vídeo explicativo",
       "param.n1.prompt": "¿Cómo funciona una bomba de calor y cuánto cuesta su funcionamiento?",
-      "param.n2.language": "es",
-      "param.n4.language": "es",
-      "note.t1": "Usa solo la foto de una persona que haya aceptado que su imagen y una voz sintética aparezcan en un vídeo (consentimiento). El presentador abre y cierra el vídeo ante la cámara: el planificador escribe los dos textos, ElevenLabs los lee y H3 Max lip sync (fal.ai) hace hablar a la foto. El formato es vertical (9:16): usa una foto vertical del rostro. Unos 4 a 5 dólares para 2 minutos: la versión de tema (unos 2 a 3, con la música) más unos 1,40 por dos clips de lip sync de unos 8 s cada uno. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. El formato debe ser vertical en Planificar vídeo explicativo y en Dibujar escena explicativa. La música viene de Música de fondo (instrumental, 120 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa.",
+      "note.t1": "Usa solo la foto de una persona que haya aceptado que su imagen y una voz sintética aparezcan en un vídeo (consentimiento). El presentador abre y cierra el vídeo ante la cámara: el planificador escribe los dos textos, ElevenLabs los lee y H3 Max lip sync (fal.ai) hace hablar a la foto. El formato es vertical (9:16): usa una foto vertical del rostro. Unos 4 a 5 dólares para 2 minutos: la versión de tema (unos 2 a 3, con la música) más unos 1,40 por dos clips de lip sync de unos 8 s cada uno. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. El idioma sigue automáticamente tu tema (investigación, guion, voz y subtítulos); para otro, pon Idioma en Investigar el tema y en Planificar vídeo explicativo en el mismo valor, o elígelo en la vista de app. El formato debe ser vertical en Planificar vídeo explicativo y en Dibujar escena explicativa. La música viene de Música de fondo (instrumental, 120 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa. La voz viene del branding si este tiene una voz de locución; si no, vale la elección del nodo.",
       "app.title": "Vídeo explicativo con presentador (vertical)",
       "app.description": "Nombra un tema y añade la foto del presentador (con su consentimiento): el presentador abre y cierra el vídeo vertical ante la cámara y entre medias hay motion graphics con voz y subtítulos. Ejecuta primero solo el planificador para revisar el guion.",
       "app.input.n1.prompt": "Tema",
@@ -765,8 +783,8 @@
       "app.input.n4.language": "Idioma del guion",
       "app.input.n2.language": "Idioma de la investigación",
       "app.input.n4.length_seconds": "Duración (segundos)",
-      "app.input.n5.voice_id": "Voz de las escenas",
-      "app.input.n12.voice_id": "Voz del presentador",
+      "app.input.n5.voice_id": "Voz de las escenas (si el branding no tiene ninguna)",
+      "app.input.n12.voice_id": "Voz del presentador (si el branding no tiene ninguna)",
       "app.output.n10": "Vídeo",
       "app.output.n11": "Subtítulos",
       "app.output.n17": "Guion",

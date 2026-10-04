@@ -21,6 +21,7 @@
   const LS_CLIPBOARD = 'ocd-nodes-clipboard';
   const LS_DRAWER = 'ocd-nodes-drawer';
   const LS_INSPECTOR = 'ocd-nodes-inspector';
+  const LS_ASSISTANT_MODEL = 'ocd-nodes-assistant-model';
   const SS_RETURN = 'ocd-nodes-return';
   const SAVE_DELAY = 800;
   const VIEWPORT_SAVE_DELAY = 1600;
@@ -686,6 +687,17 @@
   function recheckRegistry() {
     if (!state.active || !state.reg || !registryWatcher) return;
     registryWatcher.check();
+  }
+
+  // A branding (or another setting a node reads) may have been changed elsewhere, in the chat or in another tab, while this page was in the
+  // background: the plan is asked again when the page comes back, so the cards show what is out of date. Not more often than every 5 s.
+  let lastPlanCheck = 0;
+  function recheckPlan() {
+    if (!state.active || !state.workflow || !runController) return;
+    const now = Date.now();
+    if (now - lastPlanCheck < 5000) return;
+    lastPlanCheck = now;
+    runController.refreshPlan();
   }
 
   /* ---------- routing ---------- */
@@ -2722,7 +2734,7 @@
         },
         uploadFile,
         app: appApi(),
-        run: { ...runController.inspectorApi, runAll: () => runController.startRun({ mode: 'all', force: false }), sendToChat: sendNodeToChat, selectNode: selectNodeById },
+        run: { ...runController.inspectorApi, runAll: () => runController.startRun({ mode: 'all', force: false }), runAllAgain: () => runController.runAllAgain(), sendToChat: sendNodeToChat, selectNode: selectNodeById },
         onRendered: (slot, ctx) => bus.emit('inspector', { slot, selection: ctx.selection, graph: ctx.graph })
       }
     });
@@ -2763,7 +2775,10 @@
       plan: () => api.plan(state.workflow.id, { mode: 'all', force: false }),
       showNodes,
       getLang: currentLang,
-      onToggle: setAssistantOpen
+      onToggle: setAssistantOpen,
+      // the language models of the chat (app.js), and the choice of this person in this browser (lsGet / lsSet guard the storage)
+      getModelChoices: () => (global.OCBrain ? global.OCBrain.choices() : null),
+      modelStore: { read: () => lsGet(LS_ASSISTANT_MODEL) || '', write: (model) => lsSet(LS_ASSISTANT_MODEL, model) }
     });
     bus.on('workflow:open', () => assistant.workflowChanged());
     bus.on('workflow:close', () => assistant.workflowChanged());
@@ -2815,6 +2830,11 @@
       if (document.visibilityState === 'visible') recheckRegistry();
     });
     global.addEventListener('focus', recheckRegistry);
+    // the plan also looks again, for a branding that was changed in the chat or in another tab (not more often than every 5 s)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') recheckPlan();
+    });
+    global.addEventListener('focus', recheckPlan);
     global.addEventListener('resize', () => canvas && canvas.relayout());
     global.addEventListener('hashchange', route);
 

@@ -285,9 +285,32 @@
         });
         item.append(variants);
         if (selectedEntry) item.append(el('span', { class: 'nv-history-badge', text: ui.T('nodes.history.selected') }));
+        // "Delete" for this entry (asked about first, see the run controller); not offered while a run is active
+        if (cb.run.deleteResult) {
+          const remove = el('button', {
+            type: 'button',
+            class: 'nv-btn nv-btn-sm nv-btn-danger-ghost nv-history-delete',
+            title: ui.T('nodes.history.deleteEntry'),
+            'aria-label': ui.T('nodes.history.deleteEntry'),
+            disabled: info.busy,
+            dataset: { action: 'delete-entry', entry: entry.id }
+          }, ui.icon('trash', 13), el('span', { text: ui.T('nodes.history.delete') }));
+          remove.addEventListener('click', () => cb.run.deleteResult(nodeId, entry.id));
+          item.append(el('div', { class: 'nv-history-actions' }, remove));
+        }
         list.append(item);
       }
       wrap.append(list);
+      if (cb.run.deleteResult) {
+        const removeAll = el('button', {
+          type: 'button',
+          class: 'nv-btn nv-btn-sm nv-btn-danger-ghost nv-history-delete-all',
+          disabled: info.busy,
+          dataset: { action: 'delete-all' }
+        }, ui.icon('trash', 13), el('span', { text: ui.T('nodes.history.deleteAll') }));
+        removeAll.addEventListener('click', () => cb.run.deleteResult(nodeId));
+        wrap.append(el('div', { class: 'nv-history-footer' }, removeAll));
+      }
       container.append(wrap);
     }
 
@@ -386,9 +409,12 @@
       const buttons = el('div', { class: 'nv-insp-buttons' });
       const all = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-btn-primary', disabled: info.active }, ui.icon('play', 12), el('span', { text: ui.T('nodes.run.all') }));
       all.addEventListener('click', () => cb.run.runAll());
+      // every node again, nothing from the cache (asks first, with the cost)
+      const again = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: info.active, title: ui.T('nodes.run.menu.runAllAgainHint') }, ui.icon('refresh', 13), el('span', { text: ui.T('nodes.run.menu.runAllAgain') }));
+      again.addEventListener('click', () => cb.run.runAllAgain());
       const zip = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: !info.hasOutputs }, ui.icon('zip', 13), el('span', { text: ui.T('nodes.run.menu.zip') }));
       zip.addEventListener('click', () => cb.run.downloadZip());
-      buttons.append(all, zip);
+      buttons.append(all, again, zip);
       wrap.append(buttons);
       if (info.recent.length) {
         wrap.append(el('h3', { class: 'nv-insp-heading nv-insp-subheading', text: ui.T('nodes.run.recent') }));
@@ -1075,6 +1101,7 @@
     return {
       render,
       refreshRun,
+      renderHistory,
       getActionsSlot: () => actionsSlot,
       invalidate: () => {
         lastKey = null;

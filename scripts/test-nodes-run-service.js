@@ -519,6 +519,19 @@ async function run(iso) {
   assert.equal(stored.owner, undefined);
   assert.equal(stored.teamId, undefined);
   assert.ok(stored.createdBy === 'lokal');
+  // WP38d: "auto" (same as input) is an option of the language inputs of the explainer templates like en, de and es, for the Director and
+  // the MCP tools as well; anything else is refused before a workflow is made
+  prepared = await realService.prepare(v.s1, { templateId: 'explainer-script-topic', inputs: { 'n1.prompt': 'Wie funktioniert Git und GitHub', 'n6.prompt': 'Für Einsteiger', 'n3.language': 'auto', 'n2.language': 'es' }, lang: 'de' });
+  stored = await wfStore.readWorkflow(prepared.workflowId);
+  assert.equal(stored.graph.nodes.find((item) => item.id === 'n3').params.language, 'auto');
+  assert.equal(stored.graph.nodes.find((item) => item.id === 'n2').params.language, 'es');
+  assert.deepEqual(prepared.inputs.filter((item) => item.param === 'language').map((item) => [item.id, item.options]), [['n3.language', ['auto', 'en', 'de', 'es']], ['n2.language', ['auto', 'en', 'de', 'es']]]);
+  before = await countWorkflows();
+  await rejects(realService.prepare(v.s1, { templateId: 'explainer-script-topic', inputs: { 'n1.prompt': 'x', 'n6.prompt': 'y', 'n3.language': 'fr' } }), 'INVALID_INPUT', (err) => {
+    assert.equal(err.reason, 'invalid_option');
+    assert.deepEqual(err.options, ['auto', 'en', 'de', 'es']);
+  });
+  assert.equal(await countWorkflows(), before, 'nothing was created');
 
   // media: copied from the chat into the backing session, with the other inputs mapped by label and id
   prepared = await service.prepare(v.s1, {

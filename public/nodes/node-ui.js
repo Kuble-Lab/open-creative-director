@@ -65,6 +65,9 @@
   const portLabel = (id) => tr(`nodes.port.${id}`, humanize(id));
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
   const optionLabel = (value) => tr(`nodes.option.${value}`, String(value));
+  // The label of an option of one parameter: nodes.option.<param>.<value> where the parameter has its own wording (the language of the
+  // explainer nodes says "Same as input" for "auto"), else the label of the value for every parameter.
+  const optionLabelOf = (param, value) => tr(`nodes.option.${param && param.id}.${value}`, optionLabel(value));
 
   // Longest suggestion of a provider that is shown on one line behind an error text.
   const SUGGESTION_SHORT = 280;
@@ -308,11 +311,13 @@
     });
   }
 
-  function confirmDialog({ title, message, confirmLabel, cancelLabel, danger, extra }) {
+  // focus: 'cancel' puts the initial focus on the cancel button (a deletion nobody can undo)
+  function confirmDialog({ title, message, confirmLabel, cancelLabel, danger, extra, focus }) {
     return dialog({
       title,
       message,
       body: extra || null,
+      focus,
       buttons: [
         { label: cancelLabel || T('nodes.common.cancel'), value: false, cancel: true },
         { label: confirmLabel || T('nodes.common.confirm'), value: true, primary: !danger, danger: Boolean(danger) }
@@ -475,6 +480,10 @@
       if (Number.isFinite(option.fromUsd) && option.fromUsd > 0) out.fromUsd = option.fromUsd;
       if (typeof option.strength === 'string' && option.strength) out.strength = option.strength;
       if (option.default === true) out.default = true;
+      // voices (elevenlabs-voices): what the voice is like and whether ElevenLabs keeps a free sample of it
+      if (option.labels && typeof option.labels === 'object' && !Array.isArray(option.labels)) out.labels = option.labels;
+      if (typeof option.description === 'string' && option.description) out.description = option.description;
+      if (option.preview === true) out.preview = true;
       return out;
     });
   }
@@ -519,6 +528,7 @@
           .catch((error) => {
             entry.state = 'error';
             entry.error = error.message;
+            entry.status = error.status;
           })
           .finally(() => {
             optionListeners.forEach((fn) => fn(param.optionsSource));
@@ -532,7 +542,7 @@
     return {
       state: 'ready',
       options: (param.options || []).map((option) =>
-        option && typeof option === 'object' ? { value: String(option.value), label: String(option.label ?? option.value) } : { value: String(option), label: optionLabel(option) }
+        option && typeof option === 'object' ? { value: String(option.value), label: String(option.label ?? option.value) } : { value: String(option), label: optionLabelOf(param, option) }
       ),
       error: null
     };
@@ -817,7 +827,7 @@
   function mediaElement(value, options = {}) {
     const url = mediaUrl(value);
     if (value.type === 'image') {
-      const img = el('img', { class: 'nv-media nv-media-image', src: url, alt: '', loading: 'lazy', draggable: 'false' });
+      const img = el('img', { class: `nv-media nv-media-image${value.alpha === true ? ' nv-alpha' : ''}`, src: url, alt: '', loading: 'lazy', draggable: 'false' });
       if (options.zoom !== false) {
         img.addEventListener('dblclick', (event) => {
           event.stopPropagation();
@@ -827,7 +837,7 @@
       return img;
     }
     if (value.type === 'video') {
-      return el('video', { class: 'nv-media nv-media-video', src: url, controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
+      return el('video', { class: `nv-media nv-media-video${value.alpha === true ? ' nv-alpha' : ''}`, src: url, controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
     }
     return el('audio', { class: 'nv-media nv-media-audio', src: url, controls: true, preload: 'metadata' });
   }
@@ -1220,6 +1230,10 @@
     if (kind === 'select') {
       const select = el('select', { class: 'nv-input nv-select nv-nodrag', 'aria-label': paramLabel(param.id) });
       let current = value === null || value === undefined ? '' : String(value);
+      // A voice: a play button stands next to the list (OCDNodes.voicePreview) and the list tells what each voice is like.
+      const isVoice = param.optionsSource === 'elevenlabs-voices';
+      const voices = isVoice ? OCD.voicePreview : null;
+      let voicePlay = null;
       const fill = () => {
         const source = optionsFor(param);
         select.textContent = '';
@@ -1230,12 +1244,28 @@
           if (option.references || option.audio || option.videos || option.last_frame || option.durations || option.perSecondUsd || option.estimateUsd || option.fromUsd || option.strength) {
             const label = modelOptionLabel(option, usage);
             select.append(el('option', { value: option.value, text: label.text, dataset: label.misfit ? { misfit: '1' } : null }));
+          } else if (voices && (option.labels || option.description)) {
+            select.append(el('option', { value: option.value, text: voices.optionText(option), title: voices.detailOf(option) }));
           } else {
             select.append(el('option', { value: option.value, text: option.label }));
           }
         }
         select.value = current;
+        if (voices) {
+          const chosen = source.options.find((option) => option.value === current);
+          select.setAttribute('title', chosen ? voices.detailOf(chosen) : '');
+          if (voicePlay) voicePlay.refresh();
+        }
       };
+      if (voices) {
+        voicePlay = voices.button({
+          voice: () => {
+            const source = optionsFor(param);
+            return { value: current, state: source.state, noKey: source.status === 503, option: source.options.find((option) => option.value === current) || null };
+          },
+          model: () => (ctx.node && ctx.node.params && ctx.node.params.model_id) || ''
+        });
+      }
       fill();
       const unsubscribe = param.optionsSource
         ? onOptionsChange((source) => {
@@ -1247,14 +1277,22 @@
         current = select.value;
         ctx.onChange(current, { commit: true });
       });
+      let box = select;
+      if (voicePlay) {
+        box = el('div', { class: 'nv-voice-pick nv-nodrag' }, select, voicePlay.el);
+        select.addEventListener('change', () => voicePlay.refresh());
+      }
       return {
-        el: select,
+        el: box,
         set(next) {
           current = next === null || next === undefined ? '' : String(next);
           fill();
         },
         get: () => select.value,
-        dispose: () => unsubscribe && unsubscribe()
+        dispose: () => {
+          if (unsubscribe) unsubscribe();
+          if (voicePlay) voicePlay.dispose();
+        }
       };
     }
 
@@ -1984,6 +2022,7 @@
     portLabel,
     paramLabel,
     optionLabel,
+    optionLabelOf,
     hasIssueText,
     issueText,
     connectText,

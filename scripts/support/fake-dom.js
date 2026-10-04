@@ -138,7 +138,8 @@ function makeDocument() {
 }
 
 // A page with the node-view scripts the test needs, in the language `lang`.
-function loadPage(lang, { scripts = ['node-ui', 'preview'], api = {}, userAgent = '', maxTouchPoints = 0 } = {}) {
+// `window`: more members of the window (Audio, fetch, URL ... of a test that needs them).
+function loadPage(lang, { scripts = ['node-ui', 'preview'], api = {}, userAgent = '', maxTouchPoints = 0, window: windowExtras = {} } = {}) {
   const storage = new Map([['vcd-lang', lang]]);
   const { document, customElements } = makeDocument();
   const window = {
@@ -146,7 +147,8 @@ function loadPage(lang, { scripts = ['node-ui', 'preview'], api = {}, userAgent 
     customElements,
     navigator: { language: lang, userAgent, maxTouchPoints },
     localStorage: { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, String(value)) },
-    OCDNodes: { graph: graphLib, api: { rel: (url) => String(url).replace(/^\/+/, ''), options: async () => ({ options: [] }), ...api } }
+    OCDNodes: { graph: graphLib, api: { rel: (url) => String(url).replace(/^\/+/, ''), options: async () => ({ options: [] }), ...api } },
+    ...windowExtras
   };
   const timers = (fn, ms) => {
     const timer = setTimeout(fn, ms);

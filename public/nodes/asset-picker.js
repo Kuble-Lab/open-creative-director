@@ -42,8 +42,10 @@
   function tile(item, kind) {
     const url = api.rel(item.url || '');
     const wrap = el('span', { class: `nv-ap-thumb is-${kind}` });
-    if (kind === 'image') wrap.append(el('img', { src: url, alt: '', loading: 'lazy', draggable: 'false' }));
-    else if (kind === 'video') wrap.append(el('video', { src: `${url}#t=0.1`, muted: true, preload: 'metadata', playsinline: true }));
+    // an asset marked with transparency sits on a chequerboard (the class is on the picture, so the bars of the square tile stay plain)
+    const alphaClass = item.alpha === true ? 'nv-alpha' : null;
+    if (kind === 'image') wrap.append(el('img', { class: alphaClass, src: url, alt: '', loading: 'lazy', draggable: 'false' }));
+    else if (kind === 'video') wrap.append(el('video', { class: alphaClass, src: `${url}#t=0.1`, muted: true, preload: 'metadata', playsinline: true }));
     else wrap.append(icon(kind === 'model3d' ? 'cube' : 'audio', 22));
     return wrap;
   }
@@ -273,6 +275,7 @@
               url: entry.url,
               label: entry.id,
               title: entry.prompt || entry.id,
+              alpha: entry.alpha === true,
               load: async () => (await api.importAsset(workflowId, chat.id, entry.id)).value
             }));
           grid(gridBox, items.reverse());
@@ -300,6 +303,7 @@
             url: value.url,
             label: value.assetId,
             title: value.prompt || value.assetId,
+            alpha: value.alpha === true,
             load: async () => {
               const { prompt, createdAt, ...clean } = value;
               void prompt;

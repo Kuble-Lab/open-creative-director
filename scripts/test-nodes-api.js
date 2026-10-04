@@ -1107,6 +1107,8 @@ async function main() {
         ['/api/workflows/:id/runs/:runId', 'get'],
         ['/api/workflows/:id/runs/:runId/cancel', 'post'],
         ['/api/workflows/:id/results/:nodeId', 'patch'],
+        ['/api/workflows/:id/results/:nodeId/entries/:entryId', 'delete'],
+        ['/api/workflows/:id/results/:nodeId', 'delete'],
         ['/api/workflows/:id/events', 'get']
       ]) {
         const position = indexOf(routePath, method);

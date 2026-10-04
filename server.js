@@ -1570,6 +1570,24 @@ app.get('/api/brandings/:id', async (req, res) => {
   }
 });
 
+// The speaker voice of a branding (WP38f): { speaker: { voiceId, name } } sets it, { speaker: null } removes it. This is the only field
+// the editor of the app changes; the rest of a branding is made through the Director (update_branding) or the import.
+app.patch('/api/brandings/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const id = requireBrandingId(req, res);
+  if (!id) return;
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const extra = Object.keys(body).filter((key) => key !== 'speaker');
+  if (extra.length || !Object.prototype.hasOwnProperty.call(body, 'speaker')) {
+    return fail(res, 400, extra.length ? `Unbekanntes Feld: ${extra[0]}` : 'speaker fehlt (Objekt { voiceId, name } oder null)');
+  }
+  try {
+    res.json(await brandings.updateBranding(id, { speaker: body.speaker }));
+  } catch (err) {
+    fail(res, err.code === 'BRANDING_NOT_FOUND' ? 404 : 400, err.message);
+  }
+});
+
 app.delete('/api/brandings/:id', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   const id = requireBrandingId(req, res);

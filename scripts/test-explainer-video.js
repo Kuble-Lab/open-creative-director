@@ -267,7 +267,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
   assert.equal(voiceDef.cost.unit, 'usd');
   assert.equal(voiceDef.cost.history, false, 'the price is not guessed from an earlier run');
   const portsOf = (list) => list.map((port) => [port.id, port.type, Boolean(port.required), Boolean(port.multiple)]);
-  assert.deepEqual(portsOf(voiceDef.inputs), [['narration', 'text', true, false], ['context', 'text', false, false]]);
+  assert.deepEqual(portsOf(voiceDef.inputs), [['narration', 'text', true, false], ['context', 'text', false, false], ['voice', 'text', false, false]]); // WP38f: the optional voice input
   assert.deepEqual(portsOf(voiceDef.outputs), [['audio', 'audio', false, false], ['timing', 'text', false, false], ['duration', 'number', false, false]]);
   const voiceDefaults = real.normalizeParams(voiceDef, {});
   assert.deepEqual(voiceDefaults, { voice_id: tools.DEFAULT_ELEVENLABS_VOICE_ID, model_id: 'eleven_v4', use_context: true });
