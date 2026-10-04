@@ -4,10 +4,13 @@
 // than the model takes. A fake fal and a fake OpenRouter, the REAL ffmpeg on small pictures (90 x 160 px, the luma of a picture
 // grows with its time, so the order and the position of every part can be measured). Nothing is paid, nothing leaves the machine.
 //   - the cut: 53.5 s at 30 fps are 1605 frames = 4 parts of 402, 401, 401, 401 frames (about 13.4 s), on frame boundaries, no sound
-//   - the price: 53.5 x 0.14 USD, the sum of the parts (Aleph: the minimum per part), shown in the plan, booked per part
+//   - the price: 53.5 x 0.14 USD, the sum of the parts (Aleph: every part is billed at least 5 s, 11 parts of 1.40 USD), shown in the plan,
+//     booked per part
 //   - the run: the parts go in order, are edited with the same prompt, are brought to the length of their input part and joined; the
 //     film is as long as the original (within a frame), the pictures stay in order and the sound is the ORIGINAL sound
-//   - a model that returns another length and another frame rate than it got (13.375 s at 24 fps for every part)
+//   - a model that returns another length and another frame rate than it got (13.375 s at 24 fps for every part); a part that comes back
+//     more than 10 % off its length is NOT stretched: the node fails with VIDEO_EDIT_PART_LENGTH, the paid parts stay and cost nothing
+//     again, "Make part again" makes the bad one (live test 2026-10-04, Aleph)
 //   - a part that fails: the finished parts cost nothing the next time; a running job is adopted; one part again ("redo_parts"), all
 //     parts again (run again), a changed prompt makes new parts
 //   - a video under the limit stays ONE run; "in parts" wins over "cut to the allowed length"
@@ -36,6 +39,7 @@ const budget = require('../lib/budget');
 const videoNodeModels = require('../lib/video-node-models');
 const assets = require('../lib/nodes/assets');
 const editParts = require('../lib/nodes/video-edit-parts');
+const alephEdit = require('../lib/nodes/aleph-edit');
 const nodesBasic = require('../lib/nodes/nodes-basic');
 const nodesFal = require('../lib/nodes/nodes-fal');
 const engine = require('../lib/nodes/engine');
@@ -90,6 +94,16 @@ function testSplit() {
   assert.equal(editParts.splitFrames({ totalFrames: 300, fps: 30, maxSeconds: 14.95 }).length, 1);
   assert.equal(editParts.splitFrames({ totalFrames: 449, fps: 30, maxSeconds: 14.95 }).length, 2);
   assert.equal(editParts.splitFrames({ totalFrames: 448, fps: 30, maxSeconds: 14.95 }).length, 1);
+  // Runway Aleph 2.0, 5 s per run (live test 2026-10-04): 53.5 s are eleven parts of at most 4.95 s, none under the 2 s it needs
+  const aleph = editParts.splitFrames({ totalFrames: 1605, fps: 30, maxSeconds: 4.95, minSeconds: 2 });
+  assert.equal(aleph.length, 11);
+  assert.deepEqual(aleph.map((part) => part.frames), [146, 146, 146, 146, 146, 146, 146, 146, 146, 146, 145]);
+  assert.equal(aleph.reduce((sum, part) => sum + part.frames, 0), 1605);
+  assert.ok(aleph.every((part) => part.seconds <= 4.95 && part.seconds >= 2));
+  // just over the limit (5.05 s and the slack): two parts, each far above the shortest length
+  const justOver = editParts.splitFrames({ totalFrames: 152, fps: 30, maxSeconds: 4.95, minSeconds: 2 });
+  assert.equal(justOver.length, 2);
+  assert.ok(justOver.every((part) => part.seconds > 2.4));
   // Gemini Omni, 10 s: 53.5 s are six parts
   const gemini = editParts.splitFrames({ totalFrames: 1605, fps: 30, maxSeconds: 9.95, minSeconds: 1 });
   assert.equal(gemini.length, 6);
@@ -113,10 +127,16 @@ function testPlanAndKey() {
   assert.equal(editParts.planParts(NaN, 14.95, price), null);
   assert.equal(editParts.planParts(10, 0, price), null);
   assert.equal(editParts.planParts(10, 5, () => null), null);
-  // the minimum of a price per part (Aleph: 0.56 for a part): each part is priced on its own
+  // the minimum of a price per part (the minimum per generation of a list, 0.56 for Aleph's): each part is priced on its own
   const withMinimum = (seconds) => Math.max(seconds * 0.28, 0.56);
   assert.deepEqual(editParts.planParts(1, 30, withMinimum), { count: 1, usd: 0.56 });
   assert.deepEqual(editParts.planParts(60.1, 29.95, withMinimum), { count: 3, usd: Math.round(3 * 0.28 * (60.1 / 3) * 1e6) / 1e6 });
+  // Aleph with its real price (5 billed seconds at least, lib/nodes/aleph-edit.js): 53.5 s in parts of at most 4.95 s are 11 x 1.40 = 15.40 USD
+  const aleph = (seconds) => alephEdit.priceFor(seconds);
+  assert.deepEqual(editParts.planParts(53.5, 4.95, aleph), { count: 11, usd: 15.4 });
+  assert.deepEqual(editParts.planParts(5.06, 4.95, aleph), { count: 2, usd: 2.8 }, 'just over a run: two runs of 1.40 (the parts are 2.53 s, billed as 5)');
+  assert.deepEqual(editParts.planParts(4.9, 4.95, aleph), { count: 1, usd: 1.4 });
+  assert.deepEqual(editParts.planParts(10, 4.95, aleph), { count: 3, usd: 4.2 });
 
   const base = { via: 'fal', target: 'fal-ai/kling/o3', input: { prompt: 'x' }, media: [], source: 'asset-1', rate: '30', longest: 15, from: 0, frames: 402 };
   const key = editParts.partKey(base);
@@ -126,6 +146,36 @@ function testPlanAndKey() {
     assert.notEqual(editParts.partKey({ ...base, ...change }), key, `a change of ${Object.keys(change)[0]} is another part`);
   }
   console.log('   ok testPlanAndKey');
+}
+
+function testLengthProblems() {
+  assert.equal(editParts.MAX_LENGTH_DEVIATION, 0.1, 'a part more than 10 % off is not stretched');
+  const lengths = (wanted, found) => editParts.lengthProblems(wanted, found).map((item) => [item.number, Math.round(item.found * 1000) / 1000, Math.round(item.wanted * 1000) / 1000]);
+  // what the models really do passes: Kling O3 returned 13.375 s for parts of 13.28 to 13.4 s (under 1 %), Aleph 0.4 % more than it got
+  assert.deepEqual(lengths([13.4, 13.367, 13.367, 13.267], [13.375, 13.375, 13.375, 13.375]), []);
+  assert.deepEqual(lengths([13.28], [13.375]), []);
+  assert.deepEqual(lengths([13.4], [13.375]), []);
+  assert.deepEqual(lengths([4.867, 4.867], [4.867 * 1.004, 4.867 * 0.996]), []);
+  // a few per cent is fine as well: it is stretched
+  assert.deepEqual(lengths([4.867, 4.867, 4.867, 4.867], [4.867 * 1.09, 4.867 * 0.91, 4.867 * 1.05, 4.867 * 0.95]), []);
+  // more than 10 % in either direction is not (the numbers are those of the part in order, the first is 1)
+  assert.deepEqual(lengths([4.867, 4.867, 4.867], [4.867 * 1.11, 4.867, 4.867 * 0.89]), [[1, 5.402, 4.867], [3, 4.332, 4.867]]);
+  assert.deepEqual(lengths([4.867], [3]), [[1, 3, 4.867]], 'a 3 s result for a part of 4.87 s');
+  assert.deepEqual(lengths([4.867], [9.7]), [[1, 9.7, 4.867]], 'twice as long');
+  // a result without a length (no frames, nothing read) is a problem, never a stretch to infinity
+  assert.deepEqual(lengths([4.867], [0]), [[1, 0, 4.867]]);
+  assert.deepEqual(lengths([4.867], [NaN]), [[1, 0, 4.867]]);
+  assert.deepEqual(lengths([4.867], [undefined]), [[1, 0, 4.867]]);
+  assert.deepEqual(lengths([], []), []);
+  // the share can be passed in (the constant is the default)
+  assert.deepEqual(editParts.lengthProblems([10], [11.5], 0.2), []);
+  assert.equal(editParts.lengthProblems([10], [11.5], 0.1).length, 1);
+  // just under and just over the edge
+  assert.deepEqual(lengths([10], [10.99]), []);
+  assert.equal(lengths([10], [11.01]).length, 1);
+  assert.deepEqual(lengths([10], [9.01]), []);
+  assert.equal(lengths([10], [8.99]).length, 1);
+  console.log('   ok testLengthProblems');
 }
 
 function testRetimeAndArguments() {
@@ -235,6 +285,7 @@ async function main() {
   testSplit();
   testPlanAndKey();
   testRetimeAndArguments();
+  testLengthProblems();
   await testEngineSlot();
 
   const binaries = ffmpeg.binaries();
@@ -358,9 +409,10 @@ async function main() {
     });
     patch(publicrefs, 'removeRef', async () => true);
 
-    // What the "model" returns for a part: the picture of the part stretched to its OWN length at ITS OWN rate (24 fps, 13.375 s =
-    // 321 frames for every part, like the real model; Aleph: 0.4 % longer than it got), and ITS OWN sound (1000 Hz).
-    const behaviour = { failJob: new Set(), hangJob: new Set(), cost: 1, active: 0, maxActive: 0, delays: 0 };
+    // What the "model" returns for a part: the picture of the part stretched to its OWN length at ITS OWN rate (24 fps, Kling O3: 13.375 s =
+    // 321 frames for every part, like the real model; the others, Aleph and Gemini Omni: 0.4 % longer than they got), and ITS OWN sound (1000 Hz).
+    // lengthFactor: part number -> how long the "model" makes that part compared to the length it should have (1 = as usual)
+    const behaviour = { failJob: new Set(), hangJob: new Set(), cost: 1, active: 0, maxActive: 0, delays: 0, lengthFactor: new Map() };
     const pathOfInput = async (job) => {
       if (inputOfRequest.has(job.jobId)) return copies.get(inputOfRequest.get(job.jobId));
       return publishedFiles.get(orCopies.get(job.jobId));
@@ -369,8 +421,11 @@ async function main() {
       const input = await pathOfInput(job);
       assert.ok(input, `the input of job ${job.jobId} is known`);
       const seconds = await durationOf(input, 'v:0');
-      const fixed = job.model !== 'runway/aleph-2';
-      const own = fixed ? 13.375 : seconds * 1.004;
+      // Changed after the live test of 2026-10-04: every fal model returned 13.375 s (the length of Kling O3), also Gemini Omni for parts of
+      // 8.9 s, which is 50 % off and is refused now (VIDEO_EDIT_PART_LENGTH). Only Kling O3 does that; the others come back about as long as they got.
+      const fixed = /kling/.test(String(job.model));
+      const number = Number((/part-(\d+)\.mp4$/.exec(input) || [])[1]);
+      const own = (fixed ? 13.375 : seconds * 1.004) * (behaviour.lengthFactor.get(number) ?? 1);
       const frames = Math.round(own * 24);
       const out = path.join(tmpDir, `model-${job.jobId}.mp4`);
       await ff(FFMPEG, ['-nostdin', '-v', 'error', '-y', '-i', input, '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=16000', '-vf', `setpts=(PTS-STARTPTS)*${own / seconds},fps=24`, '-frames:v', String(frames), '-r', '24', '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out]);
@@ -432,6 +487,7 @@ async function main() {
       logs.length = 0;
       behaviour.failJob.clear();
       behaviour.hangJob.clear();
+      behaviour.lengthFactor.clear();
       behaviour.maxActive = 0;
     };
     const filmFile = (outcome) => assets.assetFilePath(outcome.variants[0].video);
@@ -826,30 +882,60 @@ async function main() {
       assert.ok(Math.abs((await pitchAt(filmFile(outcome), 30, 1)) - 440) < 25, 'the sound of the original; Gemini has no switch for it, the original is used');
     }
 
-    /* ----- Runway Aleph 2.0: two parts of at most 30 s, through OpenRouter ----- */
+    /* ----- Runway Aleph 2.0: parts of at most 5 s, through OpenRouter ----- */
     {
       reset();
+      // Changed after the live test of 2026-10-04: this was "two parts of at most 30 s" (803 and 802 frames, 53.5 x 0.28 = 14.98 USD, the
+      // 0.56 minimum per part). Only a video of 3 s was tried with Aleph and it was billed as 5 s, so a run takes 5 s at the most: 53.5 s are
+      // eleven parts of about 4.87 s, each billed as 5 s: 11 x 1.40 = 15.40 USD.
       const alephPlan = await plan({ video: long, prompt: textValue('Aleph parts') }, { model: 'runway_aleph' });
-      assert.equal(alephPlan.parts.list.length, 2);
-      assert.deepEqual(alephPlan.parts.list.map((part) => part.frames), [803, 802]);
-      near(alephPlan.estimateUsd, 53.5 * 0.28, 'Aleph: 0.28 per second over the whole length', 1e-5);
-      assert.equal(alephPlan.parts.list.every((part) => part.usd >= 0.56), true, 'the minimum per part is in the price of each part');
+      assert.equal(alephPlan.parts.list.length, 11);
+      assert.deepEqual(alephPlan.parts.list.map((part) => part.frames), [146, 146, 146, 146, 146, 146, 146, 146, 146, 146, 145]);
+      assert.equal(alephPlan.parts.list.every((part) => part.seconds <= 4.95 && part.seconds >= 2), true, 'every part is a run of at most 5 s');
+      near(alephPlan.estimateUsd, 15.4, 'Aleph: 11 parts at 1.40 USD', 1e-5);
+      assert.equal(alephPlan.parts.list.every((part) => Math.abs(part.usd - 1.4) < 1e-9), true, 'every part is billed as 5 s: 1.40 USD');
+      // the plan of the graph (the length only) and the plan of the run (the frames) agree
+      near(def.cost.estimate(normalised({ model: 'runway_aleph', in_parts: true }), { inputs: { video: { type: 'video', duration: 53.5 } } }), 15.4, 'the plan of the graph', 1e-5);
+      near(def.cost.estimate(normalised({ model: 'runway_aleph', in_parts: true }), { inputs: { video: { type: 'video', duration: 5 } } }), 1.4, 'a video of one run stays one run');
+      near(def.cost.estimate(normalised({ model: 'runway_aleph', in_parts: true }), { inputs: { video: { type: 'video', duration: 5.06 } } }), 2.8, 'just over a run: two parts of 1.40');
+      assert.equal(def.cost.estimate(normalised({ model: 'runway_aleph', in_parts: true }), { inputs: { video: { type: 'video', duration: null } } }), null, 'a length that is not known has no price');
+      // "in parts" wins over "cut to the allowed length" for Aleph as for the others: the whole video, not its first 5 s
+      const alephBoth = await plan({ video: long, prompt: textValue('Aleph parts') }, { model: 'runway_aleph', cut_to_limit: true });
+      assert.ok(alephBoth.parts && alephBoth.parts.list.length === 11, 'in parts wins');
+      assert.equal(alephBoth.trimmed, false);
+      near(alephBoth.estimateUsd, 15.4, 'the whole video, not the first 5 s', 1e-5);
+      assert.deepEqual(await scratchLeftovers(), []);
+      // the cut alone (the switch for the parts off) is the first 5 s: one run of 1.40 USD
+      const alephCut = await plan({ video: long, prompt: textValue('Aleph parts') }, { model: 'runway_aleph', in_parts: false, cut_to_limit: true });
+      assert.equal(alephCut.parts, undefined);
+      assert.equal(alephCut.trimmed, true);
+      near(alephCut.estimateUsd, 1.4, 'the first 5 s');
+      await alephCut.cleanup();
+      // without either switch a video over 5 s is refused, with the length of Aleph
+      await assert.rejects(def.execute(ctxFor(), { video: long, prompt: textValue('Aleph parts') }, normalised({ model: 'runway_aleph' })), (err) => err.code === 'VIDEO_EDIT_VIDEO_TOO_LONG' && err.data.max === 5);
+      assert.equal(orPayloads.length, 0, 'nothing was paid');
+      assert.deepEqual(await scratchLeftovers(), []);
+
       const outcome = await run({ video: long, prompt: textValue('Aleph parts') }, { model: 'runway_aleph' });
       assert.equal(falCalls.submit.length, 0, 'not through fal');
-      assert.equal(orPayloads.length, 2, 'one request for each part');
+      assert.equal(orPayloads.length, 11, 'one request for each part');
       for (const payload of orPayloads) {
         assert.equal(payload.model, 'runway/aleph-2');
         assert.equal(payload.prompt, 'Aleph parts');
         assert.equal(payload.input_references.length, 1);
         assert.equal(payload.input_references[0].type, 'video_url');
-        assert.match(payload.input_references[0].video_url.url, /^https:\/\/example\.test\/refs\/.*part-[12]\.mp4$/);
+        assert.match(payload.input_references[0].video_url.url, /^https:\/\/example\.test\/refs\/.*part-\d+\.mp4$/);
         for (const field of ['duration', 'resolution', 'aspect_ratio']) assert.equal(field in payload, false);
       }
       // each part is a file of its own (the file that was cut), in order
-      assert.deepEqual(orPayloads.map((payload) => payload.input_references[0].video_url.url.endsWith('part-1.mp4')), [true, false]);
-      const jobs = (await store.readSession(sessionId)).jobs.filter((job) => job.model === 'runway/aleph-2');
-      assert.equal(jobs.length, 2);
+      assert.deepEqual(orPayloads.map((payload, index) => payload.input_references[0].video_url.url.endsWith(`part-${index + 1}.mp4`)), Array(11).fill(true));
+      const jobs = (await store.readSession(sessionId)).jobs.filter((job) => job.model === 'runway/aleph-2' && job.partKey).slice(-11);
+      assert.equal(jobs.length, 11);
       jobs.forEach((job) => assert.match(job.partKey, /^ep1-/));
+      // what each job reserved is what a run of its part is billed for
+      jobs.forEach((job) => near(job.estimateUsd, 1.4, 'the estimate of a part'));
+      near(jobs.reduce((sum, job) => sum + job.estimateUsd, 0), 15.4, 'the estimates of the parts add up to the plan', 1e-5);
+      near(outcome.cost.usd, 11 * behaviour.cost, 'the cost of the parts');
       assert.equal(await framesOf(filmFile(outcome)), 1284, 'Aleph returns 0.4 % more than it got; the film still has the length of the original');
       assert.ok(Math.abs((await pitchAt(filmFile(outcome), 30, 1)) - 440) < 25);
       // the same again: nothing is paid
@@ -861,6 +947,101 @@ async function main() {
       assert.equal(orPayloads.length, 1);
       assert.match(orPayloads[0].input_references[0].video_url.url, /part-2\.mp4$/);
       // ... and the public addresses of the parts are published for the request only
+      assert.deepEqual(await scratchLeftovers(), []);
+    }
+
+    /* ----- a part that comes back far from its length is not stretched (live test 2026-10-04) ----- */
+    {
+      // Every part is brought to the length of its input part. That is a correction for the small differences the models make (Kling
+      // 13.375 s for 13.28 to 13.4 s, Aleph 0.4 % more): a part that is more than 10 % off would play too fast or too slow against the
+      // original sound, so the node stops with VIDEO_EDIT_PART_LENGTH. The paid parts stay on their jobs, and "Make part again" names the bad part.
+      const clip = await saveVideo(await makeSource('twelve.mp4', 12));
+      const guardPrompt = textValue('Length guard');
+      const saves = [];
+      const overrides = { saveOutputFile: (options) => {
+        saves.push(options);
+        return assets.saveOutputFile(sessionId, options);
+      } };
+      reset();
+      behaviour.lengthFactor.set(2, 0.6);
+      const failed = await run({ video: clip, prompt: guardPrompt }, { model: 'runway_aleph' }, overrides).catch((err) => err);
+      assert.equal(failed.code, 'VIDEO_EDIT_PART_LENGTH', failed.message);
+      assert.deepEqual(plain(failed.data), { n: 2, found: '2.4', wanted: '4.0', percent: 10, redo: '2' });
+      assert.match(failed.message, /Part 2 came back with 2\.4 s for the 4\.0 s that were sent/);
+      assert.match(failed.message, /not stretched/);
+      assert.match(failed.message, /write 2 in "Make part again \(number\)"/);
+      assert.equal(orPayloads.length, 3, 'the three parts were made and paid');
+      assert.equal(saves.length, 0, 'no film is saved');
+      assert.deepEqual(await scratchLeftovers(), [], 'no scratch folder left');
+      const kept = (await store.readSession(sessionId)).jobs.filter((job) => job.partKey && job.prompt === 'Length guard');
+      assert.equal(kept.length, 3);
+      assert.equal(kept.every((job) => job.status === 'completed' && job.resultAssetIds && job.resultAssetIds.length === 1), true, 'the paid parts are finished jobs');
+
+      // run again with nothing changed: the parts are taken from the jobs, nothing is paid, and it is the same message (the part is still the same)
+      reset();
+      behaviour.lengthFactor.set(2, 0.6);
+      const again = await run({ video: clip, prompt: guardPrompt }, { model: 'runway_aleph' }, overrides).catch((err) => err);
+      assert.equal(again.code, 'VIDEO_EDIT_PART_LENGTH');
+      assert.equal(again.data.n, 2);
+      assert.equal(orPayloads.length, 0, 'no second payment for the parts that are there');
+      assert.equal(logs.filter((line) => /made before, no charge/.test(line)).length, 3);
+      assert.equal(saves.length, 0);
+
+      // "Make part again" with the number of the message: only that part is paid, the film is complete
+      reset();
+      const fixed = await run({ video: clip, prompt: guardPrompt }, { model: 'runway_aleph', redo_parts: failed.data.redo }, overrides);
+      assert.equal(orPayloads.length, 1, 'one request: part 2');
+      assert.match(orPayloads[0].input_references[0].video_url.url, /part-2\.mp4$/);
+      assert.equal(saves.length, 1);
+      assert.equal(await framesOf(filmFile(fixed)), 288, '12 s at 24 fps');
+      near(fixed.cost.usd, behaviour.cost, 'only the new part is paid');
+      assert.deepEqual(await scratchLeftovers(), []);
+
+      // several bad parts: the first is named, all numbers are in the hint; a part too long is as bad as one too short
+      const severalPrompt = textValue('Length guard several');
+      reset();
+      behaviour.lengthFactor.set(1, 1.3);
+      behaviour.lengthFactor.set(3, 0.5);
+      const several = await run({ video: clip, prompt: severalPrompt }, { model: 'runway_aleph' }, overrides).catch((err) => err);
+      assert.equal(several.code, 'VIDEO_EDIT_PART_LENGTH');
+      assert.equal(several.data.n, 1);
+      assert.equal(several.data.found, '5.2');
+      assert.equal(several.data.redo, '1, 3');
+      assert.match(several.message, /write 1, 3 in/);
+      assert.equal(orPayloads.length, 3);
+      assert.equal(saves.length, 1, 'still only the one film of the run before');
+      // both again at once
+      reset();
+      await run({ video: clip, prompt: severalPrompt }, { model: 'runway_aleph', redo_parts: several.data.redo }, overrides);
+      assert.deepEqual(orPayloads.map((payload) => path.basename(payload.input_references[0].video_url.url)), ['part-1.mp4', 'part-3.mp4']);
+      assert.equal(saves.length, 2);
+
+      // a few per cent off is stretched as before (under the limit of 10 %): 8 % too long and 7 % too short
+      const closePrompt = textValue('Length guard close');
+      reset();
+      behaviour.lengthFactor.set(1, 1.08);
+      behaviour.lengthFactor.set(3, 0.93);
+      const close = await run({ video: clip, prompt: closePrompt }, { model: 'runway_aleph' }, overrides);
+      assert.equal(await framesOf(filmFile(close)), 288, 'the film has the length of the original');
+      assert.ok(logs.some((line) => /Part 1: the model returned 4\.3\d s for 4\.00 s; the time is adjusted by/.test(line)), `the stretch is logged: ${logs.join(' | ')}`);
+      assert.ok(logs.some((line) => /Part 3: the model returned 3\.7\d s for 4\.00 s/.test(line)));
+      assert.equal(saves.length, 3);
+
+      // the same through fal (Kling, 4 parts): a part that is half as long is refused too, the known deviation of Kling (13.375 s) is not
+      const klingPrompt = textValue('Length guard kling');
+      reset();
+      behaviour.lengthFactor.set(3, 0.5);
+      const klingFailed = await run({ video: long, prompt: klingPrompt }, {}, overrides).catch((err) => err);
+      assert.equal(klingFailed.code, 'VIDEO_EDIT_PART_LENGTH');
+      assert.equal(klingFailed.data.n, 3);
+      assert.equal(klingFailed.data.found, '6.7');
+      assert.equal(klingFailed.data.wanted, '13.4');
+      assert.equal(falCalls.submit.length, 4, 'all four parts were made');
+      reset();
+      const klingFixed = await run({ video: long, prompt: klingPrompt }, { redo_parts: '3' }, overrides);
+      assert.equal(falCalls.submit.length, 1, 'only part 3 again');
+      assert.equal(await framesOf(filmFile(klingFixed)), 1284);
+      assert.deepEqual(await scratchLeftovers(), []);
     }
 
     /* ----- the budget of a participant: the parts together, before the first one ----- */
@@ -908,8 +1089,9 @@ async function main() {
         return realRun(command, args, options);
       });
       await run({ video: long, prompt: textValue('Ceiling') }, { model: 'runway_aleph' });
-      assert.equal(maxrates.length, 2);
-      assert.ok(maxrates.every((rate) => rate > 3000000 && rate < 6000000), `about 16 MB over 26.7 s: ${maxrates}`);
+      // Changed after the live test of 2026-10-04: two parts of 26.7 s (3 to 6 Mbit/s); eleven parts of 4.87 s now (about 22 Mbit/s)
+      assert.equal(maxrates.length, 11);
+      assert.ok(maxrates.every((rate) => rate > 21000000 && rate < 23000000), `about 16 MB over 4.87 s: ${maxrates}`);
       restorers.pop()();
     }
 
@@ -1063,6 +1245,7 @@ function testTexts() {
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-fal.js'), 'utf8') + fs.readFileSync(path.join(root, 'lib', 'nodes', 'video-edit-parts.js'), 'utf8');
   const codes = [...new Set([...source.matchAll(/'(VIDEO_EDIT_[A-Z_]+)'/g)].map((match) => match[1]))];
   assert.ok(codes.includes('VIDEO_EDIT_PARTS_FAILED') && codes.includes('VIDEO_EDIT_PART_TOO_HEAVY') && codes.includes('VIDEO_EDIT_ALEPH_IMAGES'));
+  assert.ok(codes.includes('VIDEO_EDIT_PART_LENGTH'), 'the part that comes back far from its length has a code');
   const placeholders = (text) => [...new Set((String(text).match(/\{[a-zA-Z]+\}/g) || []).map((item) => item.slice(1, -1)))].sort();
   const expected = {
     VIDEO_EDIT_ALEPH_IMAGES: ['model'],
@@ -1071,7 +1254,8 @@ function testTexts() {
     VIDEO_EDIT_PARTS_REDO_INVALID: [],
     VIDEO_EDIT_PARTS_REDO_RANGE: ['n', 'total'],
     VIDEO_EDIT_PART_TOO_SHORT: ['found', 'min'],
-    VIDEO_EDIT_PART_TOO_HEAVY: ['found', 'max', 'n']
+    VIDEO_EDIT_PART_TOO_HEAVY: ['found', 'max', 'n'],
+    VIDEO_EDIT_PART_LENGTH: ['found', 'n', 'percent', 'redo', 'wanted']
   };
   for (const code of codes) {
     for (const lang of ['de', 'en', 'es']) {
@@ -1082,6 +1266,10 @@ function testTexts() {
       if (expected[code]) assert.deepEqual(placeholders(text), expected[code], `${lang}.${code}: placeholders`);
       assert.deepEqual(placeholders(text), placeholders(window.I18N.de[`nodes.issue.${code}`]), `${lang}.${code}: the same placeholders as German`);
     }
+  }
+  // the message of a part that came back far from its length names the field that makes it again, the way the field is called in that language
+  for (const lang of ['de', 'en', 'es']) {
+    assert.ok(window.I18N[lang]['nodes.issue.VIDEO_EDIT_PART_LENGTH'].includes(window.I18N[lang]['nodes.param.redo_parts']), `${lang}: VIDEO_EDIT_PART_LENGTH names the field`);
   }
   for (const key of ['nodes.param.in_parts', 'nodes.param.redo_parts', 'nodes.option.runway_aleph']) {
     for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][key] && window.I18N[lang][key].trim(), `${lang}: ${key}`);
