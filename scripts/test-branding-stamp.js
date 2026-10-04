@@ -221,6 +221,10 @@ async function run(iso) {
     assert.equal(plan.nodes.plan.status, 'stale', 'and the planner');
     assert.equal(plan.nodes.plan.estimate.usd, 0.5, 'with its price');
     assert.ok(plan.totals.paidNodes >= 1 && plan.totals.usd >= 0.5);
+    // the plan knows the new outputs of the free node (cacheStampOutputs): it shows what the run will do, not everything behind the branding
+    assert.deepEqual(planStatuses(plan), { b: 'stale', plan: 'stale', scene: 'cached', speaker: 'cached', cut: 'cached' }, 'the plan: the planner only');
+    assert.equal(plan.totals.paidNodes, 1);
+    assert.ok(Math.abs(plan.totals.usd - 0.5) < 1e-9, `the price of the planner only: ${plan.totals.usd}`);
     reset();
     const record = await start(wf.id);
     assert.deepEqual(statuses(record), { b: 'done', plan: 'done', scene: 'cached', speaker: 'cached', cut: 'cached' });
@@ -236,6 +240,9 @@ async function run(iso) {
   {
     const plan = await planOf(wf.id);
     assert.equal(plan.nodes.b.status, 'stale', 'a changed logo file is noticed');
+    // a logo that no earlier result holds is a new asset that exists after the run: the scenes are out of date in the plan, the planner is not
+    assert.deepEqual(planStatuses(plan), { b: 'stale', plan: 'cached', scene: 'stale', speaker: 'cached', cut: 'stale' });
+    assert.ok(Math.abs(plan.totals.usd - 0.5) < 1e-9, `scene and cut: ${plan.totals.usd}`);
     reset();
     const record = await start(wf.id);
     assert.deepEqual(statuses(record), { b: 'done', plan: 'cached', scene: 'done', speaker: 'cached', cut: 'done' });
@@ -245,6 +252,8 @@ async function run(iso) {
     assert.notEqual(blueEntry.variants[0].logo.assetId, logo1.assetId, 'another logo, another asset');
     // back to the first logo: its asset again, and the results of the scenes of that time are found
     await fsp.writeFile(logoPath, logoRed);
+    // the first logo again: the entry of that time has the same key, everything is up to date
+    assert.deepEqual(planStatuses(await planOf(wf.id)), ALL_CACHED);
     reset();
     const back = await start(wf.id);
     // the entry of that time has the same key (the same branding): found again, nothing runs at all
@@ -267,12 +276,17 @@ async function run(iso) {
   {
     const plan = await planOf(wf.id);
     assert.equal(plan.nodes.b.status, 'stale');
+    // review: the plan agrees with the run (it used to show the planner and the scenes with their price as well)
+    assert.deepEqual(planStatuses(plan), { b: 'stale', plan: 'cached', scene: 'cached', speaker: 'stale', cut: 'stale' });
+    assert.equal(plan.totals.paidNodes, 2);
+    assert.ok(Math.abs(plan.totals.usd - 0.3) < 1e-9, `speaker and cut: ${plan.totals.usd}`);
     reset();
     const record = await start(wf.id);
     assert.deepEqual(statuses(record), { b: 'done', plan: 'cached', scene: 'cached', speaker: 'done', cut: 'done' });
     assert.deepEqual(counts, { speaker: 1, cut: 1 }, 'the speaker and the cut, not the planner and the scenes');
     // no speaker voice any more: the output is empty and the speaker runs without it
     await brandings.updateBranding(branding.id, { speaker: null });
+    assert.deepEqual(planStatuses(await planOf(wf.id)), { b: 'stale', plan: 'cached', scene: 'cached', speaker: 'stale', cut: 'stale' }, 'no voice: the plan knows the output is empty');
     reset();
     const without = await start(wf.id);
     assert.equal(without.status, 'completed', JSON.stringify(without.nodes));
@@ -391,8 +405,30 @@ async function run(iso) {
     // nothing set: nothing to add
     assert.equal(await stampOf('llm.chat', {}, {}), undefined);
     // a node that does not read these settings has no stamp
-    for (const type of ['input.text', 'text.template', 'audio.tts', 'image.crop', 'video.concat', 'fal.depth_map', 'explainer.plan', 'explainer.voice', 'llm.research']) {
+    for (const type of ['input.text', 'text.template', 'audio.tts', 'image.crop', 'video.concat', 'fal.depth_map', 'explainer.voice', 'llm.research']) {
       assert.equal(realRegistry.get(type).cacheStamp, undefined, `${type}: no stamp`);
+    }
+
+    // review: the planner plans only the kinds of pictures the app can make (an image model, fal.ai), and without OpenRouter it runs on the
+    // model of the settings: that state is in its stamp (it was left out of the first audit)
+    const openrouter = iso.load('lib/openrouter');
+    const realHasKey = openrouter.hasKey;
+    const planDef = realRegistry.get('explainer.plan');
+    assert.equal(planDef.cacheStampAdopts, true, 'an old planner result is taken once: a deploy does not pay for it again');
+    const planStamp = async (params, settings) => (await resolveStamp(planDef, realRegistry.normalizeParams(planDef, params), {}, null, { user: STAFF, config: settings })).stamp;
+    try {
+      openrouter.hasKey = () => true;
+      const withImages = await planStamp({}, { imageModel: 'vendor/image-a' });
+      assert.match(withImages, /^st:/);
+      assert.equal(await planStamp({}, { imageModel: 'vendor/image-b' }), withImages, 'which image model does not matter, that there is one does');
+      assert.notEqual(await planStamp({}, {}), withImages, 'an image model that is set or removed runs the planner again');
+      assert.equal(await planStamp({}, { imageModel: 'x', defaultBrain: 'vendor/brain-a' }), withImages, 'with OpenRouter the model of the settings is not read');
+      openrouter.hasKey = () => false;
+      const noKey = await planStamp({}, { defaultBrain: 'vendor/brain-a' });
+      assert.notEqual(noKey, await planStamp({}, { defaultBrain: 'vendor/brain-b' }), 'without OpenRouter the planner runs on the model of the settings');
+      assert.equal(await planStamp({ model: 'vendor/own' }, { defaultBrain: 'vendor/brain-a' }), await planStamp({ model: 'vendor/own' }, { defaultBrain: 'vendor/brain-b' }), 'a named model is a parameter');
+    } finally {
+      openrouter.hasKey = realHasKey;
     }
   }
 

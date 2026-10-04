@@ -39,7 +39,7 @@ function oldKey(def, params, inputs) {
 async function main() {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-nodes-stamps-'));
   const created = [];
-  const world = { value: 'one', model: 'm1', failing: false, legacy: false, counts: {}, stampCalls: 0, itemRuns: [] };
+  const world = { value: 'one', model: 'm1', failOn: null, failing: false, legacy: false, counts: {}, stampCalls: 0, itemRuns: [] };
   const count = (ctx) => {
     world.counts[ctx.nodeId] = (world.counts[ctx.nodeId] || 0) + 1;
   };
@@ -142,6 +142,33 @@ async function main() {
     execute: async (ctx, inputs) => {
       count(ctx);
       world.itemRuns.push(inputs.in.value);
+      return { variants: [{ out: textValue(`${world.model}:${inputs.in.value}`) }], cost: { usd: 0.2 } };
+    }
+  });
+  // a list the test edits, and a per-item node that can fail on one item
+  registry.register({
+    type: 't.listp',
+    category: 'input',
+    outputs: [{ id: 'items', type: 'text[]' }],
+    params: [{ id: 'items', kind: 'text', default: 'a,b,c,d' }],
+    execute: async (ctx, _inputs, params) => {
+      count(ctx);
+      return { variants: [{ items: listValue('text', params.items.split(',').filter(Boolean).map((word) => textValue(word))) }] };
+    }
+  });
+  registry.register({
+    type: 't.per_item_fail',
+    category: 'text',
+    inputs: [{ id: 'in', type: 'text', required: true }],
+    outputs: [{ id: 'out', type: 'text' }],
+    paid: true,
+    cost: { unit: 'usd', estimate: () => ({ usd: 0.2 }) },
+    cacheStamp: async () => ({ model: world.model }),
+    cacheStampAdopts: true,
+    execute: async (ctx, inputs) => {
+      count(ctx);
+      world.itemRuns.push(inputs.in.value);
+      if (world.failOn === inputs.in.value) throw new Error(`rejected ${inputs.in.value}`);
       return { variants: [{ out: textValue(`${world.model}:${inputs.in.value}`) }], cost: { usd: 0.2 } };
     }
   });
@@ -443,6 +470,77 @@ async function main() {
       assert.deepEqual(entry.itemKeys, computeItemKeys(def, {}, resolved, entry.stamp), 'the item keys carry the stamp now');
       // and a later change of the list finds the items of the entry
       world.model = 'm1';
+    }
+
+    /* ----- review: items of an entry from before the stamp are found after the deploy ----- */
+    {
+      world.model = 'm1';
+      world.failOn = null;
+      const listParams = (items) => ({ items });
+      const wf = await makeWorkflow([node('l', 't.listp', listParams('a,b,c,d')), node('i', 't.per_item')], [edge('e1', 'l.items', 'i.in')], 'items before the stamp');
+      await run(wf.id);
+      assert.deepEqual([...world.itemRuns].sort(), ['a', 'b', 'c', 'd']);
+      // the data as the code before the stamp left it: no stamp, the keys of the whole list and of the items without one
+      const def = registry.get('t.per_item');
+      const inputsOf = (words) => ({ in: listValue('text', words.map(textValue)) });
+      const legacyize = async (nodeId, words) => wfStore.updateResults(wf.id, (results) => {
+        const current = results.nodes[nodeId];
+        const resolved = { mapLength: words.length, mapped: ['in'], inputs: inputsOf(words) };
+        for (const entry of current.history) {
+          delete entry.stamp;
+          entry.cacheKey = computeCacheKey(def, {}, resolved.inputs);
+          entry.itemKeys = computeItemKeys(def, {}, resolved);
+        }
+        if (current.partial) {
+          delete current.partial.stamp;
+          current.partial.cacheKey = computeCacheKey(def, {}, resolved.inputs);
+          current.partial.itemKeys = computeItemKeys(def, {}, resolved);
+        }
+        return JSON.parse(JSON.stringify(current));
+      });
+      const setItems = async (items) => {
+        const current = await wfStore.readWorkflow(wf.id);
+        const nodes = current.graph.nodes.map((item) => (item.id === 'l' ? { ...item, params: { items } } : item));
+        await wfStore.saveGraph(wf.id, { baseRev: current.rev, graph: { ...current.graph, nodes } });
+      };
+      await legacyize('i', ['a', 'b', 'c', 'd']);
+      assert.equal('stamp' in (await history(wf.id, 'i'))[0], false);
+      // deployed; the first thing anybody does is to change one item: the three others must not run (or be paid) again
+      await setItems('a,b,c,x');
+      reset();
+      assert.equal(statusOf(await run(wf.id)).i, 'done');
+      assert.deepEqual(world.itemRuns, ['x'], 'only the changed item is made');
+      const stamped = (await history(wf.id, 'i'))[0];
+      assert.match(stamped.stamp, /^st:/);
+      assert.equal(stamped.variants[0].out.items.length, 4);
+      // from now on an ordinary stamped entry: its items are found, and the old entry is no longer looked at (a setting may have changed since)
+      await setItems('d,e');
+      reset();
+      assert.equal(statusOf(await run(wf.id)).i, 'done');
+      assert.deepEqual([...world.itemRuns].sort(), ['d', 'e'], 'd lived only in the old entry: made again, e is new');
+
+      // the items a failed run kept before the deploy
+      const wf2 = await makeWorkflow([node('l', 't.listp', listParams('a,b,c')), node('i', 't.per_item_fail')], [edge('e1', 'l.items', 'i.in')], 'partial before the stamp');
+      world.failOn = 'c';
+      reset();
+      assert.equal((await run(wf2.id)).status, 'failed');
+      assert.deepEqual([...world.itemRuns].sort(), ['a', 'b', 'c']);
+      const defFail = registry.get('t.per_item_fail');
+      await wfStore.updateResults(wf2.id, (results) => {
+        const partial = results.nodes.i.partial;
+        assert.ok(partial && partial.stamp, 'the kept items hold the stamp they were made with');
+        const resolved = { mapLength: 3, mapped: ['in'], inputs: inputsOf(['a', 'b', 'c']) };
+        delete partial.stamp;
+        partial.cacheKey = computeCacheKey(defFail, {}, resolved.inputs);
+        partial.itemKeys = computeItemKeys(defFail, {}, resolved);
+      });
+      world.failOn = null;
+      reset();
+      const plan2 = await engine.plan(wf2.id, { mode: 'all' });
+      assert.equal(plan2.nodes.i.reusedItems, 2, 'the plan finds the two kept items');
+      assert.equal(statusOf(await run(wf2.id)).i, 'done');
+      assert.deepEqual(world.itemRuns, ['c'], 'only the item that failed is made');
+      world.failOn = null;
     }
 
     /* ----- a stamp that reads an input, behind another stamp ----- */
