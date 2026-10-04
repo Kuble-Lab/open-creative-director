@@ -504,8 +504,7 @@ async function testNodeLog(dir, record, withFake) {
     assert.ok(hebrew.logs.some((line) => /Right-to-left/.test(line)), `the log names the style that was used: ${hebrew.logs}`);
     assert.ok(!hebrew.logs.some((line) => /font/i.test(line)), 'a font for Hebrew exists in the fake');
     const [call] = await fake.calls();
-    assert.match(call.ass, /Encoding|,-1\n/, 'the script of the call has the encoding -1');
-    assert.match(call.ass, /,-1\n/);
+    assert.match(call.ass, /,-1\n/, 'the script of the call has the encoding -1');
     assert.ok(!/\\kf/.test(call.ass), 'no karaoke fill');
 
     await fake.reset();
