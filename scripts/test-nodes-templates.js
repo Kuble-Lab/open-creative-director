@@ -48,6 +48,7 @@ const EXPECTED = [
   'storyboard-clips',
   'talking-portrait',
   'text-on-video',
+  'video-cutout-overlay',
   'video-to-post',
   'video-with-music'
 ];
@@ -385,12 +386,13 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'explainer-video-presenter'].includes(item.id)).every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'explainer-video-presenter', 'video-cutout-overlay'].includes(item.id)).every((item) => item.available));
       assert.deepEqual(noFal.find((item) => item.id === 'explainer-video-presenter').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'only the presenter needs fal.ai (the lip sync); the other two explainer videos run without it');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-stills').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes still does');
       assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
       assert.deepEqual(noFal.find((item) => item.id === 'photo-to-3d').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
+      assert.deepEqual(noFal.find((item) => item.id === 'video-cutout-overlay').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the segmentation runs on fal.ai (WP33b)');
       const originalHasKey = falLib.hasKey;
       try {
         falLib.hasKey = () => true;
@@ -428,6 +430,23 @@ async function main() {
       // the new ones: shapes, cheap defaults, usable for participants (no Higgsfield, no credits)
       assert.deepEqual(types('image-to-video'), ['input.image', 'input.prompt', 'video.seedance', 'output.result']);
       assert.deepEqual(types('text-on-video'), ['input.video', 'input.text', 'image.text_render', 'video.overlay_image', 'output.result']);
+      // WP33b: the cutout of a video over another video
+      assert.deepEqual(types('video-cutout-overlay'), ['input.video', 'fal.video_segment', 'input.video', 'video.overlay_video', 'output.result']);
+      {
+        const cutout = byId['video-cutout-overlay'];
+        assert.deepEqual([...cutout.requires].sort(), ['fal', 'ffmpeg'], 'requires: fal.ai for the segmentation, ffmpeg for the overlay');
+        assert.equal(cutout.graph.nodes.find((node) => node.type === 'fal.video_segment').params.output, 'cutout', 'the segmentation makes the WebM with alpha');
+        const link = (to, port) => cutout.graph.edges.find((edge) => edge.to.node === to && edge.to.port === port);
+        assert.equal(cutout.graph.nodes.find((node) => node.id === link('n4', 'layer').from.node).type, 'fal.video_segment', 'the cutout is the layer');
+        assert.equal(cutout.graph.nodes.find((node) => node.id === link('n4', 'background').from.node).type, 'input.video', 'the second video is the background');
+        const costText = (text) => assert.match(text, /0\.005 USD/, 'the description names the price of the segmentation');
+        costText(cutout.description);
+        assert.match(cutout.description, /Safari/, 'the description names the Safari limit');
+        for (const lang of ['de', 'es']) {
+          costText(cutout.i18n[lang].description);
+          assert.match(cutout.i18n[lang].description, /Safari/, `${lang}: the Safari limit is named`);
+        }
+      }
       assert.deepEqual(types('storyboard-clips'), ['input.text', 'llm.chat', 'text.split', 'video.seedance', 'video.concat', 'output.result']);
       assert.deepEqual(types('image-formats'), ['input.image', 'image.resize', 'image.resize', 'image.resize', 'output.result']);
       assert.deepEqual(types('video-to-post'), ['input.video', 'llm.video_describer', 'input.text', 'text.template', 'llm.chat', 'output.result']);
@@ -494,11 +513,12 @@ async function main() {
       // cost: computed from the nodes, local = free, unknown is marked, never invented
       for (const id of EXPECTED) {
         const cost = summary[id].cost;
-        // photo-to-3d is the exception: both of its nodes (background removal, image to 3D) have a price table
+        // photo-to-3d is the exception: both of its nodes (background removal, image to 3D) have a price table; so has the segmentation
+        // of video-cutout-overlay (an upper bound from max_seconds: 10 s at 30 frames = 19 blocks of 16 frames at 0.005 USD)
         // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
         // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
         const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic'].includes(id);
-        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
         if (explainerVideo) assert.equal(cost.usd, 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));
         assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
@@ -506,6 +526,7 @@ async function main() {
       }
       // photo to 3D: background removal (Bria, $0.018) + Tripo H3.1 with the standard texture ($0.30), one number in the gallery
       assert.deepEqual(summary['photo-to-3d'].cost, { kind: 'estimate', usd: 0.318, credits: 0, paidNodes: 2, providers: ['fal'] });
+      assert.deepEqual(summary['video-cutout-overlay'].cost, { kind: 'estimate', usd: 0.095, credits: 0, paidNodes: 1, providers: ['fal'] });
       assert.deepEqual(summary['photo-to-3d'].flow.map((step) => step.map((entry) => entry.type)), [['input.image'], ['fal.remove_background'], ['fal.image_to_3d'], ['output.result']]);
       assert.deepEqual(summary['image-to-ad'].cost.providers, ['openrouter', 'elevenlabs']);
       assert.deepEqual(summary['dub-clip'].cost.providers, ['higgsfield']);
