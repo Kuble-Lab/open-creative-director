@@ -138,13 +138,13 @@ function makeDocument() {
 }
 
 // A page with the node-view scripts the test needs, in the language `lang`.
-function loadPage(lang, { scripts = ['node-ui', 'preview'], api = {}, userAgent = '' } = {}) {
+function loadPage(lang, { scripts = ['node-ui', 'preview'], api = {}, userAgent = '', maxTouchPoints = 0 } = {}) {
   const storage = new Map([['vcd-lang', lang]]);
   const { document, customElements } = makeDocument();
   const window = {
     document,
     customElements,
-    navigator: { language: lang, userAgent },
+    navigator: { language: lang, userAgent, maxTouchPoints },
     localStorage: { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, String(value)) },
     OCDNodes: { graph: graphLib, api: { rel: (url) => String(url).replace(/^\/+/, ''), options: async () => ({ options: [] }), ...api } }
   };

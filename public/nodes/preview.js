@@ -24,9 +24,12 @@
   // A result with an alpha channel (a cutout, WP33b) shows a chequerboard behind it: the class goes on the element that carries the media.
   const hasAlpha = (value) => Boolean(value) && value.alpha === true && (value.type === 'video' || value.type === 'image');
   const alphaClass = (value) => (hasAlpha(value) ? ' nv-alpha' : '');
-  // Safari plays WebM with alpha (VP9) without the transparency: the picture is opaque there, so a hint says why.
+  // Safari plays WebM with alpha (VP9) without the transparency: the picture is opaque there, so a hint says why. So does every
+  // browser on an iPhone or iPad (Chrome, Firefox and Edge there are WebKit with another name), and an iPad that says it is a Mac.
   function isSafariBrowser() {
-    const agent = (global.navigator && global.navigator.userAgent) || '';
+    const nav = global.navigator || {};
+    const agent = nav.userAgent || '';
+    if (/iphone|ipad|ipod/i.test(agent) || (/macintosh/i.test(agent) && nav.maxTouchPoints > 1)) return true;
     return /safari/i.test(agent) && !/chrome|chromium|crios|fxios|edg|opr\/|android/i.test(agent);
   }
   function alphaHint(value) {
@@ -607,6 +610,7 @@
 
   OCD.preview = {
     isMedia,
+    alphaHint,
     isViewable,
     leaves,
     fileNameOf,

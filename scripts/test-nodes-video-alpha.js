@@ -536,7 +536,12 @@ function testPreview() {
   const css = read('public/nodes/nodes.css');
   assert.match(css, /\.nv-alpha[^{]*\{[^}]*linear-gradient/, 'a chequerboard rule');
   assert.match(css, /--nv-checker-a:\s*#[0-9a-f]{6};\s*--nv-checker-b:\s*#[0-9a-f]{6};/i, 'dark tiles by default');
-  assert.match(css, /prefers-color-scheme:\s*light\)\s*\{[^}]*--nv-checker-a/, 'light tiles for the light theme');
+  assert.ok(!/prefers-color-scheme|data-theme/.test(css.slice(css.indexOf('--nv-checker-a') - 200, css.indexOf('.nv-alpha-hint'))), 'the interface has no light theme, so no light tiles');
+  // the thumbnail and the app view get their own background later in the file: the chequerboard rule must name them with the same weight
+  const checker = css.match(/((?:[^{}]*\.nv-alpha[^{}]*,\s*)*[^{}]*\.nv-alpha[^{}]*)\{[^}]*linear-gradient/)[1];
+  assert.match(checker, /\.nv-thumb\.nv-alpha/, 'the thumbnail (.nv-thumb sets a background of its own)');
+  assert.match(checker, /\.nv-appleaf-frame \.nv-media\.nv-alpha/, 'the app view (.nv-appleaf-frame .nv-media sets a background of its own)');
+  assert.match(read('public/nodes/app-mode.js'), /OCD\.preview\.alphaHint\(leaf\)/, 'the app view adds the Safari hint as the card does');
   assert.match(css, /\.nv-viewer-video\.nv-alpha/, 'it beats the black of the large view');
   assert.match(css, /\.nv-alpha-hint\s*\{/);
 
@@ -546,10 +551,24 @@ function testPreview() {
   const safari = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
   const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
   const firefox = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:131.0) Gecko/20100101 Firefox/131.0';
+  const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+  // every browser on an iPhone or iPad is WebKit: Chrome (CriOS), Firefox (FxiOS) and Edge (EdgiOS) show no VP9 alpha either
+  const iosChrome = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.6723.90 Mobile/15E148 Safari/604.1';
+  const iosFirefox = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/131.0 Mobile/15E148 Safari/605.1.15';
+  const iosEdge = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 EdgiOS/130.0.2849.80 Mobile/15E148 Safari/605.1.15';
+  const ipad = 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.6723.90 Mobile/15E148 Safari/604.1';
+  // an iPad in the desktop mode says it is a Mac (Safari, or Chrome with the Mac user agent), but it has a touch screen
+  const ipadAsMac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+  const ipadAsMacChrome = chrome;
 
   for (const lang of ['de', 'en', 'es']) {
-    for (const [agent, name, hint] of [[chrome, 'Chrome', false], [firefox, 'Firefox', false], [safari, 'Safari', true], [iphone, 'Safari on iOS', true]]) {
-      const page = loadPage(lang, { userAgent: agent });
+    for (const [agent, name, hint, touch] of [
+      [chrome, 'Chrome', false, 0], [firefox, 'Firefox', false, 0], [safari, 'Safari', true, 0], [iphone, 'Safari on iOS', true, 5],
+      [android, 'Chrome on Android', false, 5], [iosChrome, 'Chrome on iOS', true, 5], [iosFirefox, 'Firefox on iOS', true, 5],
+      [iosEdge, 'Edge on iOS', true, 5], [ipad, 'Chrome on iPadOS', true, 5], [ipadAsMac, 'Safari on an iPad as a Mac', true, 5],
+      [ipadAsMacChrome, 'Chrome on an iPad as a Mac', true, 5], [chrome, 'Chrome on a Mac', false, 0]
+    ]) {
+      const page = loadPage(lang, { userAgent: agent, maxTouchPoints: touch });
       const { preview } = page.OCD;
       // the media element
       const node = preview.mediaNode(alphaVideo);
