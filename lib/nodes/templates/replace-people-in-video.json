@@ -122,10 +122,10 @@
       {
         "id": "t1",
         "x": 540,
-        "y": 560,
+        "y": 620,
         "w": 400,
         "h": 250,
-        "text": "Use only people who have agreed to appear in the video. The photos are Image 1 and Image 2 in the order of their connections; write them like that in the prompt, and the video as the video. Kling O3 needs a video of 3 to 15 s, at least 720 px, MP4 or MOV. For a longer video, switch on \"Cut to the allowed length\" on the Replace people node: it uses the first 15 s. 0.14 USD per second, and the run asks first. Prompts in English often work better."
+        "text": "Use only people who have agreed to appear in the video. The photos are Image 1 and Image 2 in the order of their connections; write them like that in the prompt, and the video as the video. Kling O3 needs a video of 3 to 15 s, at least 720 px, as MP4. For a longer video, switch on \"Cut to the allowed length\" on the Replace people node: it uses the first 15 s. 0.14 USD per second, and the run asks first. Prompts in English often work better."
       }
     ],
     "viewport": {
@@ -180,7 +180,7 @@
       "node.n2": "Person für Bild 1",
       "node.n3": "Person für Bild 2",
       "node.n4": "Personen ersetzen",
-      "note.t1": "Verwende nur Personen, die einverstanden sind, im Video zu erscheinen. Die Fotos sind Bild 1 und Bild 2 in der Reihenfolge ihrer Verbindungen; so schreibst du sie auch im Prompt, das Video als Video. Kling O3 braucht ein Video von 3 bis 15 s, mindestens 720 px, MP4 oder MOV. Bei einem längeren Video schaltest du im Node «Personen ersetzen» «Auf die erlaubte Länge kürzen» ein: Dann zählen die ersten 15 s. 0.14 USD pro Sekunde, der Lauf fragt vorher nach. Englische Prompts gelingen oft besser.",
+      "note.t1": "Verwende nur Personen, die einverstanden sind, im Video zu erscheinen. Die Fotos sind Bild 1 und Bild 2 in der Reihenfolge ihrer Verbindungen; so schreibst du sie auch im Prompt, das Video als Video. Kling O3 braucht ein Video von 3 bis 15 s, mindestens 720 px, als MP4. Bei einem längeren Video schaltest du im Node «Personen ersetzen» «Auf die erlaubte Länge kürzen» ein: Dann zählen die ersten 15 s. 0.14 USD pro Sekunde, der Lauf fragt vorher nach. Englische Prompts gelingen oft besser.",
       "param.n4.prompt": "Ersetze die linke Person im Video durch die Person aus Bild 1 und die rechte Person durch die Person aus Bild 2. Bewegung, Kamera und Licht des Videos bleiben unverändert.",
       "app.title": "Personen im Video ersetzen",
       "app.description": "Lade ein Video und zwei Fotos der Personen hoch, die einspringen, und beschreibe, wer wen ersetzt. Du erhältst das Video mit den neuen Personen. Verwende nur Personen, die zugestimmt haben.",
@@ -198,7 +198,7 @@
       "node.n2": "Persona para la Imagen 1",
       "node.n3": "Persona para la Imagen 2",
       "node.n4": "Reemplazar personas",
-      "note.t1": "Usa solo personas que hayan aceptado aparecer en el vídeo. Las fotos son la Imagen 1 y la Imagen 2 en el orden de sus conexiones; escríbelas así en el prompt, y el vídeo como vídeo. Kling O3 necesita un vídeo de 3 a 15 s, de al menos 720 px, MP4 o MOV. Para un vídeo más largo activa «Recortar a la duración permitida» en el nodo «Reemplazar personas»: cuentan los primeros 15 s. 0.14 USD por segundo y la ejecución pregunta antes. Los prompts en inglés suelen funcionar mejor.",
+      "note.t1": "Usa solo personas que hayan aceptado aparecer en el vídeo. Las fotos son la Imagen 1 y la Imagen 2 en el orden de sus conexiones; escríbelas así en el prompt, y el vídeo como vídeo. Kling O3 necesita un vídeo de 3 a 15 s, de al menos 720 px, en MP4. Para un vídeo más largo activa «Recortar a la duración permitida» en el nodo «Reemplazar personas»: cuentan los primeros 15 s. 0.14 USD por segundo y la ejecución pregunta antes. Los prompts en inglés suelen funcionar mejor.",
       "param.n4.prompt": "Sustituye a la persona de la izquierda del Vídeo por la persona de la Imagen 1 y a la de la derecha por la persona de la Imagen 2. El movimiento, la cámara y la luz del Vídeo no cambian.",
       "app.title": "Reemplazar personas en un vídeo",
       "app.description": "Sube un vídeo y dos fotos de las personas que toman el relevo, y describe quién sustituye a quién. Obtienes el vídeo con las personas nuevas. Usa solo personas que hayan dado su consentimiento.",
