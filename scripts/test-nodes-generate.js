@@ -2756,6 +2756,19 @@ async function main() {
       assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: false }, { roles: ['audio_references'], required: false }] }), '', 'optional video and optional audio');
       assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'] }, { roles: ['audio_references'] }] }), 'video', 'no flag: still needs');
       assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: true }, { roles: ['reference_video'], required: false }] }), 'video', 'a required slot wins');
+      // the live catalogue (2026-10-04) gives these models one optional image slot and no video slot: they are known by id,
+      // with or without a media list, and a model named "Motion Control" needs a motion video
+      const liveShape = (id, name) => ({ id, name, output_type: 'video', medias: [{ name: 'image_references', type: 'image', max: 1, required: false, roles: ['image_references'] }] });
+      assert.equal(catalogLib.videoNeed(liveShape('kling3_0_motion_control', 'Kling 3.0 Motion Control')), 'motion');
+      assert.equal(catalogLib.videoNeed(liveShape('hf_mult_motion_control', 'Genjutsu')), 'motion');
+      assert.equal(catalogLib.videoNeed(liveShape('kling_video_edit', 'Kling 3.0 Omni Edit')), 'video');
+      assert.equal(catalogLib.videoNeed(liveShape('hf_mult_replace_object', 'Genjutsu')), 'video');
+      assert.equal(catalogLib.videoNeed({ id: 'kling3_0_motion_control', name: 'Kling 3.0 Motion Control' }), 'motion', 'known without a media list (a list entry)');
+      assert.equal(catalogLib.videoNeed(liveShape('some_motion_control_v2', 'Some Model')), 'motion', 'named by id');
+      assert.equal(catalogLib.videoNeed({ id: 'x2', name: 'New Motion Control' }), 'motion', 'named by name');
+      for (const [id, name] of [['kling3_0', 'Kling 3.0'], ['gemini_omni', 'Gemini Omni Flash'], ['reframe', 'Reframe'], ['clipify', 'Clipify'], ['draw_to_video', 'Draw To Video']]) {
+        assert.equal(catalogLib.videoNeed(liveShape(id, name)), '', `${id} stays`);
+      }
 
       // the description carries video next to references
       assert.deepEqual(catalogLib.describeModel(parsed('optional')).video, { max: 1, required: false });
@@ -2787,9 +2800,12 @@ async function main() {
       for (const modelId of ['optional_video', 'mixed_refs', 'with_audio_wp42']) assert.deepEqual(issues('video.higgsfield', modelId), [], modelId);
       assert.deepEqual(issues('video.higgsfield', 'mixed_refs', { refs: { connected: true, count: 4 } }), [], 'the images of a mixed slot count');
       assert.equal(issues('video.higgsfield', 'mixed_refs', { refs: { connected: true, count: 5 } })[0].code, 'too_many_refs', 'the video role adds nothing to the image limit');
-      // not in the cache: cannot be judged here
+      // not in the cache: cannot be judged here, unless the model is known by id (the live catalogue shows no video slot for it)
       catalogLib.clearCache();
-      assert.deepEqual(issues('video.higgsfield', 'kling3_0_motion_control'), []);
+      assert.deepEqual(issues('video.higgsfield', 'clip_editor'), []);
+      found = issues('video.higgsfield', 'kling3_0_motion_control');
+      assert.deepEqual([found.length, found[0].code, found[0].data], [1, 'needs_video_motion', { model: 'kling3_0_motion_control' }], 'known by id, judged without the record');
+      assert.equal(issues('video.higgsfield', 'kling_video_edit')[0].code, 'needs_video');
 
       // the engine loads the model before it judges; the run is refused and nothing is submitted
       patch(or, 'hasKey', () => true);
@@ -3017,6 +3033,9 @@ async function main() {
           wp42('clip_editor', 'Clip Editor', [{ name: 'clip', type: 'video', max: 1, required: true, roles: ['video'] }]),
           wp42('mixed_refs', 'Mixed Refs', [{ name: 'refs', type: 'image', max: 4, roles: ['image_references', 'video_references'] }]),
           wp42('optional_video', 'Optional Video', [{ name: 'start', type: 'image', max: 1, roles: ['start_image'] }, { name: 'ref', type: 'image', max: 1, roles: ['reference_video'] }]),
+          // as the live catalogue gives them (2026-10-04): one optional image slot, no video slot
+          wp42('kling_video_edit', 'Kling 3.0 Omni Edit', [{ name: 'image_references', type: 'image', max: 1, required: false, roles: ['image_references'] }]),
+          { id: 'hf_mult_motion_control', name: 'Genjutsu' },
           { id: 'unread', name: 'Unread' }
         ];
         patch(higgsfield, 'mcpCall', async (name, args) => {
