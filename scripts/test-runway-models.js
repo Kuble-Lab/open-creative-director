@@ -3,12 +3,15 @@
 // Runway Gen-4.5 through OpenRouter (WP41): the model of the curated list, in the card of the chat and in the node "Generate video".
 // What is covered, with a fake OpenRouter (the model list, createVideo) and nothing paid:
 //   - the list and the profile of the curated models: Gen-4.5 is added, the five others are as they were (golden)
-//   - the price: 5 s = 0.60 USD, a minimum per generation raises the estimate (the minimum of Aleph: 1 s and 2 s = 0.56, 3 s = 0.84),
+//   - the price: 5 s = 0.60 USD, a minimum per generation raises the estimate (the list of Aleph alone: 1 s and 2 s = 0.56, 3 s = 0.84;
+//     the node bills Aleph for at least 5 s since the live test of 2026-10-04: test-aleph-edit.js),
 //     a price without a minimum has exactly the shape it had before
 //   - the limits of the metadata: 2 to 10 s (a range is clamped), 720p only, 16:9 or 9:16
 //   - the card with six models (MAX_OPTIONS is 6: all of them, the grid wraps), a seventh from outside the list is cut from the end
 //   - the format of the start image: another format than 16:9 or 9:16 is never cropped. The card leaves the model out, a direct call is
-//     refused before it is paid (code VIDEO_FRAME_RATIO, in German and English), nothing is booked
+//     refused before it is paid (code VIDEO_FRAME_RATIO, in German and English), nothing is booked. A start image that fits sends its
+//     own format as aspect_ratio (720 x 1280 = 9:16, 1280 x 720 = 16:9): without it OpenRouter takes 16:9 and cropped a 9:16 image in the
+//     live test of 2026-10-04. A model without a format limit sends none.
 //   - the node "Generate video": the model is on the list with its limits and its price, a run sends the right request, a start image
 //     of another format is refused with the same code and the text of every language
 //   - the texts of the card in German, English and Spanish for every profile of the list
@@ -236,7 +239,8 @@ function testListAndPrice() {
   // the same price for image to video
   near(videoModels.priceEstimate(byId(RUNWAY), job(5, { mode: 'image_to_video', aspectRatio: '' })).maxTotal, 0.6);
 
-  // a minimum per generation: never below it (Aleph 2.0: 0.28 per second, at least 0.56)
+  // a minimum per generation: never below it (the list of Aleph 2.0: 0.28 per second, at least 0.56; the 5 billed seconds of the live
+  // test are the node's business, lib/nodes/aleph-edit.js, not of this general price)
   for (const [seconds, usd] of [[1, 0.56], [2, 0.56], [3, 0.84], [10, 2.8]]) {
     const price = videoModels.priceEstimate(byId(ALEPH), job(seconds, { hasVideoInput: true }));
     near(price.minTotal, usd, `Aleph ${seconds} s (low)`);
@@ -292,6 +296,30 @@ function testFrameRatio() {
   assert.match(problem(1300, 1000).ratio, /^1\.30:1$/, 'any other: the plain ratio');
   assert.equal(problem(1822, 1000), null, '1.822 is within 3 % of 16:9 (1.778)');
   assert.ok(problem(1900, 1000), '1.9 is not');
+  // the format that the start image has, which the request sends as aspect_ratio (live test 2026-10-04: without it a 9:16 image came
+  // back as 16:9): the same tolerance as the problem above, so it is there exactly where the model takes the image
+  const ratioFor = (width, height) => videoModels.frameRatioFor(RUNWAY, { width, height });
+  assert.equal(ratioFor(720, 1280), '9:16', 'the image of the live test');
+  assert.equal(ratioFor(1280, 720), '16:9');
+  assert.equal(ratioFor(1920, 1080), '16:9');
+  assert.equal(ratioFor(1080, 1920), '9:16');
+  assert.equal(ratioFor(1920, 1088), '16:9', '1920 x 1088 is 16:9 within the tolerance');
+  assert.equal(ratioFor(1088, 1920), '9:16');
+  assert.equal(ratioFor(1822, 1000), '16:9', 'the edge of the tolerance, as above');
+  assert.equal(ratioFor(1000, 1000), null, '1:1 is none of them');
+  assert.equal(ratioFor(800, 600), null);
+  assert.equal(ratioFor(1900, 1000), null, '1.9 is not 16:9');
+  for (const [width, height] of [[1920, 1080], [1080, 1920], [1000, 1000], [800, 600], [1822, 1000], [1900, 1000], [720, 1280]]) {
+    assert.equal(ratioFor(width, height) === null, problem(width, height) !== null, `${width} x ${height}: a format exactly where there is no problem`);
+  }
+  // a model without a format limit, an unknown model, a size that is not known: none (so no aspect_ratio is sent for them)
+  assert.equal(videoModels.frameRatioFor(KLING, { width: 720, height: 1280 }), null);
+  assert.equal(videoModels.frameRatioFor(SEEDANCE, { width: 1280, height: 720 }), null);
+  assert.equal(videoModels.frameRatioFor('vendor/unknown', { width: 1280, height: 720 }), null);
+  assert.equal(videoModels.frameRatioFor(RUNWAY, null), null);
+  assert.equal(videoModels.frameRatioFor(RUNWAY, { width: 0, height: 10 }), null);
+  assert.equal(videoModels.frameRatioFor(RUNWAY, { width: 10, height: 0 }), null);
+  assert.equal(videoModels.frameRatioFor(RUNWAY), null);
   // a model without a restriction, a size that is not known: no problem
   assert.equal(videoModels.frameRatioProblem(KLING, { width: 1000, height: 1000 }), null);
   assert.equal(videoModels.frameRatioProblem(RUNWAY, null), null);
@@ -440,8 +468,30 @@ async function testPayloadAndNode(sessionId) {
   assert.equal(built.payload.resolution, '720p');
   assert.equal(built.payload.duration, 5);
   assert.deepEqual(built.payload.frame_images.map((frame) => [frame.type, frame.frame_type]), [['image_url', 'first_frame']]);
-  assert.equal('aspect_ratio' in built.payload, false, 'the first frame sets the format');
+  // Changed after the live test of 2026-10-04: this asserted `'aspect_ratio' in payload === false` ("the first frame sets the format"), but
+  // without aspect_ratio OpenRouter takes 16:9 for Gen-4.5 and cropped a 9:16 start image (sent 720 x 1280, got 1280 x 720). The format
+  // of the start image is sent now.
+  assert.equal(built.payload.aspect_ratio, '16:9', 'the format of the start image is sent');
   assert.equal('input_references' in built.payload, false, 'no references');
+  // the image of the live test: 720 x 1280 is 9:16, 1280 x 720 is 16:9 (real sizes, not the small ones above)
+  const live916 = await upload(720, 1280);
+  const live169 = await upload(1280, 720);
+  const near169 = await upload(1920, 1088);
+  const built916 = await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: live916.assetId, duration_seconds: 5 }, { capabilities });
+  assert.equal(built916.payload.aspect_ratio, '9:16', '720 x 1280 is sent as 9:16');
+  assert.equal(built916.payload.resolution, '720p');
+  assert.equal(built916.payload.duration, 5);
+  assert.equal((await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: live169.assetId, duration_seconds: 5 }, { capabilities })).payload.aspect_ratio, '16:9', '1280 x 720 is sent as 16:9');
+  assert.equal((await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: near169.assetId, duration_seconds: 5 }, { capabilities })).payload.aspect_ratio, '16:9', '1920 x 1088 is 16:9 within the tolerance');
+  assert.equal((await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: tall.assetId, duration_seconds: 5 }, { capabilities })).payload.aspect_ratio, '9:16');
+  // a format that was asked for is not used: the start image decides, and the note says the request was dropped
+  const asked = await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: live916.assetId, duration_seconds: 5, aspect_ratio: '16:9' }, { capabilities });
+  assert.equal(asked.payload.aspect_ratio, '9:16', 'the start image wins over the format that was asked for');
+  assert.ok(asked.corrections.some((note) => /aspect_ratio bei Image-to-Video entfernt/.test(note)));
+  // text to video is as before: the format asked for, if the model takes it
+  assert.equal((await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', duration_seconds: 4, aspect_ratio: '16:9' }, { capabilities })).payload.aspect_ratio, '16:9');
+  assert.equal('aspect_ratio' in (await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', duration_seconds: 4 }, { capabilities })).payload, false, 'text to video without a format sends none');
+  assert.equal(payloads.length, 0, 'building a request sends nothing');
   // a start image whose size cannot be read is refused by the model with the format limit (nothing is sent), not passed on unchecked
   const unreadableImage = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'upload', buffer: Buffer.concat([pngOf(160, 90).subarray(0, 8), Buffer.from('this is not a picture')]), ext: '.png', prompt: 'seed' })).id);
   refused = await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: unreadableImage.assetId, duration_seconds: 5 }, { capabilities }).catch((error) => error);
@@ -467,6 +517,14 @@ async function testPayloadAndNode(sessionId) {
   // the same square image is fine for a model without that restriction
   const other = await tools.buildVideoPayload(toolCtx(KLING), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: square.assetId, duration_seconds: 5 }, { capabilities: { resolutions: ['720p'], durations: { min: 3, max: 15 }, aspectRatios: ['16:9'] } });
   assert.equal(other.payload.model, KLING);
+  // ... and a model without a format limit sends no aspect_ratio for a start image, whatever the format of it (the first frame defines it)
+  assert.equal('aspect_ratio' in other.payload, false, 'a model without frameRatios: no aspect_ratio in image to video');
+  for (const frame of [live916, live169, tall, wide]) {
+    for (const model of [KLING, SEEDANCE, WAN, VEO]) {
+      const built2 = await tools.buildVideoPayload(toolCtx(model), { prompt: 'x', mode: 'image_to_video', first_frame_asset_id: frame.assetId, duration_seconds: 6 }, { capabilities: { resolutions: ['720p'], durations: { min: 2, max: 15 }, aspectRatios: ['16:9', '9:16'] } });
+      assert.equal('aspect_ratio' in built2.payload, false, `${model}: no aspect_ratio in image to video`);
+    }
+  }
   // text to video in 9:16
   const textual = await tools.buildVideoPayload(toolCtx(RUNWAY), { prompt: 'x', duration_seconds: 4, aspect_ratio: '9:16' }, { capabilities });
   assert.equal(textual.payload.aspect_ratio, '9:16');
@@ -550,7 +608,12 @@ async function testPayloadAndNode(sessionId) {
     payloads.length = 0;
     await run({ prompt: text('x'), first_frame: wide }, { duration: 5 });
     assert.deepEqual(payloads[0].frame_images.map((frame) => frame.frame_type), ['first_frame']);
-    assert.equal('aspect_ratio' in payloads[0], false);
+    // Changed after the live test of 2026-10-04 (was: no aspect_ratio): the format of the start image is sent, or OpenRouter takes 16:9
+    assert.equal(payloads[0].aspect_ratio, '16:9');
+    // the image of the live test (720 x 1280) goes out as 9:16, with the length and the resolution of the node
+    payloads.length = 0;
+    await run({ prompt: text('x'), first_frame: live916 }, { duration: 5 });
+    assert.deepEqual(plain({ ...payloads[0], frame_images: payloads[0].frame_images.map((frame) => frame.frame_type) }), { model: RUNWAY, prompt: 'x', resolution: '720p', duration: 5, aspect_ratio: '9:16', frame_images: ['first_frame'] });
     // the limits are checked before the run: no end frame, no references, no videos
     const issues = (rawParams, ports) => (def.validate(registry.normalizeParams(def, { model: RUNWAY, ...rawParams }), ports) || []).map((issue) => (typeof issue === 'string' ? { code: 'invalid', message: issue } : issue));
     const connected = (counts) => Object.fromEntries(Object.entries(counts).map(([port, count]) => [port, { connected: count > 0, count }]));
@@ -570,9 +633,10 @@ async function testPayloadAndNode(sessionId) {
     assert.equal(payloads.length, 0, 'the provider was not called');
     assert.equal((await store.readSession(sessionId)).jobs.length, before, 'no job');
     assert.equal(journal.length, journalBefore, 'nothing was booked');
-    // a tall image is fine
+    // a tall image is fine, and goes out as 9:16
     await run({ prompt: text('x'), first_frame: tall }, { duration: 5 });
     assert.equal(payloads.length, 1);
+    assert.equal(payloads[0].aspect_ratio, '9:16');
     void stopCompleter;
 
     // the text of the code in every language, with a value for every placeholder
