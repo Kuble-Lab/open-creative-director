@@ -32,8 +32,10 @@
     if (/iphone|ipad|ipod/i.test(agent) || (/macintosh/i.test(agent) && nav.maxTouchPoints > 1)) return true;
     return /safari/i.test(agent) && !/chrome|chromium|crios|fxios|edg|opr\/|android/i.test(agent);
   }
+  // Only for WebM: a MOV with alpha (ProRes 4444, HEVC with alpha) is another case, and the text is about VP9.
+  const isWebm = (value) => /\.webm(?:[?#]|$)/i.test(String(value.file || value.url || ''));
   function alphaHint(value) {
-    return hasAlpha(value) && value.type === 'video' && isSafariBrowser() ? el('div', { class: 'nv-alpha-hint', text: T('nodes.preview.alphaSafari') }) : null;
+    return hasAlpha(value) && value.type === 'video' && isWebm(value) && isSafariBrowser() ? el('div', { class: 'nv-alpha-hint', text: T('nodes.preview.alphaSafari') }) : null;
   }
 
   // Video sources get a media fragment so browsers paint the first frame as poster.

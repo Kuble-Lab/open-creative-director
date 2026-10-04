@@ -5593,6 +5593,10 @@ button.nv-scene-preview:focus-visible {
 
 .nv-ap-thumb {
   display: grid;
+  /* one cell of the size of the tile: with an implicit auto row a tall picture is as high as it is and runs out of the tile
+     (max-height: 100% and height: 100% do not resolve against an auto row) */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   width: 100%;
   aspect-ratio: 1;

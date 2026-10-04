@@ -207,6 +207,9 @@ async function withEnv(vars, fn) {
   }
 }
 
+// A real animated WebP of two frames; the first is half transparent (the header has the alpha and the animation flag).
+const ANIMATED_WEBP_BASE64 = 'UklGRoQAAABXRUJQVlA4WAoAAAASAAAACAAABgAAQU5JTQYAAAAAAAAAAABBTk1GKAAAAAAAAAAAAAgAAAYAAAAAAAJWUDhMDwAAAC8IgAEQBxD9jwIGIqL/AQBBTk1GKAAAAAAAAAAAAAgAAAYAAAAAAABWUDhMDwAAAC8IgAEABxDR//4HIqL/AQA=';
+
 const callsOf = async (log) => (await fsp.readFile(log, 'utf8').catch(() => '')).split('\n').filter(Boolean);
 
 /* ---------- the pixels ---------- */
@@ -223,8 +226,16 @@ async function testPixels(dir) {
     assert.equal(await detect('h-rgb.png', RGB()), false, 'no ffmpeg: RGB has no header alpha');
     assert.equal(await alpha.detectAlpha(await writeIn(dir, 'h-alpha.webp', vp8x(0x10)), '.webp'), true, 'no ffmpeg: WebP by its header');
     assert.equal(await alpha.detectAlpha(await writeIn(dir, 'h-plain.webp', vp8l(false)), '.webp'), false);
+    assert.equal(await alpha.detectAlpha(await writeIn(dir, 'h-anim.webp', vp8x(0x12)), '.webp'), true, 'no ffmpeg: an animated WebP with alpha by its header');
     assert.equal(await alpha.detectAlpha(await writeIn(dir, 'v.webm', Buffer.alloc(64)), '.webm'), false, 'no ffprobe: no mark for a video');
   });
+
+  // an animated WebP (a real file, first frame half transparent): ffmpeg cannot decode it, so the header decides, with or without ffmpeg
+  const animated = await writeIn(dir, 'real-anim.webp', Buffer.from(ANIMATED_WEBP_BASE64, 'base64'));
+  assert.equal(await alpha.imageIsAnimatedWebp(animated, '.webp'), true);
+  assert.equal(await alpha.detectAlpha(animated, '.webp'), true, 'an animated WebP with alpha is marked also when ffmpeg is there');
+  assert.equal(await alpha.imageIsAnimatedWebp(await writeIn(dir, 'still.webp', vp8x(0x10)), '.webp'), false, 'a still WebP is not animated');
+  assert.equal(await alpha.detectAlpha(await writeIn(dir, 'anim-plain.webp', vp8x(0x02)), '.webp'), false, 'an animated WebP without the alpha flag is not marked');
 
   if (!filters) {
     console.log('SKIP no ffmpeg with the filters alphaextract and signalstats: the pixel checks were not run');
@@ -315,6 +326,8 @@ async function testStore(dir) {
       // a WebP of which only the header exists: ffmpeg cannot read its pixels, so with ffmpeg and the filters there is no mark; without them the header counts
       const header = await store.saveAsset(h.sessionId, { kind: 'image', buffer: vp8x(0x10), ext: '.webp', prompt: 'webp header only' });
       assert.equal(header.alpha === true, !filters, 'a WebP header that ffmpeg cannot back up with pixels');
+      const animatedSaved = await store.saveAsset(h.sessionId, { kind: 'image', buffer: Buffer.from(ANIMATED_WEBP_BASE64, 'base64'), ext: '.webp', prompt: 'animated webp' });
+      assert.equal(animatedSaved.alpha, true, 'an animated WebP with alpha is marked');
       // a JPEG and a GIF cost no process
       await reset();
       const jpeg = await store.saveAsset(h.sessionId, { kind: 'image', buffer: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200)]), ext: '.jpg', prompt: 'jpeg' });
@@ -481,6 +494,8 @@ function testPreview() {
       assert.equal(card.find((item) => item.classes.has('nv-alpha-hint')).length, 0, `${lang}: no Safari note for an image, also in Safari`);
       assert.equal(preview.alphaHint(image), null, 'no note for an image');
       assert.equal(Boolean(preview.alphaHint(video)), inSafari, 'the note stays with videos in Safari');
+      assert.equal(preview.alphaHint({ ...video, file: 'vid-2.mov', url: '/assets/sess-1/vid-2.mov' }), null, `${lang}: no WebM note for a MOV with alpha`);
+      assert.equal(preview.alphaHint({ ...video, file: undefined, url: '/assets/sess-1/vid-3.mkv' }), null, 'nor for an MKV');
       // a list of results: the thumbnails
       const grid = new FakeNode('div');
       preview.renderCardPreview(grid, [{ port: 'images', value: { type: 'list', items: [image, plain] } }], {});
@@ -515,6 +530,9 @@ function testPreview() {
   // ... also in the grid of the app view and in the square tile of the picker; a filled grid cell (cover) keeps the cell
   assert.match(rule('.nv-appout-body.is-grid .nv-appleaf-frame .nv-media.nv-alpha'), /aspect-ratio:\s*auto/);
   assert.match(rule('.nv-ap-thumb .nv-alpha'), /width:\s*auto[^}]*height:\s*auto[^}]*max-width:\s*100%[^}]*max-height:\s*100%/);
+  // the tile of the picker is a grid with one cell of its own size, so that a tall picture (a 9:16 cutout) is cut to the tile and not as high as it is
+  assert.match(rule('.nv-ap-thumb'), /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(rule('.nv-ap-thumb'), /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(rule('.nv-asset-preview.is-grid .nv-media.nv-alpha'), /width:\s*100%/);
   // weight: `.nv-appleaf-frame .nv-media.nv-alpha` (three classes) beats `.nv-appleaf-frame .nv-media` (two) whatever the order in the file
 }
