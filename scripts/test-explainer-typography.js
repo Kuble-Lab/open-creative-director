@@ -567,11 +567,20 @@ function testSceneWriter() {
   // the palette is in the prompt, and the source line is left to the app
   for (const color of [paper.bg, paper.fg, paper.accent, paper.accent2, paper.white, paper.panel, paper.muted, paper.bgLight, paper.bgDark]) assert.ok(system.includes(color), `the colour ${color} is named`);
   assert.match(system, /do not write a source line or "Source:"/);
-  assert.match(system, /keep the lowest 20 % of the frame free|Keep the lowest 20 % of the frame free/);
+  // no zone for subtitles any more (the style has none): the whole frame is for the type, down to the source line the app sets
+  assert.doesNotMatch(system, /burnt in|Keep the lowest|free of the word being said|subtitles are/i);
+  assert.doesNotMatch(system, /lowest \d+ % of the frame/);
+  assert.match(system, /There are no subtitles in this style: the type may use the whole frame down to 115 px above the lower edge, no lower zone is kept free/);
+  assert.match(system, /The app adds the small source line at the very bottom itself \(inside the lowest 115 px\): do not write a source line or "Source:", and keep the key words and the word being said clear of it/);
+  assert.match(system, /the key word being said is fully inside the frame, 115 px from every edge/);
   // portrait: another frame, another band, another size of the key words
   const portrait = scene.writerSystemPrompt({ format: 'portrait', duration: 7.4, tokens, embeddedFonts: ['Inter Tight'], style: 'typography' });
   assert.match(portrait, /1080px; height:1920px/);
-  assert.match(portrait, /Keep the lowest 16 % of the frame free/);
+  assert.doesNotMatch(portrait, /burnt in|subtitles are|lowest \d+ % of the frame/i);
+  assert.match(portrait, /no lower zone is kept free/);
+  assert.match(portrait, /down to 85 px above the lower edge/);
+  assert.match(portrait, /fully inside the frame, 65 px from the top and the sides, 85 px from the lower edge\./);
+  assert.doesNotMatch(portrait, /65 px from every edge/, 'the portrait prompt names one lower value only');
   assert.match(portrait, /huge \(260 to 520 px\)/);
   // a brand with two embedded families: the second may be used for single accents; the notes of the brand are told
   const brandTokens = scene.typographyFontTokens({ ...scene.typographyTokens({ ...brand, motion: { notes: 'Calm, precise movements.' } }) }, ['Example Sans', 'Example Serif']).tokens;
@@ -608,6 +617,10 @@ function testSceneCheck() {
   for (const part of [/hard to read/, /collide by accident/, /empty or broken frame/, /wrong order/, /misspelled, a wrong figure/, /smaller than about 50px/]) assert.match(blockers, part);
   assert.doesNotMatch(rubric, /text cut off or crossing the frame edge/, 'the ordinary rule is not in it');
   assert.match(rubric, /never a blocker/, 'the line of sources is the same exception');
+  // the empty band for subtitles is gone from this rubric (it stays in the ordinary one)
+  assert.doesNotMatch(rubric, /burnt in|empty band|subtitles are/i);
+  assert.match(rubric, /This style has no subtitles, so type may use the whole frame above that line/);
+  assert.match(scene.checkSystemPrompt(), /the empty band above it is intended \(subtitles are burnt in there later\)/, 'the ordinary rubric keeps its sentence');
   assert.match(rubric, /Answer JSON only: \{"ok": boolean, "blockers": \[string\], "minor": \[string\]\}/);
   assert.equal(scene.readVerdict('{"ok":false,"blockers":["x"],"minor":[]}').ok, false, 'the verdict is read as before');
   // the frames: after the middle word has landed, and 0.15 s before the end
@@ -740,6 +753,20 @@ function testDocs() {
   const help = read('public/help.html');
   for (const heading of ['<strong>Typografie-Video:</strong>', '<strong>Typography video:</strong>', '<strong>Vídeo tipográfico:</strong>']) assert.equal(help.split(heading).length, 2, `the help page has ${heading} once`);
   assert.doesNotMatch(help, /ß/);
+  // no subtitles in the style (follow-up of WP40): the docs say so and keep no band for subtitles in the style any more
+  assert.match(read('README.md'), /\*No subtitles:\* in this style the words are the picture/);
+  assert.match(read('README.de.md'), /\*Keine Untertitel:\* In diesem Stil sind die Wörter das Bild/);
+  for (const file of ['README.md', 'README.de.md']) {
+    const entry = read(file).split('\n').find((line) => /WP40\)\*\* — /.test(line) && /(Typography|Typografie)/.test(line.slice(0, 80)));
+    assert.ok(entry, `${file}: the entry of the style`);
+    assert.doesNotMatch(entry, /lower 20 %|lower fifth stays free|unteren 20 %|untere Fünftel/, `${file}: no band for subtitles in the style`);
+  }
+  assert.match(read('docs/node-view/SPEC.md'), /No subtitles in the style Typography \(WP40 follow-up/);
+  assert.match(read('docs/node-view/IMPLEMENTATION-NOTES.md'), /### Style Typography without subtitles \(WP40 follow-up/);
+  for (const [heading, pattern] of [['<strong>Typografie-Video:</strong>', /<strong>keine Untertitel<\/strong>/], ['<strong>Typography video:</strong>', /<strong>no subtitles<\/strong>/], ['<strong>Vídeo tipográfico:</strong>', /<strong>no tiene subtítulos<\/strong>/]]) {
+    const item = help.slice(help.indexOf(heading), help.indexOf('</li>', help.indexOf(heading)));
+    assert.match(item, pattern, `${heading} says there are no subtitles`);
+  }
   // no internal names in what this package wrote
   for (const file of ['lib/explainer-plan.js', 'lib/explainer-scene.js', 'lib/nodes/templates/typography-video.json', 'lib/nodes/templates/typography-video-text.json', 'lib/fonts/inter-tight/OFL.txt']) {
     assert.doesNotMatch(read(file), /kuble\.com|\.internal\b|\b10\.\d+\.\d+\.\d+\b|\/Users\/[a-z]/i, `${file}: no internal name or address`);
@@ -1256,9 +1283,35 @@ async function run(iso, eleven) {
   assert.ok(wires(textT).includes('n1.prompt>n4.own_text'));
   assert.ok(!wires(textT).some((wire) => wire.endsWith('>n4.topic') || wire.endsWith('>n4.notes') || wire.endsWith('>n4.sources')));
   assert.equal(nodeOf(textT, 'n4').params.topic, '');
-  assert.deepEqual(textT.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n6.prompt', 'n3.branding', 'n4.language', 'n5.voice_id', 'n9.captions']);
-  assert.deepEqual(textT.app.outputs.map((entry) => entry.node), ['n10', 'n11', 'n12']);
-  assert.deepEqual(topicT.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n6.prompt', 'n3.branding', 'n4.language', 'n2.language', 'n4.length_seconds', 'n5.voice_id', 'n9.captions']);
+  // no subtitles in the app view (the words are the picture): no field "captions", no output "Subtitles"
+  assert.deepEqual(textT.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n6.prompt', 'n3.branding', 'n4.language', 'n5.voice_id']);
+  assert.deepEqual(textT.app.outputs.map((entry) => entry.node), ['n10', 'n12']);
+  assert.deepEqual(topicT.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n6.prompt', 'n3.branding', 'n4.language', 'n2.language', 'n4.length_seconds', 'n5.voice_id']);
+  assert.deepEqual(topicT.app.outputs.map((entry) => entry.node), ['n10', 'n12', 'n13']);
+  for (const template of [topicT, textT]) {
+    assert.equal(nodeOf(template, 'n9').params.captions, 'off', 'the cut burns no captions in');
+    assert.ok(!template.graph.nodes.some((node) => node.id === 'n11'), 'no output node for subtitles');
+    assert.ok(!template.graph.edges.some((edge) => edge.from.port === 'subtitles' || edge.to.node === 'n11'), 'and no edge to it');
+    assert.ok(!template.graph.nodes.some((node) => node.type === 'output.result' && /subtitle/i.test(node.params.label)), 'no output labelled Subtitles');
+    assert.ok(!template.app.inputs.some((entry) => entry.param === 'captions') && !template.app.outputs.some((entry) => entry.node === 'n11'));
+    for (const lang of ['de', 'es']) {
+      const keys = Object.keys(template.i18n[lang]);
+      assert.ok(!keys.includes('app.input.n9.captions') && !keys.includes('app.output.n11'), `${lang}: no label left for the removed field and output`);
+      // every label the app view needs is there in the language
+      for (const entry of template.app.inputs) assert.ok(template.i18n[lang][`app.input.${entry.node}.${entry.param}`], `${lang}: input ${entry.node}.${entry.param}`);
+      for (const entry of template.app.outputs) assert.ok(template.i18n[lang][`app.output.${entry.node}`], `${lang}: output ${entry.node}`);
+    }
+    // no text promises subtitles or a subtitle file any more; each language says there are none
+    const promised = { en: /captions and a subtitle file|, captions|subtitle file|SRT/i, de: /Untertiteln und SRT|Untertitel und eine SRT|SRT-Datei/, es: /subtítulos y un archivo SRT|archivo SRT/ };
+    const said = { en: /no subtitles|without subtitles/i, de: /keine Untertitel|ohne Untertitel/, es: /no hay subtítulos|sin subtítulos/i };
+    for (const lang of ['en', 'de', 'es']) {
+      const doc = templates.resolveTemplate(template.id, { lang });
+      for (const text of [doc.description, doc.app.description, doc.graph.notes[0].text]) assert.doesNotMatch(text, promised[lang], `${template.id}.${lang}: promises no subtitle file`);
+      assert.match(doc.description, said[lang]);
+      assert.match(doc.app.description, said[lang]);
+      assert.match(doc.graph.notes[0].text, said[lang]);
+    }
+  }
   // the existing templates are as they were: the same ids in the same order, no new param in any of them
   for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'explainer-script', 'explainer-script-topic']) {
     const old = byId[id];

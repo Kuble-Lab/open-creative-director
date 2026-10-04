@@ -708,10 +708,21 @@ function testTypographyFallback() {
       // the narrow page: a line is also broken where it would be wider than the page, so the key word stands alone
       assert.ok(lines.length > 3, `portrait: ${lines.length} lines`);
     }
-    // the area ends above the free band; a timeline of the exact length; the exact length in the root element
-    const { height } = scene.formatOf(format);
+    // the style has no subtitles, so no band is kept free for them: the area reaches down to the margin above the source line, and the
+    // lines stand lower than they did with the band (WP40 follow-up); a timeline of the exact length; the exact length in the root element
+    const { width, height } = scene.formatOf(format);
     const line = /\.line \{ position:absolute; left:\d+px; top:(\d+)px; width:\d+px; height:(\d+)px;/.exec(html);
-    assert.ok(Number(line[1]) + Number(line[2]) <= height * (1 - scene.FREE_BAND_PERCENT[format] / 100), `${format}: the current line ends at ${Number(line[1]) + Number(line[2])} of ${height}`);
+    const inset = scene.typographyBottomInset(format);
+    const lineBottom = Number(line[1]) + Number(line[2]);
+    assert.ok(lineBottom <= height - inset, `${format}: the current line ends at ${lineBottom} of ${height}, above the source line`);
+    const margin = Math.round(width * 0.06);
+    const oldBottom = Math.round(height * Math.min(0.78, 1 - scene.FREE_BAND_PERCENT[format] / 100));
+    assert.ok(height - inset > oldBottom, `${format}: the area reaches lower than the old band allowed (${height - inset} against ${oldBottom})`);
+    assert.equal(Number(line[1]), Math.round((margin + height - inset) / 2), `${format}: the lines stand in the middle of the whole area`);
+    assert.ok(Number(line[1]) > Math.round((margin + oldBottom) / 2), `${format}: and lower than before`);
+    // the source line stands below the area, whatever its height: the top of the line is at 16 px + 32 px (landscape), 29 px + 32 px (portrait)
+    assert.ok(inset >= Math.round(height * scene.SOURCE_BOTTOM_SHARE) + Math.ceil(scene.SOURCE_FONT_PX * 1.2) + 24, `${format}: air above the source line`);
+    assert.ok(inset >= margin, `${format}: and never less than the margin`);
     assert.ok(html.includes('data-duration="6.999"') && html.includes('{duration:0.01}, 6.989);'));
     // it is accepted like the scene of the model, and with the source line and the policy of the app
     const fixed = scene.fixDuration(html, 7).html;
@@ -751,6 +762,9 @@ function testTypographyFallback() {
   assert.equal(scene.fallbackHtml({ ...base, style: '', words, keywords }), before, 'no style');
   assert.equal(scene.fallbackHtml({ ...base, style: 'motion', words, keywords }), before, 'motion');
   assert.equal(scene.fallbackHtml({ ...base, words, keywords }), before, 'words alone change nothing');
+  // the ordinary scene still keeps its column above the free band for the subtitles, byte for byte
+  assert.equal(scene.fallbackHtml({ ...base, style: 'typography', words: [] }), before);
+  assert.deepEqual([scene.typographyBottomInset('landscape'), scene.typographyBottomInset('portrait')], [115, 85]);
 }
 
 // The source line as the app puts it into a scene (withSourceLine): where it goes, how it looks, and that no text can break the page.
