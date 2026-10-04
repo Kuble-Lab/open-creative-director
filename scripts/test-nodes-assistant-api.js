@@ -34,6 +34,7 @@ const P4 = 'p4@gmail.example';
 const P5 = 'p5@gmail.example';
 const P6 = 'p6@gmail.example';
 const P7 = 'p7@gmail.example';
+const P8 = 'p8@gmail.example';
 const GUEST = 'guest@gmail.example';
 const PRICED = 'anthropic/claude-opus-5.5'; // a model with a known price (4 and 20 USD per million tokens)
 const LIST = ['openai/gpt-5.6-luna', 'google/gemini-3.1-pro', PRICED];
@@ -187,9 +188,9 @@ async function run(iso, output) {
   assert.ok(flow.id);
   const team = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Kurs', budgetUsd: 5 } })).body.team;
   assert.equal((await api(`/api/teams/${team.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P1] } })).status, 201);
-  const tiny = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Klein', budgetUsd: 0.06 } })).body.team;
+  const tiny = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Klein', budgetUsd: 0.2 } })).body.team;
   assert.equal((await api(`/api/teams/${tiny.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P2, P3] } })).status, 201);
-  const parallel = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Gleichzeitig', budgetUsd: 0.05 } })).body.team;
+  const parallel = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Gleichzeitig', budgetUsd: 0.15 } })).body.team;
   assert.equal((await api(`/api/teams/${parallel.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P4] } })).status, 201);
   const flat = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Pauschale', budgetUsd: 1 } })).body.team;
   assert.equal((await api(`/api/teams/${flat.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P5] } })).status, 201);
@@ -417,7 +418,7 @@ async function run(iso, output) {
 
   // budget gone: a clear message in the language of the interface, no model call
   reset();
-  await costs.recordCost({ ts: new Date().toISOString(), sessionId: 'x', type: 'brain', model: LIST[0], cost: 0.06, user: P2 });
+  await costs.recordCost({ ts: new Date().toISOString(), sessionId: 'x', type: 'brain', model: LIST[0], cost: 0.2, user: P2 });
   const dry = await makeFlow(P2, 'Leer');
   for (const [lang, pattern] of [['de', /Budget ist aufgebraucht/], ['en', /budget is used up/], ['es', /presupuesto se ha agotado/]]) {
     response = await ask(dry.id, P2, { lang });
@@ -435,7 +436,7 @@ async function run(iso, output) {
   assert.equal(response.body.code, 'BUDGET_EXHAUSTED');
   // the budget runs out during the question: the answer is kept, the second try is not made
   const edge = await makeFlow(P3, 'Knapp');
-  sayViaOpenRouter({ text: { answer: 'Erster Versuch.', insert: BAD_INSERT }, cost: 0.06 });
+  sayViaOpenRouter({ text: { answer: 'Erster Versuch.', insert: BAD_INSERT }, cost: 0.2 });
   response = await ask(edge.id, P3);
   assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(openrouter.calls.length, 1, 'the second try was refused before it reached the provider');
@@ -444,7 +445,9 @@ async function run(iso, output) {
   assert.equal(response.body.answer, 'Erster Versuch.');
   assert.equal(response.body.budget.remainingUsd, 0);
 
-  // one question reserves a flat amount while it runs: questions at the same time cannot run past the budget
+  // one question reserves its estimate while it runs (the dearest price of the person's list for a model without a price): questions at
+  // the same time cannot run past the budget. The budgets of this section were 0.05 to 0.06 when the reservation was a flat 5 cents; they
+  // are raised to what covers one reservation (decision of the product owner, review WP38), the checks are the same.
   reset();
   const budgetLib = iso.load('lib/budget');
   const crowded = await makeFlow(P4, 'Gleichzeitig');
@@ -605,7 +608,13 @@ async function run(iso, output) {
     reservedFlat = budgetLib.defaultBudget.reservedFor(P6);
   }
   assert.equal((await slowFlat).status, 200);
-  assert.equal(reservedFlat, 0.05, 'a model without a known price reserves the flat amount, as before');
+  // product owner's decision (review WP38): a model without a known price reserves with the dearest known price of the person's list
+  // (their list holds Opus 5.5), not the flat amount
+  const sentFlat = openrouter.calls[1].payload.messages.reduce((sum, message) => sum + String(message.content).length, 0);
+  const expectedFlat = A.questionEstimateUsd({ model: LIST[0], prompt: 'x'.repeat(sentFlat), choosable: LIST });
+  assert.ok(expectedFlat > 0.07, `a model without a price reserves more than the flat amount (${expectedFlat})`);
+  assert.equal(expectedFlat, A.questionEstimateUsd({ model: PRICED, prompt: 'x'.repeat(sentFlat) }), 'the price of the dearest model of the list');
+  assert.ok(Math.abs(reservedFlat - expectedFlat) < 1e-9, `reserved ${reservedFlat}, expected ${expectedFlat}`);
   // a budget that would do for the flat amount but not for the price of the model: refused before the provider is asked
   const tight = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Knapp teuer', budgetUsd: Math.round((expected - 0.01) * 100) / 100 } })).body.team;
   assert.equal((await api(`/api/teams/${tight.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P7] } })).status, 201);
@@ -616,9 +625,19 @@ async function run(iso, output) {
   assert.equal(response.body.code, 'BUDGET_INSUFFICIENT');
   assert.equal(openrouter.calls.length, 0, 'refused before the provider was asked');
   assert.ok(response.body.budget.remainingUsd >= 0.05, 'the flat amount would have fitted');
-  sayViaOpenRouter({ text: { answer: 'Das passt.', mentions: [] }, cost: 0.01 });
+  // a model without a known price needs the same as the dearest model of the list: refused as well, nothing asked
+  reset();
   response = await ask(tightFlow.id, P7, { model: LIST[0] });
-  assert.equal(response.status, 200, 'the same budget is enough for a model without a known price');
+  assert.equal(response.status, 402, JSON.stringify(response.body));
+  assert.equal(response.body.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(openrouter.calls.length, 0);
+  // a subscription-free person whose budget covers the dearest price asks with it
+  const roomy = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Genug', budgetUsd: 5 } })).body.team;
+  assert.equal((await api(`/api/teams/${roomy.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P8] } })).status, 201);
+  const roomyFlow = await makeFlow(P8, 'Genug');
+  sayViaOpenRouter({ text: { answer: 'Das passt.', mentions: [] }, cost: 0.01 });
+  response = await ask(roomyFlow.id, P8, { model: LIST[0] });
+  assert.equal(response.status, 200, 'enough budget for the reservation');
   // the provider reports no cost for a priced model: the estimate is booked instead of the flat amount
   reset();
   sayViaOpenRouter({ text: { answer: 'Ohne Kostenangabe.', mentions: [] }, noCost: true });

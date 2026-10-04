@@ -806,6 +806,22 @@ function testQuestionEstimate(A) {
   assert.equal(A.questionEstimateUsd({ model: priced, system, prompt, maxTokens: 7000 }), Math.ceil((tokens * 4 + 7000 * 20) / 1e6 * 1e4) / 1e4, 'the longest answer counts');
   assert.equal(A.questionEstimateUsd({ model: priced }), Math.max(A.COST_USD, Math.ceil(A.LIMITS.maxTokens * 20 / 1e6 * 1e4) / 1e4), 'an empty prompt: the answer only');
   assert.equal(A.questionEstimateUsd(), A.COST_USD);
+
+  // Decision of the product owner: a model without a known price reserves with the dearest known price of the models the person may
+  // choose (at least the flat amount); subscription models still reserve the flat amount; a priced model keeps its own price
+  const unknown = 'some/unknown-model';
+  const opusReserve = A.questionEstimateUsd({ model: priced, system, prompt });
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [unknown, cheap, priced, 'openai/gpt-5.6-luna'] }), opusReserve, 'the dearest priced model of the list');
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [unknown, cheap] }), A.questionEstimateUsd({ model: cheap, system, prompt }), 'the list has only the cheaper one');
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [cheap, 'chatgpt/gpt-6.1-sol', unknown] }), A.questionEstimateUsd({ model: cheap, system, prompt }), 'a subscription model has no price');
+  assert.ok(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [priced] }) > A.COST_USD, 'above the flat amount');
+  assert.equal(A.questionEstimateUsd({ model: unknown, prompt: 'hi', maxTokens: 10, choosable: [cheap] }), A.COST_USD, 'never below the flat amount');
+  // no priced model in the list: the dearest price the app knows at all (too little is never reserved)
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: ['a/b', 'c/d'] }), opusReserve);
+  assert.equal(A.questionEstimateUsd({ model: unknown, system, prompt, choosable: [] }), opusReserve, 'an empty list: the same');
+  // a priced model and a subscription model are not changed by the list
+  assert.equal(A.questionEstimateUsd({ model: cheap, system, prompt, choosable: [priced] }), A.questionEstimateUsd({ model: cheap, system, prompt }));
+  assert.equal(A.questionEstimateUsd({ model: 'chatgpt/gpt-6.1-sol', system, prompt, choosable: [priced] }), A.COST_USD);
 }
 
 /* ---------- static checks of the source ---------- */
