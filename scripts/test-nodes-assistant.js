@@ -285,6 +285,25 @@ function testCanvas(A, registry) {
   assert.equal(parsed.nodes.find((node) => node.id === 'n4').params, undefined);
   assert.equal(parsed.nodes.find((node) => node.id === 'n7').outputs[0], 'items');
 
+  // WP38d (review): a param with `initial` is shown against the value a new node starts with, the one the help calls "default":
+  // a node saved with the old default "en" (or without the param, which runs as "en") is shown, one with "auto" is not
+  const languages = JSON.parse(A.canvasForPrompt(A.sanitizeCanvas({
+    nodes: [
+      { id: 'a1', type: 'llm.research', params: { language: 'en' } },
+      { id: 'a2', type: 'llm.research', params: { language: 'auto' } },
+      { id: 'a3', type: 'llm.research', params: {} },
+      { id: 'a4', type: 'explainer.plan', params: { language: 'de' } },
+      { id: 'a5', type: 'explainer.plan', params: { language: 'auto' } }
+    ],
+    edges: []
+  }), registry, dict));
+  const languageOf = (id) => (languages.nodes.find((node) => node.id === id).params || {}).language;
+  assert.equal(languageOf('a1'), 'en', 'a saved en differs from the start value auto');
+  assert.equal(languageOf('a2'), undefined, 'auto is what a new node starts with: not listed');
+  assert.equal(languageOf('a3'), 'en', 'a node without the param runs as en');
+  assert.equal(languageOf('a4'), 'de');
+  assert.equal(languageOf('a5'), undefined);
+
   // a huge canvas is cut, selected nodes stay, the size is capped
   const big = A.sanitizeCanvas({
     nodes: Array.from({ length: 400 }, (_, index) => ({ id: `n${index + 1}`, type: 'llm.chat', title: `Node ${index + 1} ${'t'.repeat(100)}`, params: { prompt: 'p'.repeat(300) } })),

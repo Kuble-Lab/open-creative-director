@@ -53,6 +53,29 @@ function testExamples() {
     ['Wärmepumpe Kosten Förderung', 'de'],
     ['Qué es la inteligencia artificial para empresas', 'es']
   ]) assert.equal(detect.detectLanguage(text), language, text);
+  // a name with a special character is no evidence (review): one letter alone does not tip a topic, nor a name beside an English word
+  for (const [text, language] of [
+    ['El Niño effects on agriculture', 'en'],
+    ['El Niño and La Niña explained', 'en'],
+    ['Zürich tourism trends', 'en'],
+    ['Gödel incompleteness theorem', 'en'],
+    ['Müller', 'en'],
+    ['Data protection under the DSGVO für KMU', 'en'],
+    ['Wie funktioniert Git', 'de'],
+    ['Wie funktioniert Zürich', 'de']
+  ]) assert.equal(detect.detectLanguage(text), language, text);
+  assert.equal(detect.classify('Zürich tourism trends').strength, 'none', 'a special character alone is not even a weak hint');
+  assert.equal(detect.classify('El Niño effects on agriculture').language, null, 'one hint each way: nothing');
+  // a special character counts once per word, and not again in a stop word ("für", "über")
+  assert.deepEqual(detect.score('für'), { de: 1, en: 0, es: 0 });
+  assert.deepEqual(detect.score('über'), { de: 1, en: 0, es: 0 });
+  assert.deepEqual(detect.score('Straßenbahnübergänge'), { de: 0, en: 0, es: 0 }, 'a single name');
+  assert.deepEqual(detect.score('straßenbahnübergänge'), { de: 1.5, en: 0, es: 0 }, 'a lower case word counts its strongest letter once');
+  assert.equal(detect.score('niño').es, 1, 'the n with tilde is one point');
+  assert.equal(detect.score('¿qué?').es, 4, 'the inverted question mark stays a strong mark');
+  // names with a capital: from two on, and only while no other language speaks
+  assert.equal(detect.score('Wärmepumpe Förderung').de, 2);
+  assert.equal(detect.score('Wärmepumpe Förderung and').de, 0);
   // the evidence of one text
   assert.equal(detect.classify(GERMAN).strength, 'clear');
   assert.ok(detect.classify(GERMAN).scores.de > 5 && detect.classify(GERMAN).scores.en === 0);
