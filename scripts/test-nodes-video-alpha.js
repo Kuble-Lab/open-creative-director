@@ -231,22 +231,35 @@ async function testRuns() {
   try {
     const W = 64;
     const VP9 = ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-b:v', '0', '-crf', '32', '-deadline', 'good', '-cpu-used', '4'];
-    // half transparent red, 1 s, 5 frames per second; one with a sound of 880 Hz in Opus
-    await h.ff(['-f', 'lavfi', '-i', `color=c=red@0.5:s=${W}x${W}:r=5:d=1,format=yuva420p`, ...VP9, h.src('red.webm')]);
-    await h.ff(['-f', 'lavfi', '-i', `color=c=red@0.5:s=${W}x${W}:r=5:d=1,format=yuva420p`, '-f', 'lavfi', '-i', 'sine=f=880:d=1', ...VP9, '-c:a', 'libopus', h.src('red-sound.webm')]);
-    // the same red, opaque, in a WebM without alpha and in an MP4
-    await h.ff(['-f', 'lavfi', '-i', `color=c=red:s=${W}x${W}:r=5:d=1,format=yuv420p`, '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-b:v', '0', '-crf', '40', '-deadline', 'good', '-cpu-used', '5', h.src('plain.webm')]);
+    // the runs need libvpx-vp9 (encoder and decoder) and libopus; without them the fixtures cannot be made, so those parts are skipped
+    const libvpx = ffmpeg.hasEncoder('libvpx-vp9') && ffmpeg.hasDecoder('libvpx-vp9') && ffmpeg.hasEncoder('libopus');
+    let red = null;
+    let redSound = null;
+    let plainWebm = null;
+    if (libvpx) {
+      // half transparent red, 1 s, 5 frames per second; one with a sound of 880 Hz in Opus
+      await h.ff(['-f', 'lavfi', '-i', `color=c=red@0.5:s=${W}x${W}:r=5:d=1,format=yuva420p`, ...VP9, h.src('red.webm')]);
+      await h.ff(['-f', 'lavfi', '-i', `color=c=red@0.5:s=${W}x${W}:r=5:d=1,format=yuva420p`, '-f', 'lavfi', '-i', 'sine=f=880:d=1', ...VP9, '-c:a', 'libopus', h.src('red-sound.webm')]);
+      // the same red, opaque, in a WebM without alpha
+      await h.ff(['-f', 'lavfi', '-i', `color=c=red:s=${W}x${W}:r=5:d=1,format=yuv420p`, '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-b:v', '0', '-crf', '40', '-deadline', 'good', '-cpu-used', '5', h.src('plain.webm')]);
+    }
+    // an MP4, a WAV and a PNG need no libvpx
     await h.ff(['-f', 'lavfi', '-i', `color=c=red:s=${W}x${W}:r=5:d=1,format=yuv420p`, '-f', 'lavfi', '-i', 'sine=f=440:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', h.src('plain.mp4')]);
     await h.ff(['-f', 'lavfi', '-i', 'sine=f=330:d=2', '-c:a', 'pcm_s16le', h.src('tone.wav')]);
     await h.ff(['-f', 'lavfi', '-i', 'color=c=white:s=16x16', '-frames:v', '1', h.src('logo.png')]);
 
-    const red = await h.upload('red.webm', '.webm');
-    const redSound = await h.upload('red-sound.webm', '.webm');
-    const plainWebm = await h.upload('plain.webm', '.webm');
+    if (libvpx) {
+      red = await h.upload('red.webm', '.webm');
+      redSound = await h.upload('red-sound.webm', '.webm');
+      plainWebm = await h.upload('plain.webm', '.webm');
+      assert.equal(red.type, 'video');
+    }
     const plainMp4 = await h.upload('plain.mp4', '.mp4');
     const tone = await h.upload('tone.wav', '.wav');
     const logo = await h.upload('logo.png', '.png');
-    assert.equal(red.type, 'video');
+    if (!libvpx) {
+      console.log('SKIP the ffmpeg has no libvpx-vp9 (encoder and decoder) or libopus: the runs that keep alpha were not tested');
+    }
 
     const probeFile = (file) => ops.probeMedia(file, {});
     // the alpha (0 to 255) of the pixel (x, y) at time t: decoded with libvpx-vp9 (the one decoder that reads it), then alphaextract
@@ -271,10 +284,12 @@ async function testRuns() {
     const outFile = async (value) => assets.assetFilePath(value);
 
     // the source: half transparent
-    const source = await probeFile(await outFile(red));
-    assert.equal(source.video.alpha, true, 'the test clip has alpha');
-    near(await alphaAt(await outFile(red), 32, 32), 127, 3, 'the source is half transparent');
-    assert.equal((await probeFile(await outFile(plainWebm))).video.alpha, false, 'a VP9 clip without alpha');
+    if (libvpx) {
+      const source = await probeFile(await outFile(red));
+      assert.equal(source.video.alpha, true, 'the test clip has alpha');
+      near(await alphaAt(await outFile(red), 32, 32), 127, 3, 'the source is half transparent');
+      assert.equal((await probeFile(await outFile(plainWebm))).video.alpha, false, 'a VP9 clip without alpha');
+    }
     assert.equal((await probeFile(await outFile(plainMp4))).video.alpha, false);
 
     /* --- the ops that keep alpha write WebM with alpha --- */
@@ -287,10 +302,7 @@ async function testRuns() {
       { name: 'resize (width only)', type: 'video.resize', params: { width: 32, height: 0, fit: 'contain', background: '#000000' }, size: [32, 32], picture: [16, 16] },
       { name: 'adjust', type: 'video.adjust', params: { brightness: 0.1, contrast: 1.2, saturation: 1.1, gamma: 1.1, hue: 10 }, picture: [32, 32] }
     ];
-    const libvpx = ffmpeg.hasEncoder('libvpx-vp9') && ffmpeg.hasDecoder('libvpx-vp9') && ffmpeg.hasEncoder('libopus');
-    if (!libvpx) {
-      console.log('SKIP the ffmpeg has no libvpx-vp9 (encoder and decoder) or libopus: the runs that keep alpha were not tested');
-    } else {
+    if (libvpx) {
       for (const spec of cases) {
         const { value, logs } = await ranWith(spec.type, { video: redSound }, spec.params);
         const file = await outFile(value);
@@ -504,12 +516,13 @@ async function testRuns() {
       const marked = await assets.saveOutputFile(h.sessionId, { kind: 'video', ext: '.webm', sourceFile: await (async () => {
         const dir = await assets.createScratchDir(h.sessionId);
         const file = path.join(dir, 'x.webm');
-        await fsp.copyFile(h.src('red.webm'), file);
+        // any file will do: only the ledger mark is under test
+        await fsp.copyFile(h.src(libvpx ? 'red.webm' : 'plain.mp4'), file);
         return file;
       })(), prompt: 'marked', alpha: true });
       assert.equal(marked.alpha, true);
       assert.equal((await assets.valueFromAsset(h.sessionId, marked.assetId)).alpha, true);
-      assert.equal(red.alpha, undefined, 'an upload is not marked');
+      assert.equal((red || plainMp4).alpha, undefined, 'an upload is not marked');
     }
   } finally {
     costs.recordCost = originals.recordCost;
@@ -567,6 +580,29 @@ function testPreview() {
   assert.ok(!/innerHTML/.test(read('public/nodes/preview.js')));
 }
 
+// the whole file again with an ffmpeg that knows neither libvpx, libvpx-vp9 nor libopus: it must print SKIP and end green
+async function testWithoutVpx() {
+  const os = require('os');
+  const { spawn } = require('child_process');
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-novpx-'));
+  try {
+    const hide = ' (libvpx|libvpx-vp9|libopus) ';
+    const wrapper = await makeWrapper(dir, 'ffmpeg-novpx', { hideDecoders: hide, hideEncoders: hide });
+    const result = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [__filename], { env: { ...process.env, FFMPEG_PATH: wrapper, OCD_ALPHA_TEST_CHILD: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.stderr.on('data', (chunk) => { out += chunk; });
+      child.on('close', (code) => resolve({ code, out }));
+    });
+    assert.equal(result.code, 0, `without libvpx the test ends green: ${result.out}`);
+    assert.match(result.out, /SKIP the ffmpeg has no libvpx-vp9/);
+    assert.match(result.out, /test-nodes-video-alpha\.js: ok/);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   testDetection();
   testDecoderOptions();
@@ -576,6 +612,7 @@ async function main() {
     console.log('SKIP ffmpeg is missing (only the pure parts were tested)');
   } else {
     await testRuns();
+    if (!process.env.OCD_ALPHA_TEST_CHILD && ffmpeg.hasEncoder('libvpx-vp9')) await testWithoutVpx();
   }
   console.log('test-nodes-video-alpha.js: ok');
 }
