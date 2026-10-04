@@ -1018,14 +1018,14 @@ async function main() {
       const scratch = await assets.createScratchDir(sessionId);
       const copy = path.join(scratch, 'upload.mp4');
       await fsp.copyFile(longFile, copy);
-      const uploaded = await assets.saveUploadFile(sessionId, { sourceFile: copy, ext: '.mp4', name: 'long.mp4' });
+      const uploaded = await assets.saveUploadFile(sessionId, { sourceFile: copy, ext: '.mp4', name: 'long.mp4', duration: await assets.probeUploadSeconds(copy) });
       await assets.removeScratchDir(scratch);
       near(uploaded.duration, 53.5, 'the ledger holds the length of the upload', 0.1);
       near(def.cost.estimate(normalised({ in_parts: true }), { inputs: { video: uploaded } }), 7.49, 'the plan prices the parts of an upload', 1e-5);
       // a file that is no video has no length and the upload still works
       const notVideo = path.join(await assets.createScratchDir(sessionId), 'upload.mp4');
       await fsp.writeFile(notVideo, 'not a video');
-      const bare = await assets.saveUploadFile(sessionId, { sourceFile: notVideo, ext: '.mp4', name: 'bad.mp4' });
+      const bare = await assets.saveUploadFile(sessionId, { sourceFile: notVideo, ext: '.mp4', name: 'bad.mp4', duration: await assets.probeUploadSeconds(notVideo) });
       assert.equal('duration' in bare, false);
       await assets.removeScratchDir(path.dirname(notVideo));
     }
