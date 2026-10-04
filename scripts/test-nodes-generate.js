@@ -2663,6 +2663,168 @@ async function main() {
       catalogLib.clearCache();
     }
 
+    /* ----- WP42: models that need a video are not offered by the Higgsfield nodes, and a saved workflow is refused ----- */
+    {
+      resetMocks();
+      // The real role names of a video slot are not documented: the detection goes by "video" in the roles or type "video".
+      const model = (id, name, medias, output = 'video') => JSON.stringify({ id, name, provider_name: 'Test', output_type: output, parameters: [], medias, credits_per_unit: 2, credit_unit: 'per_generation' });
+      const catalogue = {
+        motion: model('kling3_0_motion_control', 'Kling 3.0 Motion Control', [
+          { name: 'image', type: 'image', max: 1, required: true, roles: ['start_image'] },
+          { name: 'motion', type: 'image', max: 1, required: true, roles: ['motion_video'] }
+        ]),
+        typed: model('clip_editor', 'Clip Editor', [{ name: 'clip', type: 'video', max: 1, required: true, roles: ['video'] }]),
+        videoOnly: model('video_only', 'Video Only', [{ name: 'clip', type: 'image', roles: ['video_references'] }]),
+        mixed: model('mixed_refs', 'Mixed Refs', [{ name: 'refs', type: 'image', max: 4, roles: ['image_references', 'video_references'] }]),
+        optional: model('optional_video', 'Optional Video', [
+          { name: 'start', type: 'image', max: 1, roles: ['start_image'] },
+          { name: 'ref', type: 'image', max: 1, roles: ['reference_video'] }
+        ]),
+        videoAudio: model('video_audio', 'Video Audio', [
+          { name: 'clip', type: 'image', max: 1, roles: ['video'] },
+          { name: 'sound', type: 'image', max: 1, roles: ['audio_references'] }
+        ]),
+        audio: model('with_audio_wp42', 'With Audio', [{ name: 'medias', type: 'image', max: 3, roles: ['start_image', 'audio_references'] }]),
+        image: model('image_with_video', 'Image From Video', [{ name: 'clip', type: 'image', max: 1, required: true, roles: ['reference_video'] }], 'image')
+      };
+      const byId = Object.fromEntries(Object.values(catalogue).map((json) => [JSON.parse(json).id, json]));
+      const parsed = (key) => JSON.parse(catalogue[key]);
+
+      // slot detection: roles or type, mixed slots are reference slots, audio keeps its own rule
+      assert.equal(catalogLib.isVideoSlot({ roles: ['motion_video'] }), true);
+      assert.equal(catalogLib.isVideoSlot({ roles: ['video'], type: 'video' }), true);
+      assert.equal(catalogLib.isVideoSlot({ type: 'video' }), true);
+      assert.equal(catalogLib.isVideoSlot({ roles: ['video_references'] }), true);
+      assert.equal(catalogLib.isVideoSlot({ roles: ['reference_video'] }), true);
+      assert.equal(catalogLib.isVideoSlot({ roles: ['image_references', 'video_references'] }), false, 'a mixed slot is a reference slot');
+      assert.equal(catalogLib.isVideoSlot({ roles: ['video', 'audio_references'] }), true, 'video and audio: no image role');
+      assert.equal(catalogLib.isVideoSlot({ roles: ['start_image'] }), false);
+      assert.equal(catalogLib.isVideoSlot({ roles: ['audio_references'] }), false);
+      assert.equal(catalogLib.isVideoSlot({ type: 'audio', roles: ['video'] }), false);
+      assert.equal(catalogLib.isVideoSlot({}), false);
+      assert.equal(catalogLib.isVideoSlot(null), false);
+      // image roles that mention video are no video roles (a start image for a video model is an image)
+      for (const role of ['image_to_video', 'start_image_for_video', 'video_start_frame', 'reference_image_for_video']) {
+        assert.equal(catalogLib.isVideoSlot({ roles: [role] }), false, role);
+        assert.deepEqual(catalogLib.referenceSlots({ medias: [{ type: 'image', max: 2, required: true, roles: [role] }] }), { max: 2, roles: [role], required: true }, role + ' stays a reference slot');
+        assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ type: 'image', required: true, roles: [role] }] }), '', role + ' does not hide the model');
+      }
+      assert.equal(catalogLib.isVideoSlot({ roles: ['image_to_video', 'video'] }), false, 'one image role makes it a reference slot');
+      assert.equal(catalogLib.isAudioSlot({ roles: ['audio_references'] }), true, 'the audio rule is unchanged');
+      assert.equal(catalogLib.isAudioSlot({ roles: ['start_image', 'audio_references'] }), false);
+
+      // video slots are not image references any more (they used to be counted as such)
+      assert.deepEqual(catalogLib.referenceSlots(parsed('motion')), { max: 1, roles: ['start_image'], required: true });
+      assert.deepEqual(catalogLib.referenceSlots(parsed('typed')), { max: 0, roles: [], required: false });
+      assert.deepEqual(catalogLib.referenceSlots(parsed('videoOnly')), { max: 0, roles: [], required: false });
+      assert.deepEqual(catalogLib.referenceSlots(parsed('mixed')), { max: 4, roles: ['image_references'], required: false }, 'images count, the video role does not');
+      assert.deepEqual(catalogLib.referenceSlots(parsed('optional')), { max: 1, roles: ['start_image'], required: false });
+      assert.deepEqual(catalogLib.referenceSlots(parsed('videoAudio')), { max: 0, roles: [], required: false });
+
+      // capabilities: video where the model has video slots
+      const caps = (key, options) => catalogLib.capabilitiesOf(parsed(key), options);
+      assert.deepEqual(caps('motion').video, { max: 1, required: true });
+      assert.deepEqual(caps('typed').video, { max: 1, required: true });
+      assert.deepEqual(caps('optional').video, { max: 1, required: false });
+      assert.deepEqual(caps('videoOnly').video, { max: 1, required: false });
+      assert.ok(!('video' in caps('mixed')), 'a mixed slot is no video slot');
+      assert.ok(!('video' in caps('audio')));
+      assert.deepEqual(caps('optional').references, { max: 1, roles: ['start_image'], required: false }, 'the optional video slot is not a reference');
+      assert.deepEqual(caps('audio').audio, { max: 15 }, 'the existing audio case stays');
+      assert.deepEqual(caps('videoAudio').audio, { max: 1 }, 'audio next to a video slot is still audio');
+
+      // which models need a video, and which node takes the job
+      assert.equal(catalogLib.videoNeed(parsed('motion')), 'motion');
+      assert.equal(catalogLib.videoNeed(parsed('typed')), 'video');
+      assert.equal(catalogLib.videoNeed(parsed('videoOnly')), 'video', 'only video slots: needs a video although the slot is not marked required');
+      assert.equal(catalogLib.videoNeed(parsed('videoAudio')), 'video');
+      assert.equal(catalogLib.videoNeed(parsed('image')), 'video', 'the same rule for an image model');
+      for (const key of ['mixed', 'optional', 'audio']) assert.equal(catalogLib.videoNeed(parsed(key)), '', key);
+      assert.equal(catalogLib.videoNeed({ id: 'x', name: 'No media list' }), '', 'unknown is not "needs a video"');
+      assert.equal(catalogLib.videoNeed(null), '');
+      assert.equal(catalogLib.videoNeed({ id: 'text_only', medias: [] }), '');
+      assert.equal(catalogLib.videoNeed({ id: 'other', name: 'Other', medias: [{ roles: ['video'], required: true }] }), 'video');
+      assert.equal(catalogLib.videoNeed({ id: 'other', name: 'Other', medias: [{ roles: ['source_video'], required: true }] }), 'video');
+      assert.equal(catalogLib.videoNeed({ id: 'kling_motion_control_v2', medias: [{ type: 'video', required: true }] }), 'motion', 'named like Motion Control');
+      assert.equal(catalogLib.requiresVideo(parsed('motion')), true);
+      assert.equal(catalogLib.requiresVideo(parsed('optional')), false);
+      // a required video slot next to other slots
+      assert.equal(catalogLib.videoNeed({ id: 'edit', medias: [{ roles: ['start_image'] }, { roles: ['video'], required: true }] }), 'video');
+      assert.equal(catalogLib.videoNeed({ id: 'edit', medias: [{ roles: ['start_image'] }, { roles: ['video'] }] }), '');
+      // a video slot that is expressly optional is no reason to hide the model; a missing flag still counts as "needs"
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: false }] }), '', 'only an optional video slot');
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: false }, { roles: ['audio_references'], required: false }] }), '', 'optional video and optional audio');
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'] }, { roles: ['audio_references'] }] }), 'video', 'no flag: still needs');
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: true }, { roles: ['reference_video'], required: false }] }), 'video', 'a required slot wins');
+
+      // the description carries video next to references
+      assert.deepEqual(catalogLib.describeModel(parsed('optional')).video, { max: 1, required: false });
+      assert.ok(!('video' in catalogLib.describeModel(parsed('audio'))));
+
+      // saved workflows: the node is invalid before anything is paid, with a stable code, the hint and the data for the translation
+      patch(higgsfield, 'status', () => ({ connected: true }));
+      const calls = [];
+      patch(higgsfield, 'mcpCall', async (name, args) => {
+        calls.push({ name, args });
+        if (args.action === 'get') return byId[args.model_id] || JSON.stringify({ items: [] });
+        return JSON.stringify({ items: [], has_more: false });
+      });
+      catalogLib.clearCache();
+      for (const id of Object.keys(byId)) await catalogLib.getModel(id);
+      const issues = (type, modelId, ports = { refs: { connected: false, count: 0 } }) => oneOf(registry, type).validate(registry.normalizeParams(oneOf(registry, type), { model: modelId }), ports);
+      let found = issues('video.higgsfield', 'kling3_0_motion_control');
+      assert.equal(found.length, 1);
+      assert.deepEqual([found[0].code, found[0].data], ['needs_video_motion', { model: 'Kling 3.0 Motion Control' }]);
+      assert.match(found[0].message, /Motion transfer \(Higgsfield\)/);
+      found = issues('video.higgsfield', 'clip_editor');
+      assert.deepEqual([found[0].code, found[0].data], ['needs_video', { model: 'Clip Editor' }]);
+      assert.match(found[0].message, /Edit video with references/);
+      assert.equal(issues('video.higgsfield', 'video_only')[0].code, 'needs_video');
+      assert.equal(issues('image.higgsfield', 'image_with_video')[0].code, 'needs_video', 'an image model that needs a video gets the same treatment');
+      // the hint comes first and replaces the port messages (refs, audio), whatever is connected; messages about extra_params and the empty model field would follow it
+      assert.equal(issues('video.higgsfield', 'kling3_0_motion_control', { refs: { connected: true, count: 2 }, audio: { connected: true, count: 1 } }).length, 1);
+      // models that stay usable
+      for (const modelId of ['optional_video', 'mixed_refs', 'with_audio_wp42']) assert.deepEqual(issues('video.higgsfield', modelId), [], modelId);
+      assert.deepEqual(issues('video.higgsfield', 'mixed_refs', { refs: { connected: true, count: 4 } }), [], 'the images of a mixed slot count');
+      assert.equal(issues('video.higgsfield', 'mixed_refs', { refs: { connected: true, count: 5 } })[0].code, 'too_many_refs', 'the video role adds nothing to the image limit');
+      // not in the cache: cannot be judged here
+      catalogLib.clearCache();
+      assert.deepEqual(issues('video.higgsfield', 'kling3_0_motion_control'), []);
+
+      // the engine loads the model before it judges; the run is refused and nothing is submitted
+      patch(or, 'hasKey', () => true);
+      const engine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { jobPollMs: 20 } });
+      const node = (id, type, params = {}, x = 0) => ({ id, type, typeVersion: 1, x, y: 0, params });
+      const edge = (id, from, fromPort, to, toPort) => ({ id, from: { node: from, port: fromPort }, to: { node: to, port: toPort } });
+      const saved = await newWorkflow('Motion control in the video node', {
+        nodes: [node('p1', 'input.text', { text: 'A dancer' }), node('i1', 'input.image', { asset: image1 }), node('v1', 'video.higgsfield', { model: 'kling3_0_motion_control' }, 400)],
+        edges: [edge('e1', 'p1', 'text', 'v1', 'prompt'), edge('e2', 'i1', 'image', 'v1', 'refs')]
+      });
+      catalogLib.clearCache();
+      calls.length = 0;
+      const plan = await engine.plan(saved.id, { mode: 'all' });
+      assert.equal(plan.valid, false);
+      assert.equal(plan.nodes.v1.status, 'invalid');
+      assert.equal(plan.nodes.v1.reasonCode, 'needs_video_motion');
+      assert.deepEqual(plan.nodes.v1.reasonData, { model: 'Kling 3.0 Motion Control' });
+      assert.match(plan.nodes.v1.reason, /Motion transfer \(Higgsfield\)/);
+      await assert.rejects(engine.start(saved.id, { mode: 'all', user: 'tester' }), (err) => err.code === 'INVALID_GRAPH' && err.issues.some((issue) => issue.code === 'needs_video_motion'));
+      assert.equal(calls.filter((call) => call.name !== 'models_explore').length, 0, 'nothing was submitted');
+      // execute() refuses as well (last safeguard), before any asset is read or any tool is called
+      const toolCalls = [];
+      patch(tools, 'executeTool', async (...args) => {
+        toolCalls.push(args);
+        throw new Error('must not be called');
+      });
+      await assert.rejects(
+        oneOf(registry, 'video.higgsfield').execute({}, { prompt: { type: 'text', value: 'x' } }, registry.normalizeParams(oneOf(registry, 'video.higgsfield'), { model: 'clip_editor' })),
+        /Clip Editor needs a video as input/
+      );
+      assert.equal(toolCalls.length, 0);
+
+      catalogLib.clearCache();
+    }
+
     /* ----- engine integration: list map, count variants, caching ----- */
     {
       resetMocks();
@@ -2846,6 +3008,31 @@ async function main() {
       const imageOptions = (await call('/api/nodes/options/:source', { source: 'higgsfield-image-models' })).body.options;
       assert.deepEqual(imageOptions[0], { value: 'one-ref', label: 'One Ref', references: { max: 1, roles: ['start_image'], required: false } }, 'no audio for image models');
       assert.deepEqual(imageOptions[3], { value: 'unread', label: 'Unread' }, 'without a media list nothing is claimed');
+      // WP42: models that need a video are left out of both menus; models with an optional video stay and say what they take
+      catalogLib.clearCache();
+      {
+        const wp42 = (id, name, medias, output = 'video') => ({ id, name, output_type: output, medias });
+        const items = [
+          wp42('kling3_0_motion_control', 'Kling 3.0 Motion Control', [{ name: 'image', type: 'image', max: 1, required: true, roles: ['start_image'] }, { name: 'motion', type: 'image', max: 1, required: true, roles: ['motion_video'] }]),
+          wp42('clip_editor', 'Clip Editor', [{ name: 'clip', type: 'video', max: 1, required: true, roles: ['video'] }]),
+          wp42('mixed_refs', 'Mixed Refs', [{ name: 'refs', type: 'image', max: 4, roles: ['image_references', 'video_references'] }]),
+          wp42('optional_video', 'Optional Video', [{ name: 'start', type: 'image', max: 1, roles: ['start_image'] }, { name: 'ref', type: 'image', max: 1, roles: ['reference_video'] }]),
+          { id: 'unread', name: 'Unread' }
+        ];
+        patch(higgsfield, 'mcpCall', async (name, args) => {
+          assert.equal(name, 'models_explore');
+          return JSON.stringify({ items: items.map((item) => ({ ...item, output_type: args.type })), has_more: false });
+        });
+        const hidden = (await call('/api/nodes/options/:source', { source: 'higgsfield-video-models' })).body.options;
+        assert.deepEqual(hidden.map((option) => option.value), ['mixed_refs', 'optional_video', 'unread']);
+        assert.deepEqual(hidden[0], { value: 'mixed_refs', label: 'Mixed Refs', references: { max: 4, roles: ['image_references'], required: false }, audio: { max: 0 } });
+        assert.deepEqual(hidden[1].video, { max: 1, required: false });
+        assert.deepEqual(hidden[1].references, { max: 1, roles: ['start_image'], required: false });
+        catalogLib.clearCache();
+        const hiddenImages = (await call('/api/nodes/options/:source', { source: 'higgsfield-image-models' })).body.options;
+        assert.deepEqual(hiddenImages.map((option) => option.value), ['mixed_refs', 'optional_video', 'unread']);
+        catalogLib.clearCache();
+      }
       const registryPayload = (await call('/api/nodes/registry', {})).body;
       assert.ok(registryPayload.nodeTypes.some((type) => type.type === 'image.higgsfield' && type.category === 'higgsfield'));
       assert.ok(registryPayload.nodeTypes.some((type) => type.type === 'hf.remove_background' && type.experimental === true));
