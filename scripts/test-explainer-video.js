@@ -827,14 +827,30 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.ok(lengthCtx.logs.some((line) => /attempt 1 of 3: the limit of 9000 tokens was reached before any code: the next try may use 16000/.test(line)), lengthCtx.logs.join(' | '));
     near(lengthResult.cost.usd, 0.2 + USD.writer + USD.check, 1e-9, 'the cost of the empty try is in the cost of the node');
 
-    // the raised limit stays for the tries after it (an empty answer again does not raise it further)
+    // the raised limit used up as well: no third try with the same limit (it would end the same way and cost as much again), the fixed
+    // scene stands in after the 2 tries that were made, and both empty tries are paid
     reset();
     queue.writer.push(emptyError('length'), emptyError('length'));
     const twice = makeCtx();
     const twiceResult = await exec('explainer.scene', twice, baseInputs(0), {});
-    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 16000, 16000]);
+    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 16000]);
     assert.equal(twice.logs.filter((line) => /the limit of \d+ tokens was reached/.test(line)).length, 1, 'said once');
-    near(twiceResult.cost.usd, 0.4 + USD.writer + USD.check, 1e-9);
+    assert.ok(twice.logs.some((line) => /attempt 2 of 3: the raised limit of 16000 tokens was reached too: no further try/.test(line)), twice.logs.join(' | '));
+    assert.ok(twice.logs.some((line) => /the fixed scene stands in after 2 tries/.test(line)), twice.logs.join(' | '));
+    near(twiceResult.cost.usd, 0.4, 1e-9);
+
+    // with the fixed scene switched off the node stops and names the tries that were made
+    reset();
+    queue.writer.push(emptyError('length'), emptyError('length'));
+    await assert.rejects(exec('explainer.scene', makeCtx(), baseInputs(0), { fallback: false }), (err) => err.code === 'EXPLAINER_SCENE_FAILED' && /: 2 tries gave no usable scene/.test(err.message));
+
+    // the raised limit stays for the tries after it when the try with it fails for another reason (an empty answer that is not "length")
+    reset();
+    queue.writer.push(emptyError('length'), emptyError('stop'));
+    const mixed = makeCtx();
+    const mixedResult = await exec('explainer.scene', mixed, baseInputs(0), {});
+    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 16000, 16000]);
+    near(mixedResult.cost.usd, 0.4 + USD.writer + USD.check, 1e-9);
 
     // the last try has no next one: no promise in the log
     reset();
