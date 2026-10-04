@@ -1033,10 +1033,12 @@ async function testBudgetTools(ctx) {
     ['edit_image', { prompt: 'x', reference_asset_ids: [asset.id] }],
     ['generate_video', { prompt: 'x' }],
     ['generate_speech', { text: 'x' }],
-    ['fal_generate', { endpoint: 'fal-ai/x', input: { prompt: 'x' } }]
+    ['fal_generate', { endpoint: 'fal-ai/x', input: { prompt: 'x' } }],
+    // WP41: editing a video with Runway Aleph 2.0 is a paid node-only tool like fal_generate
+    ['edit_video_openrouter', { model: 'runway/aleph-2', prompt: 'x', video_asset_id: asset.id, estimateUsd: 1 }]
   ];
   for (const [name, args] of paid) {
-    const error = await errorOf(run(PAB, name, args, name === 'fal_generate' ? { nodeView: true } : {}));
+    const error = await errorOf(run(PAB, name, args, name === 'fal_generate' || name === 'edit_video_openrouter' ? { nodeView: true } : {}));
     assert.ok(error instanceof budgetLib.BudgetError, `${name}: ${error && error.message}`);
     assert.equal(error.code, 'BUDGET_EXHAUSTED', name);
     assert.equal(error.status, 402);
@@ -1056,6 +1058,10 @@ async function testBudgetTools(ctx) {
   assert.equal(tooExpensive.code, 'BUDGET_INSUFFICIENT');
   assert.equal(tooExpensive.estimateUsd, 10.5);
   assert.equal(tooExpensive.remainingUsd, 10);
+  const alephTooExpensive = await errorOf(run(PAB, 'edit_video_openrouter', { model: 'runway/aleph-2', prompt: 'x', video_asset_id: asset.id, estimateUsd: 10.5 }, { nodeView: true }));
+  assert.equal(alephTooExpensive.code, 'BUDGET_INSUFFICIENT', 'Aleph: the estimate has to fit the budget, like every other paid node');
+  assert.equal(alephTooExpensive.estimateUsd, 10.5);
+  assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   // fits: the call goes on (and stops at the missing key), the reservation is released
   const fits = await errorOf(run(PAB, 'fal_generate', { endpoint: 'fal-ai/x', input: { prompt: 'x' }, estimateUsd: 2 }, { nodeView: true }));
   assert.ok(fits && !fits.code, 'not a budget error');
@@ -1362,6 +1368,8 @@ async function testBudgetTools(ctx) {
   // guests
   const guestError = await errorOf(run(GUEST, 'generate_image', { prompt: 'x' }));
   assert.equal(guestError.code, 'BUDGET_EXHAUSTED');
+  const guestAleph = await errorOf(run(GUEST, 'edit_video_openrouter', { model: 'runway/aleph-2', prompt: 'x', video_asset_id: 'none', estimateUsd: 1 }, { nodeView: true }));
+  assert.equal(guestAleph.code, 'BUDGET_EXHAUSTED', 'guests have no budget: no Aleph either');
   // internal people: no check at all
   patch(or, 'createImage', async () => imageResult(0.2));
   assert.match((await run(STAFF, 'generate_image', { prompt: 'x' })).toolResult, /Bild erzeugt/);

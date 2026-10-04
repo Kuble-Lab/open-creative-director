@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Replace people in a video",
-  "description": "Replace people in an existing video with people from two photos: motion and camera stay. Kling O3 (fal.ai) edits the video; you write \"Image 1\" and \"Image 2\" in the prompt. The video must be 3 to 15 s long and at least 720 px; the price is 0.14 USD per second of the video (about 2.10 USD for 15 s) and the run asks first. Use only people who have agreed to appear.",
+  "description": "Replace people in an existing video with people from two photos: motion and camera stay. Kling O3 (fal.ai) edits the video; you write \"Image 1\" and \"Image 2\" in the prompt. The video must be 3 to 15 s long and at least 720 px (a longer one can be edited in parts); the price is 0.14 USD per second of the video (about 2.10 USD for 15 s) and the run asks first. Use only people who have agreed to appear.",
   "requires": [
     "fal"
   ],
@@ -57,7 +57,9 @@
           "keep_audio": true,
           "resolution": "720p",
           "wan_resolution": "480p",
-          "cut_to_limit": false
+          "cut_to_limit": false,
+          "in_parts": false,
+          "redo_parts": ""
         }
       },
       {
@@ -125,7 +127,7 @@
         "y": 620,
         "w": 400,
         "h": 250,
-        "text": "Use only people who have agreed to appear in the video. The photos are Image 1 and Image 2 in the order of their connections; write them like that in the prompt, and the video as the video. Kling O3 needs a video of 3 to 15 s, at least 720 px, as MP4. For a longer video, switch on \"Cut to the allowed length\" on the Replace people node: it uses the first 15 s. 0.14 USD per second, and the run asks first: for an uploaded video the plan shows the highest price, for 15 s (2.11 USD), and what is booked is the real length. Prompts in English often work better."
+        "text": "Use only people who have agreed to appear in the video. The photos are Image 1 and Image 2 in the order of their connections; write them like that in the prompt, and the video as the video. Kling O3 needs a video of 3 to 15 s, at least 720 px, as MP4. For a longer video, switch on \"Edit longer videos in parts\" on the Replace people node: the video is cut into parts of nearly equal length, every part is edited with the same photos and prompt, and the parts are joined again with the original sound over all of it (people can look slightly different at the joins; check the result part by part). \"Cut to the allowed length\" instead uses only the first 15 s; when both are on, the parts win. 0.14 USD per second, and the run asks first: the plan shows 0.14 USD times the length of the uploaded video (where the length is not known beforehand, the highest price, for 15 s: 2.11 USD, and what is booked is the real length); in parts the price is 0.14 USD times the whole length, paid part by part (a video of 53.5 s costs about 7.49 USD) and held as a whole while the parts run, and a part that fails does not make the finished ones cost again; a part that is still not right is made again with the field \"Make part again (number)\", once for the numbers you write. Prompts in English often work better."
       }
     ],
     "viewport": {
@@ -163,6 +165,11 @@
         "node": "n4",
         "param": "cut_to_limit",
         "label": "Longer than 15 s: use only the first 15 s"
+      },
+      {
+        "node": "n4",
+        "param": "in_parts",
+        "label": "Longer than 15 s: edit in parts"
       }
     ],
     "outputs": [
@@ -175,12 +182,12 @@
   "i18n": {
     "de": {
       "name": "Personen im Video ersetzen",
-      "description": "Ersetze Personen in einem bestehenden Video durch Personen aus zwei Fotos: Bewegung und Kamera bleiben. Kling O3 (fal.ai) bearbeitet das Video; im Prompt schreibst du «Bild 1» und «Bild 2». Das Video muss 3 bis 15 s lang sein und mindestens 720 px messen; der Preis beträgt 0.14 USD pro Sekunde des Videos (rund 2.10 USD für 15 s), der Lauf fragt vorher nach. Verwende nur Personen, die zugestimmt haben.",
+      "description": "Ersetze Personen in einem bestehenden Video durch Personen aus zwei Fotos: Bewegung und Kamera bleiben. Kling O3 (fal.ai) bearbeitet das Video; im Prompt schreibst du «Bild 1» und «Bild 2». Das Video muss 3 bis 15 s lang sein (ein längeres lässt sich in Teilen bearbeiten) und mindestens 720 px messen; der Preis beträgt 0.14 USD pro Sekunde des Videos (rund 2.10 USD für 15 s), der Lauf fragt vorher nach. Verwende nur Personen, die zugestimmt haben.",
       "node.n1": "Video mit den Personen",
       "node.n2": "Person für Bild 1",
       "node.n3": "Person für Bild 2",
       "node.n4": "Personen ersetzen",
-      "note.t1": "Verwende nur Personen, die einverstanden sind, im Video zu erscheinen. Die Fotos sind Bild 1 und Bild 2 in der Reihenfolge ihrer Verbindungen; so schreibst du sie auch im Prompt, das Video als Video. Kling O3 braucht ein Video von 3 bis 15 s, mindestens 720 px, als MP4. Bei einem längeren Video schaltest du im Node «Personen ersetzen» «Auf die erlaubte Länge kürzen» ein: Dann zählen die ersten 15 s. 0.14 USD pro Sekunde, der Lauf fragt vorher nach: Für ein hochgeladenes Video zeigt der Plan den Höchstpreis für 15 s (2.11 USD), gebucht wird die echte Länge. Englische Prompts gelingen oft besser.",
+      "note.t1": "Verwende nur Personen, die einverstanden sind, im Video zu erscheinen. Die Fotos sind Bild 1 und Bild 2 in der Reihenfolge ihrer Verbindungen; so schreibst du sie auch im Prompt, das Video als Video. Kling O3 braucht ein Video von 3 bis 15 s, mindestens 720 px, als MP4. Bei einem längeren Video schaltest du im Node «Personen ersetzen» «Längere Videos in Teilen bearbeiten» ein: Das Video wird in möglichst gleich lange Teile geschnitten, jeder Teil wird mit denselben Fotos und demselben Prompt bearbeitet, und die Teile werden wieder verbunden, mit dem Originalton über dem ganzen Film (an den Übergängen können die Personen kurz etwas anders aussehen; prüfe das Ergebnis Teil für Teil). «Auf die erlaubte Länge kürzen» nimmt dagegen nur die ersten 15 s; sind beide an, gewinnt «in Teilen». 0.14 USD pro Sekunde, der Lauf fragt vorher nach: Der Plan zeigt 0.14 USD mal die Länge des hochgeladenen Videos (ist die Länge vorher nicht bekannt, den Höchstpreis für 15 s: 2.11 USD, gebucht wird die echte Länge); in Teilen kostet es 0.14 USD mal die ganze Länge, Teil für Teil bezahlt (ein Video von 53.5 s rund 7.49 USD) und während des Laufs als Ganzes reserviert, und ein Teil, der scheitert, macht die fertigen nicht noch einmal teuer; ein Teil, der noch nicht stimmt, wird im Feld «Teil neu erzeugen (Nummer)» neu angefordert, einmal pro eingetragene Nummer. Englische Prompts gelingen oft besser.",
       "param.n4.prompt": "Ersetze die linke Person im Video durch die Person aus Bild 1 und die rechte Person durch die Person aus Bild 2. Bewegung, Kamera und Licht des Videos bleiben unverändert.",
       "app.title": "Personen im Video ersetzen",
       "app.description": "Lade ein Video und zwei Fotos der Personen hoch, die einspringen, und beschreibe, wer wen ersetzt. Du erhältst das Video mit den neuen Personen. Verwende nur Personen, die zugestimmt haben.",
@@ -189,16 +196,17 @@
       "app.input.n3.asset": "Person für Bild 2",
       "app.input.n4.prompt": "Wer ersetzt wen",
       "app.input.n4.cut_to_limit": "Länger als 15 s: nur die ersten 15 s nehmen",
-      "app.output.n5": "Bearbeitetes Video"
+      "app.output.n5": "Bearbeitetes Video",
+      "app.input.n4.in_parts": "Länger als 15 s: in Teilen bearbeiten"
     },
     "es": {
       "name": "Reemplazar personas en un vídeo",
-      "description": "Reemplaza personas de un vídeo existente por personas de dos fotos: el movimiento y la cámara se mantienen. Kling O3 (fal.ai) edita el vídeo; en el prompt escribes «Imagen 1» e «Imagen 2». El vídeo debe durar de 3 a 15 s y medir al menos 720 px; el precio es 0.14 USD por segundo de vídeo (unos 2.10 USD para 15 s) y la ejecución pregunta antes. Usa solo personas que hayan dado su consentimiento.",
+      "description": "Reemplaza personas de un vídeo existente por personas de dos fotos: el movimiento y la cámara se mantienen. Kling O3 (fal.ai) edita el vídeo; en el prompt escribes «Imagen 1» e «Imagen 2». El vídeo debe durar de 3 a 15 s (uno más largo se puede editar en partes) y medir al menos 720 px; el precio es 0.14 USD por segundo de vídeo (unos 2.10 USD para 15 s) y la ejecución pregunta antes. Usa solo personas que hayan dado su consentimiento.",
       "node.n1": "Vídeo con las personas",
       "node.n2": "Persona para la Imagen 1",
       "node.n3": "Persona para la Imagen 2",
       "node.n4": "Reemplazar personas",
-      "note.t1": "Usa solo personas que hayan aceptado aparecer en el vídeo. Las fotos son la Imagen 1 y la Imagen 2 en el orden de sus conexiones; escríbelas así en el prompt, y el vídeo como vídeo. Kling O3 necesita un vídeo de 3 a 15 s, de al menos 720 px, en MP4. Para un vídeo más largo activa «Recortar a la duración permitida» en el nodo «Reemplazar personas»: cuentan los primeros 15 s. 0.14 USD por segundo y la ejecución pregunta antes: para un vídeo subido el plan muestra el precio máximo, para 15 s (2.11 USD), y se cobra la duración real. Los prompts en inglés suelen funcionar mejor.",
+      "note.t1": "Usa solo personas que hayan aceptado aparecer en el vídeo. Las fotos son la Imagen 1 y la Imagen 2 en el orden de sus conexiones; escríbelas así en el prompt, y el vídeo como vídeo. Kling O3 necesita un vídeo de 3 a 15 s, de al menos 720 px, en MP4. Para un vídeo más largo activa «Editar vídeos más largos en partes» en el nodo «Reemplazar personas»: el vídeo se corta en partes de duración casi igual, cada parte se edita con las mismas fotos y el mismo prompt, y las partes se unen de nuevo con el sonido original sobre todo el vídeo (en las uniones las personas pueden verse un poco distintas; revisa el resultado parte por parte). «Recortar a la duración permitida» usa en cambio solo los primeros 15 s; si ambas están activas, gana «en partes». 0.14 USD por segundo y la ejecución pregunta antes: el plan muestra 0.14 USD por la duración del vídeo subido (si la duración no se conoce de antemano, el precio máximo, para 15 s: 2.11 USD, y se cobra la duración real); en partes cuesta 0.14 USD por la duración total, pagado parte por parte (un vídeo de 53.5 s unos 7.49 USD) y reservado en conjunto mientras corren las partes, y una parte que falla no vuelve a encarecer las terminadas; una parte que aún no está bien se pide de nuevo en el campo «Volver a generar parte (número)», una vez por cada número que escribas. Los prompts en inglés suelen funcionar mejor.",
       "param.n4.prompt": "Sustituye a la persona de la izquierda del Vídeo por la persona de la Imagen 1 y a la de la derecha por la persona de la Imagen 2. El movimiento, la cámara y la luz del Vídeo no cambian.",
       "app.title": "Reemplazar personas en un vídeo",
       "app.description": "Sube un vídeo y dos fotos de las personas que toman el relevo, y describe quién sustituye a quién. Obtienes el vídeo con las personas nuevas. Usa solo personas que hayan dado su consentimiento.",
@@ -207,7 +215,8 @@
       "app.input.n3.asset": "Persona para la Imagen 2",
       "app.input.n4.prompt": "Quién sustituye a quién",
       "app.input.n4.cut_to_limit": "Más de 15 s: usar solo los primeros 15 s",
-      "app.output.n5": "Vídeo editado"
+      "app.output.n5": "Vídeo editado",
+      "app.input.n4.in_parts": "Más de 15 s: editar en partes"
     }
   }
 }

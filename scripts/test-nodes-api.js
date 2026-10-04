@@ -472,6 +472,19 @@ async function main() {
       });
       assert.equal(generic.status, 200);
       assert.equal(generic.json.value.type, 'video');
+      assert.equal('duration' in generic.json.value, false, 'a file that is no video has no length (and is saved all the same)');
+
+      // a real video (small enough for the cap of this test server): its length is read on upload (free) so a plan that prices by the length knows it before the run
+      const ffmpegBinaries = require('../lib/ffmpeg').binaries();
+      if (ffmpegBinaries.available) {
+        const clipFile = path.join(os.tmpdir(), `ocd-api-clip-${process.pid}.mp4`);
+        await require('util').promisify(require('child_process').execFile)(ffmpegBinaries.ffmpeg, ['-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=16x16:r=5:d=2', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '40', '-g', '100', '-bf', '0', clipFile]);
+        const real = await request('POST', `/api/workflows/${id}/uploads?accept=video`, { raw: await fsp.readFile(clipFile), headers: { 'Content-Type': 'video/mp4', 'X-Filename': 'real.mp4' } });
+        await fsp.rm(clipFile, { force: true });
+        assert.equal(real.status, 200);
+        assert.ok(Math.abs(real.json.value.duration - 2) < 0.2, `the length of the upload: ${real.json.value.duration}`);
+        await store.removeAssets(sessionId, [real.json.value.assetId]); // the count of uploads below stays as it was
+      }
 
       // ?accept= guards the expected media type
       const wrongKind = await request('POST', `/api/workflows/${id}/uploads?accept=audio`, { raw: PNG, headers: { 'Content-Type': 'image/png' } });
