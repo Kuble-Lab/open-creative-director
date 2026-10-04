@@ -4402,6 +4402,204 @@
   color: var(--accent);
 }
 
+/* ---------- inspector: scene table (WP35) ---------- */
+
+.nv-insp-scenes:empty {
+  display: none;
+}
+
+.nv-scenes {
+  border-top: 1px solid var(--line-soft);
+}
+
+.nv-scenes .nv-insp-heading {
+  margin-bottom: 10px;
+}
+
+.nv-scenes-note {
+  margin-bottom: 10px;
+}
+
+.nv-scenes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.nv-scenes-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.nv-scenes-selected-cost {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.nv-scenes-list {
+  list-style: none;
+  margin: 0 -2px 0 0;
+  padding: 0 2px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.nv-scene-row {
+  display: grid;
+  grid-template-columns: auto 20px 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nv-scene-check,
+.nv-scenes-all {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.nv-scene-number {
+  font-size: 11px;
+  text-align: right;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-scene-preview {
+  display: block;
+  width: 64px;
+  height: 46px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-input);
+}
+
+button.nv-scene-preview {
+  cursor: pointer;
+}
+
+button.nv-scene-preview:hover,
+button.nv-scene-preview:focus-visible {
+  border-color: var(--accent);
+}
+
+.nv-scene-preview.is-audio {
+  width: auto;
+  min-width: 64px;
+  max-width: 180px;
+  border: 0;
+  background: none;
+}
+
+.nv-scene-preview.is-audio audio {
+  display: block;
+  width: 100%;
+  height: 32px;
+}
+
+.nv-scene-main {
+  min-width: 0;
+}
+
+.nv-scene-text {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nv-scene-text.is-empty {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.nv-scene-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-scene-cost {
+  color: var(--accent);
+}
+
+.nv-scene-duration {
+  color: var(--text-dim);
+}
+
+.nv-scenes-regen-selected {
+  white-space: nowrap;
+}
+
+.nv-scenes-regen-label {
+  min-width: 0;
+}
+
+.nv-scene-regen {
+  grid-column: 3 / -1;
+  justify-self: start;
+  white-space: nowrap;
+}
+
+/* a phone: the button gets the full width of the row and a size a finger hits */
+@media (max-width: 640px) {
+  .nv-scene-row {
+    grid-template-columns: auto 18px 56px minmax(0, 1fr);
+  }
+
+  .nv-scene-text {
+    -webkit-line-clamp: 4;
+  }
+
+  .nv-scene-preview {
+    width: 56px;
+    height: 42px;
+  }
+
+  .nv-scene-preview.is-audio {
+    grid-column: 3 / -1;
+    width: 100%;
+    max-width: none;
+  }
+
+  .nv-scene-regen {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    justify-content: center;
+    min-height: 36px;
+  }
+
+  .nv-scenes-toolbar .nv-btn,
+  .nv-scenes-all-label {
+    min-height: 36px;
+  }
+}
+
 .nv-runs {
   display: flex;
   flex-direction: column;

@@ -1108,6 +1108,15 @@ async function run(iso) {
     seen.video[ctx.itemIndex ?? 0] = { motion: inputs.prompt.value, hex, duration: params.duration };
     return { variants: [{ video: value }] };
   }, { priced: true });
+  // the depth maps of the parallax switch: a grayscale picture (left half near); switched off the node makes nothing, like the real one
+  seen.depth = [];
+  double('fal.depth_map', async (ctx, inputs, params) => {
+    if (params.enabled === false) return { variants: [{}] };
+    const file = await scratchFile(ctx, 'depth.png');
+    await ff(['-f', 'lavfi', '-i', 'color=c=white:s=32x36,format=gray', '-f', 'lavfi', '-i', 'color=c=black:s=32x36,format=gray', '-filter_complex', 'hstack', '-frames:v', '1', file]);
+    seen.depth[ctx.itemIndex ?? 0] = { image: inputs.image.assetId };
+    return { variants: [{ depth: await keepFile(ctx, file, { kind: 'image', ext: '.png', prompt: 'depth map', cost: 0 }) }] };
+  }, { priced: true });
   double('fal.h3_lipsync', async (ctx, inputs) => {
     const hex = colourOfImage.get(inputs.image.assetId);
     const slice = assets.assetFilePath(inputs.audio);
@@ -1474,11 +1483,41 @@ async function run(iso) {
     assert.equal(stillsScripts.length, 1);
     assert.deepEqual(parseAss(stillsScripts[0].text).events.map((event) => lex(event.text).visible.replace(/\n/g, ' ')), LYRICS);
     assert.deepEqual(await scratchLeft(stillsSession), []);
+    // the parallax switch is off by default: the depth node made nothing and cost nothing, the motions of the scenes follow `varied`
+    assert.equal(stillsDocument.graph.nodes.find((node) => node.id === 'n14').params.enabled, false);
+    assert.equal(stillsDocument.graph.nodes.find((node) => node.id === 'n10').params.zoom, 'varied');
+    assert.equal(seen.depth.length, 0, 'no depth map is made while the switch is off');
+    assert.equal(results.n14.history[0].variants[0].depth, undefined, 'a switched off node delivers no output (the optional depth input works without it)');
+    assert.equal(results.n14.history[0].cost.usd, null);
     // the plan after the run: nothing left to run, and the zoom is no paid step (it costs nothing, a step of the gallery that is free)
     const afterwards = await engine.plan(stills.id, { mode: 'all', user: STAFF });
     assert.equal(afterwards.valid, true);
     assert.equal(afterwards.totals.usd, 0);
     assert.equal(afterwards.nodes.n10.executions, shots.story);
+
+    // switched on with a parallax motion: a depth map per story image, the images are not made again (cache per item), the clips are
+    // made again with the real zoom node and the depth maps; the price of the switch in the plan is the estimate of the depth node
+    setStills('n14', { enabled: true });
+    setStills('n10', { zoom: 'parallax_in' });
+    const current = await flowStore.readWorkflow(stills.id);
+    await flowStore.saveGraph(stills.id, { baseRev: current.rev, graph });
+    const planOn = await engine.plan(stills.id, { mode: 'all', user: STAFF });
+    assert.equal(planOn.valid, true, JSON.stringify(planOn.issues));
+    assert.equal(planOn.nodes.n8.status, 'cached', 'the story images stay');
+    assert.deepEqual(planOn.nodes.n14.estimate, { usd: 0.01 });
+    assert.equal(planOn.nodes.n14.executions, shots.story);
+    await runAll({}, stills.id);
+    const again = (await flowStore.readResults(stills.id)).nodes;
+    assert.equal(seen.image.n8.length, 0, 'no story image is made again (the run starts with an empty record of what the doubles saw)');
+    assert.equal(seen.depth.length, shots.story);
+    assert.equal(again.n14.history[0].variants[0].depth.items.length, shots.story);
+    const parallax = again.n10.history[0].variants[0].video;
+    assert.equal(parallax.items.length, shots.story);
+    for (const clip of parallax.items) {
+      const info = await probeFile(path.join(store.sessionAssetDir(stillsSession), clip.file));
+      near(info.duration, 5, 0.1, 'a parallax clip is as long as the clip length of the plan');
+    }
+    assert.deepEqual(await scratchLeft(stillsSession), []);
   }
 
   /* ---------- the Director's way ---------- */
