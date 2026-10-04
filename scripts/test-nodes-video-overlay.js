@@ -8,6 +8,10 @@
 //     anchor, scale, opacity, start, end, loop_layer, every length and every audio value, and the chroma key; the length of the result
 //     and its sound (checked with volumedetect in windows of time) are the ones asked for
 //
+// WP33c: a background with an odd width or height gets one pixel at the end of the graph (the encoder of MP4 stops on an odd size), with
+// even sizes the arguments are the old ones byte for byte (scripts/support/video-overlay-args-before-wp33c.json), and a layer that starts
+// after the end of the background writes a log line. The odd-size runs need only libx264 and the mpeg4 encoder (to make an odd clip).
+//
 // Clips are small (a 128x128 background, a 64x64 layer, 5 to 10 frames per second) because VP9 with alpha is slow to encode. The part
 // that needs libvpx-vp9 prints SKIP when the ffmpeg has none. Local and free: no network, no provider.
 
@@ -17,6 +21,8 @@ const ops = require('../lib/nodes/ffmpeg-ops');
 const edit = require('../lib/nodes/nodes-edit');
 const { createRegistry } = require('../lib/nodes/registry');
 const { createEditHarness, execFileAsync } = require('./support/edit-harness');
+
+const overlayCases = require('./support/video-overlay-cases');
 
 const probeOf = (width, height, { audio = { codec: 'aac' }, duration = 2, alpha = false } = {}) => ({
   video: { codec: alpha ? 'vp9' : 'h264', width, height, fps: 10, alpha },
@@ -175,6 +181,51 @@ function testGraph() {
   assert.equal(args[args.length - 2], '2');
   assert.equal(args[args.length - 1], '/out.mp4');
   assert.ok(args.includes('libx264') && args.includes('aac'), 'MP4');
+}
+
+/* ---------- WP33c: odd sizes, even sizes unchanged, the log line ---------- */
+
+function testOddSizesAndNotes() {
+  const build = (params, infos) => ops.buildOverlayVideo({ ...DEFAULTS, ...params }, infos);
+  const image = (params, infos) => ops.buildOverlayImage({ x: 50, y: 50, unit: 'percent', anchor: 'center', scale: 100, opacity: 1, start: 0, end: 0, ...params }, infos);
+  const layer = probeOf(64, 64, { alpha: true, duration: 1 });
+  const PAD = 'pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0:color=black';
+
+  // an odd side (width, height or both) is padded behind the last overlay; the label of the output and the maps stay as they were
+  for (const [width, height] of [[129, 128], [128, 129], [129, 129], [1281, 721]]) {
+    const odd = build({}, [probeOf(width, height), layer]);
+    assert.match(odd.graph, new RegExp(`:format=auto\\[ovl\\];\\[ovl\\]${PAD.replace(/[()*]/g, '\\$&')}\\[out\\]`), `${width}x${height}: padded right behind the overlay`);
+    assert.deepEqual(odd.outputs[0].maps.slice(0, 1), ['[out]']);
+    const pic = image({}, [probeOf(width, height), probeOf(100, 100)]);
+    assert.match(pic.graph, /\[0:v\]\[ov\]overlay=.*:format=auto\[ovl\];\[ovl\]pad=ceil\(iw\/2\)\*2:ceil\(ih\/2\)\*2:0:0:color=black\[out\]$/, `${width}x${height}: the image overlay too`);
+    assert.deepEqual(pic.outputs[0].maps, ['[out]', '0:a?']);
+  }
+  // the pad also follows the held background and the looped layer (it is the last step of the picture in every case)
+  assert.match(build({ length: 'layer', start: 1 }, [probeOf(129, 129, { duration: 1 }), probeOf(64, 64, { alpha: true, duration: 3 })]).graph, /tpad=stop_mode=clone.*\[bgh\]\[ov\]overlay=.*\[ovl\];\[ovl\]pad=.*\[out\]/);
+  assert.match(build({ loop_layer: true }, [probeOf(129, 129), probeOf(64, 64, { duration: 0 })]).graph, /shortest=1:format=auto\[ovl\];\[ovl\]pad=/);
+  // a background with alpha is padded transparently
+  assert.match(build({}, [probeOf(129, 129, { alpha: true }), layer]).graph, /pad=ceil\(iw\/2\)\*2:ceil\(ih\/2\)\*2:0:0:color=black@0\[out\]/);
+  // even sizes: no pad, and the arguments are the ones written by the code before WP33c, byte for byte
+  for (const [width, height] of [[128, 128], [1920, 1080], [2, 2], [854, 480]]) {
+    assert.ok(!build({}, [probeOf(width, height), layer]).graph.includes('pad='), `${width}x${height}: nothing added`);
+    assert.ok(!image({}, [probeOf(width, height), probeOf(10, 10)]).graph.includes('pad='));
+  }
+  assert.deepEqual(overlayCases.compute(ops), require('./support/video-overlay-args-before-wp33c.json'), 'even sizes: the same arguments as before WP33c');
+  assert.ok(Object.keys(overlayCases.compute(ops)).length >= 6, 'six golden cases');
+
+  // the log line: the layer starts at or after the end of the background and the result is as long as the background
+  const bg = probeOf(128, 128, { duration: 2 });
+  const note = (params, infos = [bg, layer]) => build(params, infos).notes.filter((line) => /never seen/.test(line));
+  assert.equal(note({ start: 2 }).length, 1, 'start = the length of the background');
+  assert.equal(note({ start: 5 }).length, 1, 'start after the end');
+  assert.equal(note({ start: 5, length: 'shortest' }).length, 1, 'shortest');
+  assert.match(note({ start: 3 })[0], /starts at 3 s, after the end of the background video \(2 s\), and the length is "background": the layer is never seen/);
+  assert.match(note({ start: 3, length: 'shortest' })[0], /the length is "shortest"/);
+  assert.equal(note({ start: 1.9 }).length, 0, 'it starts before the end');
+  assert.equal(note({ start: 0 }).length, 0, 'the normal case');
+  assert.equal(note({ start: 5, length: 'layer' }, [bg, probeOf(64, 64, { alpha: true, duration: 1 })]).length, 0, 'length "layer" makes the result longer, so the layer is seen');
+  assert.equal(build({ start: 5 }, [bg, layer]).duration, 2, 'the run is not stopped');
+  assert.deepEqual(build({ audio: 'layer' }, [bg, probeOf(64, 64, { alpha: true, audio: null, duration: 1 })]).notes, ['The layer has no sound'], 'the other notes are as they were');
 }
 
 /* ---------- runs ---------- */
@@ -505,8 +556,57 @@ async function testRuns() {
   }
 }
 
+// Real runs: a 129x65 background (MPEG-4 in an MP4 can have an odd size) under a layer, for the two nodes. Without the pad libx264 stops.
+async function testOddRuns() {
+  const h = await createEditHarness({ prefix: 'ocd-overlay-odd-' });
+  try {
+    await h.ff(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=129x65:r=10:d=1', '-c:v', 'mpeg4', '-pix_fmt', 'yuv420p', h.src('odd.mp4')]);
+    await h.ff(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=128x64:r=10:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', h.src('even.mp4')]);
+    await h.ff(['-f', 'lavfi', '-i', 'color=c=red:s=32x32:r=10:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', h.src('layer.mp4')]);
+    await h.ff(['-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=1', '-frames:v', '1', h.src('layer.png')]);
+    const odd = await h.upload('odd.mp4', '.mp4');
+    const even = await h.upload('even.mp4', '.mp4');
+    const layer = await h.upload('layer.mp4', '.mp4');
+    const picture = await h.upload('layer.png', '.png');
+    assert.deepEqual([(await h.probe(await h.fileOf(odd))).width, (await h.probe(await h.fileOf(odd))).height], [129, 65], 'the background really is odd');
+
+    const sizeOf = async (variant) => {
+      const info = await h.probe(await h.fileOf(variant.video));
+      return [info.width, info.height];
+    };
+    // video over video: padded by one pixel on each odd side; the picture is still there
+    const video = await h.run('video.overlay_video', { background: odd, layer }, { scale: 25, x: 50, y: 50 });
+    assert.deepEqual(await sizeOf(video), [130, 66], 'video over video on an odd background');
+    const frame = await h.frame(await h.fileOf(video.video), 0.3, 130, 66);
+    assert.ok(h.count(frame, 130, { x0: 0, y0: 0, x1: 20, y1: 20 }, (r, g, b) => b > 200 && r < 40) > 300, 'the background is blue');
+    assert.ok(h.count(frame, 130, { x0: 56, y0: 28, x1: 74, y1: 38 }, (r, g, b) => r > 200 && b < 60) > 60, 'the layer is red in the middle');
+    // image over video
+    const image = await h.run('video.overlay_image', { video: odd, image: picture }, { scale: 25 });
+    assert.deepEqual(await sizeOf(image), [130, 66], 'image over video on an odd background');
+    // even sizes are not padded
+    const same = await h.run('video.overlay_video', { background: even, layer }, { scale: 25 });
+    assert.deepEqual(await sizeOf(same), [128, 64], 'an even background keeps its size');
+    assert.deepEqual(await sizeOf(await h.run('video.overlay_image', { video: even, image: picture }, {})), [128, 64]);
+
+    // the log line through a real run
+    const logs = [];
+    const ctx = { ...h.makeCtx(), log: (line) => logs.push(line) };
+    const definition = h.def('video.overlay_video');
+    await definition.execute(ctx, { background: even, layer }, h.registry.normalizeParams(definition, { start: 3, audio: 'none' }));
+    assert.equal(logs.filter((line) => /never seen/.test(line)).length, 1, `the log names it: ${logs.join(' | ')}`);
+    logs.length = 0;
+    await definition.execute(ctx, { background: even, layer }, h.registry.normalizeParams(definition, { start: 0.2, audio: 'none' }));
+    assert.deepEqual(logs, [], 'no line in the normal case');
+  } finally {
+    await h.cleanup();
+  }
+}
+
 async function main() {
   testGraph();
+  testOddSizesAndNotes();
+  if (ffmpeg.binaries().available && ffmpeg.hasEncoder('libx264') && ffmpeg.hasEncoder('mpeg4')) await testOddRuns();
+  else console.log('SKIP the ffmpeg has no libx264 and mpeg4 (or is missing): the runs with an odd background were not tested');
   if (!ffmpeg.binaries().available) {
     console.log('SKIP ffmpeg is missing (only the filter graph was tested)');
   } else if (!(ffmpeg.hasEncoder('libvpx-vp9') && ffmpeg.hasDecoder('libvpx-vp9') && ffmpeg.hasEncoder('libopus'))) {
