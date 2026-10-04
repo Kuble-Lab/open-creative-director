@@ -69,6 +69,24 @@ function testRows() {
   // a single text is the same for every item; a list gives its own
   const single = table({ edges: [{ from: { node: 'n0', port: 'out' }, to: { node: 'n2', port: 'prompt' } }], upstreamVariant: () => ({ out: text('one for all') }) });
   assert.deepEqual(single.rows.map((row) => row.text), ['one for all', 'one for all', 'one for all']);
+  // the brief of an explainer scene starts with a technical line: the row shows the title, else the narration, else the first bullet
+  const header = 'Scene s1 · role hook · kind motion · about 6 s · landscape · language de';
+  const briefRows = (briefs) =>
+    table({
+      inputPorts: [{ id: 'brief', type: 'text' }],
+      edges: [{ from: { node: 'n0', port: 'briefs' }, to: { node: 'n2', port: 'brief' } }],
+      upstreamVariant: () => ({ briefs: list('text', briefs.map(text)) })
+    }).rows.map((row) => row.text);
+  assert.deepEqual(
+    briefRows([
+      `${header}\nTitle: Der Hook\nBullets:\n- erste\nNarration (for timing and context, do NOT write it on screen): Ein Satz.`,
+      `${header}\nBullets:\n- erste\n- zweite\nNarration (for timing and context, do NOT write it on screen): Ein Satz.`,
+      `${header}\nBullets:\n- nur ein Punkt`
+    ]),
+    ['Der Hook', 'Ein Satz.', 'nur ein Punkt'],
+    'no technical header in the table'
+  );
+  assert.deepEqual(briefRows(['Ein gewöhnlicher Prompt\nüber zwei Zeilen', 'Scene without the header form', 'x']), ['Ein gewöhnlicher Prompt\nüber zwei Zeilen', 'Scene without the header form', 'x'], 'other texts are shown as they are');
   // the first text input with a text wins, in the order of the ports; ports of other kinds and `multiple` ports are not looked at
   const two = table({
     inputPorts: [{ id: 'image', type: 'image' }, { id: 'refs', type: 'text', multiple: true }, { id: 'brief', type: 'text' }, { id: 'prompt', type: 'text[]' }],
@@ -135,6 +153,9 @@ function testRequestAndCost() {
   const paid = sceneTable.itemCost({ paid: true, estimate: { usd: 0.1 } }, null);
   assert.deepEqual(paid, { paid: true, usd: 0.1, credits: null, unknown: false });
   assert.deepEqual(sceneTable.selectionCost(paid, 3), { paid: true, usd: 0.30000000000000004, credits: null, unknown: false });
+  // a finished node ('cached' in the plan) has no estimate but the price of one execution
+  assert.deepEqual(sceneTable.itemCost({ paid: true, status: 'cached', estimate: null, itemEstimate: { usd: 0.1 } }, null), { paid: true, usd: 0.1, credits: null, unknown: false });
+  assert.deepEqual(sceneTable.itemCost({ paid: true, status: 'stale', estimate: { usd: 0.2 } }, null), { paid: true, usd: 0.2, credits: null, unknown: false });
   assert.deepEqual(sceneTable.itemCost({ paid: true }, null), { paid: true, usd: null, credits: null, unknown: true }, 'paid without an estimate: unknown');
   assert.deepEqual(sceneTable.itemCost(null, { paid: true }), { paid: true, usd: null, credits: null, unknown: true }, 'no plan yet, the type says paid');
   assert.deepEqual(sceneTable.itemCost({ paid: false }, { paid: false }), { paid: false, usd: null, credits: null, unknown: false });
@@ -201,6 +222,17 @@ async function startServer(tmpDir) {
   const { createWorkflowsStore } = require('../lib/nodes/workflows-store');
   const { registerNodeRoutes } = require('../lib/nodes/routes');
   const store = createWorkflowsStore({ dir: path.join(tmpDir, 'workflows') });
+  // a paid node that runs here without any provider (a made-up type, 0.10 USD per item): once it has run, the plan calls it 'cached'
+  // and the table has to name its price all the same
+  registry.registry.register({
+    type: 'test.paid_items',
+    category: 'text',
+    inputs: [{ id: 'in', type: 'text', required: true }],
+    outputs: [{ id: 'out', type: 'text' }],
+    paid: true,
+    cost: { unit: 'usd', estimate: () => 0.1, history: false },
+    execute: async (_ctx, inputs) => ({ variants: [{ out: { type: 'text', value: `bezahlt: ${inputs.in.value}` } }], cost: { usd: 0.1 } })
+  });
   const engine = createEngine({ store, getConfig: () => ({ imageModel: 'test', videoModel: 'test' }) });
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -277,21 +309,25 @@ async function browserPart() {
           node('tpl', 'text.template', { template: 'Szene: {{a}}' }, 500, 100),
           node('one', 'input.text', { text: 'allein' }, 100, 400),
           // a paid node (it cannot run here: its result is put into the results file below, to see what the table says about the price)
-          node('rb', 'fal.remove_background', {}, 500, 400)
+          node('rb', 'fal.remove_background', {}, 500, 400),
+          node('pd', 'test.paid_items', {}, 900, 100)
         ],
-        edges: [{ id: 'e1', from: { node: 'list', port: 'items' }, to: { node: 'tpl', port: 'a' } }]
+        edges: [
+          { id: 'e1', from: { node: 'list', port: 'items' }, to: { node: 'tpl', port: 'a' } },
+          { id: 'e2', from: { node: 'list', port: 'items' }, to: { node: 'pd', port: 'in' } }
+        ]
       },
       app: {}
     };
     const created = await call(port, 'POST', '/api/workflows', { name: 'Szenen-Test', document });
     assert.equal(created.status, 201, 'workflow created');
     const workflowId = created.json.workflow.id;
-    const started = await call(port, 'POST', `/api/workflows/${workflowId}/runs`, { mode: 'selection', nodeIds: ['list', 'tpl', 'one'], force: false });
+    const started = await call(port, 'POST', `/api/workflows/${workflowId}/runs`, { mode: 'selection', nodeIds: ['list', 'tpl', 'one', 'pd'], force: false });
     assert.equal(started.status, 202, `run started: ${JSON.stringify(started.json)}`);
     await waitFor(async () => {
       const loaded = await call(port, 'GET', `/api/workflows/${workflowId}`);
       const nodes = loaded.json && loaded.json.results && loaded.json.results.nodes;
-      return nodes && nodes.tpl && nodes.tpl.history.length >= 1 && nodes.one;
+      return nodes && nodes.tpl && nodes.tpl.history.length >= 1 && nodes.one && nodes.pd;
     }, 'the first run');
     const resultsOf = async () => (await call(port, 'GET', `/api/workflows/${workflowId}`)).json.results.nodes;
     const first = (await resultsOf()).tpl.history[0];
@@ -317,7 +353,7 @@ async function browserPart() {
       await page.setViewport(viewport);
       await page.goto(`http://127.0.0.1:${port}/#w=${workflowId}`, { waitUntil: 'load' });
       await page.reload({ waitUntil: 'load' });
-      await page.waitForFunction(() => window.OCDNodes && window.OCDNodes.editor && window.OCDNodes.editor.getGraph() && window.OCDNodes.editor.getGraph().nodes.length === 4, { timeout: 20000 });
+      await page.waitForFunction(() => window.OCDNodes && window.OCDNodes.editor && window.OCDNodes.editor.getGraph() && window.OCDNodes.editor.getGraph().nodes.length === 5, { timeout: 20000 });
       await sleep(600);
     };
     const select = async (nodeId) => {
@@ -456,6 +492,18 @@ async function browserPart() {
       await page.click('.nv-scene-row[data-index="1"] .nv-scene-check');
       const costs = await page.$eval('.nv-scenes-selected-cost', (item) => item.textContent);
       assert.ok(/^(kostet ≈ .+|Preis unbekannt)$/.test(costs), `the button for the ticked rows names the price of both: ${costs}`);
+
+      // a paid node that has run (the plan calls it 'cached', so it has no estimate of its own): the rows name the real price
+      await select('pd');
+      const priced = await tableState();
+      assert.ok(priced, 'the table of the paid node that has run');
+      assert.equal(priced.rows.length, 3);
+      assert.equal(priced.aligned, 'true');
+      assert.ok(priced.rows.every((row) => /^kostet ≈ .*0[.,]10/.test(row.cost)), `each row names the price of one item: ${priced.rows.map((row) => row.cost)}`);
+      await page.click('.nv-scene-row[data-index="0"] .nv-scene-check');
+      await page.click('.nv-scene-row[data-index="2"] .nv-scene-check');
+      const pricedBoth = await page.$eval('.nv-scenes-selected-cost', (item) => item.textContent);
+      assert.ok(/^kostet ≈ .*0[.,]20/.test(pricedBoth), `the button for the ticked rows names the price of two items: ${pricedBoth}`);
     } else {
       console.log('SKIP older result: the results file was not found');
     }

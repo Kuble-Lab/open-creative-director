@@ -556,6 +556,26 @@ async function main() {
       await assert.rejects(engine.start(wf.id, { mode: 'items', nodeId: 'l', items: [0] }), { code: 'INVALID_REQUEST', reason: 'ITEMS_NO_LIST' });
     }
 
+    /* ----- a finished paid node still tells what one execution costs (the scene table offers single items on it) ----- */
+    {
+      reset();
+      const wf = await makeWorkflow([node('l', 't.words', { items: 'a,b,c' }), node('m', 't.scene')], edges('l.items>m.in'));
+      const before = await engine.plan(wf.id, { mode: 'all' });
+      assert.equal(before.nodes.m.itemEstimate, undefined, 'a node that has to run has its estimate, not an itemEstimate');
+      await run(wf.id, { mode: 'all' });
+      const plan = await engine.plan(wf.id, { mode: 'all' });
+      assert.equal(plan.nodes.m.status, 'cached');
+      assert.equal(plan.nodes.m.estimate, null, 'nothing is estimated for a node that does not run');
+      assert.deepEqual(plan.nodes.m.itemEstimate, { usd: 0.5 }, 'the price of one execution');
+      assert.equal(plan.totals.usd, 0, 'it is not part of the total of the run');
+      assert.equal(plan.totals.paidNodes, 0);
+      assert.equal(plan.totals.unknownNodes, 0);
+      // the plan of single items counts the asked ones only, with the same price
+      const items = await engine.plan(wf.id, { mode: 'items', nodeId: 'm', items: [1] });
+      assert.equal(items.totals.usd, 0.5);
+      assert.deepEqual(items.nodes.m.estimate, { usd: 0.5 });
+    }
+
     /* ----- the same item twice in a list: every one keeps its own result ----- */
     {
       reset();

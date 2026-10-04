@@ -25,6 +25,30 @@
   // 'text' and 'text[]' are text ports; a port that takes several connections (`multiple`) is a whole list, not the text of one item
   const isTextPort = (port) => Boolean(port) && !port.multiple && /^text(\[\])?$/.test(String(port.type || ''));
 
+  // The brief of a scene of the explainer video starts with a technical line ("Scene s1 · role hook · kind motion · about 6 s · ...").
+  // What a person recognises the scene by is its title, else the first line of its narration or its first bullet: the table shows
+  // that, not the header. Any other text is shown as it is.
+  const BRIEF_HEADER = /^Scene\s+\S+\s+·\s+role\s/;
+  function readable(text) {
+    const lines = String(text).split(/\r?\n/);
+    if (!BRIEF_HEADER.test(lines[0] || '')) return text;
+    const field = (name) => {
+      const pattern = new RegExp(`^${name}\\b[^:]*:\\s*(.*)$`);
+      for (const line of lines) {
+        const match = pattern.exec(line);
+        if (match && match[1].trim()) return match[1].trim();
+      }
+      return '';
+    };
+    const title = field('Title');
+    if (title) return title;
+    const narration = field('Narration');
+    if (narration) return narration;
+    const bullet = lines.find((item) => item.startsWith('- '));
+    if (bullet) return bullet.slice(2).trim();
+    return lines.slice(1).find((item) => item.trim()) || text;
+  }
+
   // The text an item gets in: the first text input (in the order of the ports) with a connection whose value has text for this item.
   // A list from upstream gives its item of the same number, a single text is the same for all items.
   function mainText({ index, inputPorts, edges, upstreamVariant, entry }) {
@@ -35,7 +59,7 @@
       const variant = upstreamVariant ? upstreamVariant(edge.from.node) : null;
       const value = variant ? variant[edge.from.port] : null;
       const text = isList(value) ? textOf(value.items[index]) : textOf(value);
-      if (text && text.trim()) return text.trim();
+      if (text && text.trim()) return readable(text.trim());
     }
     const params = (entry && entry.params) || {};
     for (const key of TEXT_PARAMS) {
@@ -88,11 +112,14 @@
     return { mode: 'items', nodeId, items };
   }
 
-  // What one item costs to make again, from the plan of the node: { paid, usd, credits, unknown }. The plan lags behind an edit by a
-  // moment and a node that is not paid has no estimate; the confirmation of the run shows the exact sum before anything is spent.
+  // What one item costs to make again, from the plan of the node: { paid, usd, credits, unknown }. The table is used on a finished
+  // node, which the plan calls 'cached' and has nothing to estimate for: it gives the price of one execution as `itemEstimate`
+  // (a node that is out of date has it in `estimate`). The plan lags behind an edit by a moment and a node that is not paid has
+  // no estimate; the confirmation of the run shows the exact sum before anything is spent.
   function itemCost(planNode, def) {
     const paid = Boolean((planNode && planNode.paid) || (def && def.paid));
-    const estimate = planNode && isObject(planNode.estimate) ? planNode.estimate : null;
+    const given = planNode && isObject(planNode.itemEstimate) ? planNode.itemEstimate : planNode && isObject(planNode.estimate) ? planNode.estimate : null;
+    const estimate = given;
     const usd = estimate && Number.isFinite(estimate.usd) ? estimate.usd : null;
     const credits = estimate && Number.isFinite(estimate.credits) ? estimate.credits : null;
     return { paid, usd, credits, unknown: paid && usd === null && credits === null };
