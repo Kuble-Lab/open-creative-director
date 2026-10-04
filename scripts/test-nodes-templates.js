@@ -258,7 +258,7 @@ async function main() {
     // scenes keep the lip sync
     assert.deepEqual(types('music-video-stills'), [
       'input.audio', 'input.image', 'audio.beats', 'audio.lyrics_timing', 'music_video.plan', 'text.template', 'text.template',
-      'image.edit', 'image.edit', 'image.to_video', 'fal.h3_lipsync', 'music_video.edit', 'output.result'
+      'image.edit', 'image.edit', 'image.to_video', 'fal.depth_map', 'fal.h3_lipsync', 'music_video.edit', 'output.result'
     ]);
     assert.deepEqual(byId['music-video-stills'].requires, ['openrouter', 'ffmpeg', 'elevenlabs', 'fal']);
     assert.deepEqual(
@@ -267,26 +267,30 @@ async function main() {
         'n1.audio>n3.audio', 'n1.audio>n4.audio', 'n3.analysis>n5.analysis', 'n4.timing>n5.timing', 'n1.audio>n5.song',
         'n5.story_prompts>n6.a', 'n5.performance_prompts>n7.a', 'n6.text>n8.prompt', 'n2.image>n8.images', 'n7.text>n9.prompt', 'n2.image>n9.images',
         'n8.image>n10.image', 'n9.image>n11.image', 'n5.performance_audio>n11.audio',
-        'n1.audio>n12.song', 'n5.shots>n12.shots', 'n10.video>n12.story', 'n11.video>n12.performance', 'n12.video>n13.inputs', 'n4.timing>n12.captions'
+        'n1.audio>n12.song', 'n5.shots>n12.shots', 'n10.video>n12.story', 'n11.video>n12.performance', 'n12.video>n13.inputs', 'n4.timing>n12.captions',
+        // the depth maps of the parallax switch: from the story images to the optional depth input of the zoom node
+        'n8.image>n14.image', 'n14.depth>n10.depth'
       ]
     );
     {
       const stillsDoc = byId['music-video-stills'];
       const stillsNode = (id) => stillsDoc.graph.nodes.find((node) => node.id === id);
-      // the zoom clip is as long as a scene of the plan can be and has the frame rate of the cut; one zoom for all scenes (the node has no
-      // setting that varies per scene, so the motion is the same slow push in)
-      assert.deepEqual(stillsNode('n10').params, { duration: 5, match_audio: false, fps: 25, zoom: 'in' });
+      // the zoom clip is as long as a scene of the plan can be and has the frame rate of the cut; the motion varies by the position of the
+      // scene (zoom in, pan right, zoom out, pan left), and the depth maps are made only when the switch is on (default off)
+      assert.deepEqual(stillsNode('n10').params, { duration: 5, match_audio: false, fps: 25, zoom: 'varied', parallax_strength: 30 });
+      assert.deepEqual(stillsNode('n14').params, { enabled: false }, 'the parallax switch is off by default');
       assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get('image.to_video'), stillsNode('n10').params), stillsNode('n10').params, 'every param is one of the node, with a valid value');
       assert.equal(stillsNode('n10').params.duration, stillsNode('n5').params.clip_seconds, 'a zoom clip is as long as the clips of the plan');
       assert.equal(String(stillsNode('n10').params.fps), stillsNode('n12').params.fps, 'and has the frame rate of the cut');
       assert.equal(stillsDoc.graph.nodes.some((node) => node.type === 'fal.h3_video'), false, 'no paid clip is made for the story');
-      assert.deepEqual(stillsDoc.graph.nodes.filter((node) => node.type.startsWith('fal.')).map((node) => node.type), ['fal.h3_lipsync']);
+      assert.deepEqual(stillsDoc.graph.nodes.filter((node) => node.type.startsWith('fal.')).map((node) => node.type), ['fal.depth_map', 'fal.h3_lipsync']);
       assert.equal(stillsDoc.graph.edges.some((edge) => edge.from.port === 'story_motion'), false, 'the motion text of the plan has nobody to read it');
       // everything else is the template of the video clips
       for (const id of ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n11', 'n12', 'n13']) {
         assert.deepEqual(stillsNode(id), byId['music-video'].graph.nodes.find((node) => node.id === id), `${id} is the same as in the template with video clips`);
       }
-      assert.deepEqual(stillsDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), byId['music-video'].app.inputs.map((entry) => `${entry.node}.${entry.param}`));
+      // the form of the template with video clips plus the switch for the depth maps and the choice of the motion
+      assert.deepEqual(stillsDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), [...byId['music-video'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), 'n14.enabled', 'n10.zoom']);
       // the figure in the description is what the price tables say: 28 images and four lip sync scenes of 7.5 s, nothing for the clips
       const imageModels = require('../lib/image-models');
       const images = 28 * imageModels.estimateUsd('google/gemini-3-pro-image');
@@ -516,11 +520,12 @@ async function main() {
         ['fal.h3_video*1', 'fal.h3_lipsync*1'], ['music_video.edit*1'], ['output.result*1']
       ]);
       assert.equal(summary['music-video'].batch, false, 'one song in, the lists are made inside: no Batch mark');
-      // the variant with moving images: the story clips are the free zoom of this computer, so one paid step less
-      assert.deepEqual(summary['music-video-stills'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 5, providers: ['openrouter', 'elevenlabs', 'fal'] });
+      // the variant with moving images: the story clips are the free zoom of this computer, so one paid step less; the depth maps of the
+      // parallax switch (off by default, then free) count as a paid step of the gallery
+      assert.deepEqual(summary['music-video-stills'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 6, providers: ['openrouter', 'elevenlabs', 'fal'] });
       assert.deepEqual(summary['music-video-stills'].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`)), [
         ['input.audio*1', 'input.image*1'], ['audio.beats*1', 'audio.lyrics_timing*1'], ['music_video.plan*1'], ['text.template*2'], ['image.edit*2'],
-        ['image.to_video*1', 'fal.h3_lipsync*1'], ['music_video.edit*1'], ['output.result*1']
+        ['fal.depth_map*1', 'fal.h3_lipsync*1'], ['image.to_video*1'], ['music_video.edit*1'], ['output.result*1']
       ]);
       assert.equal(summary['music-video-stills'].batch, false);
 

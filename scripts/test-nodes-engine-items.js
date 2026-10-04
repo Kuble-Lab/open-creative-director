@@ -92,6 +92,31 @@ function buildEnvironment() {
       return { variants: [{ out: textValue(`<${inputs.in.value}>`) }] };
     }
   });
+  // an output that stays empty when switched off, and two nodes behind it: one with an optional input, one with a required one
+  registry.register({
+    type: 't.switch',
+    category: 'text',
+    outputs: [{ id: 'out', type: 'text' }],
+    params: [{ id: 'on', kind: 'boolean', default: true }],
+    emptyOutputs: (params) => (params.on ? [] : ['out']),
+    execute: async (_ctx, _inputs, params) => ({ variants: [params.on ? { out: textValue('value') } : {}] })
+  });
+  registry.register({
+    type: 't.optional_in',
+    category: 'text',
+    inputs: [{ id: 'main', type: 'text', required: true }, { id: 'extra', type: 'text' }, { id: 'more', type: 'text', multiple: true }],
+    outputs: [{ id: 'out', type: 'text' }],
+    execute: async (_ctx, inputs) => ({
+      variants: [{ out: textValue(`${inputs.main.value}|${inputs.extra ? inputs.extra.value : 'no extra'}|${inputs.more ? inputs.more.items.length : 'no more'}`) }]
+    })
+  });
+  registry.register({
+    type: 't.required_in',
+    category: 'text',
+    inputs: [{ id: 'main', type: 'text', required: true }],
+    outputs: [{ id: 'out', type: 'text' }],
+    execute: async (_ctx, inputs) => ({ variants: [{ out: inputs.main }] })
+  });
   return { registry, calls, failOn };
 }
 
@@ -519,6 +544,32 @@ async function main() {
       assert.equal(plan.nodes.l.reasonCode, 'ITEMS_NO_LIST');
       assert.equal(plan.valid, true);
       await assert.rejects(engine.start(wf.id, { mode: 'items', nodeId: 'l', items: [0] }), { code: 'INVALID_REQUEST', reason: 'ITEMS_NO_LIST' });
+    }
+
+    /* ----- an optional input behind an output that stays empty works without it; a required one still refuses ----- */
+    {
+      reset();
+      const wf = await makeWorkflow(
+        [node('s', 't.switch', { on: false }), node('m', 't.single', { text: 'main' }), node('o', 't.optional_in'), node('r', 't.required_in')],
+        edges('m.out>o.main', 's.out>o.extra', 's.out>o.more')
+      );
+      const plan = await engine.plan(wf.id, { mode: 'node', nodeIds: ['o'] });
+      assert.equal(plan.valid, true, JSON.stringify(plan.issues));
+      const record = await run(wf.id, { mode: 'node', nodeIds: ['o'] });
+      assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
+      const entry = (await results(wf.id, 'o')).history[0];
+      assert.equal(entry.variants[0].out.value, 'main|no extra|no more', 'the node ran without the empty outputs');
+      // switched on: the value arrives
+      await setParams(wf.id, 's', { on: true });
+      const filled = await run(wf.id, { mode: 'node', nodeIds: ['o'] });
+      assert.equal(filled.status, 'completed');
+      assert.equal((await results(wf.id, 'o')).history[0].variants[0].out.value, 'main|value|1');
+      // a required input is still refused (announced by the plan, OUTPUT_EMPTY)
+      await setParams(wf.id, 's', { on: false });
+      const refused = await makeWorkflow([node('s', 't.switch', { on: false }), node('r', 't.required_in')], edges('s.out>r.main'));
+      const refusedPlan = await engine.plan(refused.id, { mode: 'all' });
+      assert.equal(refusedPlan.valid, false);
+      assert.ok(refusedPlan.issues.some((issue) => issue.code === 'OUTPUT_EMPTY' && issue.nodeId === 'r'));
     }
   } finally {
     for (const id of created) await wfStore.deleteWorkflow(id).catch(() => {});
