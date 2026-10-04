@@ -1015,7 +1015,7 @@
     ['nodes.app.label', 'Beschriftung', 'Label', 'Etiqueta'],
     ['nodes.app.inputs', 'Eingaben', 'Inputs', 'Entradas'],
     ['nodes.app.outputs', 'Ausgaben', 'Outputs', 'Salidas'],
-    ['nodes.app.noInputs', 'Noch keine Eingabe. Wähle einen Node und schalte bei einem Parameter «App» ein.', 'No inputs yet. Select a node and switch on “App” next to a parameter.', 'Aún no hay entradas. Elige un nodo y activa «App» junto a un parámetro.'],
+    ['nodes.app.noInputs', 'Noch keine Eingabe. Wähle einen Node und klicke rechts in den Einstellungen neben dem Namen eines Parameters auf «App».', 'No inputs yet. Select a node and click “App” next to the name of a parameter in the settings on the right.', 'Aún no hay entradas. Elige un nodo y haz clic en «App» junto al nombre de un parámetro, en los ajustes de la derecha.'],
     ['nodes.app.noOutputs', 'Noch keine Ausgabe. Wähle einen Ergebnis-Node und schalte «Als App-Ausgabe zeigen» ein.', 'No outputs yet. Select a result node and switch on “Show as app output”.', 'Aún no hay salidas. Elige un nodo de resultado y activa «Mostrar como salida de la app».'],
     ['nodes.app.incomplete', 'Die App braucht mindestens eine Eingabe und eine Ausgabe.', 'The app needs at least one input and one output.', 'La app necesita al menos una entrada y una salida.'],
     ['nodes.app.batch', 'Batch', 'Batch', 'Lote'],
