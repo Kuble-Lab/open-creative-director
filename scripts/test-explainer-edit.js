@@ -840,6 +840,17 @@ async function run(iso) {
     await standIn.reset();
     await exec(makeCtx(), (await filmOf(voices, { mode: 'mix' })).inputs, { captions: 'lines', transition: 'cut', fps: '30' });
     assert.equal((await standIn.scripts()).length, 1, 'a mix film still burns its captions in');
+    // a cut made before the rule may still carry captions: a typography film with the captions on gets a stamp, so it is cut once more
+    // (free); the other films get none and keep their entries, and an old entry is never taken for the stamp
+    const stampOf = (inputs, captions) => def.cacheStamp({ captions }, { inputs });
+    const typoInputs = (await filmOf(voices, { mode: 'typography' })).inputs;
+    const mixInputs = (await filmOf(voices, { mode: 'mix' })).inputs;
+    assert.deepEqual(stampOf(typoInputs, 'lines'), { captions: 'none: typography' });
+    assert.deepEqual(stampOf(typoInputs, 'words'), { captions: 'none: typography' });
+    assert.equal(stampOf(typoInputs, 'off'), undefined, 'captions off: the old cut had none, nothing to renew');
+    assert.equal(stampOf(mixInputs, 'lines'), undefined, 'a mix film keeps its entries');
+    assert.equal(stampOf({}, 'lines'), undefined, 'no shots: no stamp');
+    assert.equal(def.cacheStampAdopts, undefined, 'the old entry of a typography film is not taken');
     use(original);
   }
 }
