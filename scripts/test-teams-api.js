@@ -600,6 +600,8 @@ async function testSharing(ctx) {
     ['POST', `/api/workflows/${id}/send-to-chat`, { sessionId: 'a', nodeId: 'n' }],
     ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'all' }],
     ['POST', `/api/workflows/${id}/runs`, { mode: 'all' }],
+    ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'items', nodeId: 'n1', items: [0] }],
+    ['POST', `/api/workflows/${id}/runs`, { mode: 'items', nodeId: 'n1', items: [0] }],
     ['POST', `/api/workflows/${id}/assistant`, { question: 'Hallo', canvas: { nodes: [], edges: [] } }],
     ['GET', `/api/workflows/${id}/runs`],
     ['GET', `/api/workflows/${id}/runs/run-1`],
@@ -1514,6 +1516,35 @@ async function testBudgetNodes(ctx) {
   assert.equal(hfRun.body.code, 'FORBIDDEN_FOR_ROLE');
   assert.equal(hfRun.body.feature, 'higgsfield');
   assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+
+  // single items of a list (mode 'items') follow the same rules: with a list result in the node, a participant is refused
+  // for a Higgsfield node (the plan lists it as blocked), a number outside the list is a 400 with the reason and the figures
+  const photo = (n) => ({ type: 'image', sessionId: hf.sessionId, assetId: `img-00${n}`, file: `img-00${n}.png`, url: `/assets/${hf.sessionId}/img-00${n}.png` });
+  await ctx.wfStore.appendHistory(hf.id, 'gen', {
+    runId: 'r-items',
+    createdAt: new Date().toISOString(),
+    user: person,
+    cacheKey: `sha256:${'a'.repeat(64)}`,
+    params: {},
+    itemKeys: [`sha256:${'b'.repeat(64)}`, `sha256:${'c'.repeat(64)}`],
+    variants: [{ image: { type: 'list', itemType: 'image', items: [photo(1), photo(2)] } }],
+    cost: { usd: null, credits: 2 },
+    durationMs: 1
+  });
+  const itemsPlan = await call(person, 'POST', `/api/workflows/${hf.id}/runs/plan`, { mode: 'items', nodeId: 'gen', items: [1] });
+  assert.equal(itemsPlan.status, 200, itemsPlan.text);
+  assert.deepEqual(itemsPlan.body.blocked, [{ nodeId: 'gen', feature: 'higgsfield' }]);
+  const itemsRun = await call(person, 'POST', `/api/workflows/${hf.id}/runs`, { mode: 'items', nodeId: 'gen', items: [1] });
+  assert.equal(itemsRun.status, 403, itemsRun.text);
+  assert.equal(itemsRun.body.code, 'FORBIDDEN_FOR_ROLE');
+  assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+  const outside = await call(person, 'POST', `/api/workflows/${hf.id}/runs`, { mode: 'items', nodeId: 'gen', items: [2] });
+  assert.equal(outside.status, 400, outside.text);
+  assert.equal(outside.body.code, 'INVALID_REQUEST');
+  assert.equal(outside.body.reason, 'ITEMS_OUT_OF_RANGE');
+  assert.deepEqual(outside.body.params, { item: 3, length: 2 });
+  assert.equal((await call(person, 'POST', `/api/workflows/${hf.id}/runs`, { mode: 'items', nodeId: 'gen', items: [] })).status, 400);
+  assert.equal((await call(person, 'POST', `/api/workflows/${hf.id}/runs`, { mode: 'items', items: [0] })).status, 400);
   restoreAll();
 
   // the video node with a model choice is open for participants; its plan carries the estimate of the model (the upper end of

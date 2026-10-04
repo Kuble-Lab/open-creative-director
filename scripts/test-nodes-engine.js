@@ -909,7 +909,9 @@ async function main() {
       await wfStore.saveGraph(wf.id, { baseRev: (await wfStore.readWorkflow(wf.id)).rev, graph: { ...(await wfStore.readWorkflow(wf.id)).graph, nodes: (await wfStore.readWorkflow(wf.id)).graph.nodes.map((item) => (item.id === 'lst' ? { ...item, params: { n: 3 } } : item)) } });
       env.state.failItem = 'item3';
       env.calls.length = 0;
-      const third = await run(engine, wf.id, { mode: 'all' });
+      // forced: with the cache per item the three items of the shorter list are all found in the history, so only a forced
+      // run makes them again (and meets the failing item); before the cache per item the shorter list had a new key and ran anew
+      const third = await run(engine, wf.id, { mode: 'node', nodeIds: ['fl'], force: true });
       assert.equal(third.nodes.fl.status, 'error');
       assert.ok((await results(wf.id, 'fl')).partial, 'a new failure stores the finished items again');
       env.state.failItem = null;
