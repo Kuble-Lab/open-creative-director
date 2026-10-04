@@ -471,13 +471,57 @@ function testSceneWriter() {
   assert.equal(without.needsDefault, true);
   assert.equal(without.tokens.headlineFamily, 'Inter Tight');
   assert.equal(without.tokens.bodyFamily, 'Inter Tight');
-  assert.match(without.tokens.headline, /^'Inter Tight', system-ui/);
+  assert.equal(without.tokens.headline, "'Inter Tight', sans-serif", 'an embedded family has no named system font behind it');
+  assert.doesNotMatch(without.tokens.body, /system-ui|Helvetica|Arial/);
   const both = scene.typographyFontTokens(branded, ['Example Sans', 'Example Serif']);
   assert.equal(both.needsDefault, false);
   assert.deepEqual([both.tokens.headlineFamily, both.tokens.bodyFamily], ['Example Sans', 'Example Serif']);
   const one = scene.typographyFontTokens(branded, ['Example Sans']);
   assert.equal(one.needsDefault, true);
   assert.deepEqual([one.tokens.headlineFamily, one.tokens.bodyFamily], ['Example Sans', 'Inter Tight']);
+  assert.match(one.tokens.headline, /^'Example Sans', sans-serif$/, 'an embedded family of the brand: no named system font either');
+
+  // a third file of the brand (a mono face) must not take the place of the default font: only the files of the two families count
+  {
+    const file = (family) => ({ family, ext: '.woff2', buffer: Buffer.alloc(1000, 1), weight: '400' });
+    const defaultFile = { family: 'Inter Tight', ext: '.woff2', buffer: Buffer.alloc(1000, 2), weight: '100 900' };
+    const three = [file('Example Sans'), file('Brand Mono'), file('Example Serif')];
+    const kept = scene.typographyBrandFiles(branded, [file('Brand Mono'), file('Example Sans'), { ...file('Example Sans'), ext: '.ttf' }]);
+    assert.deepEqual(kept.map((item) => `${item.family}${item.ext}`), ['Example Sans.woff2'], 'one file per family, the other families are left out');
+    assert.deepEqual(scene.typographyBrandFiles(branded, three).map((item) => item.family), ['Example Sans', 'Example Serif']);
+    // headline and mono file, no file for the body family
+    const files = scene.typographyBrandFiles(branded, [file('Example Sans'), file('Brand Mono')]);
+    const planned = scene.typographyFontTokens(branded, scene.fontFaces(files).used);
+    assert.equal(planned.needsDefault, true);
+    const faces = scene.fontFaces([...files, defaultFile]);
+    assert.deepEqual(faces.used, ['Example Sans', 'Inter Tight']);
+    assert.deepEqual(faces.skipped, []);
+    const final = scene.typographyFontTokens(branded, faces.used, { final: true });
+    assert.deepEqual([final.tokens.headlineFamily, final.tokens.bodyFamily], ['Example Sans', 'Inter Tight']);
+    // the default font is not among the embedded ones (not readable): no family is promised that is not in the page
+    const missing = scene.typographyFontTokens(branded, ['Example Sans'], { final: true });
+    assert.deepEqual([missing.tokens.headlineFamily, missing.tokens.bodyFamily], ['Example Sans', 'Example Serif']);
+    assert.match(missing.tokens.body, /^'Example Serif', system-ui/, 'a family without an embedded file keeps the ordinary stack');
+    const none = scene.typographyFontTokens(scene.typographyTokens(null), [], { final: true });
+    assert.doesNotMatch(none.tokens.headline, /Inter Tight/);
+    const prompt = scene.writerSystemPrompt({ format: 'landscape', duration: 7.4, tokens: none.tokens, embeddedFonts: [], style: 'typography' });
+    assert.doesNotMatch(prompt, /variable font/, 'the variable font is promised only where it is in the page');
+    assert.doesNotMatch(prompt, /Inter Tight/);
+    // the stack of an embedded default font names no system font, and the prompt says to avoid characters outside of Latin
+    const full = scene.writerSystemPrompt({ format: 'landscape', duration: 7.4, tokens: scene.typographyFontTokens(branded, [], {}).tokens, embeddedFonts: ['Inter Tight'], style: 'typography' });
+    assert.match(full, /Inter Tight is a variable font/);
+    assert.match(full, /avoid characters outside of that \(subscript digits, arrows, symbols\)/);
+  }
+
+  // the list of words in the request: the number is the number of the words that are listed
+  {
+    const many = Array.from({ length: 130 }, (_, index) => ({ text: `w${index}`, start: index * 0.1 }));
+    const few = scene.writerUserPrompt({ brief: 'x', duration: 15, words: many.slice(0, 3), style: 'typography' });
+    assert.match(few, /\(absolute seconds on tl; 3 words\)/);
+    const cut = scene.writerUserPrompt({ brief: 'x', duration: 15, words: many, style: 'typography' });
+    assert.match(cut, /; 120 words of 130, the rest is left out\)/);
+    assert.ok(cut.includes('w119') && !cut.includes('w120'));
+  }
 
   // the prompt of the writer
   const tokens = scene.typographyFontTokens(paper, ['Inter Tight']).tokens;
@@ -908,6 +952,16 @@ async function run(iso, eleven) {
     assert.ok(changed.ctx.logs.some((line) => /Own text: The narration of the scenes differs from the given text/.test(line)), 'and the person is told');
     assert.ok(changed.ctx.logs.some((line) => /Still 1 problem after the repair/.test(line)));
 
+    // the model changes a word, and the repair is no usable answer at all: the plan of the first answer (cut by the app) is kept, and the
+    // person is told about the cut all the same
+    reset();
+    answers.plan.push(ownCut(sentences.map((sentence, index) => (index === 0 ? sentence.replace('Fluss', 'Bach') : sentence))));
+    answers.plan.push('this is not JSON');
+    const unusable = await planWith({ own_text: text(OWN_TEXT) }, { visual_mode: 'typography', language: 'de' });
+    assert.deepEqual(calls.map((call) => call.kind), ['plan', 'plan']);
+    assert.deepEqual(tokensOf(unusable.out.narration.items.map((item) => item.value).join(' ')), tokensOf(OWN_TEXT));
+    assert.ok(unusable.ctx.logs.some((line) => /Own text: .*The scenes were cut from your text by the app, your words are unchanged/.test(line)), unusable.ctx.logs.join(' | '));
+
     // the own text comes with documents: they are sources as before; a topic and a brief go along
     reset();
     answers.plan.push(ownCut(sentences.map((sentence) => sentence)));
@@ -1009,7 +1063,7 @@ async function run(iso, eleven) {
     await exec1(1);
     const writer = calls.find((call) => call.kind === 'writer');
     assert.match(writer.options.system, /style "typography" \(kinetic typography/);
-    assert.match(writer.options.system, /Headline font: 'Inter Tight', system-ui[^.]*\(embedded, use it as it is\)/);
+    assert.match(writer.options.system, /Headline font: 'Inter Tight', sans-serif \(embedded, use it as it is\)/);
     assert.match(writer.options.system, /ground #e7e0d0/);
     const words = JSON.parse(timingOf(lists.narration[1]).value).words;
     assert.ok(writer.options.prompt.includes(`Words of the voice, in the order they are said, each with the second at which the voice STARTS it (absolute seconds on tl; ${words.length} words): 0.3 ${words[0].text}; 0.65 ${words[1].text};`), writer.options.prompt.slice(0, 600));
@@ -1056,6 +1110,35 @@ async function run(iso, eleven) {
     assert.match(branded, /Headline font: 'Inter Tight'/, 'a family of the brand without an embedded file is not used: no system font');
     assert.match(renders[0].html, /font-family:'Inter Tight'/);
 
+    // a brand with three font files (headline, a mono face, no file for the body family): the mono face does not take the place of the
+    // default font, the body is set in the embedded default font, the prompt and the page agree
+    reset();
+    {
+      const brandingsLib = iso.load('lib/brandings');
+      const made = await brandingsLib.createBranding({ name: 'Three Faces' });
+      await brandingsLib.saveBrandingAsset(made.id, { buffer: Buffer.alloc(900, 1), filename: 'head.woff2' });
+      await brandingsLib.saveBrandingAsset(made.id, { buffer: Buffer.alloc(900, 2), filename: 'mono.woff2' });
+      const three = textValue(JSON.stringify({
+        name: 'Three Faces',
+        colors: [{ role: 'background', hex: '#101820' }, { role: 'text', hex: '#f2f2f2' }, { role: 'accent', hex: '#ff6b35' }],
+        fonts: [
+          { role: 'headline', family: 'Brand Head', weights: '700', asset: { branding: made.id, file: 'head.woff2' } },
+          { role: 'mono', family: 'Brand Mono', weights: '400', asset: { branding: made.id, file: 'mono.woff2' } },
+          { role: 'body', family: 'Brand Body', weights: '400', asset: null }
+        ]
+      }));
+      await exec1(0, { vision_check: false }, { brand: three });
+      const system = calls.find((call) => call.kind === 'writer').options.system;
+      const html = renders[0].html;
+      assert.match(system, /Headline font: 'Brand Head', sans-serif \(embedded, use it as it is\)/);
+      assert.match(system, /Body font: 'Inter Tight', sans-serif \(embedded, use it as it is\)/);
+      assert.match(system, /Inter Tight is a variable font/);
+      assert.match(html, /font-family:'Brand Head'/);
+      assert.match(html, /font-family:'Inter Tight';src:url\(data:font\/woff2;base64,[^)]+\) format\('woff2'\);font-weight:100 900/, 'the default font is in the page');
+      assert.doesNotMatch(html, /Brand Mono/, 'a file of a family that is not used is left out');
+      assert.equal((html.match(/@font-face/g) || []).length, 2);
+    }
+
     // the sources card is looked at as any scene (it has no words)
     reset();
     const withCard = buildTypo(typoAnswer((a) => a.scenes.forEach((item) => (item.source_refs = ['S. 1']))), { documents: [DOC], lengthSeconds: 50 }).script;
@@ -1079,6 +1162,8 @@ async function run(iso, eleven) {
     const stampTypo = await sceneDef.cacheStamp({}, { inputs: { shots: textValue(JSON.stringify({ visual_mode: 'typography' })) } });
     const hash = require('crypto').createHash('sha256').update(fs.readFileSync(path.join(root, sceneLib.TYPOGRAPHY_FONT.file))).digest('hex');
     assert.deepEqual(stampTypo, { typography: { font: hash } });
+    // a scene that is typographic by its brief alone (no shot list) has the stamp too: the same test as when it is drawn
+    assert.deepEqual(await sceneDef.cacheStamp({}, { inputs: { brief: textValue(lists.briefs[1]) } }), { typography: { font: hash } }, 'the style of the brief alone');
     assert.equal(await sceneDef.cacheStamp({}, { inputs: { shots: textValue(JSON.stringify({ visual_mode: 'mix' })) } }), undefined, 'the other modes have no stamp, as before');
     assert.equal(await sceneDef.cacheStamp({}, { inputs: {} }), undefined);
   }
