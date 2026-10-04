@@ -165,7 +165,11 @@ async function run(iso) {
   ];
   let key = true;
   patch(elevenlabs, 'hasKey', () => key);
-  patch(elevenlabs, 'listVoices', async () => voiceList);
+  let listCalls = 0;
+  patch(elevenlabs, 'listVoices', async () => {
+    listCalls += 1;
+    return voiceList;
+  });
   patch(elevenlabs, 'fetchPreview', async (url) => {
     upstream.push(url);
     return { buffer: Buffer.from(`SAMPLE:${url}`), contentType: 'audio/mpeg' };
@@ -429,6 +433,63 @@ async function run(iso) {
     const stored = await sampleOf('lib3', '?model_id=eleven_v4&lang=en', GUEST);
     assert.equal(stored.body.cached, true);
     assert.equal(stored.body.available, true);
+    voiceList.pop();
+  }
+  // review: the list of voices is asked for once for many clicks, again after a minute, and a failed request is not kept
+  {
+    voicePreview.clearCaches();
+    listCalls = 0;
+    for (let i = 0; i < 5; i += 1) await (await get('/api/elevenlabs/voices/lib1/preview')).arrayBuffer();
+    await Promise.all([get('/api/elevenlabs/voices/lib1/preview', STAFF), get('/api/elevenlabs/voices/lib2/sample', GUEST), get('/api/elevenlabs/voices/lib1/preview', GUEST)].map(async (pending) => (await pending).arrayBuffer()));
+    assert.equal(listCalls, 1, 'one request to ElevenLabs for all of them');
+    // the permission is still checked on each call: a guest does not get a cloned voice from the kept list
+    assert.equal((await get('/api/elevenlabs/voices/clone1/preview', GUEST)).status, 404);
+    assert.equal(listCalls, 1);
+    assert.ok((await voicePreview.findVoice('lib1', { active: false }, { now: Date.now() + voicePreview.VOICES_TTL_MS - 1000 })).voice_id === 'lib1');
+    assert.equal(listCalls, 1, 'still kept just before the end');
+    await voicePreview.findVoice('lib1', { active: false }, { now: Date.now() + voicePreview.VOICES_TTL_MS + 1000 });
+    assert.equal(listCalls, 2, 'asked again after the minute');
+    // a failure is not kept
+    voicePreview.clearCaches();
+    const realList = elevenlabs.listVoices;
+    elevenlabs.listVoices = async () => {
+      listCalls += 1;
+      throw new Error('boom');
+    };
+    assert.equal((await get('/api/elevenlabs/voices/lib1/preview')).status, 502);
+    elevenlabs.listVoices = realList;
+    assert.equal((await get('/api/elevenlabs/voices/lib1/preview')).status, 200, 'the next click asks again');
+  }
+
+  // review: a sample that is paid for is booked even when the file cannot be stored, and still delivered
+  {
+    voicePreview.clearCaches();
+    voiceList.push({ voice_id: 'clone4', name: 'Fourth', category: 'cloned' });
+    const rowsBefore = (await costs.readCosts()).length;
+    const ttsBefore = ttsCalls.length;
+    const realMkdir = fsp.mkdir;
+    fsp.mkdir = async (...args) => {
+      if (String(args[0]).includes('voice-samples')) throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+      return realMkdir(...args);
+    };
+    const warn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.join(' '));
+    let failedWrite;
+    try {
+      failedWrite = await iso.request('/api/elevenlabs/voices/clone4/sample', { method: 'POST', as: ADMIN, json: { model_id: 'eleven_v4', lang: 'es' }, raw: true });
+    } finally {
+      fsp.mkdir = realMkdir;
+      console.warn = warn;
+    }
+    assert.equal(failedWrite.status, 200, 'the sample is delivered');
+    assert.match(Buffer.from(await failedWrite.arrayBuffer()).toString(), /^MADE:clone4:/);
+    assert.equal(ttsCalls.length, ttsBefore + 1);
+    const rows = (await costs.readCosts()).slice(rowsBefore);
+    assert.equal(rows.length, 1, 'the call ElevenLabs charged is booked');
+    assert.equal(rows[0].type, 'speech');
+    assert.ok(warnings.some((line) => /could not be stored/.test(line)), 'the failure is logged');
+    assert.equal((await fsp.readdir(voicePreview.SAMPLES_DIR)).some((name) => name.includes('clone4')), false);
     voiceList.pop();
   }
   voicePreview.clearCaches();
