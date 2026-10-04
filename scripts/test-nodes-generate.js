@@ -2703,6 +2703,13 @@ async function main() {
       assert.equal(catalogLib.isVideoSlot({ type: 'audio', roles: ['video'] }), false);
       assert.equal(catalogLib.isVideoSlot({}), false);
       assert.equal(catalogLib.isVideoSlot(null), false);
+      // image roles that mention video are no video roles (a start image for a video model is an image)
+      for (const role of ['image_to_video', 'start_image_for_video', 'video_start_frame', 'reference_image_for_video']) {
+        assert.equal(catalogLib.isVideoSlot({ roles: [role] }), false, role);
+        assert.deepEqual(catalogLib.referenceSlots({ medias: [{ type: 'image', max: 2, required: true, roles: [role] }] }), { max: 2, roles: [role], required: true }, role + ' stays a reference slot');
+        assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ type: 'image', required: true, roles: [role] }] }), '', role + ' does not hide the model');
+      }
+      assert.equal(catalogLib.isVideoSlot({ roles: ['image_to_video', 'video'] }), false, 'one image role makes it a reference slot');
       assert.equal(catalogLib.isAudioSlot({ roles: ['audio_references'] }), true, 'the audio rule is unchanged');
       assert.equal(catalogLib.isAudioSlot({ roles: ['start_image', 'audio_references'] }), false);
 
@@ -2744,6 +2751,11 @@ async function main() {
       // a required video slot next to other slots
       assert.equal(catalogLib.videoNeed({ id: 'edit', medias: [{ roles: ['start_image'] }, { roles: ['video'], required: true }] }), 'video');
       assert.equal(catalogLib.videoNeed({ id: 'edit', medias: [{ roles: ['start_image'] }, { roles: ['video'] }] }), '');
+      // a video slot that is expressly optional is no reason to hide the model; a missing flag still counts as "needs"
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: false }] }), '', 'only an optional video slot');
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: false }, { roles: ['audio_references'], required: false }] }), '', 'optional video and optional audio');
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'] }, { roles: ['audio_references'] }] }), 'video', 'no flag: still needs');
+      assert.equal(catalogLib.videoNeed({ id: 'x', medias: [{ roles: ['video_references'], required: true }, { roles: ['reference_video'], required: false }] }), 'video', 'a required slot wins');
 
       // the description carries video next to references
       assert.deepEqual(catalogLib.describeModel(parsed('optional')).video, { max: 1, required: false });
@@ -2769,7 +2781,7 @@ async function main() {
       assert.match(found[0].message, /Edit video with references/);
       assert.equal(issues('video.higgsfield', 'video_only')[0].code, 'needs_video');
       assert.equal(issues('image.higgsfield', 'image_with_video')[0].code, 'needs_video', 'an image model that needs a video gets the same treatment');
-      // the hint comes first and alone, whatever else is connected
+      // the hint comes first and replaces the port messages (refs, audio), whatever is connected; messages about extra_params and the empty model field would follow it
       assert.equal(issues('video.higgsfield', 'kling3_0_motion_control', { refs: { connected: true, count: 2 }, audio: { connected: true, count: 1 } }).length, 1);
       // models that stay usable
       for (const modelId of ['optional_video', 'mixed_refs', 'with_audio_wp42']) assert.deepEqual(issues('video.higgsfield', modelId), [], modelId);
