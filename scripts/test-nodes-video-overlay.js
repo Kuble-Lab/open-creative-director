@@ -149,7 +149,7 @@ function testGraph() {
   assert.match(audio({ audio: 'layer' }).graph, /\[1:a\]apad\[al\]/, 'no delay without a start');
   assert.match(audio({ audio: 'layer', start: 0.5, end: 1.2 }).graph, /\[1:a\]atrim=duration=0\.7,asetpts=PTS-STARTPTS,adelay=500:all=1,apad\[al\]/, 'the layer sound ends with the layer');
   const mixed = audio({ audio: 'mix', start: 0.5 });
-  assert.match(mixed.graph, /\[0:a\]apad\[ab\];\[1:a\]adelay=500:all=1,apad\[al\];\[ab\]\[al\]amix=inputs=2:duration=longest:dropout_transition=0\[aout\]/);
+  assert.match(mixed.graph, /\[0:a\]apad\[ab\];\[1:a\]adelay=500:all=1,apad\[al\];\[ab\]\[al\]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0\.95:level=disabled\[aout\]/);
   assert.deepEqual(mixed.outputs[0].maps, ['[out]', '[aout]']);
   const none = audio({ audio: 'none' });
   assert.deepEqual(none.outputs[0].maps, ['[out]']);
@@ -232,7 +232,7 @@ async function testRuns() {
       const match = /max_volume:\s*(-?[0-9.]+|-inf)\s*dB/.exec(stderr);
       return match && match[1] !== '-inf' ? Number(match[1]) : -Infinity;
     };
-    // the lavfi tone is at -18 dB; a mix of two tracks halves each (-24 dB), silence is far below -50
+    // the lavfi tone is at -18 dB (a mix keeps the level of each track), silence is far below -50
     const loud = (db) => db > -35;
     const quiet = (db) => db < -50;
     const near = (actual, expected, tolerance, message) => assert.ok(Math.abs(actual - expected) <= tolerance, `${message}: ${actual} is not near ${expected}`);
@@ -411,9 +411,17 @@ async function testRuns() {
       assert.ok(loud(await loudness(run.file, 0.7, 1.3)), 'both');
       assert.ok(loud(await loudness(run.file, 1.7, 1.95)), 'the background alone again');
       // the mix is louder than the background alone where both play: a tone of another pitch is added
-      const alone = await loudness((await ranWith({ background: bg, layer: layerSound }, { scale: 50, audio: 'background' })).file, 0.7, 1.3);
+      const backgroundOnly = (await ranWith({ background: bg, layer: layerSound }, { scale: 50, audio: 'background' })).file;
+      const alone = await loudness(backgroundOnly, 0.7, 1.3);
       const both = await loudness(run.file, 0.7, 1.3);
       assert.ok(Math.abs(both - alone) < 8, `the mix keeps a level in the range of the sources (${both} dB against ${alone} dB)`);
+      assert.ok(both > alone + 0.5, `the second tone adds to the first (${both} dB against ${alone} dB)`);
+      // where the layer is silent the background keeps its level: amix must not halve it (-6 dB) just because the other track exists
+      for (const [from, to] of [[0.05, 0.4], [1.7, 1.95]]) {
+        const level = await loudness(run.file, from, to);
+        const reference = await loudness(backgroundOnly, from, to);
+        assert.ok(Math.abs(level - reference) < 1, `${from}-${to} s: the background in the mix is as loud as alone (${level} dB against ${reference} dB)`);
+      }
     }
     {
       // none: no audio stream
