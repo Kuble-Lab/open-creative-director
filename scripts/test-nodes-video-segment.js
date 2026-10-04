@@ -178,7 +178,7 @@ function testDefinition({ registry, nodesFal, hasKeyRef, ffmpeg }) {
   }
   // it sits before the free node, and the price constant names its source
   const order = nodesFal.definitions.map((item) => item.type);
-  assert.deepEqual(order.slice(-3), ['fal.remove_background', 'fal.video_segment', 'fal.model']);
+  assert.deepEqual(order.slice(-4), ['fal.remove_background', 'fal.video_segment', 'fal.video_edit', 'fal.model']);
   assert.deepEqual({ ...nodesFal.PRICES.videoSegment }, { endpoint: 'fal-ai/sam-3/video', usdPerBlock: 0.005, framesPerBlock: 16, fetched: '2026-10-03' });
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-fal.js'), 'utf8');
   const priceComment = source.slice(source.indexOf('// fal.video_segment: SAM 3 on video'), source.indexOf('videoSegment: Object.freeze'));

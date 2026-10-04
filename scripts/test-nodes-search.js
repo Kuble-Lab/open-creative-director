@@ -126,9 +126,9 @@ const GOLDEN = [
   ['de', 'participant', 0, 'zeitlupe', (r) => assert.equal(r[0].type, 'video.speed')],
   ['de', 'admin', 13, 'zeitlupe', (r) => assert.equal(r[0].type, 'video.speed')],
   ['de', 'participant', 0, 'kling', (r) => {
-    // no Higgsfield for participants: nothing, or at most the free fal.ai model and the video node with a model choice, which
-    // both name Kling as a keyword. Never noise.
-    assert.ok(r.every((entry) => ['fal.model', 'video.generate'].includes(entry.type)), `only the free fal.ai model may match: ${types(r)}`);
+    // no Higgsfield for participants: nothing, or at most the free fal.ai model, the video node with a model choice and the video
+    // editing node (Kling O3), which all name Kling as a keyword. Never noise.
+    assert.ok(r.every((entry) => ['fal.model', 'video.generate', 'fal.video_edit'].includes(entry.type)), `only the free fal.ai model may match: ${types(r)}`);
     assert.ok(!r.some((entry) => ['image.chroma_key', 'image.invert', 'image.adjust', 'image.crop'].includes(entry.type)));
   }],
   ['de', 'admin', 13, 'kling', (r) => {
@@ -634,6 +634,23 @@ function testVideoSegmentSynonyms() {
   assert.ok(entry && !entry.def.restricted);
 }
 
+function testVideoEditSynonyms() {
+  // editing a video with reference images (WP40): the words of the task lead to it, in the three languages
+  const first = (lang, query) => search(lang, 'participant', query).map((entry) => entry.type);
+  assert.equal(first('de', 'person ersetzen')[0], 'fal.video_edit');
+  assert.equal(first('de', 'personen im video ersetzen')[0], 'fal.video_edit');
+  assert.ok(first('de', 'video bearbeiten').slice(0, 3).includes('fal.video_edit'));
+  assert.ok(first('de', 'video mit referenzen').slice(0, 2).includes('fal.video_edit'));
+  assert.equal(first('en', 'replace person')[0], 'fal.video_edit');
+  assert.ok(first('en', 'edit video').slice(0, 3).includes('fal.video_edit'));
+  assert.ok(first('en', 'swap person').slice(0, 2).includes('fal.video_edit'));
+  assert.equal(first('es', 'reemplazar persona')[0], 'fal.video_edit');
+  assert.ok(first('es', 'editar vídeo').slice(0, 3).includes('fal.video_edit'));
+  // open to everyone, like the other fal nodes
+  const entry = search('de', 'participant', 'person ersetzen').find((item) => item.type === 'fal.video_edit');
+  assert.ok(entry && !entry.def.restricted && entry.def.available === true);
+}
+
 function testSearchTextNormalization() {
   // a text of only separators is no search (the palette uses the same test for its group headings)
   assert.equal(graphLib.normalizeSearch('-'), '');
@@ -653,6 +670,7 @@ const tests = [
   testImageEditingSynonyms,
   testVideoGridSynonyms,
   testVideoSegmentSynonyms,
+  testVideoEditSynonyms,
   testSearchTextNormalization,
   testZoomNodeRename,
   testOldWorkflowsStillLoad,

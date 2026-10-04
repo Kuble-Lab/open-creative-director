@@ -1,0 +1,206 @@
+{
+  "id": "replace-people-in-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Replace people in a video",
+  "description": "Replace people in an existing video with people from two photos: motion and camera stay. Kling O3 (fal.ai) edits the video; you write \"Image 1\" and \"Image 2\" in the prompt. The video must be 3 to 15 s long and at least 720 px; the price is 0.14 USD per second of the video (about 2.10 USD for 15 s) and the run asks first. Use only people who have agreed to appear.",
+  "requires": [
+    "fal"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.video",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 60,
+        "title": "Video with the people",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.image",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 380,
+        "title": "Person for Image 1",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.image",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 700,
+        "title": "Person for Image 2",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n4",
+        "type": "fal.video_edit",
+        "typeVersion": 1,
+        "x": 540,
+        "y": 200,
+        "title": "Replace people",
+        "params": {
+          "model": "kling_o3",
+          "prompt": "Replace the left person in the Video with the person from Image 1 and the right person with the person from Image 2. Keep the motion, the camera and the lighting of the Video unchanged.",
+          "quality": "standard",
+          "image_role": "elements",
+          "keep_audio": true,
+          "resolution": "720p",
+          "wan_resolution": "480p",
+          "cut_to_limit": false
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1000,
+        "y": 240,
+        "params": {
+          "label": "Edited video"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "video"
+        },
+        "to": {
+          "node": "n4",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "image"
+        },
+        "to": {
+          "node": "n4",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "image"
+        },
+        "to": {
+          "node": "n4",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "video"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 540,
+        "y": 560,
+        "w": 400,
+        "h": 250,
+        "text": "Use only people who have agreed to appear in the video. The photos are Image 1 and Image 2 in the order of their connections; write them like that in the prompt, and the video as Video (capital V). Kling O3 needs a video of 3 to 15 s, at least 720 px, MP4 or MOV. For a longer video, switch on \"Cut to the allowed length\" on the Replace people node: it uses the first 15 s. 0.14 USD per second, and the run asks first. Prompts in English often work better."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Replace people in a video",
+    "description": "Upload a video and two photos of the people who take over, and describe who replaces whom. You get the video with the new people. Use only people who have agreed to appear.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "asset",
+        "label": "Video with the people"
+      },
+      {
+        "node": "n2",
+        "param": "asset",
+        "label": "Person for Image 1"
+      },
+      {
+        "node": "n3",
+        "param": "asset",
+        "label": "Person for Image 2"
+      },
+      {
+        "node": "n4",
+        "param": "prompt",
+        "label": "Who replaces whom"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n5",
+        "label": "Edited video"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Personen im Video ersetzen",
+      "description": "Ersetze Personen in einem bestehenden Video durch Personen aus zwei Fotos: Bewegung und Kamera bleiben. Kling O3 (fal.ai) bearbeitet das Video; im Prompt schreibst du «Bild 1» und «Bild 2». Das Video muss 3 bis 15 s lang sein und mindestens 720 px messen; der Preis beträgt 0.14 USD pro Sekunde des Videos (rund 2.10 USD für 15 s), der Lauf fragt vorher nach. Verwende nur Personen, die zugestimmt haben.",
+      "node.n1": "Video mit den Personen",
+      "node.n2": "Person für Bild 1",
+      "node.n3": "Person für Bild 2",
+      "node.n4": "Personen ersetzen",
+      "note.t1": "Verwende nur Personen, die einverstanden sind, im Video zu erscheinen. Die Fotos sind Bild 1 und Bild 2 in der Reihenfolge ihrer Verbindungen; so schreibst du sie auch im Prompt, das Video als Video (grosses V). Kling O3 braucht ein Video von 3 bis 15 s, mindestens 720 px, MP4 oder MOV. Bei einem längeren Video schaltest du im Node «Personen ersetzen» «Auf die erlaubte Länge kürzen» ein: Dann zählen die ersten 15 s. 0.14 USD pro Sekunde, der Lauf fragt vorher nach. Englische Prompts gelingen oft besser.",
+      "param.n4.prompt": "Ersetze die linke Person im Video durch die Person aus Bild 1 und die rechte Person durch die Person aus Bild 2. Bewegung, Kamera und Licht des Videos bleiben unverändert.",
+      "app.title": "Personen im Video ersetzen",
+      "app.description": "Lade ein Video und zwei Fotos der Personen hoch, die einspringen, und beschreibe, wer wen ersetzt. Du erhältst das Video mit den neuen Personen. Verwende nur Personen, die zugestimmt haben.",
+      "app.input.n1.asset": "Video mit den Personen",
+      "app.input.n2.asset": "Person für Bild 1",
+      "app.input.n3.asset": "Person für Bild 2",
+      "app.input.n4.prompt": "Wer ersetzt wen",
+      "app.output.n5": "Bearbeitetes Video"
+    },
+    "es": {
+      "name": "Reemplazar personas en un vídeo",
+      "description": "Reemplaza personas de un vídeo existente por personas de dos fotos: el movimiento y la cámara se mantienen. Kling O3 (fal.ai) edita el vídeo; en el prompt escribes «Imagen 1» e «Imagen 2». El vídeo debe durar de 3 a 15 s y medir al menos 720 px; el precio es 0.14 USD por segundo de vídeo (unos 2.10 USD para 15 s) y la ejecución pregunta antes. Usa solo personas que hayan dado su consentimiento.",
+      "node.n1": "Vídeo con las personas",
+      "node.n2": "Persona para la Imagen 1",
+      "node.n3": "Persona para la Imagen 2",
+      "node.n4": "Reemplazar personas",
+      "note.t1": "Usa solo personas que hayan aceptado aparecer en el vídeo. Las fotos son la Imagen 1 y la Imagen 2 en el orden de sus conexiones; escríbelas así en el prompt, y el vídeo como Vídeo (con V mayúscula). Kling O3 necesita un vídeo de 3 a 15 s, de al menos 720 px, MP4 o MOV. Para un vídeo más largo activa «Recortar a la duración permitida» en el nodo «Reemplazar personas»: cuentan los primeros 15 s. 0.14 USD por segundo y la ejecución pregunta antes. Los prompts en inglés suelen funcionar mejor.",
+      "param.n4.prompt": "Sustituye a la persona de la izquierda del Vídeo por la persona de la Imagen 1 y a la de la derecha por la persona de la Imagen 2. El movimiento, la cámara y la luz del Vídeo no cambian.",
+      "app.title": "Reemplazar personas en un vídeo",
+      "app.description": "Sube un vídeo y dos fotos de las personas que toman el relevo, y describe quién sustituye a quién. Obtienes el vídeo con las personas nuevas. Usa solo personas que hayan dado su consentimiento.",
+      "app.input.n1.asset": "Vídeo con las personas",
+      "app.input.n2.asset": "Persona para la Imagen 1",
+      "app.input.n3.asset": "Persona para la Imagen 2",
+      "app.input.n4.prompt": "Quién sustituye a quién",
+      "app.output.n5": "Vídeo editado"
+    }
+  }
+}

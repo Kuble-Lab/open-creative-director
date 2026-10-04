@@ -209,7 +209,7 @@ async function main() {
     {
       const types = nodesFal.definitions.map((item) => item.type);
       assert.ok(types.includes('fal.depth_map'));
-      assert.deepEqual(types.slice(-3), ['fal.remove_background', 'fal.video_segment', 'fal.model'], 'the free node stays last');
+      assert.deepEqual(types.slice(-4), ['fal.remove_background', 'fal.video_segment', 'fal.video_edit', 'fal.model'], 'the free node stays last');
       const node = def();
       assert.equal(node.category, 'fal');
       assert.equal(node.paid, true);

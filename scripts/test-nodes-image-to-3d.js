@@ -499,7 +499,7 @@ async function run(iso) {
     assert.equal(descriptor.provider, 'fal');
     assert.equal(descriptor.cost.hasEstimate, true);
     // before the free node, which stays last
-    assert.deepEqual(nodesFal.definitions.map((item) => item.type).slice(-4), ['fal.image_to_3d', 'fal.remove_background', 'fal.video_segment', 'fal.model']);
+    assert.deepEqual(nodesFal.definitions.map((item) => item.type).slice(-5), ['fal.image_to_3d', 'fal.remove_background', 'fal.video_segment', 'fal.video_edit', 'fal.model']);
     // open to participants like the background removal: no Higgsfield node, no credits
     assert.equal(registryModule.isRestricted(descriptor), false);
     hasKey = false;

@@ -163,8 +163,8 @@ async function main() {
 
     /* ---------- registry ---------- */
     {
-      const types = ['fal.h3_video', 'fal.h3_reference', 'fal.h3_lipsync', 'fal.h3_camera', 'fal.h3_extend', 'fal.h3_insert', 'fal.h3_3d', 'fal.h3_style', 'fal.depth_map', 'fal.image_to_3d', 'fal.remove_background', 'fal.video_segment', 'fal.model'];
-      assert.deepEqual(nodesFal.definitions.map((def) => def.type), types, 'H3 Max first, depth map, image to 3D, background removal and video segmentation before the free node, which stays last');
+      const types = ['fal.h3_video', 'fal.h3_reference', 'fal.h3_lipsync', 'fal.h3_camera', 'fal.h3_extend', 'fal.h3_insert', 'fal.h3_3d', 'fal.h3_style', 'fal.depth_map', 'fal.image_to_3d', 'fal.remove_background', 'fal.video_segment', 'fal.video_edit', 'fal.model'];
+      assert.deepEqual(nodesFal.definitions.map((def) => def.type), types, 'H3 Max first, depth map, image to 3D, background removal, video segmentation and video editing before the free node, which stays last');
       for (const type of types) {
         const def = oneOf(registry, type);
         assert.equal(def.category, 'fal', type);
@@ -184,8 +184,8 @@ async function main() {
       assert.ok(defaultRegistry.CATEGORIES.includes('fal'));
       assert.ok(defaultRegistry.publicRegistry().categories.includes('fal'));
       for (const type of types) assert.ok(defaultRegistry.get(type), `${type} in the default registry`);
-      assert.equal(defaultRegistry.list().length, 95, '63 + 13 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes + the captions and the sound wave + the five nodes of the explainer foundation (Document, Read documents, Research, Branding, Plan explainer video) + the three of the explainer production (voice, scene, cut) (the 63 count the video over video of WP33b)');
-      assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 13);
+      assert.equal(defaultRegistry.list().length, 96, '63 + 14 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes + the captions and the sound wave + the five nodes of the explainer foundation (Document, Read documents, Research, Branding, Plan explainer video) + the three of the explainer production (voice, scene, cut) (the 63 count the video over video of WP33b)');
+      assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 14);
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });
       assert.deepEqual(ports('fal.h3_video'), { in: ['prompt', 'first_frame', 'last_frame', 'audio'], out: ['video', 'expanded_prompt'] });
@@ -198,6 +198,7 @@ async function main() {
       assert.deepEqual(ports('fal.h3_style'), { in: ['prompt', 'first_frame'], out: ['video'] });
       assert.deepEqual(ports('fal.remove_background'), { in: ['image'], out: ['image'] });
       assert.deepEqual(ports('fal.video_segment'), { in: ['video'], out: ['video'] });
+      assert.deepEqual(ports('fal.video_edit'), { in: ['video', 'images', 'prompt'], out: ['video'] });
       assert.deepEqual(ports('fal.model'), { in: ['prompt', 'images', 'videos', 'audios'], out: ['media', 'json'] });
       // prompt inputs follow the other generation nodes: a text port with an inline param fallback
       const prompt = oneOf(registry, 'fal.h3_video').inputs[0];
