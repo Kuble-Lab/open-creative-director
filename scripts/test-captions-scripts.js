@@ -128,16 +128,21 @@ function testCjkWrapping() {
 /* ---------- mixed widths ---------- */
 
 function testMixedWidth() {
-  // a space between two words of Latin letters stays; between a word and one of Chinese characters there is none
+  // a space between two words of Latin letters stays; between two words of Chinese characters there is none; next to a Latin word
+  // the space of the source stays (it is the custom in Chinese text with Latin words, and a lyric may have it on purpose)
   const mixed = captions.wrapLine(['Hello', '世界', 'foo', 'bar'], 40);
-  assert.deepEqual(visible(mixed), ['Hello世界foo bar']);
+  assert.deepEqual(visible(mixed), ['Hello 世界 foo bar']);
+  assert.deepEqual(visible(captions.wrapLine(['I', 'love', '東京', 'so', 'much'], 40)), ['I love 東京 so much']);
+  assert.deepEqual(visible(captions.wrapLine(['我爱', 'Beijing', '天安门'], 40)), ['我爱 Beijing 天安门']);
+  assert.deepEqual(visible(captions.wrapLine(['東京', '駅', 'Tokyo', '2024'], 40)), ['東京駅 Tokyo 2024'], 'between two CJK words there is none');
   const korean = captions.wrapLine(['안녕하세요', 'world', '여러분'], 40);
   assert.deepEqual(visible(korean), ['안녕하세요 world 여러분'], 'Korean is written with spaces: they stay');
 
   // the limit is in columns: ten Latin letters and five wide characters are equally long
   assert.equal(captions.wrapLine(['abcdefghij', 'あいうえお'], 12).length, 2, '10 + 1 + 10 columns do not fit 12');
   assert.equal(captions.wrapLine(['あいうえお', 'あいうえお'], 20).length, 1, 'two Japanese words of 10 columns fit 20: no space between them');
-  assert.deepEqual(visible(captions.wrapLine(['abc', 'あいうえお'], 13)), ['abcあいうえお'], '3 + 10 columns: no space before a wide character');
+  assert.deepEqual(visible(captions.wrapLine(['abc', 'あいうえお'], 14)), ['abc あいうえお'], '3 + 1 + 10 columns: the space before a wide character stays');
+  assert.equal(captions.wrapLine(['abc', 'あいうえお'], 13).length, 2, 'it counts as a column');
   assert.deepEqual(visible(captions.wrapLine(['Hello', 'world', '2024年', 'の', '春'], 14)), ['Hello world', '2024年の春'], 'rows by columns: a number and its unit stay together');
 
   // in a script: a line of mostly wide characters has more room (the columns of the automatic limit count a letter, a wide character fills two)
