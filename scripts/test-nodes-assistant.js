@@ -65,13 +65,14 @@ async function main() {
     testAnswers(A);
     await testRoundTrip(A, registry);
     testLimitAndTexts(A);
+    testQuestionEstimate(A);
     testSources();
   } finally {
     await iso.cleanup();
     guard.restore();
   }
   assert.deepEqual(guard.attempts, [], 'no request left the machine');
-  console.log('Assistent (Server): Hilfeauswahl, Katalog, Canvas als Daten, strenge Prüfung der Vorschläge, Nachfrage, Antworten lesen, Grenze, Texte.');
+  console.log('Assistent (Server): Hilfeauswahl, Katalog, Canvas als Daten, strenge Prüfung der Vorschläge, Nachfrage, Antworten lesen, Grenze, Modell-Reservierung, Texte.');
   console.log('test-nodes-assistant.js: ok');
 }
 
@@ -240,6 +241,12 @@ function testCanvas(A, registry) {
   assert.equal(request.lang, 'es');
   assert.deepEqual(request.history, [{ role: 'user', text: 'a' }, { role: 'assistant', text: 'b' }]);
   assert.equal(A.parseRequest({ ...body, lang: 'fr' }).lang, 'en', 'an unknown language falls back to English');
+  // the model of the panel: optional, a text, trimmed; nothing chosen is ''
+  assert.equal(request.model, '');
+  assert.equal(A.parseRequest({ ...body, model: '  anthropic/claude-sonnet-5.5 ' }).model, 'anthropic/claude-sonnet-5.5');
+  assert.equal(A.parseRequest({ ...body, model: null }).model, '');
+  assert.equal(A.parseRequest({ ...body, model: '   ' }).model, '');
+  for (const model of [7, true, ['a'], {}, 'x'.repeat(201)]) assert.throws(() => A.parseRequest({ ...body, model }), (error) => error.code === 'INVALID_REQUEST', JSON.stringify(model).slice(0, 30));
   const many = Array.from({ length: 20 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', text: `t${index}` }));
   assert.equal(A.parseRequest({ ...body, history: many }).history.length, A.LIMITS.historyTurns, 'a short history');
   for (const bad of [
@@ -746,6 +753,30 @@ function testLimitAndTexts(A) {
   assert.equal(A.localizeError(Object.assign(new Error('Workflow not found'), { code: 'WORKFLOW_NOT_FOUND' }), 'de').code, 'WORKFLOW_NOT_FOUND');
   assert.equal(A.localizeError(Object.assign(new Error('Project not found'), { code: 'NOT_FOUND' }), 'de').code, 'WORKFLOW_NOT_FOUND');
   assert.equal(A.COST_USD, 0.05);
+}
+
+// The reservation of one question follows the price of the model (USD per million tokens, input and output).
+function testQuestionEstimate(A) {
+  const priced = 'anthropic/claude-opus-5.5'; // 4 and 20
+  const cheap = 'anthropic/claude-sonnet-5.5'; // 2 and 10
+  // no known price, no model, a subscription model: the flat amount, as before the choice of the model
+  for (const model of ['some/unknown-model', '', undefined, 'chatgpt/gpt-6.1-sol', 'openai/gpt-5.6-luna']) {
+    assert.equal(A.questionEstimateUsd({ model, system: 'x'.repeat(50000), prompt: 'y'.repeat(50000) }), A.COST_USD, String(model));
+  }
+  // never below the flat amount
+  assert.equal(A.questionEstimateUsd({ model: cheap, prompt: 'hi', maxTokens: 10 }), A.COST_USD);
+  // prompt tokens (characters / 3) times the input price plus the longest answer times the output price, rounded up to 0.0001
+  const system = 'x'.repeat(3000);
+  const prompt = 'y'.repeat(27000);
+  const tokens = 10000;
+  assert.equal(A.questionEstimateUsd({ model: priced, system, prompt }), Math.ceil((tokens * 4 + A.LIMITS.maxTokens * 20) / 1e6 * 1e4) / 1e4);
+  assert.equal(A.questionEstimateUsd({ model: priced, system, prompt }), 0.11, 'about 11 cents for Opus 5.5 with a prompt of 30 000 characters');
+  assert.equal(A.questionEstimateUsd({ model: cheap, system, prompt }), 0.055);
+  assert.ok(A.questionEstimateUsd({ model: priced, system, prompt }) > A.questionEstimateUsd({ model: cheap, system, prompt }), 'the dearer model reserves more');
+  assert.ok(A.questionEstimateUsd({ model: priced, prompt: 'y'.repeat(60000) }) > A.questionEstimateUsd({ model: priced, prompt: 'y'.repeat(6000) }), 'a longer prompt reserves more');
+  assert.equal(A.questionEstimateUsd({ model: priced, system, prompt, maxTokens: 7000 }), Math.ceil((tokens * 4 + 7000 * 20) / 1e6 * 1e4) / 1e4, 'the longest answer counts');
+  assert.equal(A.questionEstimateUsd({ model: priced }), Math.max(A.COST_USD, Math.ceil(A.LIMITS.maxTokens * 20 / 1e6 * 1e4) / 1e4), 'an empty prompt: the answer only');
+  assert.equal(A.questionEstimateUsd(), A.COST_USD);
 }
 
 /* ---------- static checks of the source ---------- */
