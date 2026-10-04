@@ -79,6 +79,7 @@ const ROUTE_RULES = {
   'GET /api/brandings/:id/export': 'open',
   'GET /api/brandings/:id/assets/:filename': 'open',
   'GET /api/brandings/:id': 'open',
+  'PATCH /api/brandings/:id': 'admin', // the speaker voice (WP38f)
   'DELETE /api/brandings/:id': 'admin',
   'GET /api/folders': 'folder',
   'POST /api/folders': 'open', // an empty project holds nothing private
@@ -114,6 +115,9 @@ const ROUTE_RULES = {
   'GET /api/nodes/registry': 'public',
   'GET /api/nodes/options/:source': 'open',
   'GET /api/nodes/higgsfield-models/:modelId': 'open',
+  'GET /api/elevenlabs/voices/:voiceId/preview': 'open', // the free sample of a voice the caller may use
+  'GET /api/elevenlabs/voices/:voiceId/sample': 'open', // what a made sample costs
+  'POST /api/elevenlabs/voices/:voiceId/sample': 'open', // makes it once (budget and booking like any speech)
   'GET /api/workflow-templates': 'public',
   'GET /api/workflow-templates/:id': 'open', // the document of one template
   'GET /api/workflows': 'workflow', // filtered list
@@ -217,6 +221,7 @@ const PARTICIPANT_RULES = {
   'GET /api/brandings/:id/export': 'notfound',
   'GET /api/brandings/:id/assets/:filename': 'notfound',
   'GET /api/brandings/:id': 'notfound',
+  'PATCH /api/brandings/:id': 'admin',
   'DELETE /api/brandings/:id': 'admin',
   'GET /api/folders': 'own', // projects they created or that hold something shared with them
   'POST /api/folders': 'own',
@@ -252,6 +257,9 @@ const PARTICIPANT_RULES = {
   'GET /api/nodes/registry': 'filtered', // Higgsfield nodes marked as not available
   'GET /api/nodes/options/:source': 'filtered', // Higgsfield sources 403, models without ChatGPT, library voices only
   'GET /api/nodes/higgsfield-models/:modelId': 'forbidden',
+  'GET /api/elevenlabs/voices/:voiceId/preview': 'filtered', // library voices only; a cloned voice answers 404
+  'GET /api/elevenlabs/voices/:voiceId/sample': 'filtered',
+  'POST /api/elevenlabs/voices/:voiceId/sample': 'filtered', // plus the budget (402)
   'GET /api/workflow-templates': 'filtered', // no template with Higgsfield nodes
   'GET /api/workflow-templates/:id': 'filtered', // 403 for such a template
   'GET /api/workflows': 'same',

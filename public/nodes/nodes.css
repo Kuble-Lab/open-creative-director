@@ -204,6 +204,59 @@
   color: var(--text);
 }
 
+/* a voice: the list and the play button of the trial listening (voice-preview.js) */
+.nv-voice-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nv-voice-pick .nv-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nv-voice-play {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border, #2d323b);
+  border-radius: 8px;
+  background: var(--bg-raised, #1b1e24);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nv-voice-play:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.nv-voice-play[data-state='playing'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.nv-voice-play[data-state='error'] {
+  border-color: var(--danger);
+}
+
+.nv-voice-play:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* a finger needs a bigger target */
+@media (pointer: coarse) {
+  .nv-voice-play {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
 /* a model that does not fit the connections of the node: selectable, but marked */
 .nv-select option[data-misfit] {
   color: #e5c07b;

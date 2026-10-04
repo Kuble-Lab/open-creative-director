@@ -223,9 +223,9 @@ async function run(iso) {
   const brandingDef = real.get('input.branding');
   assert.equal(brandingDef.category, 'input');
   assert.ok(!brandingDef.paid);
-  assert.deepEqual(brandingDef.outputs.map((port) => [port.id, port.type]), [['brand', 'text'], ['logo', 'image']]);
+  assert.deepEqual(brandingDef.outputs.map((port) => [port.id, port.type]), [['brand', 'text'], ['logo', 'image'], ['voice', 'text']]); // WP38f: the speaker voice is the third output
   assert.equal(brandingDef.params[0].optionsSource, 'brandings');
-  assert.deepEqual(brandingDef.emptyOutputs({ branding: '' }), ['logo']);
+  assert.deepEqual(brandingDef.emptyOutputs({ branding: '' }), ['logo', 'voice']); // WP38f: no branding, no voice either
   assert.deepEqual(brandingDef.emptyOutputs({ branding: 'abc' }), []);
 
   const planDef = real.get('explainer.plan');

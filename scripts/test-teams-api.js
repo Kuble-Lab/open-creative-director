@@ -202,6 +202,7 @@ async function testActiveMode() {
     await testBudgetNodes(ctx);
     await testCostsAndMonitoring(ctx);
     await testSync(ctx);
+    await testVoicePreviewRules(ctx);
     testRouteInventory(ctx);
   } finally {
     restoreAll();
@@ -1799,6 +1800,40 @@ async function testSync(ctx) {
   assert.equal(fs.readFileSync(allowlist, 'utf8'), before);
   iso.setEnv('ACCESS_ALLOWLIST_FILE', allowlist);
   await api(`/api/teams/${teamA.id}/members/${enc('off@gmail.example')}`, { method: 'DELETE', as: ADMIN });
+}
+
+/* ---------- trial listening to the voices (WP38f) ---------- */
+
+// Participants and guests hear the library voices only: a cloned voice of the operator is a 404 for them, on all three routes.
+async function testVoicePreviewRules(ctx) {
+  const { api, iso } = ctx;
+  const elevenlabs = iso.load('lib/elevenlabs');
+  const voicePreview = iso.load('lib/voice-preview');
+  voicePreview.clearCaches();
+  patch(elevenlabs, 'hasKey', () => true);
+  patch(elevenlabs, 'listVoices', async () => [
+    { voice_id: 'libvoice1', name: 'Library', category: 'premade', preview_url: 'https://samples.example.com/lib.mp3' },
+    { voice_id: 'clonevoice1', name: 'Clone', category: 'cloned', preview_url: 'https://samples.example.com/clone.mp3' }
+  ]);
+  patch(elevenlabs, 'fetchPreview', async () => ({ buffer: Buffer.from('ID3-fake-audio'), contentType: 'audio/mpeg' }));
+  for (const as of [P1, GUEST]) {
+    const ok = await api('/api/elevenlabs/voices/libvoice1/preview', { as, raw: true });
+    assert.equal(ok.status, 200, `${as}: a library voice`);
+    assert.match(ok.headers.get('content-type'), /audio/);
+    await ok.arrayBuffer();
+    assert.equal((await api('/api/elevenlabs/voices/clonevoice1/preview', { as })).status, 404, `${as}: a cloned voice`);
+    assert.equal((await api('/api/elevenlabs/voices/clonevoice1/sample', { as })).status, 404, `${as}: its price`);
+    assert.equal((await api('/api/elevenlabs/voices/clonevoice1/sample', { as, method: 'POST', json: {} })).status, 404, `${as}: its sample`);
+    const info = await api('/api/elevenlabs/voices/libvoice1/sample', { as });
+    assert.equal(info.status, 200, info.text);
+    assert.equal(info.body.hasPreview, true);
+    assert.equal((await api('/api/elevenlabs/voices/libvoice1/sample', { as, method: 'POST', json: {} })).status, 409, `${as}: a voice with a free sample is not made`);
+  }
+  const staff = await api('/api/elevenlabs/voices/clonevoice1/preview', { as: STAFF, raw: true });
+  assert.equal(staff.status, 200, 'internal people may hear the cloned voice');
+  await staff.arrayBuffer();
+  voicePreview.clearCaches();
+  restoreAll();
 }
 
 /* ---------- inventory ---------- */

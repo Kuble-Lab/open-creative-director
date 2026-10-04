@@ -480,6 +480,10 @@
       if (Number.isFinite(option.fromUsd) && option.fromUsd > 0) out.fromUsd = option.fromUsd;
       if (typeof option.strength === 'string' && option.strength) out.strength = option.strength;
       if (option.default === true) out.default = true;
+      // voices (elevenlabs-voices): what the voice is like and whether ElevenLabs keeps a free sample of it
+      if (option.labels && typeof option.labels === 'object' && !Array.isArray(option.labels)) out.labels = option.labels;
+      if (typeof option.description === 'string' && option.description) out.description = option.description;
+      if (option.preview === true) out.preview = true;
       return out;
     });
   }
@@ -524,6 +528,7 @@
           .catch((error) => {
             entry.state = 'error';
             entry.error = error.message;
+            entry.status = error.status;
           })
           .finally(() => {
             optionListeners.forEach((fn) => fn(param.optionsSource));
@@ -1225,6 +1230,10 @@
     if (kind === 'select') {
       const select = el('select', { class: 'nv-input nv-select nv-nodrag', 'aria-label': paramLabel(param.id) });
       let current = value === null || value === undefined ? '' : String(value);
+      // A voice: a play button stands next to the list (OCDNodes.voicePreview) and the list tells what each voice is like.
+      const isVoice = param.optionsSource === 'elevenlabs-voices';
+      const voices = isVoice ? OCD.voicePreview : null;
+      let voicePlay = null;
       const fill = () => {
         const source = optionsFor(param);
         select.textContent = '';
@@ -1235,12 +1244,28 @@
           if (option.references || option.audio || option.videos || option.last_frame || option.durations || option.perSecondUsd || option.estimateUsd || option.fromUsd || option.strength) {
             const label = modelOptionLabel(option, usage);
             select.append(el('option', { value: option.value, text: label.text, dataset: label.misfit ? { misfit: '1' } : null }));
+          } else if (voices && (option.labels || option.description)) {
+            select.append(el('option', { value: option.value, text: voices.optionText(option), title: voices.detailOf(option) }));
           } else {
             select.append(el('option', { value: option.value, text: option.label }));
           }
         }
         select.value = current;
+        if (voices) {
+          const chosen = source.options.find((option) => option.value === current);
+          select.setAttribute('title', chosen ? voices.detailOf(chosen) : '');
+          if (voicePlay) voicePlay.refresh();
+        }
       };
+      if (voices) {
+        voicePlay = voices.button({
+          voice: () => {
+            const source = optionsFor(param);
+            return { value: current, state: source.state, noKey: source.status === 503, option: source.options.find((option) => option.value === current) || null };
+          },
+          model: () => (ctx.node && ctx.node.params && ctx.node.params.model_id) || ''
+        });
+      }
       fill();
       const unsubscribe = param.optionsSource
         ? onOptionsChange((source) => {
@@ -1252,14 +1277,22 @@
         current = select.value;
         ctx.onChange(current, { commit: true });
       });
+      let box = select;
+      if (voicePlay) {
+        box = el('div', { class: 'nv-voice-pick nv-nodrag' }, select, voicePlay.el);
+        select.addEventListener('change', () => voicePlay.refresh());
+      }
       return {
-        el: select,
+        el: box,
         set(next) {
           current = next === null || next === undefined ? '' : String(next);
           fill();
         },
         get: () => select.value,
-        dispose: () => unsubscribe && unsubscribe()
+        dispose: () => {
+          if (unsubscribe) unsubscribe();
+          if (voicePlay) voicePlay.dispose();
+        }
       };
     }
 

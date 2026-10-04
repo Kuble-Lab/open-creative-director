@@ -794,6 +794,7 @@ const ADMIN_ONLY_ROUTES = [
   ['DELETE', '/api/roles/abc'],
   ['POST', '/api/roles/generate', { name: 'x', brief: 'y' }],
   ['POST', '/api/brandings/import', {}],
+  ['PATCH', '/api/brandings/abc', { speaker: null }],
   ['DELETE', '/api/brandings/abc'],
   ['PUT', '/api/folders/Leer/profile', { guidelines: 'x' }],
   ['POST', '/api/folders/Leer/profile/context-files', { name: 'a.md', text: 'x' }],

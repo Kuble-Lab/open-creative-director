@@ -4594,6 +4594,8 @@ function renderBrandingsManager() {
       }, { disabled: !state.currentId || attached || inProject || state.streaming })
     );
 
+    if (OCAccess.canAdminister()) card.appendChild(brandingSpeakerBlock(branding));
+
     const confirming = state.pendingBrandingDeleteId === branding.id;
     if (OCAccess.canAdminister()) {
       actions.appendChild(
@@ -4610,6 +4612,102 @@ function renderBrandingsManager() {
     card.appendChild(actions);
     el.brandingsList.appendChild(card);
   }
+}
+
+// The speaker voice of a branding (WP38f): the list of the ElevenLabs voices with a play button, "no voice" and a short note on own voices.
+// The list is loaded once per opening of the window (GET /api/nodes/options/elevenlabs-voices); saving is PATCH /api/brandings/:id.
+const brandingVoices = { state: 'idle', options: [], status: 0 };
+
+async function loadBrandingVoices() {
+  if (brandingVoices.state === 'loading') return;
+  brandingVoices.state = 'loading';
+  try {
+    const data = await api('/api/nodes/options/elevenlabs-voices');
+    brandingVoices.options = (Array.isArray(data.options) ? data.options : []).map((option) => ({ ...option, value: String(option.value), label: String(option.label ?? option.value) }));
+    brandingVoices.state = 'ready';
+    brandingVoices.status = 0;
+  } catch (err) {
+    brandingVoices.options = [];
+    brandingVoices.state = 'error';
+    brandingVoices.status = err.status || 0;
+  }
+  if (!el.brandingsModal.classList.contains('hidden')) renderBrandingsManager();
+}
+
+async function saveBrandingSpeaker(branding, voiceId) {
+  const option = brandingVoices.options.find((entry) => entry.value === voiceId);
+  const speaker = voiceId ? { voiceId, name: option ? option.label : branding.speaker?.name || '' } : null;
+  await api(`/api/brandings/${encodeURIComponent(branding.id)}`, { method: 'PATCH', body: JSON.stringify({ speaker }) });
+  await loadBrandings();
+  setStatusI18n(voiceId ? 'branding.speaker.saved' : 'branding.speaker.removed');
+}
+
+function brandingSpeakerBlock(branding) {
+  const block = document.createElement('div');
+  block.className = 'branding-speaker';
+  const label = document.createElement('label');
+  label.className = 'branding-speaker-label';
+  label.textContent = t('branding.speaker.label');
+  block.appendChild(label);
+  const row = document.createElement('div');
+  row.className = 'nv-voice-pick';
+  const select = document.createElement('select');
+  select.className = 'settings-input branding-speaker-select';
+  select.setAttribute('aria-label', t('branding.speaker.label'));
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = brandingVoices.state === 'loading' || brandingVoices.state === 'idle' ? t('nodes.voice.loading') : t('branding.speaker.none');
+  select.appendChild(none);
+  const voices = window.OCDVoicePreview;
+  const current = branding.speaker?.voiceId || '';
+  for (const option of brandingVoices.options) {
+    const item = document.createElement('option');
+    item.value = option.value;
+    item.textContent = voices ? voices.optionText(option) : option.label;
+    if (voices) item.title = voices.detailOf(option);
+    select.appendChild(item);
+  }
+  // a voice that is not in the list (any more, or the list did not load) stays visible
+  if (current && !brandingVoices.options.some((option) => option.value === current)) {
+    const item = document.createElement('option');
+    item.value = current;
+    item.textContent = branding.speaker?.name || current;
+    select.appendChild(item);
+  }
+  select.value = current;
+  select.disabled = brandingVoices.state !== 'ready' && !current;
+  row.appendChild(select);
+  if (voices) {
+    const play = voices.button({
+      voice: () => {
+        const value = select.value;
+        return {
+          value: value || '__none__',
+          state: brandingVoices.state === 'ready' || brandingVoices.state === 'error' ? brandingVoices.state : 'loading',
+          noKey: brandingVoices.status === 503,
+          option: brandingVoices.options.find((option) => option.value === value) || null
+        };
+      },
+      model: () => ''
+    });
+    select.addEventListener('change', () => play.refresh());
+    row.appendChild(play.el);
+  }
+  select.addEventListener('change', () => {
+    select.disabled = true;
+    saveBrandingSpeaker(branding, select.value).catch((err) => {
+      setStatus(err.message);
+      renderBrandingsManager();
+    });
+  });
+  block.appendChild(row);
+  const hint = document.createElement('p');
+  hint.className = 'branding-speaker-hint';
+  hint.textContent = brandingVoices.state === 'error'
+    ? t(brandingVoices.status === 503 ? 'nodes.voice.noKey' : 'nodes.voice.listFailed')
+    : t('branding.speaker.hint');
+  block.appendChild(hint);
+  return block;
 }
 
 async function deleteBranding(id) {
@@ -4642,6 +4740,7 @@ async function openBrandingsModal() {
   showBrandingImportFeedback('');
   el.brandingsModal.classList.remove('hidden');
   el.brandingsClose.focus();
+  if (OCAccess.canAdminister() && brandingVoices.state !== 'ready') loadBrandingVoices().catch(() => {});
   el.brandingsList.innerHTML = '';
   el.brandingsList.appendChild(textNode('div', 'branding-manager-empty', t('branding.loading')));
   try {
@@ -4656,6 +4755,7 @@ async function openBrandingsModal() {
 }
 
 function closeBrandingsModal() {
+  window.OCDVoicePreview?.stop();
   state.pendingBrandingDeleteId = null;
   state.highlightedBrandingId = null;
   el.brandingImportFile.value = '';
