@@ -583,6 +583,8 @@ function testPrompts() {
   // the check
   assert.match(scene.checkSystemPrompt(), /\{"ok": boolean, "blockers": \[string\], "minor": \[string\]\}/);
   assert.match(scene.checkSystemPrompt(), /NOT visible in that frame/);
+  // the source line is the app's own element: a look at the frames never sends the scene back for it (the model cannot change it)
+  assert.match(scene.checkSystemPrompt(), /line of sources at the very bottom of the frame is put there by the app[^.]*never a blocker/);
   // frames: the earlier of half the scene and the last cue, and 0.15 s before the end
   assert.deepEqual(scene.checkTimes(10, [{ at: 1 }, { at: 3 }]), [3, 9.85], 'the last cue is before half of the scene');
   assert.deepEqual(scene.checkTimes(10, [{ at: 2 }, { at: 8 }]), [5, 9.85], 'half of the scene is before the last cue');
