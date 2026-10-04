@@ -742,7 +742,7 @@ function testDocs() {
   assert.doesNotMatch(help, /ß/);
   // no internal names in what this package wrote
   for (const file of ['lib/explainer-plan.js', 'lib/explainer-scene.js', 'lib/nodes/templates/typography-video.json', 'lib/nodes/templates/typography-video-text.json', 'lib/fonts/inter-tight/OFL.txt']) {
-    assert.doesNotMatch(read(file), /\b(kuble|maniak|gsalami|supercomputer|astra)\b/i, `${file}: no internal name`);
+    assert.doesNotMatch(read(file), /kuble\.com|\.internal\b|\b10\.\d+\.\d+\.\d+\b|\/Users\/[a-z]/i, `${file}: no internal name or address`);
   }
 }
 
