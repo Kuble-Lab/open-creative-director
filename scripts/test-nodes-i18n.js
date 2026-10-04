@@ -136,6 +136,18 @@ function testSourceKeys() {
     if (code !== 'invalid' && code !== 'validate_failed' && code !== 'invalid_param') dynamic.push(`nodes.issue.${code}.app`);
   }
   for (const key of dynamic) assert.ok(window.I18N.de[key], `missing dynamic key ${key}`);
+  // the stable upper-case codes of the engine that the page shows by their translation (a refused or failed run of single
+  // items, an empty output behind a connection): a text in every language, and the figures of the message are placeholders
+  const engineSource = fs.readFileSync(path.join(root, 'lib/nodes/engine.js'), 'utf8');
+  for (const code of ['ITEMS_NO_LIST', 'ITEMS_OUT_OF_RANGE', 'OUTPUT_EMPTY', 'OUTPUT_EMPTY_OPTIONAL']) {
+    assert.ok(engineSource.includes(`'${code}'`), `the engine no longer reports ${code}: drop its text`);
+    for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][`nodes.issue.${code}`], `${lang}: no text for ${code}`);
+  }
+  for (const lang of ['de', 'en', 'es']) {
+    const text = window.I18N[lang]['nodes.issue.ITEMS_OUT_OF_RANGE'];
+    assert.ok(text.includes('{item}') && text.includes('{length}'), `${lang}: ITEMS_OUT_OF_RANGE names the item and the length`);
+    assert.ok(window.I18N[lang]['nodes.issue.OUTPUT_EMPTY_OPTIONAL'].includes('{port}'), `${lang}: OUTPUT_EMPTY_OPTIONAL names the input`);
+  }
 
   // every connection error code the graph can produce has a message
   const codes = new Set();

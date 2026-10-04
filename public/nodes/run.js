@@ -1002,6 +1002,15 @@
       if (window.OCAccess && window.OCAccess.me().restricted) window.OCAccess.refreshMe().catch(() => {});
     };
 
+    // The toast of a run that cannot start: a refusal with a stable reason that has a translated text (nodes.issue.<reason>,
+    // e.g. ITEMS_OUT_OF_RANGE with {item} and {length}) shows it, any other error shows the server's English message.
+    const startFailedText = (error) => {
+      if (error && typeof error.reason === 'string' && ui.hasIssueText && ui.hasIssueText(error.reason)) {
+        return ui.issueText({ code: error.reason, data: error.params || {}, message: error.message });
+      }
+      return T('nodes.run.startFailed', { error: error.message });
+    };
+
     // A participant's run that cannot start: the budget is used up or too small, or nodes need a feature the account
     // does not have. Nothing is started and nothing is asked.
     async function showGate(gate) {
@@ -1098,7 +1107,7 @@
           planned = await api.plan(id, request);
         } catch (error) {
           if (error.issues) await showIssues(error.issues);
-          else ui.toast(T('nodes.run.startFailed', { error: error.message }), { kind: 'error' });
+          else ui.toast(startFailedText(error), { kind: 'error' });
           return;
         }
         const info = describePlan(planned, titleOf);
@@ -1134,7 +1143,7 @@
           } else if (error.issues) {
             await showIssues(error.issues);
           } else {
-            ui.toast(T('nodes.run.startFailed', { error: error.message }), { kind: 'error' });
+            ui.toast(startFailedText(error), { kind: 'error' });
           }
         }
       } finally {

@@ -101,6 +101,16 @@ function buildEnvironment() {
     emptyOutputs: (params) => (params.on ? [] : ['out']),
     execute: async (_ctx, _inputs, params) => ({ variants: [params.on ? { out: textValue('value') } : {}] })
   });
+  // the same, but the person causes the empty output on purpose (a switch): no warning behind it
+  registry.register({
+    type: 't.switch_on_purpose',
+    category: 'text',
+    outputs: [{ id: 'out', type: 'text' }],
+    params: [{ id: 'on', kind: 'boolean', default: true }],
+    emptyOutputs: (params) => (params.on ? [] : ['out']),
+    emptyOutputsSwitched: true,
+    execute: async (_ctx, _inputs, params) => ({ variants: [params.on ? { out: textValue('value') } : {}] })
+  });
   registry.register({
     type: 't.optional_in',
     category: 'text',
@@ -682,6 +692,18 @@ async function main() {
       );
       const plan = await engine.plan(wf.id, { mode: 'node', nodeIds: ['o'] });
       assert.equal(plan.valid, true, JSON.stringify(plan.issues));
+      // an empty output of an ordinary node on an optional input is a possible mistake: one warning per connection, no error
+      const warned = plan.issues.filter((issue) => issue.code === 'OUTPUT_EMPTY_OPTIONAL');
+      assert.deepEqual(warned.map((issue) => [issue.nodeId, issue.port, issue.level, issue.data.input, issue.data.output]), [['o', 'extra', 'warning', 'extra', 'out'], ['o', 'more', 'warning', 'more', 'out']]);
+      // switched off on purpose (def.emptyOutputsSwitched): no warning
+      const quiet = await makeWorkflow(
+        [node('s', 't.switch_on_purpose', { on: false }), node('m', 't.single', { text: 'main' }), node('o', 't.optional_in')],
+        edges('m.out>o.main', 's.out>o.extra')
+      );
+      const quietPlan = await engine.plan(quiet.id, { mode: 'node', nodeIds: ['o'] });
+      assert.equal(quietPlan.valid, true);
+      assert.deepEqual(quietPlan.issues, [], 'no warning behind an output that was switched off on purpose');
+      assert.equal((await run(quiet.id, { mode: 'node', nodeIds: ['o'] })).status, 'completed');
       const record = await run(wf.id, { mode: 'node', nodeIds: ['o'] });
       assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
       const entry = (await results(wf.id, 'o')).history[0];
