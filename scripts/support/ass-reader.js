@@ -7,6 +7,9 @@
 //   parseAss(text)           // { info: { PlayResX, ... }, style: { Fontname, ... }, events: [{ start, end, text }] }, times in hundredths of a second
 //   lex(eventText)           // { visible, blocks, segments }: the text as it is shown ('\n' for \N), the override blocks, the text after each block
 //   karaokeWords(eventText)  // [{ text, from, to }]: the words of a karaoke line with the start and end of their fill, counted from the event
+//   rowsOf(eventText)        // the rows of the event as shown: the visible text split at \N
+//   markedRows(eventText)    // per row, the texts that stand in the highlight colour (\1c ... \r), in order: [[text, ...], ...]
+//   encodingOf(text)         // the Encoding column of the style (-1: libass detects the direction of a line; 1: it does not)
 
 const assert = require('assert/strict');
 
@@ -107,6 +110,29 @@ function karaokeWords(eventText) {
   return words;
 }
 
+// The rows of an event as libass lays them out: the visible text split at the line breaks
+function rowsOf(eventText) {
+  return lex(eventText).visible.split('\n');
+}
+
+// The parts of each row that a `words` event marks with the highlight colour (a block \1c...& up to the next \r)
+function markedRows(eventText) {
+  const rows = [[]];
+  let marking = false;
+  const { segments } = lex(eventText);
+  for (const segment of segments) {
+    if (segment.tags !== null) marking = /^\\1c&H[0-9A-F]{6}&$/.test(segment.tags);
+    const pieces = segment.text.split('\n');
+    pieces.forEach((piece, index) => {
+      if (index > 0) rows.push([]);
+      if (marking && piece) rows[rows.length - 1].push(piece);
+    });
+  }
+  return rows;
+}
+
+const encodingOf = (text) => Number(parseAss(text).style.Encoding);
+
 const OWN_BLOCK = /^(?:(?:\\k\d+)?\\kf\d+|\\1c&H[0-9A-F]{6}&|\\r)$/;
 
-module.exports = { parseAss, lex, karaokeWords, OWN_BLOCK, toCentis };
+module.exports = { parseAss, lex, karaokeWords, rowsOf, markedRows, encodingOf, OWN_BLOCK, toCentis };
