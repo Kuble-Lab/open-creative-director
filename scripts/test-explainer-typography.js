@@ -1284,7 +1284,7 @@ async function run(iso, eleven) {
       assert.match(doc.description, lang === 'de' ? /Bestätigung/ : lang === 'es' ? /confirmes/ : /confirmation/);
       assert.match(doc.description, lang === 'de' ? /keine Bilder und keine Clips/ : lang === 'es' ? /No se crean imágenes ni clips/ : /No pictures and no clips/);
       assert.match(doc.description, /Inter Tight/);
-      assert.match(doc.description, lang === 'de' ? /Etwa (2 bis 3|1\.50 bis 2\.50) US-Dollar für 90 Sekunden/ : lang === 'es' ? /Unos (2 a 3|1,50 a 2,50) dólares para 90 segundos/ : /About (2 to 3|1\.50 to 2\.50) US dollars for 90 seconds/);
+      assert.match(doc.description, lang === 'de' ? /Etwa (3\.80 bis 4|3\.70) US-Dollar für 90 Sekunden.*Schätzung aus einem Testlauf/ : lang === 'es' ? /Unos (3,80 a 4|3,70) dólares para 90 segundos.*estimación de una ejecución de prueba/ : /About (3\.80 to 4|3\.70) US dollars for 90 seconds.*an estimate from one test run/);
       assert.equal(doc.graph.nodes.find((node) => node.id === 'n4').params.language, 'auto');
       for (const text of [doc.name, doc.description, doc.app.title, doc.app.description, doc.graph.notes[0].text, ...doc.graph.nodes.map((node) => node.title || ''), ...doc.graph.nodes.map((node) => node.params.prompt || '')]) assert.equal(String(text).includes('ß'), false, `${id}.${lang}: no sharp s`);
     }
