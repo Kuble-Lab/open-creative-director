@@ -48,6 +48,8 @@ const EXPECTED = [
   'storyboard-clips',
   'talking-portrait',
   'text-on-video',
+  'typography-video',
+  'typography-video-text',
   'video-cutout-overlay',
   'video-to-post',
   'video-with-music'
@@ -362,9 +364,9 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter'].includes(item.id)).every((item) => item.available));
-      // the explainer videos speak with ElevenLabs
-      for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter']) {
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text'].includes(item.id)).every((item) => item.available));
+      // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
+      for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
       }
       // the music templates need the ElevenLabs key, and ffmpeg where the video is mixed
@@ -517,9 +519,10 @@ async function main() {
         // of video-cutout-overlay (an upper bound from max_seconds: 10 s at 30 frames = 19 blocks of 16 frames at 0.005 USD)
         // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
         // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
-        const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic'].includes(id);
+        const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic', 'typography-video', 'typography-video-text'].includes(id);
         assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
-        if (explainerVideo) assert.equal(cost.usd, 0.4, `${id}: only the music is known beforehand`);
+        // the typography videos are 90 s long, so is their music (90 s at 0.20 USD a minute)
+        if (explainerVideo) assert.equal(cost.usd, id.startsWith('typography-') ? 0.3 : 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));
         assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
         if (FREE.includes(id)) assert.deepEqual(cost.providers, [], `${id}: nothing is billed`);
