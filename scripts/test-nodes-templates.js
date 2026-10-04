@@ -518,10 +518,11 @@ async function main() {
         const cost = summary[id].cost;
         // photo-to-3d is the exception: both of its nodes (background removal, image to 3D) have a price table; so has the segmentation
         // of video-cutout-overlay (an upper bound from max_seconds: 10 s at 30 frames = 19 blocks of 16 frames at 0.005 USD)
+        // replace-people-in-video: an upload has no length, so the plan shows the upper bound of Kling O3 (15 s and the slack of 0.05 s at 0.14 USD a second)
         // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
         // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
         const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic', 'typography-video', 'typography-video-text'].includes(id);
-        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' || id === 'replace-people-in-video' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
         // the typography videos are 90 s long, so is their music (90 s at 0.20 USD a minute)
         if (explainerVideo) assert.equal(cost.usd, id.startsWith('typography-') ? 0.3 : 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));

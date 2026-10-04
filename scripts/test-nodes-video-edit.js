@@ -81,7 +81,8 @@ const CODES = [
   'VIDEO_EDIT_PROMPT_REQUIRED',
   'VIDEO_EDIT_PROMPT_IMAGE',
   'VIDEO_EDIT_WAN_PROMPT',
-  'VIDEO_EDIT_FFMPEG_MISSING'
+  'VIDEO_EDIT_FFMPEG_MISSING',
+  'VIDEO_EDIT_LENGTH_UNKNOWN'
 ];
 
 const placeholdersOf = (text) => [...new Set((text.match(/\{[a-zA-Z]+\}/g) || []).map((item) => item.slice(1, -1)))];
@@ -103,6 +104,16 @@ function testPromptTranslation() {
   assert.equal(t('Verändere Video 1.', 'elements', 0), 'Verändere @Video1.');
   assert.equal(t('Ersetze im Video 2 Personen durch Bild 1.', 'elements', 1), 'Ersetze im @Video1 2 Personen durch @Element1.');
   assert.equal(t('Replace 2 people in the Video, not in the video game', 'elements', 0), 'Replace 2 people in the @Video1, not in the video game', 'only the capital V is the video');
+  // the usual spelling in English and Spanish is lower case: after an article it is the video, in any case
+  assert.equal(t('Replace the man in the video with Image 1', 'elements', 1), 'Replace the man in the @Video1 with @Element1');
+  assert.equal(t('Sustituye a la persona del vídeo por la Imagen 1', 'elements', 1), 'Sustituye a la persona del @Video1 por la @Element1');
+  assert.equal(t('Cambia el video y el vídeo', 'elements', 0), 'Cambia el @Video1 y el @Video1');
+  assert.equal(t('Ersetze im video die Person und das VIDEO bleibt', 'elements', 0), 'Ersetze im @Video1 die Person und das @Video1 bleibt');
+  // ... but a compound or a word joined by a hyphen is not the video, and neither is a "video" without an article
+  assert.equal(t('not in the video game, the video clip, a video file, el video juego', 'elements', 0), 'not in the video game, the video clip, a video file, el video juego');
+  assert.equal(t('the video-style look, Video-Ende, video call', 'elements', 0), 'the video-style look, Video-Ende, video call');
+  // a file name is no image
+  assert.equal(t('use image1.png and Image 1', 'elements', 1), 'use image1.png and @Element1');
   // words that only contain the words are left alone
   assert.equal(t('Bilder, Imaginary Images, Videos, Videoclip, Bildung', 'elements', 2), 'Bilder, Imaginary Images, Videos, Videoclip, Bildung');
   // a name the model knows already stays
@@ -206,7 +217,7 @@ function testTemplate() {
   assert.deepEqual(defaultRegistry.normalizeParams(defaultRegistry.get(TYPE), edit.params), edit.params, 'every param is one of the node, with a valid value');
   // video, then the two images in the order of the numbers in the prompt
   assert.deepEqual(template.graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`), ['n1.video>n4.video', 'n2.image>n4.images', 'n3.image>n4.images', 'n4.video>n5.inputs']);
-  assert.deepEqual(template.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n3.asset', 'n4.prompt']);
+  assert.deepEqual(template.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n3.asset', 'n4.prompt', 'n4.cut_to_limit'], 'the app can switch on the cut: a long video would otherwise stop the run with no way out in the app view');
   assert.equal(template.app.outputs[0].node, 'n5');
   assert.ok(templates.ORDER.includes('replace-people-in-video'));
 
@@ -219,6 +230,8 @@ function testTemplate() {
     assert.match(doc.description, consent[lang], `${lang}: description`);
     assert.match(doc.graph.notes[0].text, consent[lang], `${lang}: note`);
     assert.match(doc.app.description, consent[lang], `${lang}: app`);
+    const cutLabel = doc.app.inputs.find((entry) => entry.param === 'cut_to_limit');
+    assert.ok(cutLabel && /15/.test(cutLabel.label), `${lang}: the switch of the cut has a label in the language (${cutLabel && cutLabel.label})`);
     // the prompt speaks of the images in the language of the template and the node turns it into the names of the model
     const prompt = doc.graph.nodes.find((node) => node.id === 'n4').params.prompt;
     assert.match(prompt, lang === 'de' ? /Bild 1.*Bild 2/ : lang === 'en' ? /Image 1.*Image 2/ : /Imagen 1.*Imagen 2/, `${lang}: prompt`);
@@ -230,10 +243,12 @@ function testTemplate() {
     assert.equal(JSON.stringify(doc).includes('ß'), false, `${lang}: no sharp s`);
   }
   assert.equal(JSON.stringify(template).includes('ß'), false);
-  // the gallery: it needs the fal.ai key and shows no price (the length of the video decides)
+  // the gallery: it needs the fal.ai key and shows the upper bound of Kling O3 (15 s and the slack of the length, 0.14 USD per second): an
+  // upload has no length the plan knows, but a longer video is refused
   const listed = templates.listTemplates({ lang: 'de' }).find((item) => item.id === 'replace-people-in-video');
   assert.deepEqual(listed.requires, ['fal']);
-  assert.equal(listed.cost.kind, 'unknown');
+  assert.equal(listed.cost.kind, 'estimate');
+  near(listed.cost.usd, 15.05 * 0.14, 'the bound');
   assert.deepEqual(listed.nodeTypes, ['input.video', 'input.image', TYPE, 'output.result']);
 }
 
@@ -293,6 +308,7 @@ async function main() {
     // ffprobe: measured values come from this table (by file name); ffmpeg: a fake that writes the cut file, or the real one
     let probing = true;
     let fakeCut = true;
+    let fakeCutBytes = 0; // > 0: the fake cut file has this size (a sparse file)
     const probes = new Map();
     const cuts = [];
     // `binariesQueue` answers the next calls one by one (true = found): ffprobe found for the video, ffmpeg gone by the time of the cut
@@ -310,6 +326,7 @@ async function main() {
       if (!fakeCut) return realRunProcess(command, args, options);
       cuts.push(args.slice());
       await fsp.writeFile(args[args.length - 1], 'cut video');
+      if (fakeCutBytes) await fsp.truncate(args[args.length - 1], fakeCutBytes);
       return { stdout: '', stderr: '' };
     });
 
@@ -622,10 +639,20 @@ async function main() {
       await assert.rejects(nodesFal.planVideoEdit(ctx(), { video: fine, prompt }, { ...normalised({}), model: 'sora' }), /model: "sora" is not a valid option/);
       nothingSent();
 
-      // without ffprobe the length and the size of the pictures cannot be read: the checks that need them are skipped, the rest holds
+      // without ffprobe the size of the pictures and the resolution cannot be read: the checks that need them are skipped, the rest holds.
+      // The length is the price: a video of which neither the ledger nor ffprobe knows the length is refused before anything is uploaded
+      // (it would be queued without a price, reserve nothing and never be booked); a video whose length the ledger knows is priced by it
       probing = false;
       resetCalls();
-      await run({ video: await video({ duration: null, width: 0, height: 0 }), prompt }, {});
+      await refused({ video: await video({ duration: null, width: 0, height: 0 }), prompt }, {}, 'VIDEO_EDIT_LENGTH_UNKNOWN', { message: /Nothing was uploaded or charged/ });
+      await refused({ video: await video({ duration: null, width: 0, height: 0 }), images: pic }, { model: 'wan_replace' }, 'VIDEO_EDIT_LENGTH_UNKNOWN');
+      resetCalls();
+      {
+        const known = { ...(await video({ duration: null, width: 0, height: 0 })), duration: 8 };
+        const planned = await nodesFal.planVideoEdit(ctx(), { video: known, prompt }, normalised({}));
+        near(planned.estimateUsd, 8 * 0.14, 'the length of the ledger sets the price');
+      }
+      await run({ video: { ...(await video({ duration: null, width: 0, height: 0 })), duration: 8 }, prompt }, {});
       assert.equal(falCalls.submit.length, 1);
       await refused({ video: fine, images: pic, prompt }, { model: 'gemini_omni' }, 'VIDEO_EDIT_GEMINI_IMAGES');
       probing = true;
@@ -703,8 +730,9 @@ async function main() {
       await useGraph(graphWith(clip12.assetId, {}));
       result = await engine.plan(workflow.id, { mode: 'all' });
       assert.equal(result.valid, true, JSON.stringify(result.issues));
-      assert.equal(result.nodes.e.estimate, null, 'the input node has not run: the length is not known');
-      assert.equal(result.totals.unknownNodes, 1);
+      // the input node has not run: the length is not known, but Kling takes 15 s at most (and the slack of the length), so the plan shows the bound
+      near(result.nodes.e.estimate.usd, 15.05 * 0.14, 'the upper bound of Kling O3');
+      assert.equal(result.totals.unknownNodes, 0);
       await readyInputs(['v']);
       result = await engine.plan(workflow.id, { mode: 'all' });
       near(result.nodes.e.estimate.usd, 1.68, '12 s at 0.14');
@@ -734,14 +762,19 @@ async function main() {
       near(result.nodes.e.estimate.usd, 3, 'cut to 10 s at 0.30');
       result = await engine.plan(workflow.id, { mode: 'all', overrides: { e: { cut_to_limit: true, model: 'wan_replace' } } });
       assert.equal(result.valid, false, 'Wan needs its image');
-      // an upload carries no length: still unknown after the input node ran
+      // an upload carries no length the plan knows: the bound of the model stays after the input node ran (a longer video is refused or cut)
       await useGraph(graphWith(upload.id, {}));
       await readyInputs(['v']);
       result = await engine.plan(workflow.id, { mode: 'all' });
-      assert.equal(result.nodes.e.estimate, null, 'an upload has no length');
-      assert.equal(result.totals.unknownNodes, 1);
-      // the estimate of the card without a connection: unknown, never a guess from an earlier run
-      assert.equal(def.cost.estimate(normalised({})), null);
+      near(result.nodes.e.estimate.usd, 15.05 * 0.14, 'an upload has no length: the bound of Kling O3');
+      assert.equal(result.totals.unknownNodes, 0);
+      result = await engine.plan(workflow.id, { mode: 'all', overrides: { e: { model: 'gemini_omni', resolution: '1080p' } } });
+      near(result.nodes.e.estimate.usd, 10.05 * 0.15, 'the bound of Gemini Omni at 1080p');
+      // Wan Replace takes any length: no bound, the price stays unknown (and the run needs the length, see VIDEO_EDIT_LENGTH_UNKNOWN)
+      assert.equal(nodesFal.videoEditPlanUsd(normalised({ model: 'wan_replace' }), { inputs: {} }), null);
+      // the estimate of the card without a connection: the bound of the model, never a guess from an earlier run
+      near(def.cost.estimate(normalised({})), 15.05 * 0.14, 'the card of Kling O3 without a video');
+      assert.equal(def.cost.estimate(normalised({ model: 'wan_replace' })), null);
       assert.equal(def.cost.history, false);
       near(def.cost.estimate(normalised({}), { inputs: { video: { type: 'video', duration: 8 } } }), 1.12, '8 s at 0.14');
       near(def.cost.estimate(normalised({ model: 'gemini_omni', resolution: '1080p' }), { inputs: { video: { type: 'video', duration: 8 } } }), 1.2, '8 s at 0.15');
@@ -815,7 +848,7 @@ async function main() {
       assert.equal(cuts.length, 1);
       const args = cuts[0];
       assert.equal(args[args.indexOf('-i') + 1], assets.assetFilePath(long), 'the cut starts from the video of the node');
-      assert.equal(args[args.indexOf('-t') + 1], '15', 'the first 15 s');
+      assert.equal(args[args.indexOf('-t') + 1], '14.95', 'the first 15 s, a frame under the limit: at 29.97 fps a cut at 15 s would be 15.015 s long');
       assert.ok(args.includes('0:a?'), 'with its sound');
       assert.equal(args.includes('-ss'), false, 'from the start');
       assert.ok(logs.some((line) => /first 15 s/.test(line)), 'the run log says so');
@@ -837,7 +870,7 @@ async function main() {
       resetCalls();
       cuts.length = 0;
       await run({ video: long, prompt }, { cut_to_limit: true, model: 'gemini_omni', resolution: '1080p' });
-      assert.equal(cuts[0][cuts[0].indexOf('-t') + 1], '10');
+      assert.equal(cuts[0][cuts[0].indexOf('-t') + 1], '9.95');
       assert.deepEqual(lastSubmit().input, { video_url: 'https://v3b.fal.media/files/trimmed-video.mp4', prompt: 'Make it rain in the Video', resolution: '1080p' });
       job = (await store.readSession(sessionId)).jobs.slice(-1)[0];
       near(job.costEstimateUsd, 1.5, '10 s at 0.15');
@@ -865,6 +898,23 @@ async function main() {
       // without the switch the same video is refused and not cut
       await refused({ video: long, prompt }, {}, 'VIDEO_EDIT_VIDEO_TOO_LONG');
       assert.equal(cuts.length, 0);
+
+      // the threshold of the estimate is that of the check: 15.03 s (inside the slack of the length) is sent as it is, and priced as it is
+      resetCalls();
+      planned = await plan({ video: await video({ duration: 15.03 }), prompt }, { cut_to_limit: true });
+      assert.equal(planned.trimmed, false);
+      assert.equal(cuts.length, 0);
+      near(planned.estimateUsd, 15.03 * 0.14, 'the length that is sent');
+      near(nodesFal.videoEditPlanUsd(normalised({ cut_to_limit: true }), { inputs: { video: { duration: 15.03 } } }), 15.03 * 0.14);
+      near(nodesFal.videoEditPlanUsd(normalised({ cut_to_limit: true }), { inputs: { video: { duration: 15.2 } } }), 15 * 0.14, 'above the slack: cut to 15 s');
+
+      // a cut that is written again can be above the upload limit: said with the code and the advice, after the cut, before the upload
+      fakeCutBytes = 91 * 1024 * 1024;
+      resetCalls();
+      await refused({ video: long, prompt }, { cut_to_limit: true }, 'VIDEO_EDIT_VIDEO_TOO_HEAVY', { message: /at most 90 MB .*after it was cut to 15 s/ });
+      nothingSent();
+      assert.deepEqual(await scratchLeftovers(), [], 'the scratch folder is removed');
+      fakeCutBytes = 0;
 
       // no ffmpeg: said before anything is uploaded
       binariesQueue.push(true, false);
@@ -904,10 +954,27 @@ async function main() {
       const { stdout } = await execFileAsync(realBinaries.ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', uploadedCopies[0]]);
       const data = JSON.parse(stdout);
       const seconds = Number(data.format.duration);
-      assert.ok(seconds > 9.8 && seconds < 10.3, `the cut file is about 10 s long (${seconds})`);
+      assert.ok(seconds > 9.8 && seconds <= 10, `the cut file is about 10 s long and not above the limit (${seconds})`);
       assert.ok(data.streams.some((stream) => stream.codec_type === 'audio'), 'with its sound');
       assert.ok(data.streams.some((stream) => stream.codec_type === 'video' && stream.codec_name === 'h264'), 'as an MP4 with H.264');
       assert.deepEqual(await scratchLeftovers(), [], 'no scratch folder left');
+      // a phone video at 29.97 fps: a cut at exactly 10 s would be 10.01 s long, above the limit of the model
+      const phoneVideo = async (seconds) => {
+        const file = path.join(tmpDir, `phone-${seconds}.mp4`);
+        await execFileAsync(realBinaries.ffmpeg, ['-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=320x180:rate=30000/1001:duration=${seconds}`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+        return media('video', '.mp4', { duration: seconds, width: 1280, height: 720, content: await fsp.readFile(file) });
+      };
+      for (const [raw, limit, seconds] of [[{ model: 'gemini_omni', cut_to_limit: true }, 10, 14], [{ cut_to_limit: true }, 15, 20]]) {
+        const source = await phoneVideo(seconds);
+        fakeCut = false;
+        resetCalls();
+        uploadedCopies.length = 0;
+        await run({ video: source, prompt: text('Make it rain') }, raw);
+        fakeCut = true;
+        const probed = await execFileAsync(realBinaries.ffprobe, ['-v', 'error', '-show_format', '-of', 'json', uploadedCopies[0]]);
+        const measured = Number(JSON.parse(probed.stdout).format.duration);
+        assert.ok(measured > limit - 0.2 && measured <= limit, `29.97 fps cut to ${limit} s: ${measured} s is not above the limit`);
+      }
     } else {
       console.log('ffmpeg not found: the real cut is skipped');
     }

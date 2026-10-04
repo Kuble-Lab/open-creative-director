@@ -128,7 +128,7 @@ const GOLDEN = [
   ['de', 'participant', 0, 'kling', (r) => {
     // no Higgsfield for participants: nothing, or at most the free fal.ai model, the video node with a model choice and the video
     // editing node (Kling O3), which all name Kling as a keyword. Never noise.
-    assert.ok(r.every((entry) => ['fal.model', 'video.generate', 'fal.video_edit'].includes(entry.type)), `only the free fal.ai model may match: ${types(r)}`);
+    assert.ok(r.every((entry) => ['fal.model', 'video.generate', 'fal.video_edit'].includes(entry.type)), `only the free fal.ai model, the video nodes and the video editor may match: ${types(r)}`);
     assert.ok(!r.some((entry) => ['image.chroma_key', 'image.invert', 'image.adjust', 'image.crop'].includes(entry.type)));
   }],
   ['de', 'admin', 13, 'kling', (r) => {
