@@ -690,7 +690,7 @@ All routes live in `lib/nodes/routes.js` as `registerNodeRoutes(app, { runtime, 
 | Method | Route | Notes |
 | --- | --- | --- |
 | POST | `/api/workflows/:id/runs/plan` | run request (§9.1) → plan (§9.4) |
-| POST | `/api/workflows/:id/assistant` | `{ question, canvas, history?, lang? }` → `{ answer, mentions, insert?, … }`: explains nodes, proposes nodes and connections (checked on the server), never runs anything; see IMPLEMENTATION-NOTES, "Assistant" (server part and panel) |
+| POST | `/api/workflows/:id/assistant` | `{ question, canvas, history?, lang?, model? }` → `{ answer, mentions, insert?, … }`: explains nodes, proposes nodes and connections (checked on the server), never runs anything; `model` is one of the language models the person may use in the chat (`GET /api/config`, `brainModels`), any other gives `403 FORBIDDEN_FOR_ROLE`, none: the model of a new chat; the budget of a participant reserves the estimated price of the question for that model, at least 5 cents; see IMPLEMENTATION-NOTES, "Assistant" (server part and panel) |
 | POST | `/api/workflows/:id/runs` | run request + `rev` (must equal saved rev; client flushes autosave first) → 202 `{ runId }`; 409 active run or rev mismatch; 429 limit |
 | GET | `/api/workflows/:id/runs/:runId` | run record |
 | POST | `/api/workflows/:id/runs/:runId/cancel` | `{ ok }` |
