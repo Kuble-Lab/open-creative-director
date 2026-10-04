@@ -217,7 +217,8 @@ function testTemplate() {
   assert.deepEqual(defaultRegistry.normalizeParams(defaultRegistry.get(TYPE), edit.params), edit.params, 'every param is one of the node, with a valid value');
   // video, then the two images in the order of the numbers in the prompt
   assert.deepEqual(template.graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`), ['n1.video>n4.video', 'n2.image>n4.images', 'n3.image>n4.images', 'n4.video>n5.inputs']);
-  assert.deepEqual(template.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n3.asset', 'n4.prompt', 'n4.cut_to_limit'], 'the app can switch on the cut: a long video would otherwise stop the run with no way out in the app view');
+  // WP41: the app also has the switch "edit in parts", the better way out for a long video (the cut keeps only the first 15 s)
+  assert.deepEqual(template.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n3.asset', 'n4.prompt', 'n4.cut_to_limit', 'n4.in_parts'], 'the app can switch on the cut and the parts: a long video would otherwise stop the run with no way out in the app view');
   assert.equal(template.app.outputs[0].node, 'n5');
   assert.ok(templates.ORDER.includes('replace-people-in-video'));
 
@@ -414,7 +415,7 @@ async function main() {
       assert.deepEqual(def.inputs.map((port) => `${port.id}:${port.type}${port.required ? '*' : ''}${port.multiple ? `+${port.max}` : ''}`), ['video:video*', 'images:image+4', 'prompt:text']);
       assert.deepEqual(def.outputs.map((port) => `${port.id}:${port.type}`), ['video:video']);
       const param = (id) => def.params.find((item) => item.id === id);
-      assert.deepEqual(param('model').options, ['kling_o3', 'wan_replace', 'gemini_omni']);
+      assert.deepEqual(param('model').options, ['kling_o3', 'wan_replace', 'gemini_omni', 'runway_aleph'], 'WP41 adds Runway Aleph 2.0 at the end');
       assert.equal(param('model').default, 'kling_o3');
       assert.deepEqual(param('quality').options, ['standard', 'pro', '4k']);
       assert.equal(param('quality').default, 'standard');
@@ -432,8 +433,8 @@ async function main() {
       assert.deepEqual(param('keep_audio').showIf, { param: 'model', equals: 'kling_o3' });
       assert.deepEqual(param('resolution').showIf, { param: 'model', equals: 'gemini_omni' });
       assert.deepEqual(param('wan_resolution').showIf, { param: 'model', equals: 'wan_replace' });
-      assert.deepEqual(param('prompt').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni'] }, 'Wan takes no prompt: the field is not shown');
-      assert.deepEqual(param('cut_to_limit').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni'] }, 'Wan names no limit to cut to');
+      assert.deepEqual(param('prompt').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph'] }, 'Wan takes no prompt: the field is not shown');
+      assert.deepEqual(param('cut_to_limit').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph'] }, 'Wan names no limit to cut to');
       // an old node of another type and the keys of the neighbours: unchanged
       assert.ok(defaultRegistry.get('fal.h3_reference') && defaultRegistry.get('fal.model') && defaultRegistry.get('fal.video_segment'));
       assert.ok(defaultRegistry.get(TYPE), 'in the default registry');
