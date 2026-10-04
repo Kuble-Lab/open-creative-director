@@ -152,6 +152,23 @@ async function run(iso, realFetch) {
     assert.equal((await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1' })).usd, null, 'no reported cost stays null');
   }
 
+  /* ---------- how much a thinking model thinks: OpenRouter reasoning.effort, only when asked for (WP40 part C) ---------- */
+  {
+    reply = () => ({ choices: [{ message: { content: 'ok' } }], usage: { cost: 0.01 } });
+    for (const effort of ['low', 'medium', 'high']) {
+      posts.length = 0;
+      await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1', maxTokens: 9000, reasoningEffort: effort });
+      assert.deepEqual(posts[0].payload.reasoning, { effort }, effort);
+      assert.equal(posts[0].payload.max_tokens, 9000);
+    }
+    // unset, or a value that is not one of the three: the model's own thinking, no reasoning in the payload
+    for (const effort of [undefined, null, '', 'none', 'max', 'LOW', 3]) {
+      posts.length = 0;
+      await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', sessionId: 's1', reasoningEffort: effort });
+      assert.ok(!('reasoning' in posts[0].payload), String(effort));
+    }
+  }
+
   /* ---------- an empty answer is billed all the same (WP40 part C) ---------- */
   {
     posts.length = 0;

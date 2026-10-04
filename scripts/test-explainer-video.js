@@ -805,7 +805,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.ok(flaky.logs.some((line) => /attempt 1 of 3: the model failed \(the model is overloaded\)/.test(line)));
   }
 
-  /* ---------- an empty answer is billed, logged, and after the token limit the next try gets more room (WP40 part C) ---------- */
+  /* ---------- an empty answer is billed, logged, and after the token limit the next try thinks less (WP40 part C) ---------- */
 
   {
     // what llm.completeText throws for an empty answer (lib/nodes/llm.js): the cost, the reason and the tokens are on the error
@@ -814,28 +814,31 @@ async function run(iso, { eleven, setVoiceBytes }) {
       { emptyAnswer: true, usd, finishReason, completionTokens: 9000, reasoningTokens: 8950 }
     );
 
-    // empty at the limit: the failed try is paid, the log names why, the next try may use more, and a good scene follows
+    // what the writer was asked for: the limit of tokens and the thinking (undefined is the model's own)
+    const asked = () => writerCalls().map((call) => [call.options.maxTokens, call.options.reasoningEffort]);
+
+    // empty at the limit: the failed try is paid, the log names why, the next try thinks less (same limit), and a good scene follows
     reset();
     queue.writer.push(emptyError('length'));
     const lengthCtx = makeCtx();
     const lengthResult = await exec('explainer.scene', lengthCtx, baseInputs(0, { brand: NEUTRAL }), {});
     assert.equal(writerCalls().length, 2);
-    assert.equal(sceneLib.MAX_TOKENS_RETRY, 16000);
-    assert.equal(writerCalls()[0].options.maxTokens, sceneLib.MAX_TOKENS, 'the first try as ever');
-    assert.equal(writerCalls()[1].options.maxTokens, sceneLib.MAX_TOKENS_RETRY, 'after "length" the next try has more room');
+    assert.equal(sceneLib.RETRY_REASONING_EFFORT, 'low');
+    assert.ok(!('reasoningEffort' in writerCalls()[0].options), 'the first try thinks as the model does by itself');
+    assert.deepEqual(asked(), [[sceneLib.MAX_TOKENS, undefined], [sceneLib.MAX_TOKENS, 'low']], 'after "length" the next try thinks less, with the same limit');
     assert.ok(lengthCtx.logs.some((line) => /attempt 1 of 3: the model failed \(The model returned an empty answer \(finish_reason length, 9000 output tokens, 8950 of them reasoning\)\)/.test(line)), lengthCtx.logs.join(' | '));
-    assert.ok(lengthCtx.logs.some((line) => /attempt 1 of 3: the limit of 9000 tokens was reached before any code: the next try may use 16000/.test(line)), lengthCtx.logs.join(' | '));
+    assert.ok(lengthCtx.logs.some((line) => line === 's1: attempt 1 of 3: the model thought until the limit of 9000 tokens and wrote nothing: the next try thinks less (effort low)'), lengthCtx.logs.join(' | '));
     near(lengthResult.cost.usd, 0.2 + USD.writer + USD.check, 1e-9, 'the cost of the empty try is in the cost of the node');
 
-    // the raised limit used up as well: no third try with the same limit (it would end the same way and cost as much again), the fixed
-    // scene stands in after the 2 tries that were made, and both empty tries are paid
+    // empty at the limit with less thinking as well: no third try (it would end the same way and cost as much again), the fixed scene
+    // stands in after the 2 tries that were made, and both empty tries are paid
     reset();
     queue.writer.push(emptyError('length'), emptyError('length'));
     const twice = makeCtx();
     const twiceResult = await exec('explainer.scene', twice, baseInputs(0), {});
-    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 16000]);
-    assert.equal(twice.logs.filter((line) => /the limit of \d+ tokens was reached/.test(line)).length, 1, 'said once');
-    assert.ok(twice.logs.some((line) => /attempt 2 of 3: the raised limit of 16000 tokens was reached too: no further try/.test(line)), twice.logs.join(' | '));
+    assert.deepEqual(asked(), [[9000, undefined], [9000, 'low']]);
+    assert.equal(twice.logs.filter((line) => /the next try thinks less/.test(line)).length, 1, 'said once');
+    assert.ok(twice.logs.some((line) => line === 's1: attempt 2 of 3: the model thought until the limit again, with less thinking too: no further try'), twice.logs.join(' | '));
     assert.ok(twice.logs.some((line) => /the fixed scene stands in after 2 tries/.test(line)), twice.logs.join(' | '));
     near(twiceResult.cost.usd, 0.4, 1e-9);
 
@@ -844,12 +847,12 @@ async function run(iso, { eleven, setVoiceBytes }) {
     queue.writer.push(emptyError('length'), emptyError('length'));
     await assert.rejects(exec('explainer.scene', makeCtx(), baseInputs(0), { fallback: false }), (err) => err.code === 'EXPLAINER_SCENE_FAILED' && /: 2 tries gave no usable scene/.test(err.message));
 
-    // the raised limit stays for the tries after it when the try with it fails for another reason (an empty answer that is not "length")
+    // less thinking stays for the tries after it when the try with it fails for another reason (an empty answer that is not "length")
     reset();
     queue.writer.push(emptyError('length'), emptyError('stop'));
     const mixed = makeCtx();
     const mixedResult = await exec('explainer.scene', mixed, baseInputs(0), {});
-    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 16000, 16000]);
+    assert.deepEqual(asked(), [[9000, undefined], [9000, 'low'], [9000, 'low']]);
     near(mixedResult.cost.usd, 0.4 + USD.writer + USD.check, 1e-9);
 
     // the last try has no next one: no promise in the log
@@ -858,16 +861,16 @@ async function run(iso, { eleven, setVoiceBytes }) {
     const lastTry = makeCtx();
     await exec('explainer.scene', lastTry, baseInputs(0), { max_retries: 0 });
     assert.equal(writerCalls().length, 1);
-    assert.ok(!lastTry.logs.some((line) => /may use 16000/.test(line)));
+    assert.ok(!lastTry.logs.some((line) => /thinks less/.test(line)));
 
-    // empty for another reason: the same limit, and still paid
+    // empty for another reason: the same thinking, and still paid
     reset();
     queue.writer.push(emptyError('stop', 0.05));
     const stopCtx = makeCtx();
     const stopResult = await exec('explainer.scene', stopCtx, baseInputs(0), {});
-    assert.deepEqual(writerCalls().map((call) => call.options.maxTokens), [9000, 9000]);
+    assert.deepEqual(asked(), [[9000, undefined], [9000, undefined]]);
     assert.ok(stopCtx.logs.some((line) => /attempt 1 of 3: the model failed \(The model returned an empty answer \(finish_reason stop/.test(line)));
-    assert.ok(!stopCtx.logs.some((line) => /tokens was reached/.test(line)));
+    assert.ok(!stopCtx.logs.some((line) => /thought until the limit/.test(line)));
     near(stopResult.cost.usd, 0.05 + USD.writer + USD.check, 1e-9);
 
     // a failed answer with no reported cost adds nothing; a plain failure (no usd on the error) neither
@@ -885,6 +888,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     near(looked.cost.usd, USD.writer + 0.04, 1e-9, 'the failed look is paid, and there is no second look');
     assert.equal(writerCalls()[0].options.maxTokens, 9000);
     assert.equal(checkCalls()[0].options.maxTokens, 1200, 'the look keeps its small limit');
+    assert.ok(!('reasoningEffort' in checkCalls()[0].options), 'and its own thinking');
 
     // a good answer: one line with the tokens, when the provider reported them
     reset();
