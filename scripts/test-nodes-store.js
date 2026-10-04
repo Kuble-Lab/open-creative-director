@@ -105,7 +105,8 @@ async function testAssets() {
     const entry = (id) => ledger.find((item) => item.id === id);
 
     const value = assets.valueFromLedgerEntry(chat.id, entry(image.id));
-    assert.deepEqual(value, { type: 'image', sessionId: chat.id, assetId: image.id, file: image.file, url: image.url });
+    // the fixture is one half transparent pixel (RGBA): since WP33c the store marks it (with ffmpeg by its pixel, without ffmpeg by its header)
+    assert.deepEqual(value, { type: 'image', sessionId: chat.id, assetId: image.id, file: image.file, url: image.url, alpha: true });
     assert.equal(assets.valueFromLedgerEntry(chat.id, entry(upload.id)).type, 'video');
     assert.throws(() => assets.valueFromLedgerEntry(chat.id, entry(svg.id)), /SVG/);
     assert.throws(() => assets.valueFromLedgerEntry(chat.id, entry(text.id)), /unsupported/);

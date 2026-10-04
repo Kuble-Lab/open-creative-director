@@ -817,7 +817,7 @@
   function mediaElement(value, options = {}) {
     const url = mediaUrl(value);
     if (value.type === 'image') {
-      const img = el('img', { class: 'nv-media nv-media-image', src: url, alt: '', loading: 'lazy', draggable: 'false' });
+      const img = el('img', { class: `nv-media nv-media-image${value.alpha === true ? ' nv-alpha' : ''}`, src: url, alt: '', loading: 'lazy', draggable: 'false' });
       if (options.zoom !== false) {
         img.addEventListener('dblclick', (event) => {
           event.stopPropagation();
@@ -827,7 +827,7 @@
       return img;
     }
     if (value.type === 'video') {
-      return el('video', { class: 'nv-media nv-media-video', src: url, controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
+      return el('video', { class: `nv-media nv-media-video${value.alpha === true ? ' nv-alpha' : ''}`, src: url, controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
     }
     return el('audio', { class: 'nv-media nv-media-audio', src: url, controls: true, preload: 'metadata' });
   }

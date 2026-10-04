@@ -371,6 +371,7 @@
     if (!value) {
       wrap.append(icon('file', 14));
     } else if (value.type === 'image' && isMedia(value)) {
+      wrap.classList.toggle('nv-alpha', hasAlpha(value));
       wrap.append(el('img', { src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' }));
     } else if (value.type === 'video' && isMedia(value)) {
       wrap.classList.toggle('nv-alpha', hasAlpha(value));
@@ -477,7 +478,7 @@
       counter.textContent = list.length > 1 ? `${index + 1} / ${list.length}` : '';
       actions.textContent = '';
       if (value.type === 'image') {
-        const img = el('img', { class: 'nv-viewer-img', src: ui.mediaUrl(value), alt: '', draggable: 'false' });
+        const img = el('img', { class: `nv-viewer-img${alphaClass(value)}`, src: ui.mediaUrl(value), alt: '', draggable: 'false' });
         zoom.img = img;
         stage.append(img);
       } else if (value.type === 'video') {

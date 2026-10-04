@@ -527,7 +527,9 @@ async function testRuns() {
       })(), prompt: 'marked', alpha: true });
       assert.equal(marked.alpha, true);
       assert.equal((await assets.valueFromAsset(h.sessionId, marked.assetId)).alpha, true);
-      assert.equal((red || plainMp4).alpha, undefined, 'an upload is not marked');
+      // WP33c: the store looks at an upload itself (a WebM with alpha is marked there, an MP4 never is)
+      if (red) assert.equal(red.alpha, true, 'an uploaded WebM with alpha is marked by the store');
+      assert.equal(plainMp4.alpha, undefined, 'an uploaded MP4 is not marked');
     }
   } finally {
     costs.recordCost = originals.recordCost;
