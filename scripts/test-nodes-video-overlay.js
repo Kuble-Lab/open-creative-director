@@ -557,10 +557,11 @@ async function testRuns() {
 }
 
 // Real runs: a 129x65 background (MPEG-4 in an MP4 can have an odd size) under a layer, for the two nodes. Without the pad libx264 stops.
+// The odd size comes from a scale filter: the color source of older ffmpeg (6.1) rounds an odd size down to an even one.
 async function testOddRuns() {
   const h = await createEditHarness({ prefix: 'ocd-overlay-odd-' });
   try {
-    await h.ff(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=129x65:r=10:d=1', '-c:v', 'mpeg4', '-pix_fmt', 'yuv420p', h.src('odd.mp4')]);
+    await h.ff(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=128x64:r=10:d=1', '-vf', 'scale=129:65', '-c:v', 'mpeg4', '-pix_fmt', 'yuv420p', h.src('odd.mp4')]);
     await h.ff(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=128x64:r=10:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', h.src('even.mp4')]);
     await h.ff(['-f', 'lavfi', '-i', 'color=c=red:s=32x32:r=10:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', h.src('layer.mp4')]);
     await h.ff(['-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=1', '-frames:v', '1', h.src('layer.png')]);
