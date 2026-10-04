@@ -757,6 +757,24 @@ async function run(iso) {
     };
     restorers.push(() => use(original));
     const hasLibass = ffmpegLib.hasFilter('ass');
+    {
+      // the check before the run sees the style of the plan that feeds "shots": a typography film burns no captions in, so it needs no
+      // libass whatever `captions` says (a saved workflow with captions "lines" is not blocked); any other plan keeps the check
+      const engineLib = iso.load('lib/nodes/engine');
+      const node = (id, type, params) => ({ id, type, typeVersion: 1, x: 0, y: 0, params });
+      const graphOf = (visualMode, captions) => ({
+        nodes: [node('p', 'explainer.plan', { visual_mode: visualMode }), node('e', 'explainer.edit', { captions })],
+        edges: [{ id: 'e1', from: { node: 'p', port: 'shots' }, to: { node: 'e', port: 'shots' } }]
+      });
+      const libassIssues = (visualMode, captions) => engineLib.validateGraph({ graph: graphOf(visualMode, captions) }, real, null).filter((issue) => issue.nodeId === 'e' && issue.code === 'CAPTIONS_NO_LIBASS');
+      for (const captions of ['lines', 'words']) assert.deepEqual(libassIssues('typography', captions), [], `a typography plan needs no libass (captions ${captions})`);
+      assert.deepEqual(libassIssues('mix', 'lines').length, hasLibass ? 0 : 1, 'a plan in another style keeps the check');
+      assert.deepEqual(libassIssues('typography', 'off'), []);
+      // a port without a plan behind it (nothing connected, or something else) keeps the check as well
+      const alone = real.normalizeParams(def, { captions: 'lines' });
+      assert.equal(def.validate(alone, {}).length, hasLibass ? 0 : 1);
+      assert.equal(def.validate(alone, { shots: { connected: true, count: 1, sources: [{ type: 'input.text', params: {} }] } }).length, hasLibass ? 0 : 1);
+    }
     if (!hasLibass) {
       // an ffmpeg without libass: the plan is refused before anything is made
       const issues = def.validate(real.normalizeParams(def, { captions: 'lines' }), {});

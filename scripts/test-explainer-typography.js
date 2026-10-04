@@ -579,7 +579,8 @@ function testSceneWriter() {
   assert.doesNotMatch(portrait, /burnt in|subtitles are|lowest \d+ % of the frame/i);
   assert.match(portrait, /no lower zone is kept free/);
   assert.match(portrait, /down to 85 px above the lower edge/);
-  assert.match(portrait, /fully inside the frame, 65 px from every edge/);
+  assert.match(portrait, /fully inside the frame, 65 px from the top and the sides, 85 px from the lower edge\./);
+  assert.doesNotMatch(portrait, /65 px from every edge/, 'the portrait prompt names one lower value only');
   assert.match(portrait, /huge \(260 to 520 px\)/);
   // a brand with two embedded families: the second may be used for single accents; the notes of the brand are told
   const brandTokens = scene.typographyFontTokens({ ...scene.typographyTokens({ ...brand, motion: { notes: 'Calm, precise movements.' } }) }, ['Example Sans', 'Example Serif']).tokens;
