@@ -130,7 +130,7 @@ function testDecoderOptions() {
   const logs = [];
   edit.applyAlpha(vp8Spec, [vp8Info], { ffmpegPath: ffmpeg.binaries().ffmpeg, log: (line) => logs.push(line) });
   if (ffmpeg.hasDecoder('libvpx')) assert.deepEqual(vp8Spec.inputOpts[0], ['-c:v', 'libvpx']);
-  else assert.match(logs.join('\n'), /Transparenz geht verloren/);
+  else assert.match(logs.join('\n'), /transparency is lost/);
 }
 
 /* ---------- the arguments without alpha are the ones of before ---------- */
@@ -412,7 +412,7 @@ async function testRuns() {
       // no decoder: the alpha cannot be read, so it is lost; a log line says so and the run goes on (MP4)
       await withFfmpeg(noDecoder, async () => {
         const { value, logs } = await ranWith('video.trim', { video: red }, { start: 0, end: 0.5, accurate: true });
-        assert.ok(logs.some((line) => /Transparenz geht verloren/.test(line)), `a log line about the lost transparency: ${JSON.stringify(logs)}`);
+        assert.ok(logs.some((line) => /transparency is lost/.test(line)), `a log line about the lost transparency: ${JSON.stringify(logs)}`);
         assert.equal(logs.length, 1);
         const file = await outFile(value);
         assert.equal(path.extname(file), '.mp4');
@@ -426,7 +426,7 @@ async function testRuns() {
       await withFfmpeg(noEncoder, async () => {
         const { value, logs } = await ranWith('video.speed', { video: redSound }, { factor: 2 });
         assert.equal(logs.length, 1);
-        assert.match(logs[0], /Transparenz geht verloren/);
+        assert.match(logs[0], /transparency is lost/);
         assert.match(logs[0], /MP4/);
         const file = await outFile(value);
         assert.equal(path.extname(file), '.mp4');
@@ -437,7 +437,7 @@ async function testRuns() {
       await withFfmpeg(noOpus, async () => {
         const { value, logs } = await ranWith('video.adjust', { video: redSound }, { brightness: 0.1 });
         assert.equal(logs.length, 1);
-        assert.match(logs[0], /Transparenz geht verloren/);
+        assert.match(logs[0], /transparency is lost/);
         assert.equal(path.extname(await outFile(value)), '.mp4');
       });
     }
@@ -502,7 +502,7 @@ async function testRuns() {
         const { value, logs } = await concat([redClip, redClip], noEncoder);
         assert.equal(path.extname(await outFile(value)), '.mp4');
         assert.equal(logs.length, 1);
-        assert.match(logs[0], /Transparenz geht verloren/);
+        assert.match(logs[0], /transparency is lost/);
       }
     }
 
