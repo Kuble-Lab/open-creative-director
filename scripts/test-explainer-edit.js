@@ -298,7 +298,7 @@ async function run(iso) {
     { text: 'Drei', start: Math.min(voice - 0.3, 1.0), end: voice - 0.05 }
   ];
   // A made-up film: scenes with their voices, timings and the shot list.
-  async function filmOf(voices, { kinds = [], colours = COLOURS, format = 'landscape', size = '160x90', target = null, tones = TONES } = {}) {
+  async function filmOf(voices, { kinds = [], colours = COLOURS, format = 'landscape', size = '160x90', target = null, tones = TONES, mode = 'mix' } = {}) {
     const scenes = [];
     const audio = [];
     const timing = [];
@@ -314,7 +314,7 @@ async function run(iso) {
       version: 1,
       language: 'de',
       format,
-      visual_mode: 'mix',
+      visual_mode: mode,
       duration: 10,
       target_seconds: target,
       scenes: voices.map((voice, index) => ({ id: `s${index + 1}`, index, kind: kinds[index] ? kinds[index].kind : 'motion', role: 'point', est_seconds: 5, spoken: voice > 0, narration: index, brief: index, image: null, clip: kinds[index] && kinds[index].clip !== undefined ? kinds[index].clip : null }))
@@ -799,6 +799,29 @@ async function run(iso) {
     await exec(card, cardOnly.inputs, { captions: 'lines', transition: 'cut', fps: '30' });
     assert.deepEqual(await standIn.scripts(), []);
     assert.ok(card.logs.some((line) => /No words to show/.test(line)));
+    // the style typography: its words are the picture, so nothing is burnt in even where the captions say "lines" or "words" (the other modes
+    // above keep burning them in); the log says so, and the subtitle file and the word times are made all the same
+    for (const captions of ['lines', 'words']) {
+      await standIn.reset();
+      const typo = await filmOf(voices, { mode: 'typography' });
+      const typoCtx = makeCtx();
+      const typoResult = await exec(typoCtx, typo.inputs, { captions, transition: 'crossfade', fps: '30' });
+      assert.deepEqual(await standIn.scripts(), [], `typography with captions ${captions}: no caption script reaches the encoder`);
+      assert.ok(typoCtx.logs.some((line) => /Typography film: the words are the picture, so no captions are burnt in/.test(line)), `typography with captions ${captions}: the log says why`);
+      assert.ok(!typoCtx.logs.some((line) => /captions \((lines|words)\)/.test(line)), 'and does not claim captions');
+      assert.ok(fileOf(typoResult.variants[0].video), 'the film is made');
+      assert.ok(typoResult.variants[0].subtitles.value.includes('-->'), 'the subtitle file (SRT) is still made');
+      assert.equal(JSON.parse(typoResult.variants[0].captions.value).words.length, 9, 'and so are the word times');
+    }
+    // with the captions off there is nothing to say; a mix film burns its captions in as before
+    await standIn.reset();
+    const quiet = makeCtx();
+    await exec(quiet, (await filmOf(voices, { mode: 'typography' })).inputs, { captions: 'off', transition: 'cut', fps: '30' });
+    assert.deepEqual(await standIn.scripts(), []);
+    assert.ok(!quiet.logs.some((line) => /Typography film/.test(line)));
+    await standIn.reset();
+    await exec(makeCtx(), (await filmOf(voices, { mode: 'mix' })).inputs, { captions: 'lines', transition: 'cut', fps: '30' });
+    assert.equal((await standIn.scripts()).length, 1, 'a mix film still burns its captions in');
     use(original);
   }
 }

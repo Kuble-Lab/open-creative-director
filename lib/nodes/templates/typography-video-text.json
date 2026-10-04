@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Typography video from your own text",
-  "description": "Turn your own text into a finished typography video (kinetic typography in the Swiss manner): your text is the narration, word for word, and nobody rewrites it. Claude Opus 5.5 only cuts it into scenes and plans for each the words to stress, a layout and a camera idea, ElevenLabs speaks it, Claude draws every scene as moving type on the render node (every word appears the moment it is spoken; Inter Tight as the default font, or the fonts and colours of your branding), and ffmpeg cuts it with voice, captions and a subtitle file. No pictures and no clips are made, so nothing is paid for them, and there is no research. About 3.70 US dollars for 90 seconds of text (an estimate from one test run: script about 0.20, voice about 0.10, about 11 scenes at about 0.28 each, music about 0.30; it needs a paid ElevenLabs plan, otherwise delete the node Background music). The language follows your text (script, voice and captions); change it only if the automatic detection is wrong (the text is not translated). The length follows the text (up to 8 minutes spoken). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the cut into scenes and the layouts, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
+  "description": "Turn your own text into a finished typography video (kinetic typography in the Swiss manner): your text is the narration, word for word, and nobody rewrites it. Claude Opus 5.5 only cuts it into scenes and plans for each the words to stress, a layout and a camera idea, ElevenLabs speaks it, Claude draws every scene as moving type on the render node (every word appears the moment it is spoken; Inter Tight as the default font, or the fonts and colours of your branding), and ffmpeg cuts it with the voice. There are no subtitles: the words are the picture. No pictures and no clips are made, so nothing is paid for them, and there is no research. About 3.70 US dollars for 90 seconds of text (an estimate from one test run: script about 0.20, voice about 0.10, about 11 scenes at about 0.28 each, music about 0.30; it needs a paid ElevenLabs plan, otherwise delete the node Background music). The language follows your text (script and voice); change it only if the automatic detection is wrong (the text is not translated). The length follows the text (up to 8 minutes spoken). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the cut into scenes and the layouts, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
   "requires": [
     "openrouter",
     "elevenlabs",
@@ -109,7 +109,7 @@
           "transition": "crossfade",
           "resolution": "1080p",
           "fps": "30",
-          "captions": "lines",
+          "captions": "off",
           "captions_position": "bottom",
           "music_level": "quiet",
           "ducking": true,
@@ -125,16 +125,6 @@
         "y": 100,
         "params": {
           "label": "Video"
-        }
-      },
-      {
-        "id": "n11",
-        "type": "output.result",
-        "typeVersion": 1,
-        "x": 2640,
-        "y": 300,
-        "params": {
-          "label": "Subtitles"
         }
       },
       {
@@ -319,17 +309,6 @@
         }
       },
       {
-        "id": "e21",
-        "from": {
-          "node": "n9",
-          "port": "subtitles"
-        },
-        "to": {
-          "node": "n11",
-          "port": "inputs"
-        }
-      },
-      {
         "id": "e22",
         "from": {
           "node": "n4",
@@ -371,7 +350,7 @@
         "y": 700,
         "w": 760,
         "h": 300,
-        "text": "Paste or write your text: it is spoken word for word. About 3.70 US dollars for 90 seconds of text (an estimate from one test run): the script about 0.20, the voice about 0.10, about 11 scenes at about 0.28 each, the music about 0.30; there is no research, and no pictures and no clips are made. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): it cuts your text into scenes without changing a word and plans the words to stress and the layout of every scene. Check them, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Every word appears when the voice says it; the type is Inter Tight (SIL Open Font License) unless your branding brings its own fonts, and the colours are a warm paper ground with one accent unless your branding brings its own. Set Format the same in Plan explainer video and in Draw explainer scene. A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene. The voice comes from the branding if it has a speaker voice; otherwise the voice chosen in the node applies. The music comes from Background music (instrumental, 90 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). The language follows your text (script, voice and captions); change it only if the automatic detection is wrong (the text is not translated)."
+        "text": "Paste or write your text: it is spoken word for word. About 3.70 US dollars for 90 seconds of text (an estimate from one test run): the script about 0.20, the voice about 0.10, about 11 scenes at about 0.28 each, the music about 0.30; there is no research, and no pictures and no clips are made. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): it cuts your text into scenes without changing a word and plans the words to stress and the layout of every scene. Check them, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Every word appears when the voice says it, so there are no subtitles; the type is Inter Tight (SIL Open Font License) unless your branding brings its own fonts, and the colours are a warm paper ground with one accent unless your branding brings its own. Set Format the same in Plan explainer video and in Draw explainer scene. A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene. The voice comes from the branding if it has a speaker voice; otherwise the voice chosen in the node applies. The music comes from Background music (instrumental, 90 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). The language follows your text (script and voice); change it only if the automatic detection is wrong (the text is not translated)."
       }
     ],
     "viewport": {
@@ -383,7 +362,7 @@
   "app": {
     "enabled": true,
     "title": "Typography video from your own text",
-    "description": "Write or paste your text and get a finished typography video: your words unchanged, a voice, every word as moving type at the moment it is spoken, in your brand or in the default look, captions and a subtitle file. Run only the planner first to check the cut into scenes.",
+    "description": "Write or paste your text and get a finished typography video: your words unchanged, a voice, every word as moving type at the moment it is spoken, in your brand or in the default look, without subtitles (the words are the picture). Run only the planner first to check the cut into scenes.",
     "inputs": [
       {
         "node": "n1",
@@ -409,21 +388,12 @@
         "node": "n5",
         "param": "voice_id",
         "label": "Voice (if the branding has none)"
-      },
-      {
-        "node": "n9",
-        "param": "captions",
-        "label": "Captions"
       }
     ],
     "outputs": [
       {
         "node": "n10",
         "label": "Video"
-      },
-      {
-        "node": "n11",
-        "label": "Subtitles"
       },
       {
         "node": "n12",
@@ -434,7 +404,7 @@
   "i18n": {
     "de": {
       "name": "Typografie-Video aus eigenem Text",
-      "description": "Mach aus deinem eigenen Text ein fertiges Typografie-Video (Kinetic Typography im Schweizer Stil): Dein Text ist der Sprechtext, Wort für Wort, und niemand schreibt ihn um. Claude Opus 5.5 teilt ihn nur in Szenen auf und plant für jede die Wörter zum Betonen, ein Layout und eine Kamera-Idee, ElevenLabs spricht ihn, Claude zeichnet jede Szene als animierte Schrift auf dem Render-Node (jedes Wort erscheint genau dann, wenn es gesprochen wird; Inter Tight als Standardschrift oder die Schriften und Farben deines Brandings), und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Es entstehen keine Bilder und keine Clips, dafür wird nichts bezahlt, und es gibt keine Recherche. Etwa 3.70 US-Dollar für 90 Sekunden Text (Schätzung aus einem Testlauf: Skript etwa 0.20, Stimme etwa 0.10, etwa 11 Szenen zu je etwa 0.28, Musik etwa 0.30; sie braucht ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Die Sprache folgt deinem Text (Skript, Stimme und Untertitel); stelle sie nur um, wenn die automatische Erkennung falsch liegt (der Text wird nicht übersetzt). Die Länge folgt dem Text (gesprochen bis zu 8 Minuten). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe die Aufteilung in Szenen und die Layouts, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
+      "description": "Mach aus deinem eigenen Text ein fertiges Typografie-Video (Kinetic Typography im Schweizer Stil): Dein Text ist der Sprechtext, Wort für Wort, und niemand schreibt ihn um. Claude Opus 5.5 teilt ihn nur in Szenen auf und plant für jede die Wörter zum Betonen, ein Layout und eine Kamera-Idee, ElevenLabs spricht ihn, Claude zeichnet jede Szene als animierte Schrift auf dem Render-Node (jedes Wort erscheint genau dann, wenn es gesprochen wird; Inter Tight als Standardschrift oder die Schriften und Farben deines Brandings), und ffmpeg schneidet alles mit der Stimme. Es gibt keine Untertitel: Die Wörter sind das Bild. Es entstehen keine Bilder und keine Clips, dafür wird nichts bezahlt, und es gibt keine Recherche. Etwa 3.70 US-Dollar für 90 Sekunden Text (Schätzung aus einem Testlauf: Skript etwa 0.20, Stimme etwa 0.10, etwa 11 Szenen zu je etwa 0.28, Musik etwa 0.30; sie braucht ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Die Sprache folgt deinem Text (Skript und Stimme); stelle sie nur um, wenn die automatische Erkennung falsch liegt (der Text wird nicht übersetzt). Die Länge folgt dem Text (gesprochen bis zu 8 Minuten). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe die Aufteilung in Szenen und die Layouts, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
       "node.n1": "Dein Text",
       "node.n6": "Was besonders wichtig ist (optional)",
       "node.n3": "Branding",
@@ -445,22 +415,20 @@
       "node.n14": "Hintergrundmusik",
       "param.n1.prompt": "Jedes Wort zählt. Wir lesen in einem Atemzug, aber wir merken uns, was sich bewegt. Eine Zeile Schrift kann schreien. Eine einzige Zahl kann einen Raum zum Schweigen bringen. Gute Typografie dekoriert eine Botschaft nicht: Sie ist die Botschaft. Darum setzen wir die Wörter gross, wir setzen sie schnell, und die Kamera trägt dich von einem Gedanken zum nächsten. Kurze Sätze. Starke Verben. Eine Idee nach der anderen. So wird aus wenigen Wörtern ein Film.",
       "param.n14.prompt": "Minimalistische, rhythmische Hintergrundmusik für einen Typografie-Film, instrumental: ein gleichmässiger Beat, leichte Percussion und ein sanfter Bass-Puls, modern und klar, ohne Gesang, nichts, was mit der Sprache konkurriert",
-      "note.t1": "Schreibe oder füge deinen Text ein: Er wird Wort für Wort gesprochen. Etwa 3.70 US-Dollar für 90 Sekunden Text (Schätzung aus einem Testlauf): das Skript etwa 0.20, die Stimme etwa 0.10, etwa 11 Szenen zu je etwa 0.28, die Musik etwa 0.30; es gibt keine Recherche, und es entstehen keine Bilder und keine Clips. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Er teilt deinen Text in Szenen auf, ohne ein Wort zu ändern, und plant die Wörter zum Betonen und das Layout jeder Szene. Prüfe sie, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Jedes Wort erscheint, wenn die Stimme es spricht; die Schrift ist Inter Tight (SIL Open Font License), ausser dein Branding bringt eigene Schriften mit, und die Farben sind ein warmer Papiergrund mit einer Akzentfarbe, ausser dein Branding bringt eigene mit. Stelle das Format in Erklärvideo planen und Erklärszene zeichnen gleich ein. Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen. Die Stimme kommt aus dem Branding, falls es eine Sprecherstimme hat; sonst gilt die Wahl im Node. Die Musik kommt von Hintergrundmusik (instrumental, 90 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Die Sprache folgt deinem Text (Skript, Stimme und Untertitel); stelle sie nur um, wenn die automatische Erkennung falsch liegt (der Text wird nicht übersetzt).",
+      "note.t1": "Schreibe oder füge deinen Text ein: Er wird Wort für Wort gesprochen. Etwa 3.70 US-Dollar für 90 Sekunden Text (Schätzung aus einem Testlauf): das Skript etwa 0.20, die Stimme etwa 0.10, etwa 11 Szenen zu je etwa 0.28, die Musik etwa 0.30; es gibt keine Recherche, und es entstehen keine Bilder und keine Clips. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Er teilt deinen Text in Szenen auf, ohne ein Wort zu ändern, und plant die Wörter zum Betonen und das Layout jeder Szene. Prüfe sie, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Jedes Wort erscheint, wenn die Stimme es spricht, darum gibt es keine Untertitel; die Schrift ist Inter Tight (SIL Open Font License), ausser dein Branding bringt eigene Schriften mit, und die Farben sind ein warmer Papiergrund mit einer Akzentfarbe, ausser dein Branding bringt eigene mit. Stelle das Format in Erklärvideo planen und Erklärszene zeichnen gleich ein. Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen. Die Stimme kommt aus dem Branding, falls es eine Sprecherstimme hat; sonst gilt die Wahl im Node. Die Musik kommt von Hintergrundmusik (instrumental, 90 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Die Sprache folgt deinem Text (Skript und Stimme); stelle sie nur um, wenn die automatische Erkennung falsch liegt (der Text wird nicht übersetzt).",
       "app.title": "Typografie-Video aus eigenem Text",
-      "app.description": "Schreibe oder füge deinen Text ein und erhalte ein fertiges Typografie-Video: deine Wörter unverändert, eine Stimme, jedes Wort als animierte Schrift im Moment des Sprechens, in deiner Marke oder im Standardlook, Untertitel und eine SRT-Datei. Starte zuerst nur den Planer, um die Aufteilung in Szenen zu prüfen.",
+      "app.description": "Schreibe oder füge deinen Text ein und erhalte ein fertiges Typografie-Video: deine Wörter unverändert, eine Stimme, jedes Wort als animierte Schrift im Moment des Sprechens, in deiner Marke oder im Standardlook, ohne Untertitel (die Wörter sind das Bild). Starte zuerst nur den Planer, um die Aufteilung in Szenen zu prüfen.",
       "app.input.n1.prompt": "Dein Text",
       "app.input.n6.prompt": "Was besonders wichtig ist (optional)",
       "app.input.n3.branding": "Branding",
       "app.input.n4.language": "Sprache des Skripts",
       "app.input.n5.voice_id": "Stimme (falls das Branding keine hat)",
-      "app.input.n9.captions": "Untertitel",
       "app.output.n10": "Video",
-      "app.output.n11": "Untertitel",
       "app.output.n12": "Skript"
     },
     "es": {
       "name": "Vídeo tipográfico con tu propio texto",
-      "description": "Convierte tu propio texto en un vídeo tipográfico terminado (kinetic typography al estilo suizo): tu texto es la narración, palabra por palabra, y nadie lo reescribe. Claude Opus 5.5 solo lo divide en escenas y planifica para cada una las palabras que destacar, un diseño y una idea de cámara, ElevenLabs lo lee, Claude dibuja cada escena como letras animadas en el nodo de render (cada palabra aparece justo cuando se dice; Inter Tight como fuente por defecto, o las fuentes y los colores de tu branding), y ffmpeg lo monta con voz, subtítulos y un archivo SRT. No se crean imágenes ni clips, así que no se paga nada por ellos, y no hay investigación. Unos 3,70 dólares para 90 segundos de texto (estimación de una ejecución de prueba: guion unos 0,20, voz unos 0,10, unas 11 escenas de unos 0,28 cada una, música unos 0,30; necesita un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). El idioma sigue tu texto (guion, voz y subtítulos); cámbialo solo si la detección automática se equivoca (el texto no se traduce). La duración sigue al texto (hasta 8 minutos hablados). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa la división en escenas y los diseños, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
+      "description": "Convierte tu propio texto en un vídeo tipográfico terminado (kinetic typography al estilo suizo): tu texto es la narración, palabra por palabra, y nadie lo reescribe. Claude Opus 5.5 solo lo divide en escenas y planifica para cada una las palabras que destacar, un diseño y una idea de cámara, ElevenLabs lo lee, Claude dibuja cada escena como letras animadas en el nodo de render (cada palabra aparece justo cuando se dice; Inter Tight como fuente por defecto, o las fuentes y los colores de tu branding), y ffmpeg lo monta con la voz. No hay subtítulos: las palabras son la imagen. No se crean imágenes ni clips, así que no se paga nada por ellos, y no hay investigación. Unos 3,70 dólares para 90 segundos de texto (estimación de una ejecución de prueba: guion unos 0,20, voz unos 0,10, unas 11 escenas de unos 0,28 cada una, música unos 0,30; necesita un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). El idioma sigue tu texto (guion y voz); cámbialo solo si la detección automática se equivoca (el texto no se traduce). La duración sigue al texto (hasta 8 minutos hablados). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa la división en escenas y los diseños, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
       "node.n1": "Tu texto",
       "node.n6": "Lo que más importa (opcional)",
       "node.n3": "Branding",
@@ -471,17 +439,15 @@
       "node.n14": "Música de fondo",
       "param.n1.prompt": "Cada palabra cuenta. Leemos en un parpadeo, pero recordamos lo que se mueve. Una línea de letras puede gritar. Una sola cifra puede silenciar una sala. La buena tipografía no decora un mensaje: es el mensaje. Por eso ponemos las palabras en grande, las ponemos rápido y dejamos que la cámara te lleve de una idea a la siguiente. Frases cortas. Verbos fuertes. Una idea cada vez. Así unas pocas palabras se convierten en una película.",
       "param.n14.prompt": "Música de fondo instrumental, minimalista y rítmica, para una película tipográfica: un ritmo constante, percusión ligera y un pulso suave de bajo, moderna y limpia, sin voz, nada que compita con la narración",
-      "note.t1": "Escribe o pega tu texto: se lee palabra por palabra. Unos 3,70 dólares para 90 segundos de texto (estimación de una ejecución de prueba): el guion unos 0,20, la voz unos 0,10, unas 11 escenas de unos 0,28 cada una, la música unos 0,30; no hay investigación y no se crean imágenes ni clips. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): divide tu texto en escenas sin cambiar una palabra y planifica las palabras que destacar y el diseño de cada escena. Revísalos, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. Cada palabra aparece cuando la voz la dice; la letra es Inter Tight (SIL Open Font License), salvo que tu branding traiga sus propias fuentes, y los colores son un fondo cálido de papel con un color de acento, salvo que tu branding traiga los suyos. Ajusta el formato igual en Planificar vídeo explicativo y en Dibujar escena explicativa. El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa. La voz viene del branding si este tiene una voz de locución; si no, vale la elección del nodo. La música viene de Música de fondo (instrumental, 90 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). El idioma sigue tu texto (guion, voz y subtítulos); cámbialo solo si la detección automática se equivoca (el texto no se traduce).",
+      "note.t1": "Escribe o pega tu texto: se lee palabra por palabra. Unos 3,70 dólares para 90 segundos de texto (estimación de una ejecución de prueba): el guion unos 0,20, la voz unos 0,10, unas 11 escenas de unos 0,28 cada una, la música unos 0,30; no hay investigación y no se crean imágenes ni clips. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): divide tu texto en escenas sin cambiar una palabra y planifica las palabras que destacar y el diseño de cada escena. Revísalos, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. Cada palabra aparece cuando la voz la dice, por eso no hay subtítulos; la letra es Inter Tight (SIL Open Font License), salvo que tu branding traiga sus propias fuentes, y los colores son un fondo cálido de papel con un color de acento, salvo que tu branding traiga los suyos. Ajusta el formato igual en Planificar vídeo explicativo y en Dibujar escena explicativa. El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa. La voz viene del branding si este tiene una voz de locución; si no, vale la elección del nodo. La música viene de Música de fondo (instrumental, 90 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). El idioma sigue tu texto (guion y voz); cámbialo solo si la detección automática se equivoca (el texto no se traduce).",
       "app.title": "Vídeo tipográfico con tu propio texto",
-      "app.description": "Escribe o pega tu texto y obtén un vídeo tipográfico terminado: tus palabras sin cambios, una voz, cada palabra como letras animadas en el momento en que se dice, con tu marca o con el aspecto por defecto, subtítulos y un archivo SRT. Ejecuta primero solo el planificador para revisar la división en escenas.",
+      "app.description": "Escribe o pega tu texto y obtén un vídeo tipográfico terminado: tus palabras sin cambios, una voz, cada palabra como letras animadas en el momento en que se dice, con tu marca o con el aspecto por defecto, sin subtítulos (las palabras son la imagen). Ejecuta primero solo el planificador para revisar la división en escenas.",
       "app.input.n1.prompt": "Tu texto",
       "app.input.n6.prompt": "Lo que más importa (opcional)",
       "app.input.n3.branding": "Branding",
       "app.input.n4.language": "Idioma del guion",
       "app.input.n5.voice_id": "Voz (si el branding no tiene ninguna)",
-      "app.input.n9.captions": "Subtítulos",
       "app.output.n10": "Vídeo",
-      "app.output.n11": "Subtítulos",
       "app.output.n12": "Guion"
     }
   }
