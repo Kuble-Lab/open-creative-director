@@ -311,11 +311,13 @@
     });
   }
 
-  function confirmDialog({ title, message, confirmLabel, cancelLabel, danger, extra }) {
+  // focus: 'cancel' puts the initial focus on the cancel button (a deletion nobody can undo)
+  function confirmDialog({ title, message, confirmLabel, cancelLabel, danger, extra, focus }) {
     return dialog({
       title,
       message,
       body: extra || null,
+      focus,
       buttons: [
         { label: cancelLabel || T('nodes.common.cancel'), value: false, cancel: true },
         { label: confirmLabel || T('nodes.common.confirm'), value: true, primary: !danger, danger: Boolean(danger) }

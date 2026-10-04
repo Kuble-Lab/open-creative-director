@@ -728,6 +728,13 @@
         if (!s.run.active && event.rev > (s.workflow.rev || 0)) reloadDefinition();
         return;
       }
+      // results deleted in the node view (another tab, another person): show what is left
+      if (event.type === 'results_changed') {
+        clearTimeout(resultsTimer);
+        resultsTimer = setTimeout(refreshResults, 0);
+        refreshPlan(0);
+        return;
+      }
       const wasActive = s.run.active;
       s.run = runLib.reduce(s.run, event);
       if (s.run.active && !s.ticker) startTicker();

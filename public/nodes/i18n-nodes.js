@@ -432,6 +432,7 @@
     ['nodes.run.menu.download', 'Ergebnis herunterladen', 'Download result', 'Descargar resultado'],
     ['nodes.run.menu.copyUrl', 'Asset-URL kopieren', 'Copy asset URL', 'Copiar URL del recurso'],
     ['nodes.run.menu.zip', 'Ausgaben herunterladen (ZIP)', 'Download outputs (ZIP)', 'Descargar salidas (ZIP)'],
+    ['nodes.run.menu.deleteResults', 'Alle Ergebnisse löschen', 'Delete all results', 'Eliminar todos los resultados'],
 
     /* card, pager, costs, previews, history */
     ['nodes.card.run', 'Node ausführen', 'Run node', 'Ejecutar nodo'],
@@ -456,6 +457,22 @@
     ['nodes.history.by', 'von {user}', 'by {user}', 'por {user}'],
     ['nodes.history.select', 'Variante {n} auswählen', 'Select variant {n}', 'Seleccionar la variante {n}'],
     ['nodes.history.selected', 'Ausgewählt', 'Selected', 'Seleccionado'],
+    ['nodes.history.delete', 'Löschen', 'Delete', 'Eliminar'],
+    ['nodes.history.deleteEntry', 'Dieses Ergebnis löschen', 'Delete this result', 'Eliminar este resultado'],
+    ['nodes.history.deleteAll', 'Alle Ergebnisse dieses Nodes löschen', 'Delete all results of this node', 'Eliminar todos los resultados de este nodo'],
+    ['nodes.history.deleteEntry.title', 'Ergebnis löschen?', 'Delete this result?', '¿Eliminar este resultado?'],
+    ['nodes.history.deleteEntry.message', 'Das Ergebnis verschwindet aus «{name}»; das lässt sich nicht rückgängig machen. Die Datei wird gelöscht, wenn nichts anderes sie braucht. Der nächste Lauf rechnet diesen Node neu und kostet bei bezahlten Nodes wieder.', 'The result disappears from "{name}"; this cannot be undone. The file is deleted unless something else needs it. The next run calculates this node again and costs again if the node is paid.', 'El resultado desaparece de «{name}»; no se puede deshacer. El archivo se elimina si nada más lo necesita. La próxima ejecución vuelve a calcular este nodo y, si es de pago, vuelve a costar.'],
+    ['nodes.history.deleteEntry.confirm', 'Ergebnis löschen', 'Delete result', 'Eliminar resultado'],
+    ['nodes.history.deleteAll.title', 'Alle Ergebnisse löschen?', 'Delete all results?', '¿Eliminar todos los resultados?'],
+    ['nodes.history.deleteAll.message', 'Alle Ergebnisse von «{name}» ({count}) verschwinden aus dem Node; das lässt sich nicht rückgängig machen. Die Dateien werden gelöscht, wenn nichts anderes sie braucht. Der nächste Lauf rechnet diesen Node neu und kostet bei bezahlten Nodes wieder.', 'All results of "{name}" ({count}) disappear from the node; this cannot be undone. The files are deleted unless something else needs them. The next run calculates this node again and costs again if the node is paid.', 'Todos los resultados de «{name}» ({count}) desaparecen del nodo; no se puede deshacer. Los archivos se eliminan si nada más los necesita. La próxima ejecución vuelve a calcular este nodo y, si es de pago, vuelve a costar.'],
+    ['nodes.history.deleteAll.confirm', 'Alle löschen', 'Delete all', 'Eliminar todos'],
+    ['nodes.history.deleteKeep', 'Behalten', 'Keep', 'Conservar'],
+    ['nodes.history.deleted', 'Ergebnis gelöscht.', 'Result deleted.', 'Resultado eliminado.'],
+    ['nodes.history.deletedAll', 'Alle Ergebnisse gelöscht.', 'All results deleted.', 'Todos los resultados eliminados.'],
+    ['nodes.history.filesKept', '{count} Datei(en) bleiben erhalten, weil sie noch gebraucht werden.', '{count} file(s) stay because they are still needed.', '{count} archivo(s) se conservan porque aún se necesitan.'],
+    ['nodes.history.deleteFailed', 'Löschen fehlgeschlagen: {error}', 'Deleting failed: {error}', 'No se pudo eliminar: {error}'],
+    ['nodes.history.deleteBusy', 'Während eines Laufs lassen sich keine Ergebnisse löschen. Warte, bis er fertig ist.', 'Results cannot be deleted while a run is active. Wait until it has finished.', 'No se pueden eliminar resultados mientras hay una ejecución en curso. Espera a que termine.'],
+    ['nodes.history.deleteGone', 'Dieses Ergebnis gibt es schon nicht mehr.', 'This result no longer exists.', 'Este resultado ya no existe.'],
 
     /* port types */
     ['nodes.ptype.text', 'Text', 'Text', 'Texto'],
@@ -1406,6 +1423,7 @@
     ['nodes.type.output.result.example', 'Das fertige Video aus «Videos aneinanderhängen» und der Text mit dem Titel werden angeschlossen. Beides liegt danach im ZIP.', 'The finished video from “Concatenate videos” and the text with the title are connected. Both end up in the ZIP.', 'Se conectan el vídeo terminado de «Concatenar vídeos» y el texto con el título. Ambos acaban en el ZIP.'],
     ['nodes.type.output.result.tip.1', 'Mit der «Bezeichnung» im Node benennst du das Ergebnis.', 'With the “Label” in the node you name the result.', 'Con la «Etiqueta» del nodo nombras el resultado.'],
     ['nodes.type.output.result.tip.2', 'Der Node hat keinen Ausgang, den du verbinden kannst. Er steht am Ende des Ablaufs.', 'The node has no output you can connect. It stands at the end of the flow.', 'El nodo no tiene una salida que puedas conectar. Va al final del flujo.'],
+    ['nodes.type.output.result.tip.3', 'Löschst du im Verlauf eines anderen Nodes ein Ergebnis, bleibt die Datei erhalten, solange dieser Ergebnis-Node sie noch zeigt.', 'If you delete a result in the history of another node, the file stays as long as this Result node still shows it.', 'Si eliminas un resultado en el historial de otro nodo, el archivo se conserva mientras este nodo Resultado todavía lo muestre.'],
 
     ['nodes.type.llm.chat.help', 'Schickt deine Frage oder Aufgabe an ein Sprachmodell und liefert die Antwort als Text. Optional gibst du eine Systemanweisung und bis zu 8 Bilder mit. Der Node verursacht Kosten.', 'Sends your question or task to a language model and returns the answer as text. Optionally you add a system prompt and up to 8 images. The node incurs costs.', 'Envía tu pregunta o tarea a un modelo de lenguaje y devuelve la respuesta como texto. Opcionalmente añades una instrucción del sistema y hasta 8 imágenes. El nodo genera costes.'],
     ['nodes.type.llm.chat.example', 'Mit dem Foto am Eingang «Bilder» und der Aufgabe «Schreibe einen kurzen Instagram-Text zu diesem Foto» liefert der Node einen Textvorschlag.', 'With the photo on the “Images” input and the task “Write a short Instagram caption for this photo”, the node returns a suggested text.', 'Con la foto en la entrada «Imágenes» y la tarea «Escribe un texto corto de Instagram para esta foto», el nodo devuelve una propuesta de texto.'],

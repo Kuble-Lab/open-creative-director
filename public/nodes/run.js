@@ -859,6 +859,12 @@
     /* ----- events ----- */
 
     function dispatch(event) {
+      // results deleted in another tab (or by another person): take over what is left
+      if (event.type === 'results_changed') {
+        refreshResults();
+        schedulePlan(0);
+        return;
+      }
       const before = runState;
       runState = reduce(runState, event);
       if (event.type === 'node_result' && event.entry && event.nodeId) {
@@ -1262,6 +1268,54 @@
       if (step) selectVariant(nodeId, step.entry, step.variant);
     }
 
+    /* ----- deleting results (WP38e) ----- */
+
+    // Deletes one history entry of a node (entryId), or all results of the node (entryId left out), after the confirmation. Nothing
+    // is changed locally before the server has answered: it says which results are left and what became of the files. The card, the
+    // preview, the history and the scene table follow through the paint; the plan tells the nodes below that they are out of date.
+    // Resolves true when something was deleted.
+    async function deleteResult(nodeId, entryId) {
+      const id = workflowId();
+      if (!id) return false;
+      const all = !entryId;
+      const node = nodeResults(S().results, nodeId);
+      const count = node && Array.isArray(node.history) ? node.history.length : 0;
+      if (all ? !count : !(node && (node.history || []).some((entry) => entry.id === entryId))) return false;
+      if (runState.active || starting) {
+        ui.toast(T('nodes.history.deleteBusy'), { kind: 'warn' });
+        return false;
+      }
+      const confirmed = await ui.confirmDialog({
+        title: T(all ? 'nodes.history.deleteAll.title' : 'nodes.history.deleteEntry.title'),
+        message: T(all ? 'nodes.history.deleteAll.message' : 'nodes.history.deleteEntry.message', { name: titleOf(nodeId), count }),
+        confirmLabel: T(all ? 'nodes.history.deleteAll.confirm' : 'nodes.history.deleteEntry.confirm'),
+        cancelLabel: T('nodes.history.deleteKeep'),
+        danger: true,
+        focus: 'cancel'
+      });
+      if (!confirmed) return false;
+      try {
+        const answer = all ? await api.deleteResults(id, nodeId) : await api.deleteResultEntry(id, nodeId, entryId);
+        if (workflowId() !== id) return true;
+        S().results = replaceNodeResults(S().results, nodeId, answer.node);
+        const kept = answer.files && answer.files.kept ? answer.files.kept : 0;
+        ui.toast(`${T(all ? 'nodes.history.deletedAll' : 'nodes.history.deleted')}${kept ? ` ${T('nodes.history.filesKept', { count: kept })}` : ''}`);
+      } catch (error) {
+        if (workflowId() !== id) return false;
+        if (error.status === 404) {
+          // gone already (deleted in another tab): show what is there now
+          ui.toast(T('nodes.history.deleteGone'), { kind: 'warn' });
+          await refreshResults();
+        } else {
+          ui.toast(error.code === 'RUN_ACTIVE' ? T('nodes.history.deleteBusy') : T('nodes.history.deleteFailed', { error: error.message }), { kind: 'error' });
+        }
+        return false;
+      }
+      schedulePlan(0);
+      schedulePaint();
+      return true;
+    }
+
     /* ----- viewer, downloads ----- */
 
     function viewerItems(nodeId) {
@@ -1381,6 +1435,7 @@
       runItems,
       scenes: scenesOf,
       selectVariant,
+      deleteResult,
       openResult,
       downloadResult,
       downloadZip,
@@ -1426,6 +1481,11 @@
             hint: adopt.reason === 'ok' ? T('nodes.run.menu.useAsTextHint') : T(`nodes.run.menu.useAsText.${adopt.reason}`),
             onClick: () => adoptText(nodeId)
           });
+        }
+        // all results of the node: asked about first, nothing can bring them back
+        const history = (nodeResults(S().results, nodeId) || {}).history;
+        if (Array.isArray(history) && history.length) {
+          items.push({ separator: true }, { label: T('nodes.run.menu.deleteResults'), icon: 'trash', danger: true, disabled: busy, onClick: () => deleteResult(nodeId) });
         }
         return items;
       });
@@ -1507,6 +1567,7 @@
       runSelection,
       cancelRun,
       selectVariant,
+      deleteResult,
       page,
       openResult,
       downloadZip,

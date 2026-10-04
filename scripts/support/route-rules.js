@@ -142,6 +142,8 @@ const ROUTE_RULES = {
   'GET /api/workflows/:id/runs/:runId': 'workflow',
   'POST /api/workflows/:id/runs/:runId/cancel': 'workflow',
   'PATCH /api/workflows/:id/results/:nodeId': 'workflow',
+  'DELETE /api/workflows/:id/results/:nodeId': 'workflow',
+  'DELETE /api/workflows/:id/results/:nodeId/entries/:entryId': 'workflow',
   'GET /api/workflows/:id/events': 'workflow',
   'GET *': 'public' // the single page app shell
 };
@@ -278,6 +280,8 @@ const PARTICIPANT_RULES = {
   'GET /api/workflows/:id/runs/:runId': 'same',
   'POST /api/workflows/:id/runs/:runId/cancel': 'same',
   'PATCH /api/workflows/:id/results/:nodeId': 'same',
+  'DELETE /api/workflows/:id/results/:nodeId': 'same',
+  'DELETE /api/workflows/:id/results/:nodeId/entries/:entryId': 'same',
   'GET /api/workflows/:id/events': 'same',
   'GET *': 'public'
 };

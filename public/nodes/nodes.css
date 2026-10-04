@@ -4450,6 +4450,35 @@
   text-align: center;
 }
 
+.nv-history-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.nv-history-footer {
+  display: flex;
+  margin-top: 10px;
+}
+
+.nv-history-delete,
+.nv-history-delete-all {
+  color: var(--text-dim);
+}
+
+/* a phone: a button a finger hits, the "delete all" one as wide as the row */
+@media (max-width: 640px) {
+  .nv-history-delete,
+  .nv-history-delete-all {
+    min-height: 36px;
+  }
+
+  .nv-history-footer .nv-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
 .nv-history-badge {
   position: absolute;
   top: 8px;

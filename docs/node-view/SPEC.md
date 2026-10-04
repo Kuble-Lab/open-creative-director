@@ -483,6 +483,7 @@ Rules: node IDs `n<k>`, edge IDs `e<k>`, group `g<k>`, note `t<k>` (unique per w
 
 - A **variant** is one complete output set (`{ portId: Value }`). `count: 4` → 4 variants in one history entry. Downstream nodes receive the *selected* variant.
 - History is capped at 30 entries per node (oldest dropped from the list; assets stay in the ledger).
+- Results can be deleted per entry or for a whole node (`DELETE …/results/:nodeId[/entries/:entryId]`, WP38e). The selected entry that goes gives way to the newest one left (variant 0), none left means `selected: null`. A deleted entry never serves as a cache hit (whole node or per item); the items a failed run kept in `partial` that are copies of its items go with it. A file of a deleted entry is deleted only if it lies in the workflow's own session and nothing else needs it: no other entry of any node, no `partial`, no parameter of an input node, no app or note that names it, no open provider job with published reference copies, no stored chat that points at it; otherwise the file stays and only the entry goes. See IMPLEMENTATION-NOTES, "Deleting results (WP38e)".
 - Client autosave never writes this file; variant selection goes through `PATCH …/results/:nodeId`. This split avoids write races between autosave and a running engine.
 
 ### 7.3 Run record (`data/workflows/<wfId>/runs/<runId>.json`, last 50 kept)
@@ -697,6 +698,8 @@ All routes live in `lib/nodes/routes.js` as `registerNodeRoutes(app, { runtime, 
 | GET | `/api/workflows/:id/runs/:runId` | run record |
 | POST | `/api/workflows/:id/runs/:runId/cancel` | `{ ok }` |
 | PATCH | `/api/workflows/:id/results/:nodeId` | `{ entry, variant }` → updated node results (select version) |
+| DELETE | `/api/workflows/:id/results/:nodeId/entries/:entryId` | delete one history entry (WP38e) → `{ ok, nodeId, removed, node: { selected, history }, files: { deleted, kept } }`; same permission as choosing a variant; 404 `ENTRY_NOT_FOUND`; 409 `RUN_ACTIVE` while a run of the workflow is active |
+| DELETE | `/api/workflows/:id/results/:nodeId` | delete all results of the node (same answer, `node` is `{ selected: null, history: [] }`); 404 when the node has none |
 | GET | `/api/workflows/:id/events` | SSE stream |
 
 SSE events (`data: <json>\n\n`, `: ping` every 15 s, same headers as the chat stream). On connect the server first sends `snapshot`.
@@ -711,6 +714,7 @@ SSE events (`data: <json>\n\n`, `: ping` every 15 s, same headers as the chat st
 | `run_cost` | `{ runId, usd, credits }` |
 | `run_finished` | `{ runId, status, error? }` |
 | `workflow_saved` | `{ rev, updatedBy }` (another tab/user saved → client offers reload) |
+| `results_changed` | `{ nodeId, updatedBy }` (results of a node were deleted → the other tabs read the results and the plan again) |
 
 Client uses `EventSource` (auto-reconnect); after a reconnect it calls `GET /api/workflows/:id` to reconcile.
 

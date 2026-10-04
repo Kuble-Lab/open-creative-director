@@ -311,6 +311,8 @@ const FOREIGN_WORKFLOW_ROUTES = (id) => [
   ['POST', `/api/workflows/${id}/runs/run-1/cancel`, {}],
   ['GET', `/api/workflows/${id}/outputs.zip`],
   ['PATCH', `/api/workflows/${id}/results/n1`, { entry: 'e' }],
+  ['DELETE', `/api/workflows/${id}/results/n1`],
+  ['DELETE', `/api/workflows/${id}/results/n1/entries/e`],
   ['GET', `/api/workflows/${id}/events`]
 ];
 
