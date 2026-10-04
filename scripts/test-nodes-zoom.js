@@ -165,6 +165,9 @@ async function testRun(h) {
   // the depth map: the left half near (white), the right half far (black)
   await h.ff(['-f', 'lavfi', '-i', `color=c=white:s=${W / 2}x${H},format=rgb24`, '-f', 'lavfi', '-i', `color=c=black:s=${W / 2}x${H},format=rgb24`, '-filter_complex', 'hstack', '-frames:v', '1', h.src('depth.png')]);
   await h.ff(['-f', 'lavfi', '-i', 'color=c=white:s=64x36,format=rgb24', '-frames:v', '1', h.src('depth-small.png')]);
+  // for the border test: every column differs from its neighbour (a repeated column shows as a run of equal ones), everything near
+  await h.ff(['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H},format=rgb24,geq=r='mod(X*37,256)':g='mod(X*11+Y,256)':b='mod(X*91,256)'`, '-frames:v', '1', h.src('stripes.png')]);
+  await h.ff(['-f', 'lavfi', '-i', `color=c=white:s=${W}x${H},format=rgb24`, '-frames:v', '1', h.src('depth-near.png')]);
   // two bright squares on a dark picture, one in the left and one in the right half: their positions follow a zoom, which a
   // search for a shifted block cannot (a zoom changes the size of what it looks for)
   await h.ff([
@@ -176,6 +179,8 @@ async function testRun(h) {
   const marker = await h.upload('marker.png', '.png');
   const depth = await h.upload('depth.png', '.png');
   const smallDepth = await h.upload('depth-small.png', '.png');
+  const stripes = await h.upload('stripes.png', '.png');
+  const allNear = await h.upload('depth-near.png', '.png');
   const voice = await h.upload('voice.wav', '.wav');
   const definition = h.def('image.to_video');
 
@@ -303,6 +308,27 @@ async function testRun(h) {
     const a = await frames(right);
     const b = await frames(await execute({ image: texture, depth }, { zoom: 'parallax_right', parallax_strength: 20 }));
     assert.ok(difference(a.first, b.first) < 1.5, `both start from the same frame (${difference(a.first, b.first)})`);
+    // the displacement must not smear the border into the picture: in the last frame, with everything near (the worst case),
+    // no run of equal columns at the border (a repeated column is what displace does with `edge=smear` past the picture)
+    for (const zoom of ['parallax_right', 'parallax_left', 'parallax_in']) {
+      for (const strength of [30, 100]) {
+        const { last } = await frames(await execute({ image: stripes, depth: allNear }, { zoom, parallax_strength: strength }));
+        const column = (x) => {
+          let sum = 0;
+          for (let y = 0; y < H; y += 1) sum += last[(y * W + x) * 3 + 1];
+          return sum;
+        };
+        const run = (from, step) => {
+          let n = 0;
+          for (let x = from; x + step >= 0 && x + step < W; x += step) {
+            if (Math.abs(column(x) - column(x + step)) < H) n += 1;
+            else break;
+          }
+          return n;
+        };
+        assert.ok(run(0, 1) <= 2 && run(W - 1, -1) <= 2, `${zoom} at ${strength} %: columns repeated at the border (left ${run(0, 1)}, right ${run(W - 1, -1)})`);
+      }
+    }
     // a map of another size is scaled to the picture; with sound the audio stays the second input and the length follows it
     logs.length = 0;
     const small = await execute({ image: texture, depth: smallDepth }, { zoom: 'parallax_right' });
