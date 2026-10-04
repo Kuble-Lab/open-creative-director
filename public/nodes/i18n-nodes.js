@@ -2478,6 +2478,19 @@
     ['nodes.portdesc.fal.depth_map.image.in', 'Das Bild, von dem das Tiefenbild gemacht wird (PNG, JPEG oder WebP).', 'The image the depth map is made from (PNG, JPEG or WebP).', 'La imagen de la que se hace el mapa de profundidad (PNG, JPEG o WebP).'],
     ['nodes.portdesc.fal.depth_map.depth.out', 'Das Tiefenbild in Graustufen: hell = nah, dunkel = fern. Leer, wenn der Node ausgeschaltet ist.', 'The depth map in grayscale: bright = near, dark = far. Empty when the node is switched off.', 'El mapa de profundidad en escala de grises: claro = cerca, oscuro = lejos. Vacío si el nodo está desactivado.'],
     ['nodes.portdesc.depth', 'Ein Tiefenbild in Graustufen: hell = nah, dunkel = fern.', 'A depth map in grayscale: bright = near, dark = far.', 'Un mapa de profundidad en escala de grises: claro = cerca, oscuro = lejos.'],
+    ['nodes.scenes.title', 'Szenen', 'Scenes', 'Escenas'],
+    ['nodes.scenes.notPerItem', 'Einzelne Szenen lassen sich nur neu erzeugen, wenn der Node das Ergebnis Szene für Szene gemacht hat. Dieses Ergebnis ist älter oder als Ganzes entstanden: Nach dem nächsten Lauf des Nodes geht es, sofern er pro Szene läuft.', 'Single scenes can only be made again when the node made the result scene by scene. This result is older or was made as a whole: after the next run of the node it works, provided the node runs once per scene.', 'Las escenas sueltas solo se pueden volver a generar si el nodo hizo el resultado escena por escena. Este resultado es más antiguo o se hizo como un todo: tras la próxima ejecución del nodo funciona, siempre que el nodo se ejecute una vez por escena.'],
+    ['nodes.scenes.selectAll', 'Alle auswählen', 'Select all', 'Seleccionar todo'],
+    ['nodes.scenes.selectRow', 'Szene {n} auswählen', 'Select scene {n}', 'Seleccionar la escena {n}'],
+    ['nodes.scenes.open', 'Szene {n} ansehen', 'View scene {n}', 'Ver la escena {n}'],
+    ['nodes.scenes.noText', '(ohne Text)', '(no text)', '(sin texto)'],
+    ['nodes.scenes.duration', 'Dauer', 'Length', 'Duración'],
+    ['nodes.scenes.cost', 'kostet {amount}', 'costs {amount}', 'cuesta {amount}'],
+    ['nodes.scenes.costUnknown', 'Preis unbekannt', 'price unknown', 'precio desconocido'],
+    ['nodes.scenes.regenerate', 'Neu erzeugen', 'Make again', 'Volver a generar'],
+    ['nodes.scenes.regenerateRow', 'Szene {n} neu erzeugen', 'Make scene {n} again', 'Volver a generar la escena {n}'],
+    ['nodes.scenes.regenerateSelected', 'Ausgewählte neu erzeugen', 'Make selected again', 'Volver a generar las seleccionadas'],
+    ['nodes.scenes.regenerateSelectedCount', 'Ausgewählte neu erzeugen ({count})', 'Make selected again ({count})', 'Volver a generar las seleccionadas ({count})'],
   ];
 
   const dictionaries = global.I18N || {};

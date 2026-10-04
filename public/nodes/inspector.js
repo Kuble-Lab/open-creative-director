@@ -20,7 +20,9 @@
     let dynamicWidgets = [];
     let actionsSlot = null;
     let current = null;
-    let runRefs = null; // { nodeId?, runEl, histEl? } containers refreshed by refreshRun() without rebuilding the form
+    let runRefs = null; // { nodeId?, runEl, scenesEl?, histEl? } containers refreshed by refreshRun() without rebuilding the form
+    // The rows ticked in the scene table, per node and result: `${nodeId}:${entryId}` -> Set of item numbers (from 0). A new result starts empty.
+    const sceneTicks = new Map();
     let lengthRefs = null; // { nodeId, el }: the line about the song length of a music node, refreshed by refreshRun()
     // Fields whose visibility follows the value of another param (showIf on a param): they stay in the form and are shown or
     // hidden in place by applyGates(), so typing never builds the form again. { el, showIf, inverse }
@@ -289,6 +291,92 @@
       container.append(wrap);
     }
 
+    /* ---------- scene table (WP35) ---------- */
+
+    // One row per item of the list the selected result holds (number, preview, main text, length) with "Make again" per row and for
+    // the ticked rows: single items of the list are made again, the others stay as they are (run mode 'items'). Nothing here
+    // starts a run by itself: the buttons go through the run controller, with its plan, its confirmation of the cost and its budget.
+    function renderScenes(container, nodeId) {
+      container.textContent = '';
+      const data = cb.run && cb.run.scenes ? cb.run.scenes(nodeId) : null;
+      if (!data) return;
+      const key = `${nodeId}:${data.entryId}`;
+      for (const other of [...sceneTicks.keys()]) if (other.startsWith(`${nodeId}:`) && other !== key) sceneTicks.delete(other);
+      const ticked = sceneTicks.get(key) || new Set();
+      for (const index of [...ticked]) if (index >= data.count) ticked.delete(index);
+      sceneTicks.set(key, ticked);
+      const costText = (cost) => (cost.usd !== null || cost.credits !== null ? cb.run.costText({ usd: cost.usd ?? undefined, credits: cost.credits ?? undefined }, { estimate: true }) : '');
+      const hintFor = (cost) => {
+        if (!cost.paid) return ui.T('nodes.badge.free');
+        return cost.unknown ? ui.T('nodes.scenes.costUnknown') : ui.T('nodes.scenes.cost', { amount: costText(cost) });
+      };
+      const canStart = data.aligned && data.canRun && !data.busy;
+      const wrap = el('section', { class: 'nv-insp-section nv-scenes', dataset: { node: nodeId, aligned: data.aligned ? 'true' : 'false' } });
+      wrap.append(el('h3', { class: 'nv-insp-heading', text: `${ui.T('nodes.scenes.title')} · ${data.count}` }));
+      if (!data.aligned) wrap.append(el('div', { class: 'nv-hint nv-scenes-note', text: ui.T('nodes.scenes.notPerItem') }));
+
+      const viewable = data.rows.map((row) => row.value).filter((value) => OCD.preview.isViewable(value));
+      const list = el('ol', { class: 'nv-scenes-list' });
+      const toolbar = el('div', { class: 'nv-scenes-toolbar' });
+      const all = el('input', { type: 'checkbox', class: 'nv-scenes-all', 'aria-label': ui.T('nodes.scenes.selectAll'), disabled: !data.aligned });
+      const regenSelected = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-scenes-regen-selected' }, ui.icon('refresh', 13), el('span', { class: 'nv-scenes-regen-label' }));
+      const selectedCost = el('span', { class: 'nv-scenes-selected-cost' });
+      const checks = [];
+      const paintToolbar = () => {
+        const count = ticked.size;
+        all.checked = count > 0 && count === data.count;
+        all.indeterminate = count > 0 && count < data.count;
+        regenSelected.disabled = !canStart || count === 0;
+        regenSelected.querySelector('.nv-scenes-regen-label').textContent = count ? ui.T('nodes.scenes.regenerateSelectedCount', { count }) : ui.T('nodes.scenes.regenerateSelected');
+        selectedCost.textContent = count ? hintFor(OCD.sceneTable.selectionCost(data.cost, count)) : '';
+        checks.forEach(({ box, index }) => {
+          box.checked = ticked.has(index);
+        });
+      };
+      all.addEventListener('change', () => {
+        ticked.clear();
+        if (all.checked) for (const row of data.rows) ticked.add(row.index);
+        paintToolbar();
+      });
+      regenSelected.addEventListener('click', () => cb.run.runItems(nodeId, [...ticked]));
+      toolbar.append(el('label', { class: 'nv-scenes-all-label' }, all, el('span', { text: ui.T('nodes.scenes.selectAll') })), regenSelected, selectedCost);
+      wrap.append(toolbar);
+
+      for (const row of data.rows) {
+        const item = el('li', { class: 'nv-scene-row', dataset: { index: String(row.index), kind: row.kind } });
+        const box = el('input', { type: 'checkbox', class: 'nv-scene-check', 'aria-label': ui.T('nodes.scenes.selectRow', { n: row.number }), disabled: !data.aligned });
+        box.addEventListener('change', () => {
+          if (box.checked) ticked.add(row.index);
+          else ticked.delete(row.index);
+          paintToolbar();
+        });
+        checks.push({ box, index: row.index });
+        const number = el('span', { class: 'nv-scene-number', text: String(row.number) });
+        let preview;
+        if (row.kind === 'audio') {
+          preview = el('div', { class: 'nv-scene-preview is-audio' }, OCD.preview.mediaNode(row.value));
+        } else if (OCD.preview.isViewable(row.value)) {
+          preview = el('button', { type: 'button', class: 'nv-scene-preview', title: ui.T('nodes.scenes.open', { n: row.number }), 'aria-label': ui.T('nodes.scenes.open', { n: row.number }) }, OCD.preview.thumb(row.value, { poster: OCD.preview.posterOf([row.value]) }));
+          preview.addEventListener('click', () => OCD.preview.openViewer(viewable.map((value) => ({ value })), Math.max(0, viewable.indexOf(row.value)), { title: `${ui.T('nodes.scenes.title')} ${row.number}` }));
+        } else {
+          preview = el('div', { class: 'nv-scene-preview' }, OCD.preview.thumb(row.value));
+        }
+        const main = el('div', { class: 'nv-scene-main' });
+        main.append(el('div', { class: `nv-scene-text ${row.text ? '' : 'is-empty'}`.trim(), text: row.text ? OCD.preview.shortText(row.text, 160) : ui.T('nodes.scenes.noText'), title: row.text || '' }));
+        const meta = el('div', { class: 'nv-scene-meta' });
+        if (row.duration !== null) meta.append(el('span', { class: 'nv-scene-duration', text: OCD.sceneTable.clock(row.duration), title: ui.T('nodes.scenes.duration') }));
+        meta.append(el('span', { class: 'nv-scene-cost', text: hintFor(data.cost) }));
+        main.append(meta);
+        const again = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-scene-regen', disabled: !canStart, title: data.aligned ? ui.T('nodes.scenes.regenerateRow', { n: row.number }) : ui.T('nodes.scenes.notPerItem'), 'aria-label': ui.T('nodes.scenes.regenerateRow', { n: row.number }) }, ui.icon('refresh', 13), el('span', { text: ui.T('nodes.scenes.regenerate') }));
+        again.addEventListener('click', () => cb.run.runItems(nodeId, [row.index]));
+        item.append(box, number, preview, main, again);
+        list.append(item);
+      }
+      wrap.append(list);
+      container.append(wrap);
+      paintToolbar();
+    }
+
     function renderWorkflowRun(container) {
       const info = cb.run && cb.run.workflow();
       container.textContent = '';
@@ -345,6 +433,7 @@
       if (!runRefs || !cb.run) return;
       if (runRefs.nodeId) {
         renderNodeRun(runRefs.runEl, runRefs.nodeId);
+        if (runRefs.scenesEl) renderScenes(runRefs.scenesEl, runRefs.nodeId);
         renderHistory(runRefs.histEl, runRefs.nodeId);
       } else {
         renderWorkflowRun(runRefs.runEl);
@@ -528,9 +617,10 @@
       } else {
         if (cb.run) {
           const runEl = el('section', { class: 'nv-insp-section nv-insp-run' });
+          const scenesEl = el('div', { class: 'nv-insp-scenes' });
           const histEl = el('div', { class: 'nv-insp-history' });
-          runRefs = { nodeId: node.id, runEl, histEl };
-          frag.append(runEl, histEl);
+          runRefs = { nodeId: node.id, runEl, scenesEl, histEl };
+          frag.append(runEl, scenesEl, histEl);
           refreshRun();
         }
         if (def.available !== true) {

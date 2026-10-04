@@ -406,9 +406,15 @@
     return shown;
   }
 
-  function buildRunRequest({ mode, nodeIds, force, rev }) {
+  function buildRunRequest({ mode, nodeIds, force, rev, nodeId, items }) {
     const request = { mode, force: Boolean(force) };
-    if (mode !== 'all') request.nodeIds = Array.isArray(nodeIds) ? nodeIds.slice() : [];
+    if (mode === 'items') {
+      // single items of the list of one node made again (the scene table of the inspector)
+      request.nodeId = nodeId;
+      request.items = Array.isArray(items) ? items.slice() : [];
+    } else if (mode !== 'all') {
+      request.nodeIds = Array.isArray(nodeIds) ? nodeIds.slice() : [];
+    }
     if (Number.isInteger(rev)) request.rev = rev;
     return request;
   }
@@ -1058,7 +1064,7 @@
       });
     }
 
-    async function startRun({ mode, nodeIds, force }) {
+    async function startRun({ mode, nodeIds, force, nodeId, items }) {
       const st = S();
       if (!st.workflow || !st.reg) return;
       if (runState.active || starting) {
@@ -1086,7 +1092,7 @@
           return;
         }
         const id = st.workflow.id;
-        const request = buildRunRequest({ mode, nodeIds, force });
+        const request = buildRunRequest({ mode, nodeIds, force, nodeId, items });
         let planned;
         try {
           planned = await api.plan(id, request);
@@ -1113,7 +1119,7 @@
         }
         try {
           const started = await api.startRun(id, { ...request, rev: S().rev });
-          if (workflowId() === id && !runState.active) dispatch({ type: 'run_started', runId: started.runId, mode, targets: planned.targets || nodeIds || [], plan: Object.fromEntries((planned.order || []).map((nodeId) => [nodeId, 'queued'])) });
+          if (workflowId() === id && !runState.active) dispatch({ type: 'run_started', runId: started.runId, mode, targets: planned.targets || nodeIds || (nodeId ? [nodeId] : []), plan: Object.fromEntries((planned.order || []).map((nodeId) => [nodeId, 'queued'])) });
         } catch (error) {
           if (error.status === 409 && error.code === 'RUN_ACTIVE') {
             ui.toast(T('nodes.run.alreadyRunning'), { kind: 'warn' });
@@ -1145,6 +1151,45 @@
     function runFrom(nodeId) {
       const ids = [nodeId, ...descendantIds(nodeId).filter((id) => id !== nodeId)];
       return startRun({ mode: ids.length > 1 ? 'selection' : 'node', nodeIds: ids, force: false });
+    }
+
+    // Single items of the list of a node made again (the scene table): the run goes through the same plan, confirmation and budget
+    // steps as every run; the items that are not asked for come from the selected result
+    function runItems(nodeId, items) {
+      const request = OCD.sceneTable.itemsRequest(nodeId, items);
+      if (!request.items.length) return Promise.resolve();
+      return startRun({ mode: 'items', nodeId, items: request.items, force: false });
+    }
+
+    // The scene table of a node as data (see public/nodes/scene-table.js), or null; `busy` and `canRun` say whether a button can start a run now
+    function scenesOf(nodeId) {
+      const st = S();
+      const node = nodeOf(nodeId);
+      const def = defOf(nodeId);
+      if (!node || !def || !st.reg || !OCD.sceneTable) return null;
+      const entry = selectedEntry(st.results, nodeId);
+      const variant = selectedVariant(st.results, nodeId);
+      const ports = graphLib.portsFor(st.reg, node);
+      const table = OCD.sceneTable.sceneTable({
+        nodeId,
+        category: def.category,
+        entry,
+        variant,
+        order: outputOrder(node),
+        hidden: hiddenPorts(node),
+        inputPorts: ports.inputs,
+        edges: st.graph.edges,
+        upstreamVariant: (id) => selectedVariant(st.results, id)
+      });
+      if (!table) return null;
+      const planNode = plan && plan.nodes ? plan.nodes[nodeId] : null;
+      return {
+        ...table,
+        entryId: entry ? entry.id : null,
+        cost: OCD.sceneTable.itemCost(planNode, def),
+        busy: runState.active || starting,
+        canRun: def.available === true
+      };
     }
 
     function runSelection() {
@@ -1324,6 +1369,8 @@
       },
       runNode,
       runFrom,
+      runItems,
+      scenes: scenesOf,
       selectVariant,
       openResult,
       downloadResult,
