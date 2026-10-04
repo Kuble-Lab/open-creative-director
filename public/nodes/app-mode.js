@@ -885,6 +885,8 @@
           frame.addEventListener('click', () => onOpen(index));
         }
         cell.append(frame);
+        const alphaHint = OCD.preview.alphaHint(leaf);
+        if (alphaHint) cell.append(alphaHint);
         const tools = el('div', { class: 'nv-appleaf-tools' });
         const expand = el('button', { type: 'button', class: 'nv-pv-tool', title: T('nodes.preview.open'), 'aria-label': T('nodes.preview.open') }, icon('fullscreen', 13));
         expand.addEventListener('click', () => onOpen(index));

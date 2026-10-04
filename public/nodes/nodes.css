@@ -1623,6 +1623,33 @@
   height: 38px;
 }
 
+/* A result with an alpha channel (a cutout) sits on a chequerboard, as in an image editor: the transparent parts show it.
+   The tiles are two dark greys: the interface has only a dark theme. The selectors are as specific as the rules that give the
+   thumbnail and the app view their own background (.nv-thumb, .nv-appleaf-frame .nv-media), which come later in this file. */
+.nv-app {
+  --nv-checker-a: #2b2f37;
+  --nv-checker-b: #1d2026;
+}
+
+.nv-alpha,
+.nv-media.nv-alpha,
+.nv-thumb.nv-alpha,
+.nv-appleaf-frame .nv-media.nv-alpha,
+.nv-viewer-video.nv-alpha {
+  background-color: var(--nv-checker-b);
+  background-image: linear-gradient(45deg, var(--nv-checker-a) 25%, transparent 25%, transparent 75%, var(--nv-checker-a) 75%),
+    linear-gradient(45deg, var(--nv-checker-a) 25%, transparent 25%, transparent 75%, var(--nv-checker-a) 75%);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.nv-alpha-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
 .nv-pv-text {
   max-height: 150px;
   overflow: auto;
@@ -6180,6 +6207,11 @@ button.nv-scene-preview:focus-visible {
   overflow: hidden;
   background: #0b0d0f;
   border: 1px solid var(--line-soft);
+}
+
+.nv-appleaf .nv-alpha-hint {
+  margin: 0;
+  padding: 6px 10px 8px;
 }
 
 .nv-appleaf-frame .nv-media {

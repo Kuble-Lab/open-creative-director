@@ -1,0 +1,210 @@
+{
+  "id": "video-cutout-overlay",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Cut out an object and place it over another video",
+  "description": "Cut an object out of one video and place it over a second video: fal.ai (SAM 3) cuts the object out as a video with a transparent background, ffmpeg lays it over the other video. Segmentation costs 0.005 USD per 16 frames (about 0.075 USD for 10 s at 24 fps). Safari does not show the transparency of the intermediate result; Chrome and Firefox do. The final video is a normal MP4.",
+  "requires": [
+    "fal",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.video",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 60,
+        "title": "Video with the object",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "fal.video_segment",
+        "typeVersion": 1,
+        "x": 500,
+        "y": 60,
+        "title": "Cut out object",
+        "params": {
+          "object": "person",
+          "output": "cutout",
+          "max_seconds": 10,
+          "threshold": 0.5
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.video",
+        "typeVersion": 1,
+        "x": 500,
+        "y": 400,
+        "title": "Background video",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n4",
+        "type": "video.overlay_video",
+        "typeVersion": 1,
+        "x": 920,
+        "y": 180,
+        "title": "Place over background",
+        "params": {
+          "x": 50,
+          "y": 50,
+          "unit": "percent",
+          "anchor": "center",
+          "scale": 100,
+          "opacity": 1,
+          "start": 0,
+          "end": 0,
+          "loop_layer": false,
+          "length": "background",
+          "audio": "background",
+          "key": "none",
+          "key_color": "#00ff00",
+          "key_similarity": 0.3,
+          "key_blend": 0.1
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1340,
+        "y": 220,
+        "params": {
+          "label": "Video with the object"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "video"
+        },
+        "to": {
+          "node": "n2",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n3",
+          "port": "video"
+        },
+        "to": {
+          "node": "n4",
+          "port": "background"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "video"
+        },
+        "to": {
+          "node": "n4",
+          "port": "layer"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "video"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 500,
+        "y": 660,
+        "w": 380,
+        "h": 190,
+        "text": "Name the object briefly, best in English (\"person\", \"dog\"). The cut-out is a WebM with a transparent background (Chrome and Firefox show it, Safari does not); it costs 0.005 USD per 16 frames, and the run asks first. On Place over background you set position, size, opacity, the second the object appears, the length and the sound. The result is an MP4."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Cut out an object and place it over another video",
+    "description": "Upload a video with an object and a background video, and name the object. You get the background video with the object on top.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "asset",
+        "label": "Video with the object"
+      },
+      {
+        "node": "n3",
+        "param": "asset",
+        "label": "Background video"
+      },
+      {
+        "node": "n2",
+        "param": "object",
+        "label": "Object to cut out"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n5",
+        "label": "Video with the object"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Objekt freistellen und über ein anderes Video legen",
+      "description": "Stelle ein Objekt in einem Video frei und lege es über ein zweites Video: fal.ai (SAM 3) schneidet das Objekt als Video mit transparentem Hintergrund aus, ffmpeg legt es über das andere Video. Die Segmentierung kostet 0.005 USD pro 16 Bilder (rund 0.075 USD für 10 s bei 24 Bildern pro Sekunde). Safari zeigt die Transparenz des Zwischenergebnisses nicht, Chrome und Firefox schon. Das fertige Video ist ein normales MP4.",
+      "node.n1": "Video mit dem Objekt",
+      "node.n2": "Objekt freistellen",
+      "node.n3": "Hintergrundvideo",
+      "node.n4": "Über den Hintergrund legen",
+      "note.t1": "Nenne das Objekt kurz, am besten auf Englisch («person», «dog»). Der Freisteller ist ein WebM mit transparentem Hintergrund (Chrome und Firefox zeigen ihn, Safari nicht); er kostet 0.005 USD pro 16 Bilder, der Lauf fragt vorher nach. Im Node «Über den Hintergrund legen» stellst du Position, Grösse, Deckkraft, die Sekunde des Auftritts, die Länge und den Ton ein. Das Ergebnis ist ein MP4.",
+      "param.n2.object": "person",
+      "app.title": "Objekt freistellen und über ein anderes Video legen",
+      "app.description": "Lade ein Video mit einem Objekt und ein Hintergrundvideo hoch und nenne das Objekt. Du erhältst das Hintergrundvideo mit dem Objekt darüber.",
+      "app.input.n1.asset": "Video mit dem Objekt",
+      "app.input.n3.asset": "Hintergrundvideo",
+      "app.input.n2.object": "Objekt zum Freistellen",
+      "app.output.n5": "Video mit dem Objekt"
+    },
+    "es": {
+      "name": "Recortar un objeto y colocarlo sobre otro vídeo",
+      "description": "Recorta un objeto de un vídeo y colócalo sobre un segundo vídeo: fal.ai (SAM 3) recorta el objeto como un vídeo con fondo transparente y ffmpeg lo superpone al otro vídeo. La segmentación cuesta 0.005 USD por cada 16 fotogramas (unos 0.075 USD para 10 s a 24 fotogramas por segundo). Safari no muestra la transparencia del resultado intermedio; Chrome y Firefox sí. El vídeo final es un MP4 normal.",
+      "node.n1": "Vídeo con el objeto",
+      "node.n2": "Recortar objeto",
+      "node.n3": "Vídeo de fondo",
+      "node.n4": "Colocar sobre el fondo",
+      "note.t1": "Nombra el objeto con pocas palabras, mejor en inglés («person», «dog»). El recorte es un WebM con fondo transparente (Chrome y Firefox lo muestran, Safari no); cuesta 0.005 USD por cada 16 fotogramas y la ejecución pregunta antes. En «Colocar sobre el fondo» ajustas la posición, el tamaño, la opacidad, el segundo en que aparece el objeto, la duración y el sonido. El resultado es un MP4.",
+      "param.n2.object": "person",
+      "app.title": "Recortar un objeto y colocarlo sobre otro vídeo",
+      "app.description": "Sube un vídeo con un objeto y un vídeo de fondo, y nombra el objeto. Obtienes el vídeo de fondo con el objeto encima.",
+      "app.input.n1.asset": "Vídeo con el objeto",
+      "app.input.n3.asset": "Vídeo de fondo",
+      "app.input.n2.object": "Objeto a recortar",
+      "app.output.n5": "Vídeo con el objeto"
+    }
+  }
+}

@@ -21,6 +21,21 @@
   const isDocument = (value) => Boolean(value) && value.type === 'document' && typeof value.url === 'string';
   const isViewable = (value) => isMedia(value) || (Boolean(value) && (value.type === 'text' || value.type === 'number'));
 
+  // A result with an alpha channel (a cutout, WP33b) shows a chequerboard behind it: the class goes on the element that carries the media.
+  const hasAlpha = (value) => Boolean(value) && value.alpha === true && (value.type === 'video' || value.type === 'image');
+  const alphaClass = (value) => (hasAlpha(value) ? ' nv-alpha' : '');
+  // Safari plays WebM with alpha (VP9) without the transparency: the picture is opaque there, so a hint says why. So does every
+  // browser on an iPhone or iPad (Chrome, Firefox and Edge there are WebKit with another name), and an iPad that says it is a Mac.
+  function isSafariBrowser() {
+    const nav = global.navigator || {};
+    const agent = nav.userAgent || '';
+    if (/iphone|ipad|ipod/i.test(agent) || (/macintosh/i.test(agent) && nav.maxTouchPoints > 1)) return true;
+    return /safari/i.test(agent) && !/chrome|chromium|crios|fxios|edg|opr\/|android/i.test(agent);
+  }
+  function alphaHint(value) {
+    return hasAlpha(value) && value.type === 'video' && isSafariBrowser() ? el('div', { class: 'nv-alpha-hint', text: T('nodes.preview.alphaSafari') }) : null;
+  }
+
   // Video sources get a media fragment so browsers paint the first frame as poster.
   function videoSource(value) {
     const url = ui.mediaUrl(value);
@@ -114,10 +129,10 @@
   function mediaNode(value, options = {}) {
     if (value.type === 'model3d') return modelNode(value, options);
     if (value.type === 'image') {
-      return el('img', { class: 'nv-media nv-media-image', src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' });
+      return el('img', { class: `nv-media nv-media-image${alphaClass(value)}`, src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' });
     }
     if (value.type === 'video') {
-      return el('video', { class: 'nv-media nv-media-video', src: videoSource(value), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
+      return el('video', { class: `nv-media nv-media-video${alphaClass(value)}`, src: videoSource(value), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
     }
     return el('audio', { class: 'nv-media nv-media-audio', src: ui.mediaUrl(value), controls: true, preload: 'metadata', autoplay: options.autoplay || null });
   }
@@ -299,6 +314,8 @@
         onOpen();
       });
       body.append(frame);
+      const hint = alphaHint(value);
+      if (hint) body.append(hint);
     } else if (value.type === 'text') {
       const wrap = el('div', { class: 'nv-pv-textwrap' });
       wrap.append(el('div', { class: 'nv-pv-text nv-scroll', text: value.value, style: `max-height:${TEXT_LINES * 1.5 * 12 + 16}px` }));
@@ -356,6 +373,7 @@
     } else if (value.type === 'image' && isMedia(value)) {
       wrap.append(el('img', { src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' }));
     } else if (value.type === 'video' && isMedia(value)) {
+      wrap.classList.toggle('nv-alpha', hasAlpha(value));
       wrap.append(el('video', { src: videoSource(value), muted: true, preload: 'metadata', playsinline: true, tabindex: '-1' }), el('span', { class: 'nv-thumb-badge' }, icon('play', 9)));
     } else if (value.type === 'audio') {
       wrap.classList.add('is-glyph');
@@ -463,7 +481,9 @@
         zoom.img = img;
         stage.append(img);
       } else if (value.type === 'video') {
-        stage.append(el('video', { class: 'nv-viewer-video', src: ui.mediaUrl(value), controls: true, autoplay: true, loop: true, playsinline: true }));
+        stage.append(el('video', { class: `nv-viewer-video${alphaClass(value)}`, src: ui.mediaUrl(value), controls: true, autoplay: true, loop: true, playsinline: true }));
+        const hint = alphaHint(value);
+        if (hint) stage.append(hint);
       } else if (value.type === 'audio') {
         stage.append(el('div', { class: 'nv-viewer-audio' }, icon('audio', 34), el('audio', { src: ui.mediaUrl(value), controls: true, autoplay: true })));
       } else if (value.type === 'model3d') {
@@ -590,6 +610,7 @@
 
   OCD.preview = {
     isMedia,
+    alphaHint,
     isViewable,
     leaves,
     fileNameOf,
