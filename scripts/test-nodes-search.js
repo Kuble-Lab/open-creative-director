@@ -235,7 +235,8 @@ function testQuickPickFromImage() {
   assert.ok(rankOf('video.overlay_image') <= rankOf('image.crop'), 'an overlay needs a video of its own: no boost');
   // a text output: the video generators lead as well
   const text = search('de', 'participant', '', { filter: { dir: 'out', type: 'text' } });
-  assert.ok(types(text, 6).includes('video.seedance'), `Seedance near the top for a text output: ${types(text, 6)}`);
+  // (the scene node of the explainer video, WP37b, is one more video node that takes a text: the window grew by that one)
+  assert.ok(types(text, 7).includes('video.seedance'), `Seedance near the top for a text output: ${types(text, 7)}`);
   // ... but "Generate image", the most common next step after a prompt, is not pushed below the video family
   assert.ok(indexOfType(text, 'image.generate') >= 0 && indexOfType(text, 'image.generate') < 6, `Generate image among the first 6 for a text output: ${types(text, 8)}`);
   assert.ok(indexOfType(text, 'image.generate') <= indexOfType(text, 'video.seedance') + 1);

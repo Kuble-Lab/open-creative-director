@@ -307,6 +307,17 @@ async function run(iso) {
       assert.match(ledger2.find((item) => item.id === all.out.pages.items[4].assetId).prompt, /five\.pdf p\. 5/);
       const none = await read([five], { page_images: 'none' });
       assert.equal(none.out.pages.items.length, 0);
+      // the info says where the images of each document are: the list holds them one document after the other
+      assert.deepEqual([all.info.documents[0].images, all.info.documents[0].image_offset, all.info.page_images], [5, 0, 'all']);
+      assert.deepEqual([first.info.documents[0].images, first.info.page_images], [3, 'first']);
+      assert.deepEqual([none.info.documents[0].images, none.info.documents[0].image_offset], [0, null], 'no images: no place in the list');
+      const pair = await read([five, pdfAsset], { page_images: 'all' });
+      assert.equal(pair.info.documents[0].image_offset, 0);
+      assert.equal(pair.info.documents[1].image_offset, pair.info.documents[0].images, 'the images of the second PDF follow those of the first');
+      assert.equal(pair.out.pages.items.length, pair.info.documents[0].images + pair.info.documents[1].images);
+      const mixed = await read([txtAsset, five], { page_images: 'all' });
+      assert.deepEqual([mixed.info.documents[0].images, mixed.info.documents[0].image_offset], [0, null], 'a text file has none');
+      assert.deepEqual([mixed.info.documents[1].images, mixed.info.documents[1].image_offset], [5, 0]);
       // a text file has no page images; the log says why there are none
       const noPdf = await read([txtAsset], { page_images: 'first' });
       assert.equal(noPdf.out.pages.items.length, 0);

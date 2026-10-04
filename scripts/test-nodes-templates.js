@@ -29,6 +29,9 @@ const EXPECTED = [
   'dub-clip',
   'explainer-script',
   'explainer-script-topic',
+  'explainer-video',
+  'explainer-video-presenter',
+  'explainer-video-topic',
   'frame-chain',
   'hero-variants',
   'image-formats',
@@ -59,6 +62,8 @@ function requirementsOf(type) {
   else if (['image.generate', 'image.edit', 'image.relight', 'video.seedance', 'video.generate'].includes(type)) keys.push('openrouter');
   else if (type === 'music_video.plan') keys.push('openrouter', 'ffmpeg');
   else if (type === 'explainer.plan') keys.push('openrouter');
+  else if (type === 'explainer.voice') keys.push('elevenlabs', 'ffmpeg');
+  else if (type === 'explainer.scene') keys.push('openrouter', 'rendernode', 'ffmpeg');
   else if (type === 'doc.read') keys.push('poppler');
   else if (['audio.tts', 'audio.music', 'audio.music_plan', 'audio.lyrics_timing'].includes(type)) keys.push('elevenlabs');
   else if (type.startsWith('fal.')) keys.push('fal');
@@ -352,7 +357,11 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter'].includes(item.id)).every((item) => item.available));
+      // the explainer videos speak with ElevenLabs
+      for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter']) {
+        assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
+      }
       // the music templates need the ElevenLabs key, and ffmpeg where the video is mixed
       assert.deepEqual(noAudio.find((item) => item.id === 'song-from-idea').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'video-with-music').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
@@ -372,7 +381,8 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills'].includes(item.id)).every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'explainer-video-presenter'].includes(item.id)).every((item) => item.available));
+      assert.deepEqual(noFal.find((item) => item.id === 'explainer-video-presenter').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'only the presenter needs fal.ai (the lip sync); the other two explainer videos run without it');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-stills').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes still does');
       assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
@@ -481,7 +491,11 @@ async function main() {
       for (const id of EXPECTED) {
         const cost = summary[id].cost;
         // photo-to-3d is the exception: both of its nodes (background removal, image to 3D) have a price table
-        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' ? 'estimate' : 'unknown', `${id}: the shipped nodes have no price table`);
+        // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
+        // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
+        const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic'].includes(id);
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
+        if (explainerVideo) assert.equal(cost.usd, 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));
         assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
         if (FREE.includes(id)) assert.deepEqual(cost.providers, [], `${id}: nothing is billed`);

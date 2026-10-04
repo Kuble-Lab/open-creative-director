@@ -142,7 +142,7 @@ function testGoodScript() {
   assert.equal(last.narration, '');
   assert.equal(last.est_seconds, 3);
   assert.equal(last.on_screen.title, 'Quellen');
-  assert.deepEqual(last.on_screen.bullets, ['bericht (S. 1)', 'bericht (S. 2)', 'bericht (S. 3)']);
+  assert.deepEqual(last.on_screen.bullets, ['bericht (S. 1, 2, 3)'], 'one line for the document, with all its pages');
   // times from the words
   assert.equal(script.scenes[0].est_seconds, plan.secondsFor(narrationOf(1, 22), 'de'));
   assert.ok(script.scenes.slice(0, 12).every((item) => item.est_seconds >= 5 && item.est_seconds <= 12));
@@ -162,7 +162,7 @@ function testGoodScript() {
   // the schema: every field of a scene
   for (const key of ['id', 'kind', 'role', 'narration', 'est_seconds', 'on_screen', 'elements', 'figure', 'image_prompt', 'clip_prompt', 'source_refs']) assert.ok(key in script.scenes[0], key);
   for (const key of ['title', 'bullets', 'numbers', 'quote']) assert.ok(key in script.scenes[0].on_screen, key);
-  assert.deepEqual(Object.keys(script).filter((key) => !['warnings'].includes(key)).sort(), ['audience', 'downgrades', 'format', 'language', 'presenter', 'removed_claims', 'scenes', 'sources', 'summary', 'title', 'verified', 'version', 'visual_mode']);
+  assert.deepEqual(Object.keys(script).filter((key) => !['warnings'].includes(key)).sort(), ['audience', 'downgrades', 'format', 'language', 'length_seconds', 'presenter', 'removed_claims', 'scenes', 'sources', 'summary', 'title', 'verified', 'version', 'visual_mode']);
   JSON.parse(JSON.stringify(script));
   // json from the model in any dress
   assert.deepEqual(plan.parseJsonAnswer('```json\n{"a":1}\n```'), { a: 1 });
@@ -627,7 +627,18 @@ function testOutputs() {
   assert.equal(out.shots.scenes.length, 13);
   assert.deepEqual(out.shots.counts, { scenes: 13, narration: 13, briefs: 13, images: 2, clips: 1 });
   // the index pairs
-  assert.deepEqual(out.shots.scenes[1], { id: 's2', index: 1, kind: 'still', role: 'point', est_seconds: script.scenes[1].est_seconds, spoken: true, narration: 1, brief: 1, image: 0, clip: null });
+  // (WP37b: the entry also carries what the scene node needs - title, elements with their anchors, the figure, the source references -
+  // so that it finds them by the id of its scene, not by its position in a list)
+  const second = script.scenes[1];
+  assert.deepEqual(out.shots.scenes[1], {
+    id: 's2', index: 1, kind: 'still', role: 'point', est_seconds: second.est_seconds, spoken: true, narration: 1, brief: 1, image: 0, clip: null,
+    title: second.on_screen.title,
+    elements: second.elements.map((element) => ({ id: element.id, type: element.type, content: element.content, anchor: element.anchor })),
+    figure: null,
+    source_refs: second.source_refs
+  });
+  assert.equal(out.narrationContext.length, out.narration.length, 'the text around a scene is paired with the narration');
+  assert.equal(out.shots.target_seconds, script.length_seconds);
   assert.equal(out.shots.scenes[4].image, 1);
   assert.equal(out.shots.scenes[7].clip, 0);
   assert.equal(out.shots.scenes[12].narration, 12);
@@ -666,6 +677,43 @@ function testOutputs() {
   assert.deepEqual([motion.imagePrompts, motion.clipPrompts], [[], []]);
 }
 
+// The closing card: one line for every document (the title and ALL pages used), one line for every other source, in the order of the
+// sources; the title is cut to 9 words and the list of pages never; at most 6 lines.
+function testSourcesCard() {
+  const refsOf = (...lists) => {
+    const answer = goodAnswer();
+    answer.scenes.forEach((item, index) => {
+      item.source_refs = lists[index % lists.length];
+    });
+    return answer;
+  };
+  const cardOf = (result) => result.script.scenes.find((item) => item.role === 'sources');
+  // several pages of one document: one line, the pages in order
+  const oneDocument = build(refsOf(['S. 4'], ['S. 1'], ['S. 2'], ['S. 1']));
+  assert.deepEqual(cardOf(oneDocument).on_screen.bullets, ['bericht (S. 1, 2, 4)']);
+  assert.deepEqual(cardOf(oneDocument).elements.map((element) => [element.id, element.type, element.content]), [['e1', 'title', 'Quellen'], ['e2', 'bullet', 'bericht (S. 1, 2, 4)']], 'the elements follow the line');
+  assert.deepEqual(oneDocument.script.sources.map((source) => source.ref), ['S. 1', 'S. 2', 'S. 4'], 'the list of the sources stays one entry per page');
+  assert.equal(plan.outputsOf(oneDocument.script).sourcesText, 'S. 1 — bericht\nS. 2 — bericht\nS. 4 — bericht', 'and so does its text');
+  // the word for a page follows the language
+  assert.deepEqual(cardOf(build(refsOf(['S. 3'], ['S. 1']), { language: 'en' })).on_screen.bullets, ['bericht (p. 1, 3)']);
+  // several documents: one line each, in the order of the documents, the pages of each in order (the "D2" is in the title, not in the line)
+  const two = build(refsOf(['D2 S. 7'], ['D1 S. 2'], ['D1 S. 4', 'D2 S. 3'], ['D1 S. 1']), { documents: [doc('a.pdf', 5), doc('b.pdf', 9)] });
+  assert.deepEqual(cardOf(two).on_screen.bullets, ['a (S. 1, 2, 4)', 'b (S. 3, 7)']);
+  // documents and research: the numbered sources first (as in the list of sources), then the documents; a source of the research is one line
+  const mixed = build(refsOf(['S. 5', '[2]'], ['S. 2', '[1]']), { sources: [{ n: 1, title: 'Agency', url: 'https://example.org/a' }, { n: 2, title: 'Paper', url: 'https://example.org/b' }] });
+  assert.deepEqual(cardOf(mixed).on_screen.bullets, ['Agency', 'Paper', 'bericht (S. 2, 5)']);
+  // a long title is cut to nine words, the pages stay
+  const longTitle = build(refsOf(['S. 1'], ['S. 2'], ['S. 3']), { documents: [{ name: 'x.pdf', title: 'Ein sehr langer Titel eines Berichts über die Entwicklung der Pegelstände im Jahr 2026', pageCount: 12 }] });
+  assert.deepEqual(cardOf(longTitle).on_screen.bullets, ['Ein sehr langer Titel eines Berichts über die Entwicklung (S. 1, 2, 3)']);
+  // at most six lines
+  const documents = Array.from({ length: 8 }, (_x, index) => doc(`d${index + 1}.pdf`, 3));
+  const many = build(refsOf(...documents.map((_item, index) => [`D${index + 1} S. 1`])), { documents });
+  assert.deepEqual(cardOf(many).on_screen.bullets, ['d1 (S. 1)', 'd2 (S. 1)', 'd3 (S. 1)', 'd4 (S. 1)', 'd5 (S. 1)', 'd6 (S. 1)']);
+  // a script that is finished again (an edited script) gives the same card
+  const again = plan.finalizeScript(JSON.parse(JSON.stringify(oneDocument.script)), { ...BASE });
+  assert.deepEqual(cardOf({ script: again }).on_screen.bullets, ['bericht (S. 1, 2, 4)']);
+}
+
 function testSourcesAndPrice() {
   const text = '[1] Agency report — https://example.org/a (abgerufen 2026-10-03)\n[2] A title — with a dash — https://example.org/b?x=1\nnot a line\n[3] No url';
   assert.deepEqual(plan.parseSourcesText(text), [
@@ -690,7 +738,7 @@ function testSourcesAndPrice() {
   assert.ok(plan.estimateUsd({ model: 'anthropic/claude-opus-5.5', textChars: 0, verify: true }) < 0.3, 'a topic only');
 }
 
-const tests = [testWords, testPrompts, testGoodScript, testSceneLimits, testOnScreenText, testAnchorsAndRefs, testVisualModes, testPresenter, testEditedScript, testVerification, testOutputs, testSourcesAndPrice];
+const tests = [testWords, testPrompts, testGoodScript, testSceneLimits, testOnScreenText, testAnchorsAndRefs, testVisualModes, testPresenter, testEditedScript, testVerification, testOutputs, testSourcesCard, testSourcesAndPrice];
 for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);

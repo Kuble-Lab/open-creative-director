@@ -55,6 +55,7 @@
           "visual_mode": "mix",
           "format": "landscape",
           "max_still_share": 0.35,
+          "clips": true,
           "presenter": "off",
           "verify": true,
           "script": ""

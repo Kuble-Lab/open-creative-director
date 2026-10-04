@@ -1,0 +1,623 @@
+{
+  "id": "explainer-video-topic",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Explainer video for a topic",
+  "description": "Turn a topic into a finished explainer video: Claude Opus 5.5 researches it on the web (every fact with a numbered source), plans the scenes and checks each statement against the research, ElevenLabs speaks the narration, Claude draws every scene as motion graphics in your brand on the render node, and ffmpeg cuts it with voice, captions and a subtitle file. About 2 to 3 US dollars for 2 minutes (research and script 0.30 to 0.50, voice about 0.15, scenes about 0.10 each, music about 0.40; it needs a paid ElevenLabs plan, otherwise delete the node Background music). The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything.",
+  "requires": [
+    "openrouter",
+    "elevenlabs",
+    "rendernode",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 120,
+        "title": "Topic",
+        "params": {
+          "prompt": "How does a heat pump work, and what does it cost to run?"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 420,
+        "title": "What matters most (optional)",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n2",
+        "type": "llm.research",
+        "typeVersion": 1,
+        "x": 460,
+        "y": 120,
+        "title": "Research the topic",
+        "params": {
+          "model": "",
+          "topic": "",
+          "focus": "",
+          "max_results": 8,
+          "language": "en",
+          "include_domains": "",
+          "exclude_domains": ""
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.branding",
+        "typeVersion": 1,
+        "x": 460,
+        "y": 520,
+        "title": "Branding",
+        "params": {
+          "branding": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "explainer.plan",
+        "typeVersion": 1,
+        "x": 880,
+        "y": 140,
+        "title": "Plan explainer video",
+        "params": {
+          "model": "",
+          "topic": "",
+          "brief": "",
+          "length_seconds": 120,
+          "language": "en",
+          "audience": "",
+          "tone": "factual",
+          "visual_mode": "mix",
+          "format": "landscape",
+          "max_still_share": 0.35,
+          "clips": false,
+          "presenter": "off",
+          "verify": true,
+          "script": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "explainer.voice",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 80,
+        "title": "Explainer voice",
+        "params": {
+          "voice_id": "",
+          "model_id": "eleven_v4",
+          "use_context": true
+        }
+      },
+      {
+        "id": "n7",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 440,
+        "title": "Pictures for still scenes",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n8",
+        "type": "explainer.scene",
+        "typeVersion": 1,
+        "x": 1760,
+        "y": 200,
+        "title": "Draw explainer scene",
+        "params": {
+          "model": "",
+          "format": "landscape",
+          "quality": "standard",
+          "vision_check": true,
+          "max_retries": 2,
+          "fallback": true
+        }
+      },
+      {
+        "id": "n9",
+        "type": "explainer.edit",
+        "typeVersion": 1,
+        "x": 2200,
+        "y": 200,
+        "title": "Cut explainer video",
+        "params": {
+          "transition": "crossfade",
+          "resolution": "1080p",
+          "fps": "30",
+          "captions": "lines",
+          "captions_position": "bottom",
+          "music_level": "quiet",
+          "ducking": true,
+          "fade_out": 1,
+          "fit": "crop"
+        }
+      },
+      {
+        "id": "n10",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2640,
+        "y": 100,
+        "params": {
+          "label": "Video"
+        }
+      },
+      {
+        "id": "n11",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2640,
+        "y": 300,
+        "params": {
+          "label": "Subtitles"
+        }
+      },
+      {
+        "id": "n12",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 760,
+        "params": {
+          "label": "Script"
+        }
+      },
+      {
+        "id": "n13",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1320,
+        "y": 940,
+        "params": {
+          "label": "Sources"
+        }
+      },
+      {
+        "id": "n14",
+        "type": "audio.music",
+        "typeVersion": 1,
+        "x": 1760,
+        "y": 520,
+        "title": "Background music",
+        "params": {
+          "prompt": "Calm, warm instrumental background music for an explainer video: soft piano and light pads, steady and unobtrusive, no vocals, no strong melody that competes with the speech",
+          "plan": "",
+          "length": 120,
+          "instrumental": true,
+          "model": "music_v2_5"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n2",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n6",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n2",
+          "port": "focus"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "notes"
+        },
+        "to": {
+          "node": "n4",
+          "port": "notes"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n2",
+          "port": "sources"
+        },
+        "to": {
+          "node": "n4",
+          "port": "sources"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n6",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "narration"
+        },
+        "to": {
+          "node": "n5",
+          "port": "narration"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n4",
+          "port": "narration_context"
+        },
+        "to": {
+          "node": "n5",
+          "port": "context"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n4",
+          "port": "image_prompts"
+        },
+        "to": {
+          "node": "n7",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n4",
+          "port": "briefs"
+        },
+        "to": {
+          "node": "n8",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n8",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n8",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n7",
+          "port": "image"
+        },
+        "to": {
+          "node": "n8",
+          "port": "stills"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n8",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n8",
+          "port": "video"
+        },
+        "to": {
+          "node": "n9",
+          "port": "scenes"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n5",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n9",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n9",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n9",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n9",
+          "port": "video"
+        },
+        "to": {
+          "node": "n10",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n9",
+          "port": "subtitles"
+        },
+        "to": {
+          "node": "n11",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n4",
+          "port": "script"
+        },
+        "to": {
+          "node": "n12",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n4",
+          "port": "sources"
+        },
+        "to": {
+          "node": "n13",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e24",
+        "from": {
+          "node": "n14",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n9",
+          "port": "music"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 460,
+        "y": 700,
+        "w": 760,
+        "h": 300,
+        "text": "Write the topic and choose a branding if you have one. About 2 to 3 US dollars for 2 minutes: research and script together 0.30 to 0.50, the voice about 0.15, every scene about 0.10, the music about 0.40, a few cents for each still picture. The run asks for confirmation first. Run the planner first (Plan explainer video, run only that node): check the script and the scenes, edit the script in the field Edited script and run that node again (an edited script is only checked, with no model call and no cost). Then run everything. Set the language of the script and of the research to the same value, and Format the same in Plan explainer video and in Draw explainer scene. The research notes carry numbered sources; the Sources result lists them. The music comes from Background music (instrumental, 120 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.6
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Explainer video for a topic",
+    "description": "Name a topic and get a finished explainer video: researched facts with sources, voice, motion graphics with your brand, captions and a subtitle file. Run only the planner first to check the script.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Topic"
+      },
+      {
+        "node": "n6",
+        "param": "prompt",
+        "label": "What matters most (optional)"
+      },
+      {
+        "node": "n3",
+        "param": "branding",
+        "label": "Branding"
+      },
+      {
+        "node": "n4",
+        "param": "language",
+        "label": "Language of the script"
+      },
+      {
+        "node": "n2",
+        "param": "language",
+        "label": "Language of the research"
+      },
+      {
+        "node": "n4",
+        "param": "length_seconds",
+        "label": "Length (seconds)"
+      },
+      {
+        "node": "n5",
+        "param": "voice_id",
+        "label": "Voice"
+      },
+      {
+        "node": "n9",
+        "param": "captions",
+        "label": "Captions"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n10",
+        "label": "Video"
+      },
+      {
+        "node": "n11",
+        "label": "Subtitles"
+      },
+      {
+        "node": "n12",
+        "label": "Script"
+      },
+      {
+        "node": "n13",
+        "label": "Sources"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Erklärvideo zu einem Thema",
+      "description": "Mach aus einem Thema ein fertiges Erklärvideo: Claude Opus 5.5 recherchiert es im Web (jede Tatsache mit nummerierter Quelle), plant die Szenen und prüft jede Aussage gegen die Recherche, ElevenLabs spricht den Text, Claude zeichnet jede Szene als Motion Graphics in deiner Marke auf dem Render-Node, und ffmpeg schneidet alles mit Stimme, Untertiteln und SRT-Datei. Etwa 2 bis 3 US-Dollar für 2 Minuten (Recherche und Skript 0.30 bis 0.50, Stimme etwa 0.15, Szenen je etwa 0.10, Musik etwa 0.40; sie braucht ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus.",
+      "node.n1": "Thema",
+      "node.n6": "Was besonders wichtig ist (optional)",
+      "node.n2": "Thema recherchieren",
+      "node.n3": "Branding",
+      "node.n4": "Erklärvideo planen",
+      "node.n5": "Erklärstimme",
+      "node.n7": "Bilder für Standbild-Szenen",
+      "node.n8": "Erklärszene zeichnen",
+      "node.n9": "Erklärvideo schneiden",
+      "param.n1.prompt": "Wie funktioniert eine Wärmepumpe, und was kostet ihr Betrieb?",
+      "param.n2.language": "de",
+      "param.n4.language": "de",
+      "note.t1": "Schreibe das Thema und wähle ein Branding, falls du eines hast. Etwa 2 bis 3 US-Dollar für 2 Minuten: Recherche und Skript zusammen 0.30 bis 0.50, die Stimme etwa 0.15, jede Szene etwa 0.10, die Musik etwa 0.40, ein paar Rappen für jedes Standbild. Der Lauf fragt vorher um Bestätigung. Starte zuerst nur den Planer (Erklärvideo planen, nur diesen Node ausführen): Prüfe das Skript und die Szenen, ändere das Skript im Feld Skript (bearbeitet) und starte den Node erneut (ein bearbeitetes Skript wird nur geprüft, ohne Modellaufruf und ohne Kosten). Danach führst du alles aus. Stelle die Sprache des Skripts und der Recherche auf denselben Wert und das Format in Erklärvideo planen und Erklärszene zeichnen gleich ein. Die Recherche-Notizen tragen nummerierte Quellen; das Ergebnis Quellen listet sie auf. Die Musik kommt von Hintergrundmusik (instrumental, 120 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen.",
+      "app.title": "Erklärvideo zu einem Thema",
+      "app.description": "Nenne ein Thema und erhalte ein fertiges Erklärvideo: recherchierte Fakten mit Quellen, Stimme, Motion Graphics in deiner Marke, Untertitel und eine SRT-Datei. Starte zuerst nur den Planer, um das Skript zu prüfen.",
+      "app.input.n1.prompt": "Thema",
+      "app.input.n6.prompt": "Was besonders wichtig ist (optional)",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.language": "Sprache des Skripts",
+      "app.input.n2.language": "Sprache der Recherche",
+      "app.input.n4.length_seconds": "Länge (Sekunden)",
+      "app.input.n5.voice_id": "Stimme",
+      "app.input.n9.captions": "Untertitel",
+      "app.output.n10": "Video",
+      "app.output.n11": "Untertitel",
+      "app.output.n12": "Skript",
+      "app.output.n13": "Quellen",
+      "node.n14": "Hintergrundmusik",
+      "param.n14.prompt": "Ruhige, warme Hintergrundmusik für ein Erklärvideo, instrumental: sanftes Klavier und leichte Flächen, gleichmässig und unauffällig, ohne Gesang, ohne starke Melodie, die mit der Sprache konkurriert"
+    },
+    "es": {
+      "name": "Vídeo explicativo sobre un tema",
+      "description": "Convierte un tema en un vídeo explicativo terminado: Claude Opus 5.5 lo investiga en la web (cada hecho con una fuente numerada), planifica las escenas y comprueba cada afirmación con la investigación, ElevenLabs lee la narración, Claude dibuja cada escena como motion graphics con tu marca en el nodo de render, y ffmpeg lo monta con voz, subtítulos y un archivo SRT. Unos 2 a 3 dólares para 2 minutos (investigación y guion 0,30 a 0,50, voz unos 0,15, escenas unos 0,10 cada una, música unos 0,40; necesita un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo.",
+      "node.n1": "Tema",
+      "node.n6": "Lo que más importa (opcional)",
+      "node.n2": "Investigar un tema",
+      "node.n3": "Branding",
+      "node.n4": "Planificar vídeo explicativo",
+      "node.n5": "Voz explicativa",
+      "node.n7": "Imágenes para escenas fijas",
+      "node.n8": "Dibujar escena explicativa",
+      "node.n9": "Montar vídeo explicativo",
+      "param.n1.prompt": "¿Cómo funciona una bomba de calor y cuánto cuesta su funcionamiento?",
+      "param.n2.language": "es",
+      "param.n4.language": "es",
+      "note.t1": "Escribe el tema y elige un branding si tienes uno. Unos 2 a 3 dólares para 2 minutos: investigación y guion juntos 0,30 a 0,50, la voz unos 0,15, cada escena unos 0,10, la música unos 0,40, unos céntimos por cada imagen fija. La ejecución pide antes que lo confirmes. Ejecuta primero solo el planificador (Planificar vídeo explicativo, solo ese nodo): revisa el guion y las escenas, edita el guion en el campo Guion (editado) y ejecuta ese nodo de nuevo (un guion editado solo se comprueba, sin llamada al modelo y sin coste). Después ejecuta todo. Ajusta el idioma del guion y el de la investigación al mismo valor, y el formato igual en Planificar vídeo explicativo y en Dibujar escena explicativa. Las notas de la investigación llevan fuentes numeradas; el resultado Fuentes las enumera. La música viene de Música de fondo (instrumental, 120 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa.",
+      "app.title": "Vídeo explicativo sobre un tema",
+      "app.description": "Nombra un tema y obtén un vídeo explicativo terminado: hechos investigados con fuentes, voz, motion graphics con tu marca, subtítulos y un archivo SRT. Ejecuta primero solo el planificador para revisar el guion.",
+      "app.input.n1.prompt": "Tema",
+      "app.input.n6.prompt": "Lo que más importa (opcional)",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.language": "Idioma del guion",
+      "app.input.n2.language": "Idioma de la investigación",
+      "app.input.n4.length_seconds": "Duración (segundos)",
+      "app.input.n5.voice_id": "Voz",
+      "app.input.n9.captions": "Subtítulos",
+      "app.output.n10": "Vídeo",
+      "app.output.n11": "Subtítulos",
+      "app.output.n12": "Guion",
+      "app.output.n13": "Fuentes",
+      "node.n14": "Música de fondo",
+      "param.n14.prompt": "Música de fondo instrumental, tranquila y cálida, para un vídeo explicativo: piano suave y colchones ligeros, constante y discreta, sin voz, sin una melodía fuerte que compita con la narración"
+    }
+  }
+}
