@@ -239,6 +239,8 @@ async function main() {
       assert.equal(price.usd, 0.01);
       assert.equal(price.estimate, true, 'the price page gives no usable figure: an estimate, not a list price');
       assert.equal(price.fetched, '2026-10-04');
+      assert.equal(price.listUsdPerComputeSecond, 0.00125, 'the list price of the price API of fal (per compute second)');
+      assert.ok(price.usd >= 8 * price.listUsdPerComputeSecond, 'the estimate covers up to 8 compute seconds');
       assert.ok(Object.isFrozen(price));
       assert.equal(def().cost.estimate({}), 0.01);
     }
