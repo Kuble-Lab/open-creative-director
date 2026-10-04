@@ -30,6 +30,7 @@ const generate = require('../lib/nodes/nodes-generate');
 const { createEditHarness, execFileAsync } = require('./support/edit-harness');
 const { loadPage } = require('./support/fake-dom');
 const golden = require('./support/video-op-args-before-wp33b.json');
+const videoOpCases = require('./support/video-op-cases');
 
 const read = (file) => require('fs').readFileSync(path.join(__dirname, '..', file), 'utf8');
 
@@ -153,6 +154,10 @@ function testArgumentsWithoutAlpha() {
   assert.deepEqual(argv(ops.buildImageResize({ width: 100, height: 100, fit: 'contain', background: '#000000', transparent: true }), ['/in.png'], ['/out.png']), golden.imageResize, 'images: transparent padding as before');
   assert.deepEqual(argv(ops.buildImageResize({ width: 100, height: 100, fit: 'contain', background: '#112233', transparent: false }), ['/in.png'], ['/out.png']), golden.imageResizeOpaque);
   assert.deepEqual(argv(ops.buildExtractFrame({ position: 'time', time: 1 }, [mp4]), ['/in.mp4'], ['/out.png']), golden.extractFrame);
+
+  // the ops WP33b left alone (captions, sound wave, grid, image to video, concat of the tool): the probes come from normaliseMediaProbe on
+  // an ffprobe output, so they carry `alpha: false` as real ones do; the arguments are the ones main wrote (scripts/support/video-op-cases.js)
+  assert.deepEqual(videoOpCases.compute(ops, ffmpeg), golden.more, 'the ops outside the list: the arguments of before');
 
   // the same through applyAlpha: nothing is added to the spec of an op whose inputs have no alpha
   const spec = ops.buildTrim({ start: 0.5, end: 2, accurate: true }, [mp4]);
