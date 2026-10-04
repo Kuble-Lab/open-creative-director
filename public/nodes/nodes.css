@@ -1623,6 +1623,42 @@
   height: 38px;
 }
 
+/* A result with an alpha channel (a cutout) sits on a chequerboard, as in an image editor: the transparent parts show it.
+   The tiles are two neutral greys, a darker pair for the dark theme and a lighter pair for the light one. */
+.nv-app {
+  --nv-checker-a: #2b2f37;
+  --nv-checker-b: #1d2026;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .nv-app {
+    --nv-checker-a: #e4e6ea;
+    --nv-checker-b: #c9ccd3;
+  }
+}
+
+:root[data-theme='light'] .nv-app {
+  --nv-checker-a: #e4e6ea;
+  --nv-checker-b: #c9ccd3;
+}
+
+.nv-alpha,
+.nv-media.nv-alpha,
+.nv-viewer-video.nv-alpha {
+  background-color: var(--nv-checker-b);
+  background-image: linear-gradient(45deg, var(--nv-checker-a) 25%, transparent 25%, transparent 75%, var(--nv-checker-a) 75%),
+    linear-gradient(45deg, var(--nv-checker-a) 25%, transparent 25%, transparent 75%, var(--nv-checker-a) 75%);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.nv-alpha-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
 .nv-pv-text {
   max-height: 150px;
   overflow: auto;
