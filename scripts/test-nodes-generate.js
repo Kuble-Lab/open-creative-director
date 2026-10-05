@@ -2826,6 +2826,27 @@ async function main() {
       assert.match(plan.nodes.v1.reason, /Motion transfer \(Higgsfield\)/);
       await assert.rejects(engine.start(saved.id, { mode: 'all', user: 'tester' }), (err) => err.code === 'INVALID_GRAPH' && err.issues.some((issue) => issue.code === 'needs_video_motion'));
       assert.equal(calls.filter((call) => call.name !== 'models_explore').length, 0, 'nothing was submitted');
+      // the Director's tools refuse such a model too (no video input, every reference goes out with one image role): before a
+      // model is read, a reference imported or an asset reserved, also with the motion video among the references
+      const director = { ...makeCtx(sessionId).toolCtx, nodeView: undefined };
+      await catalogLib.getModel('image_with_video');
+      const ledgerBefore = (await store.readLedger(sessionId)).length;
+      calls.length = 0;
+      await assert.rejects(
+        tools.executeTool(director, 'higgsfield_generate_video', { model: 'kling3_0_motion_control', prompt: 'A dancer', reference_asset_ids: [image1.assetId, video1.assetId] }),
+        /Kling 3\.0 Motion Control braucht ein Video als Eingabe.*"Bewegung uebertragen \(Higgsfield\) \/ Motion transfer \(Higgsfield\)".*Es wurde nichts eingereicht/
+      );
+      await assert.rejects(
+        tools.executeTool(director, 'higgsfield_generate_video', { model: 'kling_video_edit', prompt: 'x' }),
+        /kling_video_edit braucht ein Video als Eingabe.*"Video mit Referenzen bearbeiten \/ Edit video with references"/,
+        'known by id, without the record'
+      );
+      await assert.rejects(
+        tools.executeTool(director, 'higgsfield_generate_image', { model: 'image_with_video', prompt: 'x' }),
+        /Image From Video braucht ein Video als Eingabe/
+      );
+      assert.equal(calls.length, 0, 'no model read, nothing imported or submitted');
+      assert.equal((await store.readLedger(sessionId)).length, ledgerBefore, 'no asset reserved');
       // execute() refuses as well (last safeguard), before any asset is read or any tool is called
       const toolCalls = [];
       patch(tools, 'executeTool', async (...args) => {
