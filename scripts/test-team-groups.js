@@ -695,6 +695,20 @@ function testClientHelpers() {
   assert.equal(groups.ownerLabel(null), null);
   assert.equal(groups.ownerLabel('x'.repeat(60) + '@example.com').text.length, 24);
   assert.ok(groups.ownerLabel('x'.repeat(60) + '@example.com').text.endsWith('…'));
+  // the subgroups of a team: one per owner (address without case), latest activity first, no owner last
+  // (spread: the arrays come from the context of the client)
+  const subs = [...groups.ownerGroups([
+    { id: 'a', owner: 'Anna@example.com', updatedAt: '2026-03-01T10:00:00.000Z' },
+    { id: 'b', owner: '', updatedAt: '2026-09-01T10:00:00.000Z' },
+    { id: 'c', owner: 'ben@example.com', updatedAt: '2026-04-01T10:00:00.000Z' },
+    { id: 'd', owner: 'anna@example.com', updatedAt: '2026-05-01T10:00:00.000Z' }
+  ])];
+  assert.deepEqual(subs.map((sub) => sub.id), ['anna@example.com', 'ben@example.com', 'none']);
+  assert.deepEqual(subs.map((sub) => sub.count), [2, 1, 1]);
+  assert.deepEqual([...subs[0].workflows].map((item) => item.id), ['a', 'd'], 'the order of the list is kept inside a subgroup');
+  assert.equal(subs[2].owner, null);
+  assert.equal(groups.ownerGroups(null).length, 0);
+
   // header texts in all languages, plural included
   const { window } = loadClient({ me: admin });
   for (const lang of ['de', 'en', 'es']) {
@@ -1080,7 +1094,7 @@ function testWorkflowListClient() {
   const teamA = { id: 'tm-a', name: 'Kurs A', archived: false };
   const teamB = { id: 'tm-b', name: 'Kurs B', archived: false };
   const old = { id: 'tm-old', name: 'Alt-Kurs', archived: true };
-  const workflow = (id, name, team, updatedAt) => ({ id, name, team, updatedAt, nodeCount: 2, owner: 'anna@example.com', canManage: true });
+  const workflow = (id, name, team, updatedAt, owner = 'anna@example.com') => ({ id, name, team, updatedAt, nodeCount: 2, owner, canManage: true });
   list.setData({
     loading: false,
     error: null,
@@ -1088,6 +1102,8 @@ function testWorkflowListClient() {
     workflows: [
       workflow('w1', 'Flow A1', teamA, '2026-03-01T10:00:00.000Z'),
       workflow('w2', 'Flow A2', teamA, '2026-03-02T10:00:00.000Z'),
+      workflow('w6', 'Flow A3', teamA, '2026-03-05T10:00:00.000Z', 'ben@example.com'),
+      workflow('w7', 'Flow A4', teamA, '2026-03-09T10:00:00.000Z', null),
       workflow('w3', 'Flow B1', teamB, '2026-04-01T10:00:00.000Z'),
       workflow('w4', 'Flow Alt', old, '2026-05-01T10:00:00.000Z'),
       workflow('w5', 'Flow Intern', null, '2026-01-01T10:00:00.000Z')
@@ -1096,7 +1112,7 @@ function testWorkflowListClient() {
 
   // the project view is a flat list of rows
   assert.equal(items.getAttribute('role'), 'list');
-  assert.equal(items.children.length, 5);
+  assert.equal(items.children.length, 7);
   assert.ok(items.children.every((row) => row.getAttribute('role') === 'listitem'));
 
   // the team view: sections instead of rows, so the container is no list (only the lists inside the groups are)
@@ -1109,7 +1125,26 @@ function testWorkflowListClient() {
   assert.equal(bodies[2], undefined, 'the archived group is closed');
   for (const index of [0, 1, 3]) assert.equal(bodies[index].getAttribute('role'), 'list', 'every group is a list of its own');
   assert.ok(bodies[1].children.every((row) => row.getAttribute('role') === 'listitem'));
-  assert.match(named('nv-wf-group-meta')[1].textContent, /2 Workflows · 3 Personen/);
+  assert.match(named('nv-wf-group-meta')[1].textContent, /4 Workflows · 3 Personen/);
+
+  // inside a team one subgroup per owner: latest activity first, the workflows without an owner last
+  assert.deepEqual(bodies[1].children.map((sub) => sub.dataset.owner), ['ben@example.com', 'anna@example.com', 'none']);
+  const ownerHeads = () => named('nv-wf-owner-head').filter((node) => node.dataset.ownerKey.startsWith('tm-a|'));
+  assert.deepEqual(ownerHeads().map((node) => node.children[1].textContent), ['ben', 'anna', 'teamGroups.noOwner']);
+  assert.deepEqual(ownerHeads().map((node) => node.children[2].textContent), ['1', '2', '1']);
+  assert.equal(ownerHeads()[1].getAttribute('title'), 'anna@example.com', 'the full address as title');
+  const annaRows = bodies[1].children[1].children.find((child) => child.className === 'nv-wf-owner-items');
+  assert.equal(annaRows.getAttribute('role'), 'list');
+  assert.deepEqual(annaRows.children.map((row) => row.dataset.id), ['w1', 'w2']);
+  assert.equal(named('nv-wf-owner').length, 0, 'the subgroup names the owner, the rows do not repeat it');
+  // a subgroup closes on its own, keeps the focus, and stays closed when the team is closed and opened again
+  ownerHeads()[1].focus();
+  ownerHeads()[1].click();
+  assert.equal(ownerHeads()[1].getAttribute('aria-expanded'), 'false');
+  assert.equal(document.activeElement, ownerHeads()[1]);
+  const teamA2 = items.children.find((section) => section.dataset.team === 'tm-a').children.find((child) => child.className === 'nv-wf-group-items');
+  assert.equal(teamA2.children[1].children.length, 1, 'only the head of the closed subgroup');
+  assert.equal(ownerHeads()[0].getAttribute('aria-expanded'), 'true', 'the other subgroups stay open');
 
   // Enter or click on a head: the list is built anew and the focus stays on that head
   const head = named('nv-wf-group-head')[1];
@@ -1123,14 +1158,17 @@ function testWorkflowListClient() {
   assert.ok(host.contains(after));
   after.click();
   assert.equal(document.activeElement.dataset.teamId, 'tm-a');
+  assert.equal(ownerHeads()[1].getAttribute('aria-expanded'), 'false', 'the subgroup is remembered');
+  ownerHeads()[1].click();
 
   // the search is a flat list again, every hit names its team
   const search = named('nv-drawer-search')[0];
   search.value = 'flow';
   search.listeners.input[0]();
   assert.equal(items.getAttribute('role'), 'list');
-  assert.equal(items.children.length, 5);
-  assert.equal(named('nv-wf-team').length, 5);
+  assert.equal(items.children.length, 7);
+  assert.equal(named('nv-wf-team').length, 7);
+  assert.equal(named('nv-wf-owner-head').length, 0, 'the search is not grouped by owner');
   search.value = '';
   search.listeners.input[0]();
   assert.equal(items.getAttribute('role'), null, 'grouped again');

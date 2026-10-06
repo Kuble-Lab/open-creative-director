@@ -2746,6 +2746,57 @@
   padding-left: 8px;
 }
 
+.nv-wf-owner-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.nv-wf-owner-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.nv-wf-owner-head:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.nv-wf-owner-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.nv-wf-owner-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.nv-wf-owner-count {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.nv-wf-owner-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 10px;
+}
+
 .nv-wf-team {
   align-self: flex-start;
   max-width: 100%;
