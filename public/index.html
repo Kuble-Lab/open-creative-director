@@ -55,11 +55,6 @@
             <span id="sessionOwner" class="session-owner hidden"></span>
           </nav>
           <div class="topbar-right">
-            <div class="mode-switch" role="group" aria-label="Ansicht" data-i18n-aria-label="mode.selector">
-              <button id="chatModeBtn" class="mode-switch-button active" type="button" aria-current="page" title="Zum Chat wechseln" data-i18n="mode.chat" data-i18n-title="mode.chatTitle">Chat</button>
-              <button id="nodesBtn" class="mode-switch-button" type="button" title="Zur Node-Ansicht wechseln" data-i18n="mode.nodes" data-i18n-title="mode.nodesTitle">Nodes</button>
-            </div>
-            <span class="topbar-divider" aria-hidden="true"></span>
             <button id="contextBtn" class="btn-context hidden" type="button" title="Kontext und Brandings verwalten" data-i18n-title="topbar.contextTitle">
               <svg class="header-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5.5 2v12M10.5 2v12M2 5.5h12M2 10.5h12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
               <span class="header-label" data-i18n="topbar.context">Kontext</span>
@@ -70,6 +65,11 @@
               <span id="shareBtnLabel" class="header-label" data-i18n="sharing.button">Teilen</span>
             </button>
             <button id="costsBtn" class="btn-costs" type="button" title="Kostenübersicht öffnen" data-i18n-title="topbar.costsTitle">$0.00</button>
+            <span class="topbar-divider" aria-hidden="true"></span>
+            <div class="mode-switch" role="group" aria-label="Ansicht" data-i18n-aria-label="mode.selector">
+              <button id="chatModeBtn" class="mode-switch-button active" type="button" aria-current="page" title="Zum Chat wechseln" data-i18n="mode.chat" data-i18n-title="mode.chatTitle">Chat</button>
+              <button id="nodesBtn" class="mode-switch-button" type="button" title="Zur Node-Ansicht wechseln" data-i18n="mode.nodes" data-i18n-title="mode.nodesTitle">Nodes</button>
+            </div>
             <div id="accountMenu" class="account-menu-host"></div>
           </div>
         </header>

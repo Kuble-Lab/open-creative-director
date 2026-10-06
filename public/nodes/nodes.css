@@ -335,7 +335,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
+  /* right padding as in the chat header (.topbar), so the Chat | Nodes switch and the avatar sit at the same place */
+  padding: 0 24px 0 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--line-soft);
 }
@@ -6559,14 +6560,9 @@ button.nv-scene-preview:focus-visible {
 
 /* ---------- shared frame: view switch and menu (same as the chat header) ---------- */
 
+/* The switch keeps the size of the chat header (public/styles.css), so it does not change when the view changes. */
 .nv-mode-switch {
   flex: none;
-}
-
-.nv-mode-switch .mode-switch-button {
-  height: 26px;
-  padding: 0 12px;
-  font-size: 12px;
 }
 
 .nv-topbar-divider {
@@ -6582,10 +6578,15 @@ button.nv-scene-preview:focus-visible {
   flex: none;
 }
 
-.nv-topbar .account-chip,
 .nv-appbar .account-chip {
   width: 32px;
   height: 32px;
+}
+
+/* as in the chat header */
+.nv-topbar .account-chip {
+  width: 34px;
+  height: 34px;
 }
 
 @media (max-width: 700px) {

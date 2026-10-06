@@ -2401,8 +2401,9 @@
   function buildChrome(rootEl) {
     rootEl.textContent = '';
     rootEl.classList.add('nv-app');
-    // Chat | Nodes: the same switch as in the header of the chat view, so there is one place to change the view.
-    const modeChat = el('button', { type: 'button', class: 'mode-switch-button nv-back', dataset: { tKey: 'mode.chatTitle', tText: 'mode.chat' }, text: ui.T('mode.chat') });
+    // Chat | Nodes: the same switch at the same place as in the chat header (right, next to the avatar), so it does not
+    // move when the view changes. Header height, right padding, gap, switch and avatar size match public/styles.css.
+    const modeChat = el('button', { type: 'button', class: 'mode-switch-button', dataset: { tKey: 'mode.chatTitle', tText: 'mode.chat' }, text: ui.T('mode.chat') });
     modeChat.title = ui.T('mode.chatTitle');
     modeChat.addEventListener('click', leaveToChat);
     const modeNodes = el('button', { type: 'button', class: 'mode-switch-button active', 'aria-current': 'page', dataset: { tText: 'mode.nodes' }, text: ui.T('mode.nodes') });
@@ -2464,7 +2465,6 @@
     const topbar = el(
       'header',
       { class: 'nv-topbar' },
-      modeSwitch,
       drawerToggle,
       el('div', { class: 'nv-topbar-title' }, name, saveStateEl, ownerEl),
       el('div', { class: 'nv-topbar-spacer' }),
@@ -2476,7 +2476,8 @@
       el('div', { class: 'nv-btn-group' }, undoBtn, redoBtn),
       menuBtn,
       inspectorToggle,
-      accountMenu ? el('span', { class: 'nv-topbar-divider', 'aria-hidden': 'true' }) : null,
+      el('span', { class: 'nv-topbar-divider', 'aria-hidden': 'true' }),
+      modeSwitch,
       accountMenu ? accountMenu.element : null
     );
 
