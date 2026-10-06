@@ -16,6 +16,7 @@
 //   OCTeamGroups.sidebarTitleKey(view)  text key of the heading above the chat list ("Projects", or "Chats" in the team view)
 //   OCTeamGroups.preserveFocus(root, rebuild)  runs rebuild() and puts the keyboard focus back on the element that had it
 //   OCTeamGroups.groupWorkflows(list, heads)   the groups of the workflow list: counts, latest activity, order
+//   OCTeamGroups.ownerGroups(workflows)  the subgroups of one team group, one per owner: count, latest activity, order
 //   OCTeamGroups.createGroupPages({ fetchPage, pageSize, onChange })  per group: the chats read page by page; answers that
 //                                   are out of date (the heads were read again meanwhile) are dropped and read anew
 //   OCTeamGroups.coalesce(fn, delay)   fn at most once per delay, however often the returned function is called
@@ -202,6 +203,24 @@
     );
   }
 
+  // The subgroups of one team: one per owner (the person who created the workflows). Order: latest activity first, the
+  // workflows without an owner last. The id is the address, or 'none'; it is also the key of the open state.
+  function ownerGroups(workflows) {
+    const map = new Map();
+    for (const workflow of Array.isArray(workflows) ? workflows : []) {
+      const owner = typeof workflow.owner === 'string' && workflow.owner.trim() ? workflow.owner.trim() : null;
+      const id = owner ? owner.toLowerCase() : 'none';
+      if (!map.has(id)) map.set(id, { id, owner, count: 0, lastActivity: '', workflows: [] });
+      const group = map.get(id);
+      group.workflows.push(workflow);
+      group.count += 1;
+      if (String(workflow.updatedAt || '') > group.lastActivity) group.lastActivity = String(workflow.updatedAt || '');
+    }
+    return [...map.values()].sort(
+      (a, b) => Number(!a.owner) - Number(!b.owner) || b.lastActivity.localeCompare(a.lastActivity) || String(a.owner || '').localeCompare(String(b.owner || ''))
+    );
+  }
+
   /* ----- the chats of the groups, page by page ----- */
 
   // fetchPage(id, { offset, limit }) answers { sessions, total }. Every group keeps its own state. invalidate() is called when
@@ -270,5 +289,5 @@
     };
   }
 
-  global.OCTeamGroups = { available, mode, setMode, isOpen, setOpen, label, counts, ownerLabel, switcher, sidebarTitleKey, preserveFocus, groupWorkflows, createGroupPages, coalesce };
+  global.OCTeamGroups = { available, mode, setMode, isOpen, setOpen, label, counts, ownerLabel, switcher, sidebarTitleKey, preserveFocus, groupWorkflows, ownerGroups, createGroupPages, coalesce };
 })(window);

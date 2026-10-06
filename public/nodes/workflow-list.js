@@ -3,7 +3,8 @@
 // Left drawer of the node view: workflow list with search, new, import and a per-item menu
 // (rename, duplicate, export as JSON or ZIP with files, delete). With user management (AUTH_WHOAMI_URL) the server only lists what the person
 // may see; a badge shows shared workflows and the owner of somebody else's workflow. Admins can switch the list to
-// "Teams" (public/team-groups.js): one group per team, the server sends every workflow with its team.
+// "Teams" (public/team-groups.js): one group per team, the server sends every workflow with its team; inside a team one
+// subgroup per person who created workflows there.
 (function (global) {
   const OCD = (global.OCDNodes = global.OCDNodes || {});
   const ui = OCD.ui;
@@ -126,13 +127,39 @@
       section.append(header);
       if (open) {
         const body = el('div', { class: 'nv-wf-group-items', role: 'list' });
-        for (const workflow of group.workflows) body.append(workflowRow(workflow, { teamGroup: true }));
+        // One subgroup per person who created workflows in this team; the rows then need no owner line of their own.
+        for (const sub of teams.ownerGroups(group.workflows)) body.append(ownerNode(group, sub));
         section.append(body);
       }
       return section;
     }
 
-    function workflowRow(workflow, { teamGroup = false, showTeam = false } = {}) {
+    function ownerNode(group, sub) {
+      const key = `${group.id}|${sub.id}`;
+      const open = teams.isOpen('workflows', { id: key, archived: false });
+      const who = sub.owner ? teams.ownerLabel(sub.owner) : { text: ui.T('teamGroups.noOwner'), title: ui.T('teamGroups.noOwner') };
+      const node = el('div', { class: 'nv-wf-owner-group', role: 'listitem', dataset: { owner: sub.id } });
+      const header = el(
+        'button',
+        { type: 'button', class: 'nv-wf-owner-head', 'aria-expanded': String(open), title: who.title, dataset: { ownerKey: key, focusKey: `owner:${key}` } },
+        el('span', { class: 'nv-wf-group-chevron', 'aria-hidden': 'true', text: open ? '⌄' : '›' }),
+        el('span', { class: 'nv-wf-owner-name', text: who.text }),
+        el('span', { class: 'nv-wf-owner-count', text: String(sub.count) })
+      );
+      header.addEventListener('click', () => {
+        teams.setOpen('workflows', key, !open);
+        renderItems();
+      });
+      node.append(header);
+      if (open) {
+        const rows = el('div', { class: 'nv-wf-owner-items', role: 'list' });
+        for (const workflow of sub.workflows) rows.append(workflowRow(workflow, { ownerGroup: true }));
+        node.append(rows);
+      }
+      return node;
+    }
+
+    function workflowRow(workflow, { ownerGroup = false, showTeam = false } = {}) {
       const active = workflow.id === data.activeId;
       const row = el('div', { class: `nv-wf-item ${active ? 'is-active' : ''}`.trim(), role: 'listitem', dataset: { id: workflow.id } });
       const open = el('button', { type: 'button', class: 'nv-wf-open', 'aria-current': active ? 'true' : null });
@@ -150,10 +177,8 @@
       if (workflow.updatedBy) meta.push(workflow.updatedBy);
       text.append(el('span', { class: 'nv-wf-meta', text: meta.filter(Boolean).join(' · ') }));
       if (workflow.folder) text.append(el('span', { class: 'nv-wf-folder', text: workflow.folder }));
-      // In a group of the team view every workflow names its owner (own ones too); otherwise only somebody else's.
-      const foreign = teamGroup
-        ? teams.ownerLabel(workflow.owner) || { text: ui.T('teamGroups.noOwner'), title: ui.T('teamGroups.noOwner') }
-        : global.OCAccess ? global.OCAccess.ownerName(workflow) : null;
+      // In the team view the subgroup names the owner; otherwise only somebody else's workflow names its owner.
+      const foreign = ownerGroup ? null : global.OCAccess ? global.OCAccess.ownerName(workflow) : null;
       if (foreign) text.append(el('span', { class: 'nv-wf-owner', title: foreign.title, text: foreign.text }));
       if (showTeam) {
         const teamName = teams.label(workflow.team ? { name: workflow.team.name, id: workflow.team.id } : { internal: true });
