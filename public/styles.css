@@ -4140,7 +4140,8 @@ body.no-admin .admin-only {
   display: flex;
   align-items: center;
   gap: 20px;
-  height: 60px;
+  /* the same height as the node view header (--nv-topbar-h), so the Chat | Nodes switch stays in place */
+  height: 48px;
   flex: none;
   padding: 0 24px;
   border-bottom: 1px solid var(--line-soft);
