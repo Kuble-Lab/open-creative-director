@@ -18,6 +18,8 @@
 //     the problems
 //   - the fixed scene passes the same check, in both formats, with the cues of its elements, keeps its column above the free band and has no
 //     source line of its own
+//   - the storyboard frame (WP43): one line more for the writer (both styles), the rules of the contact sheet in the look, the times and the
+//     layout of the sheet (also for very short scenes); without the frame every prompt is the one from before
 
 const assert = require('assert/strict');
 const scene = require('../lib/explainer-scene');
@@ -852,6 +854,108 @@ function testSourceElement() {
   assert.equal(declarationsOf(elementOf(fromBrand)[1]).bottom, '16px', 'the declarations after the font are all there');
 }
 
+function testContactSheet() {
+  const brief = 'Scene s2 · role point · kind motion · about 5 s · landscape · language de\nTitle: Der See';
+  const cues = [{ id: 'e1', type: 'title', anchor: 'See', at: 0.4 }, { id: 'e2', type: 'bullet', anchor: 'Pegel', at: 2.1 }];
+  const words = [{ text: 'Der', start: 0.1 }, { text: 'See', start: 0.5 }, { text: 'sinkt', start: 1.2 }, { text: 'seit', start: 2 }, { text: 'Jahren.', start: 2.6 }];
+  const assets = [{ kind: 'still', ext: 'png' }];
+
+  /* the writer: one line more, the rest as it was */
+  for (const style of ['', 'typography']) {
+    const options = { brief, duration: 5.867, cues, assets, words, style };
+    const plain = scene.writerUserPrompt(options);
+    assert.equal(scene.writerUserPrompt({ ...options, reference: false }), plain, 'reference: false is the request from before');
+    assert.doesNotMatch(plain, /storyboard/i);
+    const withBoard = scene.writerUserPrompt({ ...options, reference: true });
+    assert.ok(withBoard.startsWith(`${plain}\n`), 'the request from before, then the line of the storyboard');
+    const line = withBoard.slice(plain.length + 1);
+    assert.equal(line.split('\n').length, 1, 'one line');
+    assert.match(line, /^Storyboard: the last image of this request is the approved storyboard frame of this scene, not a file of the scene \(it has no placeholder\)\./);
+    assert.match(line, /Follow its composition, its main visual elements, their arrangement and the idea of the picture\./);
+    assert.match(line, /every rule of the system prompt come first/);
+    assert.match(line, /Never place the storyboard picture itself in the scene\./);
+    assert.match(line, /Show text from the storyboard only where the brief/);
+    assert.doesNotMatch(line, /\{\{asset/, 'no placeholder for the frame');
+    if (style) assert.doesNotMatch(line, /free band/, 'typography keeps no band for captions');
+    else assert.match(line, /the free band for the captions/);
+  }
+  // the attached files keep their numbers: the frame is not one of them
+  assert.match(scene.writerUserPrompt({ brief, duration: 5.867, cues, assets, reference: true }), /Attached files: \{\{asset:1\}\} = image \(png\)[^\n]*\nStoryboard:/);
+  assert.match(scene.writerUserPrompt({ brief, duration: 5.867, cues, reference: true }), /No attached files\.\nStoryboard:/);
+
+  /* the rubric: the rules of the contact sheet before the line of the answer; without them the prompt from before */
+  for (const style of ['', 'typography']) {
+    const plain = scene.checkSystemPrompt({ style });
+    assert.equal(scene.checkSystemPrompt({ style, contactSheet: false }), plain);
+    assert.doesNotMatch(plain, /contact sheet|storyboard/i);
+    const sheet = scene.checkSystemPrompt({ style, contactSheet: true });
+    const answer = 'Answer JSON only: {"ok": boolean, "blockers": [string], "minor": [string]} where ok is true when there are no blockers.';
+    assert.ok(sheet.endsWith(answer), 'the answer stays the last line');
+    assert.ok(sheet.startsWith(plain.slice(0, -answer.length)), 'the rules from before stay as they were, in front');
+    assert.match(sheet, /contact sheet: its tiles are frames of this same scene at the times the request names, read left to right and top to bottom/);
+    assert.match(sheet, /The second image is the approved storyboard frame of this scene/);
+    assert.match(sheet, /One more blocker: the scene clearly departs from the storyboard \(its main visual element is missing, or the arrangement is entirely different\)/);
+    assert.match(sheet, /Differences in colours, fonts or details are minor, because the design rules of the scene come before the storyboard/);
+  }
+  assert.match(scene.checkSystemPrompt({ contactSheet: true }), /^You check frames of a rendered explainer scene for layout defects\./);
+  assert.match(scene.checkSystemPrompt({ style: 'typography', contactSheet: true }), /This style breaks the rules of an ordinary layout ON PURPOSE/, 'the typography rubric holds');
+
+  /* the layout of the sheet */
+  const landscape = scene.contactSheetLayout('landscape');
+  assert.deepEqual([landscape.tileWidth, landscape.tileHeight, landscape.columns, landscape.rows], [640, 360, 3, 2]);
+  assert.deepEqual([landscape.width, landscape.height], [3 * 640 + 2 * 8 + 2 * 8, 2 * 360 + 8 + 2 * 8]);
+  assert.equal(landscape.filter, 'scale=640:360,setsar=1,tile=3x2:margin=8:padding=8:color=0x202020');
+  assert.doesNotMatch(landscape.filter, /drawtext/, 'no text on the tiles: not every ffmpeg has drawtext');
+  const portrait = scene.contactSheetLayout('portrait');
+  assert.deepEqual([portrait.tileWidth, portrait.tileHeight, portrait.columns, portrait.rows], [360, 640, 3, 2]);
+  assert.deepEqual([portrait.width, portrait.height], [3 * 360 + 32, 2 * 640 + 24]);
+  assert.deepEqual(scene.contactSheetLayout('nonsense'), landscape, 'an unknown format is landscape');
+  assert.equal(scene.CONTACT_SHEET_FRAMES, 6);
+
+  /* the times of the tiles */
+  const valid = (times, duration, label) => {
+    assert.equal(times.length, 6, label);
+    const end = Math.round(Math.max(0.05, duration - 0.15) * 100) / 100;
+    assert.equal(times[5], end, `${label}: the last 0.15 s before the end`);
+    times.forEach((at, index) => {
+      assert.equal(at, Math.round(at * 100) / 100, `${label}: to the hundredth`);
+      assert.ok(at >= 0 && at <= end, `${label}: ${at} inside the scene`);
+      if (index) assert.ok(at > times[index - 1], `${label}: sorted and each once (${times.join(', ')})`);
+    });
+  };
+  for (const duration of [5.867, 4.4, 12, 15.2, 1, 0.6, 0.4]) {
+    const times = scene.contactSheetTimes(duration, cues, {});
+    valid(times, duration, `${duration} s`);
+    assert.ok(times.includes(scene.checkTimes(duration, cues)[0]), `${duration} s: the first frame of the look is among them (${times.join(', ')})`);
+  }
+  // spread over the scene
+  const spread = scene.contactSheetTimes(12, [], {});
+  assert.deepEqual(spread, [1.98, 3.95, 6, 7.9, 9.88, 11.85], 'a sixth of 11.85 s apart; halfway (no cues: 6 s) takes the place of the nearest time (5.93)');
+  // typography: the time of the middle word is among them
+  const typo = scene.contactSheetTimes(5.867, cues, { style: 'typography', words });
+  valid(typo, 5.867, 'typography');
+  assert.ok(typo.includes(scene.checkTimes(5.867, cues, { style: 'typography', words })[0]));
+  // very short scenes (shorter than any real one): still six different times inside
+  for (const duration of [0.2, 0.1, 0, -1, NaN]) valid(scene.contactSheetTimes(duration, [], {}), Number.isFinite(duration) ? duration : 0, `short ${duration}`);
+  assert.deepEqual(scene.contactSheetTimes(0.1, [], {}), [0, 0.01, 0.02, 0.03, 0.04, 0.05]);
+
+  /* the request of the look */
+  const times = scene.contactSheetTimes(5.867, cues, {});
+  const request = scene.contactSheetCheckUserPrompt({ brief, cues, times });
+  assert.match(request, /^Brief \(data\):\n<brief>\nScene s2/);
+  assert.match(request, /Cue schedule: e1 \(title\) appears at 0\.4 s; e2 \(bullet\) appears at 2\.1 s\./);
+  assert.match(request, new RegExp(`Image 1 is a contact sheet of 6 frames of this scene in 3 columns and 2 rows, read left to right, top to bottom: tile 1 at ${times[0]} s, tile 2 at ${times[1]} s, tile 3 at ${times[2]} s, tile 4 at ${times[3]} s, tile 5 at ${times[4]} s, tile 6 at 5\\.72 s\\.`));
+  assert.match(request, /\nImage 2 is the approved storyboard frame of this scene\.$/);
+  const typoRequest = scene.contactSheetCheckUserPrompt({ brief, cues, times: typo, words, style: 'typography' });
+  assert.match(typoRequest, /Words of the voice: tile 1: by [\d.]+ s the voice has said "[^"]*"/);
+  assert.match(typoRequest, /tile 6: by 5\.72 s the voice has said "Der See sinkt seit Jahren\."/);
+  assert.doesNotMatch(typoRequest, /Cue schedule/);
+  // a typography scene without words (the sources card) is looked at with the cues
+  assert.match(scene.contactSheetCheckUserPrompt({ brief, cues, times, words: [], style: 'typography' }), /Cue schedule:/);
+  // the frames of the two-frame look are as they were
+  assert.match(scene.checkUserPrompt({ brief, cues, times: [1, 5.72], words, style: 'typography' }), /frame 2: by 5\.72 s the voice has said "Der See sinkt seit Jahren\."/);
+}
+
 testCodeCheck();
 testBypasses();
 testCsp();
@@ -866,4 +970,5 @@ testVerdict();
 testFallback();
 testTypographyFallback();
 testSourceElement();
+testContactSheet();
 console.log('test-explainer-scene.js: ok');

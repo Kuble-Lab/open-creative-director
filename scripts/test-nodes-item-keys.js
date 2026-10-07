@@ -6,6 +6,7 @@
 //   - explainer.scene (real definition, fake execution): one changed shot, still, page image or document only runs the scenes that read it;
 //     the brand, the logo and the parameters run all; duplicate entries keep their own results; the plan prices what runs
 //   - explainer.voice: the text around a scene counts only where the voice reads it
+//   - explainer.scene, WP43: the storyboard frame (reference) counts only where it arrives; without it the keys are those from before
 //   - an entry that an older version stored gets its new item keys when it is the cache hit of a run
 // No provider calls, no render node; backing sessions are real and removed.
 
@@ -301,6 +302,41 @@ async function main() {
       assert.deepEqual(Object.keys(body).sort(), ['entry', 'globals']);
       assert.deepEqual(body.globals, { format: 'landscape', language: 'de' });
       assert.equal(body.entry.id, 's2');
+    }
+
+    /* ----- WP43: the storyboard frame (input reference) counts where it arrives; without it the keys are those from before ----- */
+    {
+      const params = { ...videoNodes.definitions[1].params.reduce((all, param) => ({ ...all, [param.id]: param.default }), {}) };
+      const shots = JSON.stringify({ format: 'landscape', language: 'de', scenes: [{ id: 's1', kind: 'motion', image: null, figure: null, source_refs: ['D1 S. 1'] }, { id: 's2', kind: 'still', image: 0, figure: null, source_refs: ['D1 S. 2'] }] });
+      const base = {
+        brief: listValue('text', [textValue(briefOf('s1')), textValue(briefOf('s2', 'still'))]),
+        timing: listValue('text', [textValue('{"duration":5}'), textValue('{"duration":6}')]),
+        brand: textValue('b'),
+        logo: media('image', 'l'),
+        stills: listValue('image', [media('image', 'a')]),
+        shots: textValue(shots)
+      };
+      const keysOf = (extra = {}, mapped = ['brief', 'timing']) => computeItemKeys(sceneDef, params, { inputs: { ...base, ...extra }, mapped, mapLength: 2 });
+      // computed with the node before the input existed (2026-10-07)
+      const before = ['sha256:9d49c6ff53abd5ca11a2c12f35a9359cd78c89c5d077a932df1a5faa8c66ccd5', 'sha256:a6d71cbd9337b7839893d982e5c0f1f732cf442c8e301db694919f6df9cde38c'];
+      assert.deepEqual(keysOf(), before, 'without a storyboard frame the keys are byte for byte those from before');
+      // a list of storyboard frames runs scene for scene with the briefs: each scene's key holds its own frame
+      const boards = (a, b) => ({ reference: listValue('image', [media('image', a), media('image', b)]) });
+      const withBoards = keysOf(boards('r1', 'r2'), ['brief', 'timing', 'reference']);
+      assert.notEqual(withBoards[0], before[0]);
+      assert.notEqual(withBoards[1], before[1]);
+      const changed = keysOf(boards('r1', 'r2b'), ['brief', 'timing', 'reference']);
+      assert.equal(changed[0], withBoards[0], 'another frame of the second scene leaves the first one');
+      assert.notEqual(changed[1], withBoards[1], 'the key depends on the frame');
+      // what the key sees is what the scene reads (sceneSelection)
+      const one = { brief: textValue(briefOf('s1')), timing: textValue('{"duration":5}'), reference: media('image', 'r1') };
+      assert.equal(sceneDef.itemKeyInputs(0, one, params).reference.assetId, 'r1');
+      assert.equal(videoNodes.sceneSelection(one).reference.assetId, 'r1');
+      assert.equal(sceneDef.itemKeyInputs(0, { ...one, reference: undefined }, params).reference, undefined);
+      // a clip scene is a plain stand-in: it reads no storyboard frame
+      const clip = { ...one, brief: textValue(briefOf('s5', 'clip')) };
+      assert.equal(videoNodes.sceneSelection(clip).reference, null);
+      assert.equal('reference' in sceneDef.itemKeyInputs(0, clip, params), false);
     }
 
     /* ----- duplicate entries keep their own results (as in WP35) ----- */

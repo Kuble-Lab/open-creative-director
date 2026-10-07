@@ -38,6 +38,7 @@ const PNG_B64 = PNG.toString('base64');
 
 const GPT = 'openai/gpt-image-2';
 const NANO = 'google/gemini-3-pro-image';
+const NANO_21 = 'google/gemini-nano-banana-2.1';
 const ONE_REF = 'vendor/one-ref';
 const TEXT_ONLY = 'vendor/text-only';
 const NEEDS_REF = 'vendor/needs-ref';
@@ -83,14 +84,14 @@ const imageResponse = (cost = 0.04) => ({ data: [{ b64_json: PNG_B64, media_type
 /* ---------- config ---------- */
 
 function testConfig() {
-  assert.deepEqual(DEFAULT_CONFIG.imageModels, [GPT, NANO]);
+  assert.deepEqual(DEFAULT_CONFIG.imageModels, [GPT, NANO, NANO_21]);
   // the model of imageModel always comes first, whatever the list says; duplicates and unusable entries are dropped
   assert.deepEqual(normaliseImageModels([NANO, GPT, NANO], GPT), [GPT, NANO]);
   assert.deepEqual(normaliseImageModels([NANO], 'vendor/other'), ['vendor/other', NANO]);
   assert.deepEqual(normaliseImageModels(['', 7, null, 'no-slash', 'has space/x', `vendor/${'x'.repeat(250)}`, ' vendor/ok '], GPT), [GPT, 'vendor/ok']);
   // missing or not a list: the default list (the operator did not choose)
-  assert.deepEqual(normaliseImageModels(undefined, GPT), [GPT, NANO]);
-  assert.deepEqual(normaliseImageModels('x/y', GPT), [GPT, NANO]);
+  assert.deepEqual(normaliseImageModels(undefined, GPT), [GPT, NANO, NANO_21]);
+  assert.deepEqual(normaliseImageModels('x/y', GPT), [GPT, NANO, NANO_21]);
   // an empty list is a choice: only the model of the configuration
   assert.deepEqual(normaliseImageModels([], GPT), [GPT]);
   const loaded = loadConfig();
@@ -136,6 +137,11 @@ async function testModelLibrary() {
 
   // prices: only where they are known, never 0
   assert.equal(imageModels.estimateUsd(NANO), 0.134);
+  // Nano Banana 2.1 (2026-10-06): 14 references from the profile, 1120 tokens of a 1K image at 0.00003 USD = 0.0336, rounded up
+  assert.deepEqual(imageModels.referenceLimits(NANO_21), { min: 0, max: 14 });
+  assert.equal(imageModels.estimateUsd(NANO_21), 0.034);
+  assert.equal(imageModels.displayName(NANO_21), 'Nano Banana 2.1');
+  assert.equal(imageModels.isAllowed({ imageModel: GPT, imageModels: DEFAULT_CONFIG.imageModels }, NANO_21), true, 'on the default list');
   assert.equal(imageModels.estimateUsd(GPT), null, 'the price of GPT Image 2 depends on the quality the provider picks');
   assert.equal(imageModels.estimateUsd(ONE_REF), null);
   assert.equal(imageModels.estimateUsd(''), null);

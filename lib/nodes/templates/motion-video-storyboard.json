@@ -1,0 +1,611 @@
+{
+  "id": "motion-video-storyboard",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Motion video with storyboard",
+  "description": "Turn a topic into a short animated explainer or motion video in the style of \"Claude makes videos with JavaScript\": Claude Opus 5.5 plans the script and the scenes, and a low-cost storyboard picture per scene (Nano Banana 2.1) waits for your approval. Then ElevenLabs speaks the narration and Claude draws every scene as motion graphics (HTML and GSAP) after its approved picture, the render node renders it, a contact sheet of six frames is checked against the picture (at most 2 correction rounds per scene), and ffmpeg cuts it with voice, music and captions. About 1.50 to 2.50 US dollars for 45 seconds (an estimate; it needs a paid ElevenLabs plan for the music, otherwise delete the node Background music). Step 1: run only the node Storyboard (about 0.30 to 0.50 US dollars), check the script and the pictures; step 2: run everything. The language follows your topic automatically. The voice comes from the branding if it has a speaker voice; otherwise the voice chosen in the node applies.",
+  "requires": [
+    "openrouter",
+    "elevenlabs",
+    "rendernode",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 120,
+        "title": "Topic / message",
+        "params": {
+          "prompt": "How a heat pump turns cold outside air into warm water, for homeowners"
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 420,
+        "title": "Wishes for look and tone (optional)",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.branding",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 720,
+        "title": "Branding",
+        "params": {
+          "branding": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "explainer.plan",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 100,
+        "title": "Plan explainer video",
+        "params": {
+          "model": "",
+          "topic": "",
+          "brief": "",
+          "length_seconds": 45,
+          "language": "auto",
+          "audience": "",
+          "tone": "factual",
+          "visual_mode": "motion",
+          "format": "landscape",
+          "max_still_share": 0.35,
+          "clips": false,
+          "presenter": "off",
+          "verify": true,
+          "script": ""
+        }
+      },
+      {
+        "id": "n6",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 100,
+        "title": "Storyboard prompt per scene",
+        "params": {
+          "template": "Storyboard key frame for one scene of an animated motion-graphics explainer video, 16:9. Clean flat 2D vector motion-graphics look; show the main moment of the scene in one frame with large simple shapes, few words and generous margins; keep the lower fifth of the frame free. Use the colours and fonts of the brand profile where it names any.\n\nScene brief:\n{{a}}\n\nBrand profile:\n{{b}}"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 100,
+        "title": "Storyboard pictures",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n8",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 100,
+        "params": {
+          "label": "Storyboard"
+        }
+      },
+      {
+        "id": "n13",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 340,
+        "params": {
+          "label": "Script"
+        }
+      },
+      {
+        "id": "n5",
+        "type": "explainer.voice",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 760,
+        "title": "Explainer voice",
+        "params": {
+          "voice_id": "",
+          "model_id": "eleven_v4",
+          "use_context": true
+        }
+      },
+      {
+        "id": "n14",
+        "type": "audio.music",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 1000,
+        "title": "Background music",
+        "params": {
+          "prompt": "Calm, warm instrumental background music for an explainer video: soft piano and light pads, steady and unobtrusive, no vocals, no strong melody that competes with the speech",
+          "plan": "",
+          "length": 45,
+          "instrumental": true,
+          "model": "music_v2_5"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "explainer.scene",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 760,
+        "title": "Draw explainer scene",
+        "params": {
+          "model": "",
+          "format": "landscape",
+          "quality": "standard",
+          "vision_check": true,
+          "max_retries": 2,
+          "fallback": true
+        }
+      },
+      {
+        "id": "n10",
+        "type": "explainer.edit",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 760,
+        "title": "Cut explainer video",
+        "params": {
+          "transition": "crossfade",
+          "resolution": "1080p",
+          "fps": "30",
+          "captions": "lines",
+          "captions_position": "bottom",
+          "music_level": "quiet",
+          "ducking": true,
+          "fade_out": 1,
+          "fit": "crop"
+        }
+      },
+      {
+        "id": "n11",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 760,
+        "params": {
+          "label": "Video"
+        }
+      },
+      {
+        "id": "n12",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 960,
+        "params": {
+          "label": "Subtitles"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "topic"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "narration"
+        },
+        "to": {
+          "node": "n5",
+          "port": "narration"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n4",
+          "port": "narration_context"
+        },
+        "to": {
+          "node": "n5",
+          "port": "context"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n3",
+          "port": "voice"
+        },
+        "to": {
+          "node": "n5",
+          "port": "voice"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n4",
+          "port": "briefs"
+        },
+        "to": {
+          "node": "n6",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n6",
+          "port": "b"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n6",
+          "port": "text"
+        },
+        "to": {
+          "node": "n7",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n7",
+          "port": "image"
+        },
+        "to": {
+          "node": "n8",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n4",
+          "port": "script"
+        },
+        "to": {
+          "node": "n13",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n4",
+          "port": "briefs"
+        },
+        "to": {
+          "node": "n9",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n9",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n9",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n9",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n7",
+          "port": "image"
+        },
+        "to": {
+          "node": "n9",
+          "port": "reference"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n9",
+          "port": "video"
+        },
+        "to": {
+          "node": "n10",
+          "port": "scenes"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n5",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n10",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n5",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n10",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n10",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n14",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n10",
+          "port": "music"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n10",
+          "port": "video"
+        },
+        "to": {
+          "node": "n11",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n10",
+          "port": "subtitles"
+        },
+        "to": {
+          "node": "n12",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [
+      {
+        "id": "g1",
+        "title": "1 · Storyboard: run first and check",
+        "x": 480,
+        "y": 40,
+        "w": 2240,
+        "h": 620,
+        "color": "blue"
+      },
+      {
+        "id": "g2",
+        "title": "2 · Video",
+        "x": 480,
+        "y": 700,
+        "w": 2240,
+        "h": 700,
+        "color": "amber"
+      }
+    ],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 480,
+        "y": 1440,
+        "w": 1100,
+        "h": 360,
+        "text": "Step 1: on the node Storyboard (the first result), press ▶. That runs only the plan, the branding, the text template and the pictures (about 0.30 to 0.50 US dollars). Check the script and the pictures: change the script in the plan under \"script\" (Edited script) and run it again, or make single pictures again. Step 2: run everything. The scenes follow the approved pictures; after each render a contact sheet of six frames is compared with the picture, with at most 2 correction rounds per scene. About 1.50 to 2.50 US dollars for 45 seconds (an estimate). The run asks for confirmation first. The language follows your topic automatically (script, voice and captions); to use another, set Language in Plan explainer video, or choose it in the app view. The voice comes from the branding if it has a speaker voice; otherwise the voice chosen in the node applies. The music comes from Background music (instrumental, 45 s long, it repeats if the film is longer: set Length there; it needs a paid ElevenLabs plan: without one, delete that node and, if you like, connect your own audio file to Cut explainer video). If your server does not offer Nano Banana 2.1, choose another model in the node Storyboard pictures. For portrait, set Format to portrait in Plan explainer video and Draw explainer scene, set Aspect ratio in Storyboard pictures to 9:16 and change \"16:9\" in the text of Storyboard prompt per scene to \"9:16\". A logo is not wired by default (without a branding there is none, and the run would stop before it starts): to show your logo in the scenes, choose a branding and connect its Logo output to Draw explainer scene. In the app view everything always runs; the approval takes place in the node view."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.5
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Motion video with storyboard",
+    "description": "Name a topic and get a short animated explainer video: a script and a voice, a storyboard picture per scene, motion graphics in your brand, music and captions. In the app view everything runs at once; to approve the storyboard first, use the node view.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Topic / message"
+      },
+      {
+        "node": "n2",
+        "param": "prompt",
+        "label": "Wishes for look and tone (optional)"
+      },
+      {
+        "node": "n3",
+        "param": "branding",
+        "label": "Branding"
+      },
+      {
+        "node": "n4",
+        "param": "language",
+        "label": "Language of the script"
+      },
+      {
+        "node": "n4",
+        "param": "length_seconds",
+        "label": "Length (seconds)"
+      },
+      {
+        "node": "n5",
+        "param": "voice_id",
+        "label": "Voice (if the branding has none)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n11",
+        "label": "Video"
+      },
+      {
+        "node": "n8",
+        "label": "Storyboard"
+      },
+      {
+        "node": "n13",
+        "label": "Script"
+      },
+      {
+        "node": "n12",
+        "label": "Subtitles"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Motion-Video mit Storyboard",
+      "description": "Mach aus einem Thema ein kurzes animiertes Erklär- oder Motion-Video im Stil «Claude macht Videos mit JavaScript»: Claude Opus 5.5 plant Skript und Szenen, und ein günstiges Storyboard-Bild pro Szene (Nano Banana 2.1) wartet auf deine Freigabe. Danach spricht ElevenLabs den Text, und Claude zeichnet jede Szene als Motion Graphics (HTML und GSAP) nach ihrem freigegebenen Bild, der Render-Node rendert sie, ein Kontaktblatt aus sechs Bildern wird gegen das Bild geprüft (höchstens 2 Korrekturrunden pro Szene), und ffmpeg schneidet alles mit Stimme, Musik und Untertiteln. Etwa 1.50 bis 2.50 US-Dollar für 45 Sekunden (eine Schätzung; für die Musik braucht es ein bezahltes ElevenLabs-Abo, sonst lösche den Node Hintergrundmusik). Schritt 1: Führe nur den Node Storyboard aus (etwa 0.30 bis 0.50 US-Dollar) und prüfe Skript und Bilder; Schritt 2: Führe alles aus. Die Sprache folgt automatisch deinem Thema. Die Stimme kommt aus dem Branding, falls es eine Sprecherstimme hat; sonst gilt die Wahl im Node.",
+      "node.n1": "Thema / Botschaft",
+      "node.n2": "Wünsche zu Look und Ton (optional)",
+      "node.n3": "Branding",
+      "node.n4": "Erklärvideo planen",
+      "node.n6": "Storyboard-Prompt je Szene",
+      "node.n7": "Storyboard-Bilder",
+      "node.n5": "Erklärstimme",
+      "node.n14": "Hintergrundmusik",
+      "node.n9": "Erklärszene zeichnen",
+      "node.n10": "Erklärvideo schneiden",
+      "param.n1.prompt": "Wie eine Wärmepumpe kalte Aussenluft in warmes Wasser verwandelt, für Hausbesitzer",
+      "param.n14.prompt": "Ruhige, warme Hintergrundmusik für ein Erklärvideo, instrumental: sanftes Klavier und leichte Flächen, gleichmässig und unauffällig, ohne Gesang, ohne starke Melodie, die mit der Sprache konkurriert",
+      "note.t1": "Schritt 1: Drücke beim Node Storyboard (dem ersten Ergebnis) auf ▶. Das führt nur Plan, Branding, Textvorlage und Bilder aus (etwa 0.30 bis 0.50 US-Dollar). Prüfe das Skript und die Bilder: Ändere das Skript im Plan unter «Skript (bearbeitet)» und starte ihn erneut, oder lass einzelne Bilder neu erzeugen. Schritt 2: Führe alles aus. Die Szenen folgen den freigegebenen Bildern; nach jedem Rendern wird ein Kontaktblatt aus sechs Bildern mit dem Bild verglichen, mit höchstens 2 Korrekturrunden pro Szene. Etwa 1.50 bis 2.50 US-Dollar für 45 Sekunden (eine Schätzung). Der Lauf fragt vorher um Bestätigung. Die Sprache folgt automatisch deinem Thema (Skript, Stimme und Untertitel); für eine andere stellst du Sprache in Erklärvideo planen ein oder wählst sie in der App-Ansicht. Die Stimme kommt aus dem Branding, falls es eine Sprecherstimme hat; sonst gilt die Wahl im Node. Die Musik kommt von Hintergrundmusik (instrumental, 45 s lang, sie wiederholt sich, wenn der Film länger ist: stelle dort die Länge ein; sie braucht ein bezahltes ElevenLabs-Abo: ohne eines löschst du diesen Node und verbindest bei Bedarf eine eigene Audiodatei mit Erklärvideo schneiden). Bietet dein Server Nano Banana 2.1 nicht an, wähle im Node Storyboard-Bilder ein anderes Modell. Für Hochformat stellst du Format in Erklärvideo planen und Erklärszene zeichnen auf Hochformat, setzt das Seitenverhältnis in Storyboard-Bilder auf 9:16 und änderst «16:9» im Text von Storyboard-Prompt je Szene in «9:16». Ein Logo ist standardmässig nicht verbunden (ohne Branding gibt es keines, und der Lauf bräche vor dem Start ab): Um dein Logo in den Szenen zu zeigen, wähle ein Branding und verbinde dessen Ausgang Logo mit Erklärszene zeichnen. In der App-Ansicht läuft immer alles; die Freigabe geschieht in der Node-Ansicht.",
+      "group.g1": "1 · Storyboard: zuerst ausführen und prüfen",
+      "group.g2": "2 · Video",
+      "app.title": "Motion-Video mit Storyboard",
+      "app.description": "Nenne ein Thema und erhalte ein kurzes animiertes Erklärvideo: Skript und Stimme, ein Storyboard-Bild pro Szene, Motion Graphics in deiner Marke, Musik und Untertitel. In der App-Ansicht läuft alles auf einmal; um das Storyboard vorher freizugeben, nutze die Node-Ansicht.",
+      "app.input.n1.prompt": "Thema / Botschaft",
+      "app.input.n2.prompt": "Wünsche zu Look und Ton (optional)",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.language": "Sprache des Skripts",
+      "app.input.n4.length_seconds": "Länge (Sekunden)",
+      "app.input.n5.voice_id": "Stimme (falls das Branding keine hat)",
+      "app.output.n11": "Video",
+      "app.output.n8": "Storyboard",
+      "app.output.n13": "Skript",
+      "app.output.n12": "Untertitel"
+    },
+    "es": {
+      "name": "Vídeo de motion con storyboard",
+      "description": "Convierte un tema en un vídeo explicativo o de motion corto y animado, al estilo «Claude hace vídeos con JavaScript»: Claude Opus 5.5 planifica el guion y las escenas, y una imagen de storyboard barata por escena (Nano Banana 2.1) espera tu aprobación. Después ElevenLabs lee la narración y Claude dibuja cada escena como motion graphics (HTML y GSAP) según su imagen aprobada, el nodo de render la renderiza, se comprueba una hoja de contactos de seis fotogramas frente a la imagen (como máximo 2 rondas de corrección por escena) y ffmpeg lo monta con voz, música y subtítulos. Unos 1,50 a 2,50 dólares para 45 segundos (una estimación; para la música hace falta un plan de pago de ElevenLabs, si no, borra el nodo Música de fondo). Paso 1: ejecuta solo el nodo Storyboard (unos 0,30 a 0,50 dólares) y revisa el guion y las imágenes; paso 2: ejecuta todo. El idioma sigue automáticamente tu tema. La voz viene del branding si este tiene una voz de locución; si no, vale la elección del nodo.",
+      "node.n1": "Tema / mensaje",
+      "node.n2": "Deseos de aspecto y tono (opcional)",
+      "node.n3": "Branding",
+      "node.n4": "Planificar vídeo explicativo",
+      "node.n6": "Prompt de storyboard por escena",
+      "node.n7": "Imágenes del storyboard",
+      "node.n5": "Voz explicativa",
+      "node.n14": "Música de fondo",
+      "node.n9": "Dibujar escena explicativa",
+      "node.n10": "Montar vídeo explicativo",
+      "param.n1.prompt": "Cómo una bomba de calor convierte el aire frío del exterior en agua caliente, para propietarios de viviendas",
+      "param.n14.prompt": "Música de fondo instrumental, tranquila y cálida, para un vídeo explicativo: piano suave y colchones ligeros, constante y discreta, sin voz, sin una melodía fuerte que compita con la narración",
+      "note.t1": "Paso 1: en el nodo Storyboard (el primer resultado) pulsa ▶. Eso ejecuta solo el plan, el branding, la plantilla de texto y las imágenes (unos 0,30 a 0,50 dólares). Revisa el guion y las imágenes: cambia el guion en el plan en «Guion (editado)» y ejecútalo de nuevo, o genera de nuevo imágenes sueltas. Paso 2: ejecuta todo. Las escenas siguen las imágenes aprobadas; tras cada render se compara una hoja de contactos de seis fotogramas con la imagen, con como máximo 2 rondas de corrección por escena. Unos 1,50 a 2,50 dólares para 45 segundos (una estimación). La ejecución pide antes que lo confirmes. El idioma sigue automáticamente tu tema (guion, voz y subtítulos); para otro, ajusta Idioma en Planificar vídeo explicativo o elígelo en la vista de app. La voz viene del branding si este tiene una voz de locución; si no, vale la elección del nodo. La música viene de Música de fondo (instrumental, 45 s, se repite si el vídeo es más largo: ajusta allí la duración; necesita un plan de pago de ElevenLabs: sin él, borra ese nodo y, si quieres, conecta tu propio archivo de audio a Montar vídeo explicativo). Si tu servidor no ofrece Nano Banana 2.1, elige otro modelo en el nodo Imágenes del storyboard. Para formato vertical, pon Formato en vertical en Planificar vídeo explicativo y Dibujar escena explicativa, pon la relación de aspecto de Imágenes del storyboard en 9:16 y cambia «16:9» en el texto de Prompt de storyboard por escena por «9:16». El logotipo no está conectado por defecto (sin branding no hay ninguno y la ejecución se detendría antes de empezar): para mostrar tu logotipo en las escenas, elige un branding y conecta su salida Logo a Dibujar escena explicativa. En la vista de app siempre se ejecuta todo; la aprobación se hace en la vista de nodos.",
+      "group.g1": "1 · Storyboard: ejecutar primero y revisar",
+      "group.g2": "2 · Vídeo",
+      "app.title": "Vídeo de motion con storyboard",
+      "app.description": "Nombra un tema y obtén un vídeo explicativo animado y corto: guion y voz, una imagen de storyboard por escena, motion graphics con tu marca, música y subtítulos. En la vista de app todo se ejecuta de una vez; para aprobar antes el storyboard, usa la vista de nodos.",
+      "app.input.n1.prompt": "Tema / mensaje",
+      "app.input.n2.prompt": "Deseos de aspecto y tono (opcional)",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.language": "Idioma del guion",
+      "app.input.n4.length_seconds": "Duración (segundos)",
+      "app.input.n5.voice_id": "Voz (si el branding no tiene ninguna)",
+      "app.output.n11": "Vídeo",
+      "app.output.n8": "Storyboard",
+      "app.output.n13": "Guion",
+      "app.output.n12": "Subtítulos"
+    }
+  }
+}
