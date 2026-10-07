@@ -150,10 +150,10 @@ async function main() {
     const byId = Object.fromEntries(all.map((template) => [template.id, template]));
     const types = (id) => byId[id].graph.nodes.map((node) => node.type);
     // the app view makes the marked outputs first and asks for the approval before the rest (SPEC §14): the motion video with
-    // storyboard marks its Storyboard (n8), no other template asks for it
+    // storyboard marks its Storyboard (n8) and its Script (n13), no other template asks for it
     const markedIn = (app) => app.outputs.filter((entry) => entry.approve === true).map((entry) => entry.node);
-    assert.deepEqual(Object.fromEntries(all.map((template) => [template.id, markedIn(template.app)]).filter(([, nodes]) => nodes.length)), { 'motion-video-storyboard': ['n8'] });
-    for (const lang of ['en', 'de', 'es']) assert.deepEqual(markedIn(templates.resolveTemplate('motion-video-storyboard', { lang }).app), ['n8'], `${lang}: the mark is in the localized document`);
+    assert.deepEqual(Object.fromEntries(all.map((template) => [template.id, markedIn(template.app)]).filter(([, nodes]) => nodes.length)), { 'motion-video-storyboard': ['n8', 'n13'] });
+    for (const lang of ['en', 'de', 'es']) assert.deepEqual(markedIn(templates.resolveTemplate('motion-video-storyboard', { lang }).app), ['n8', 'n13'], `${lang}: the marks are in the localized document`);
     assert.deepEqual(types('hero-variants'), ['input.text', 'llm.prompt_enhancer', 'image.generate', 'image.resize', 'output.result']);
     assert.equal(byId['hero-variants'].graph.nodes.find((node) => node.type === 'image.generate').params.count, 4);
     assert.ok(types('image-to-ad').includes('llm.image_describer') && types('image-to-ad').includes('audio.tts') && types('image-to-ad').includes('video.merge_audio'));
