@@ -65,6 +65,21 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// The environment of the hyperframes CLI. HyperFrames 0.8 turns an experimental frame capture on by default on macOS with a hardware GPU;
+// in a test with 0.8.139 it timed out at the first frame of every scene ("drawElement worker encode timed out") instead of falling back,
+// while the screenshot capture rendered the same frames as 0.7 and faster. A service also checks for no updates, installs none and sends no
+// usage reports. Each default can be changed in service.env (or the environment of the service); skills are never installed here.
+const RENDER_ENV_DEFAULTS = Object.freeze({
+  PRODUCER_EXPERIMENTAL_FAST_CAPTURE: 'false',
+  HYPERFRAMES_NO_UPDATE_CHECK: '1',
+  HYPERFRAMES_NO_AUTO_INSTALL: '1',
+  HYPERFRAMES_NO_TELEMETRY: '1'
+});
+
+function renderEnv(env = process.env) {
+  return { ...RENDER_ENV_DEFAULTS, ...env, HYPERFRAMES_SKIP_SKILLS: '1' };
+}
+
 function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, resolution }) {
   return new Promise((resolve, reject) => {
     const args = [hyperframesBin, 'render', path.join(dir, 'project'), '-o', out, '-q', quality];
@@ -72,7 +87,7 @@ function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, r
     if (resolution) args.push('--resolution', resolution);
     const child = spawn(process.execPath, args, {
       cwd: base,
-      env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: '1' },
+      env: renderEnv(),
       stdio: ['ignore', 'pipe', 'pipe']
     });
     let tail = '';
@@ -460,6 +475,8 @@ if (require.main === module) start();
 
 module.exports = {
   createRenderService,
+  renderEnv,
+  RENDER_ENV_DEFAULTS,
   MAX_ASSETS,
   MAX_LEGACY_ASSETS_BYTES,
   MAX_UPLOAD_BYTES,

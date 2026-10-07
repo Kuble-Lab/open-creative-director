@@ -123,7 +123,7 @@ Besides the chat, the **Chat | Nodes** switch in the header opens a canvas for b
 
 ## Motion-graphics render node (optional)
 
-The `render_motion_graphics` tool sends HTML/GSAP compositions to a small render service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg) that can run on the same machine or any other computer — reachable directly or through an SSH tunnel. The service ships in this repo under [`render-node/`](render-node/README.md). Multiple nodes are load-balanced automatically (idle first, then shortest queue), and imported media stream to the node in chunks (up to 500 MB per render). Configure nodes in **Menu → Settings → Render nodes**.
+The `render_motion_graphics` tool sends HTML/GSAP compositions to a small render service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg) that can run on the same machine or any other computer — reachable directly or through an SSH tunnel. The service ships in this repo under [`render-node/`](render-node/README.md). Multiple nodes are load-balanced automatically (idle first, then shortest queue), and imported media stream to the node in chunks (up to 500 MB per render). Configure nodes in **Menu → Settings → Render nodes**. The render node needs hyperframes 0.8: after an update run `npm install` in `render-node/` and restart it; [`render-node/README.md`](render-node/README.md) lists the settings it starts hyperframes with.
 
 ## User management (optional)
 
