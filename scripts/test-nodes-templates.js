@@ -139,11 +139,21 @@ async function main() {
       for (const entry of result.app.outputs) {
         assert.equal(result.graph.nodes.find((item) => item.id === entry.node).type, 'output.result');
       }
+      // an output "shown first for approval" is `approve: true` in the file (any other value would be dropped silently by the import)
+      for (const [index, entry] of template.app.outputs.entries()) {
+        if (entry.approve !== undefined) assert.equal(entry.approve, true, `${template.id}: approve is true or not there`);
+        assert.equal(result.app.outputs[index].approve, entry.approve, `${template.id}: the mark of output ${entry.node} survives the import`);
+      }
     }
 
     // specific graph shapes the spec promises
     const byId = Object.fromEntries(all.map((template) => [template.id, template]));
     const types = (id) => byId[id].graph.nodes.map((node) => node.type);
+    // the app view makes the marked outputs first and asks for the approval before the rest (SPEC §14): the motion video with
+    // storyboard marks its Storyboard (n8), no other template asks for it
+    const markedIn = (app) => app.outputs.filter((entry) => entry.approve === true).map((entry) => entry.node);
+    assert.deepEqual(Object.fromEntries(all.map((template) => [template.id, markedIn(template.app)]).filter(([, nodes]) => nodes.length)), { 'motion-video-storyboard': ['n8'] });
+    for (const lang of ['en', 'de', 'es']) assert.deepEqual(markedIn(templates.resolveTemplate('motion-video-storyboard', { lang }).app), ['n8'], `${lang}: the mark is in the localized document`);
     assert.deepEqual(types('hero-variants'), ['input.text', 'llm.prompt_enhancer', 'image.generate', 'image.resize', 'output.result']);
     assert.equal(byId['hero-variants'].graph.nodes.find((node) => node.type === 'image.generate').params.count, 4);
     assert.ok(types('image-to-ad').includes('llm.image_describer') && types('image-to-ad').includes('audio.tts') && types('image-to-ad').includes('video.merge_audio'));
@@ -707,6 +717,7 @@ async function main() {
         const wf = created.json.workflow;
         assert.equal(wf.name, templates.resolveTemplate(id, { lang: 'de' }).name);
         assert.equal(wf.app.enabled, true);
+        assert.deepEqual(markedIn(wf.app), markedIn(byId[id].app), `${id}: the marked outputs of the template are the ones of the new workflow`);
         assert.equal(wf.graph.nodes.length, byId[id].graph.nodes.length);
         // media inputs come without an asset; the copy is a fresh workflow with its own backing session
         assert.equal(wf.rev, 1);

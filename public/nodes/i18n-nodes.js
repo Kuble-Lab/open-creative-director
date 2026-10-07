@@ -1060,6 +1060,18 @@
     ['nodes.app.waitingResult', 'Das Ergebnis erscheint hier, sobald der Lauf fertig ist.', 'The result appears here once the run is finished.', 'El resultado aparece aquí cuando termine la ejecución.'],
     ['nodes.app.noResultYet', 'Noch kein Ergebnis. Starte die App.', 'No result yet. Run the app.', 'Aún no hay resultado. Ejecuta la app.'],
     ['nodes.app.resultFrom', 'Letztes Ergebnis: {info}', 'Latest result: {info}', 'Último resultado: {info}'],
+    /* optional approval step: outputs marked "show first" are made in step 1, "approve and finish" makes the rest */
+    ['nodes.app.approveToggle', 'Zuerst zur Freigabe zeigen (Schritt 1)', 'Show first for approval (step 1)', 'Mostrar primero para aprobar (paso 1)'],
+    ['nodes.app.approveHint', 'Die App erzeugt zuerst nur die so markierten Ausgaben (mit allem, was sie dafür braucht) und zeigt sie. Danach gibt die Person frei, und der Rest läuft.', 'The app first makes only the outputs marked like this (with everything they need) and shows them. Then the person approves and the rest runs.', 'La app genera primero solo las salidas marcadas así (con todo lo que necesitan) y las muestra. Después la persona aprueba y se ejecuta el resto.'],
+    ['nodes.app.approveBadge', 'Zur Freigabe', 'For approval', 'Para aprobar'],
+    ['nodes.app.approveStart', 'Schritt 1 starten', 'Start step 1', 'Iniciar paso 1'],
+    ['nodes.app.approveFinish', 'Freigeben und fertigstellen', 'Approve and finish', 'Aprobar y terminar'],
+    ['nodes.app.approveRedo', 'Schritt 1 neu erzeugen', 'Make step 1 again', 'Volver a generar el paso 1'],
+    ['nodes.app.stepFirst', 'Schritt 1 von 2: Zuerst entsteht nur: {outputs}. Danach gibst du frei.', 'Step 1 of 2: first only this is made: {outputs}. Then you approve.', 'Paso 1 de 2: primero solo se genera: {outputs}. Después apruebas.'],
+    ['nodes.app.stepApprove', 'Schritt 2 von 2: Prüfe {outputs}. «Freigeben und fertigstellen» erzeugt den Rest.', 'Step 2 of 2: check {outputs}. “Approve and finish” makes the rest.', 'Paso 2 de 2: revisa {outputs}. «Aprobar y terminar» genera el resto.'],
+    ['nodes.app.comesInStep2', 'Kommt in Schritt 2, nach deiner Freigabe.', 'Comes in step 2, after your approval.', 'Llega en el paso 2, tras tu aprobación.'],
+    ['nodes.app.upToDateSteps', 'Alles ist aktuell. «Erneut starten» beginnt wieder bei Schritt 1.', 'Everything is up to date. “Run again” starts at step 1 again.', 'Todo está al día. «Ejecutar de nuevo» vuelve a empezar en el paso 1.'],
+    ['nodes.app.statusFirstDone', 'Schritt 1 fertig', 'Step 1 done', 'Paso 1 listo'],
 
     /* port hover help: tooltip chrome and facts (nodes.porttip.*), then the descriptions (nodes.portdesc.*).
        Lookup for a port, first hit wins: nodes.portdesc.<nodeType>.<portId>.<in|out>, nodes.portdesc.<nodeType>.<portId>,
