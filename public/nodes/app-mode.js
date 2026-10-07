@@ -5,7 +5,8 @@
 // the run sends the form values as `overrides` (the saved graph is never changed), live status comes from
 // the SSE stream through the pure reducer of run.js, and the outputs of the app are shown as a result
 // gallery with download, viewer and "send to chat". Lists (text list, media list) make the run a batch:
-// the engine maps the flow once per item. Only in-app dialogs, texts of users and LLMs via textContent.
+// the engine maps the flow once per item. Outputs that the builder marked "show first for approval" make the run
+// two steps (approvalFlow below). Only in-app dialogs, texts of users and LLMs via textContent.
 (function (global) {
   const OCD = (global.OCDNodes = global.OCDNodes || {});
   const graphLib = OCD.graph;
@@ -77,6 +78,57 @@
   }
 
   const isAssetKind = (kind) => kind === 'asset' || kind === 'assets';
+
+  // True when every node of the plan is cached: nothing would run, the button says "Run again".
+  function allCached(plan) {
+    const nodes = plan && plan.nodes ? Object.values(plan.nodes) : [];
+    return nodes.length > 0 && nodes.every((node) => node.status === 'cached');
+  }
+
+  /* ---------- optional approval step ---------- */
+
+  // The builder can mark outputs of the app "show first for approval" (workflow.app.outputs[].approve, SPEC §14). The app then runs in
+  // two steps: step 1 makes only the marked outputs and what they need, the person looks at them, step 2 ("Approve and finish") makes
+  // everything; the results of step 1 come from the cache, because both steps send the same form values. The functions below are
+  // pure (no DOM, no requests): they decide which step is due and which request starts it.
+
+  // The ids of the marked outputs that still exist in the graph, in the order of the app.
+  function approvalTargets(outputs, hasNode) {
+    const ids = [];
+    for (const entry of Array.isArray(outputs) ? outputs : []) {
+      if (entry && entry.approve === true && typeof entry.node === 'string' && hasNode(entry.node) && !ids.includes(entry.node)) ids.push(entry.node);
+    }
+    return ids;
+  }
+
+  // The request that makes exactly the marked outputs and everything before them (the engine adds the ancestors of its targets). Like
+  // the node view it is mode 'node' for one target and 'selection' for several. `force` holds for the targets only, so "again" lists
+  // every node of the required set (`order` of the plan of the same request) and makes all of them again.
+  function previewRequest({ targets, overrides, force = false, order = null }) {
+    const nodeIds = force && Array.isArray(order) && order.length ? order.slice() : targets.slice();
+    return { mode: nodeIds.length === 1 ? 'node' : 'selection', nodeIds, force, overrides };
+  }
+
+  // Which step is due and the request that starts it, read from the plans for the current form values. Nothing is remembered, so it
+  // holds after a reload, and as soon as a field changes the first step is due again.
+  //   targets    ids of the marked outputs (approvalTargets)
+  //   preview    plan of exactly these outputs, not forced (previewRequest)
+  //   all        plan of the whole flow, not forced; null while it is not known
+  //   hasResult  (nodeId) => the app can show a result of the output
+  //   redo       "make step 1 again": the first step, forced, whatever is due
+  // Returns null for an app without marked outputs (one step, as before), else { step, done, request }:
+  //   step 'first'    a marked output is not up to date: the request makes the marked outputs
+  //   step 'approve'  they are up to date (cached, with a result): the request makes everything; what step 1 made is not made again
+  //   done            the rest is up to date as well: nothing is left to approve, and the request is the first step again, forced,
+  //                   so "Run again" asks for the approval once more instead of making the expensive part unseen
+  function approvalFlow({ targets, overrides, preview, all = null, hasResult = () => true, redo = false }) {
+    if (!targets || !targets.length) return null;
+    const nodes = (preview && preview.nodes) || {};
+    const current = targets.every((id) => nodes[id] && nodes[id].status === 'cached' && hasResult(id));
+    const done = current && allCached(all);
+    if (current && !done && !redo) return { step: 'approve', done: false, request: { mode: 'all', force: false, overrides } };
+    return { step: 'first', done, request: previewRequest({ targets, overrides, force: redo || done, order: preview && preview.order }) };
+  }
 
   function createAppView({ host, callbacks }) {
     const cb = callbacks || {};
@@ -187,6 +239,7 @@
         fields: [],
         run: runLib.createRunState(),
         plan: null,
+        plans: null, // an app with outputs marked for approval: { preview, all } instead of the one plan
         planError: null,
         planTimer: null,
         planToken: 0,
@@ -246,6 +299,7 @@
         s.results = payload.results;
         if (!payload.activeRun && s.run.active) dispatch({ type: 'snapshot', activeRun: null });
         renderResults();
+        renderRunButton();
       } catch (_) {
         /* the browser reconnects the stream on its own */
       }
@@ -273,6 +327,27 @@
         inputs: Array.isArray(app.inputs) ? app.inputs : [],
         outputs: Array.isArray(app.outputs) ? app.outputs : []
       };
+    }
+
+    // The outputs that are shown first for approval (see approvalFlow); none for an app that runs in one step.
+    function approveTargets() {
+      return approvalTargets(appDef().outputs, (id) => Boolean(nodeOf(id)));
+    }
+
+    function approvalLabels() {
+      const marked = new Set(approveTargets());
+      const outputs = appDef().outputs;
+      return outputs.filter((entry) => marked.has(entry.node)).map((entry) => entry.label || titleOf(entry.node));
+    }
+
+    const hasResult = (nodeId) => Boolean(outputValue(nodeId));
+
+    // The step that is due now according to the plans of the last refresh and the results shown; null for an app that runs in one
+    // step, and until its plans are there. (Only the step is read here: the request needs the form values, see startRun.)
+    function currentFlow() {
+      const targets = approveTargets();
+      if (!targets.length || !s.plans) return null;
+      return approvalFlow({ targets, preview: s.plans.preview, all: s.plans.all, hasResult });
     }
 
     function storageKey() {
@@ -320,12 +395,16 @@
       if (!s.fields.length) fieldsBox.append(el('div', { class: 'nv-hint', text: T('nodes.app.noFields') }));
 
       const actions = el('div', { class: 'nv-appactions' });
+      // Only with outputs marked for approval: which step it is, and the way back to step 1 while step 2 is due
+      const stepLine = el('div', { class: 'nv-appstep', role: 'status' });
       const runBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-apprun' }, icon('play', 13), el('span', { class: 'nv-apprun-label' }));
       runBtn.addEventListener('click', () => startRun());
       const cancelBtn = el('button', { type: 'button', class: 'nv-btn nv-appcancel hidden' }, icon('stop', 12), el('span', { text: T('nodes.run.cancel') }));
       cancelBtn.addEventListener('click', cancelRun);
       const hint = el('div', { class: 'nv-apphint', role: 'status' });
-      actions.append(el('div', { class: 'nv-appactions-row' }, runBtn, cancelBtn), hint);
+      const redoBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-appredo hidden' }, icon('refresh', 13), el('span', { text: T('nodes.app.approveRedo') }));
+      redoBtn.addEventListener('click', () => startRun({ redo: true }));
+      actions.append(stepLine, el('div', { class: 'nv-appactions-row' }, runBtn, cancelBtn), hint, redoBtn);
       formCard.append(actions);
       const statusBox = el('div', { class: 'nv-appstatus hidden', role: 'status' });
       formCard.append(statusBox);
@@ -337,7 +416,7 @@
 
       grid.append(formCard, results);
       wrap.append(grid);
-      s.refs = { fieldsBox, runBtn, cancelBtn, hint, statusBox, resultsHead, outputsBox };
+      s.refs = { fieldsBox, runBtn, cancelBtn, hint, stepLine, redoBtn, statusBox, resultsHead, outputsBox };
       refreshVisibility();
       renderRunButton();
       renderStatus();
@@ -466,13 +545,25 @@
       const run = async () => {
         if (!s || s.id !== id || mine !== s.planToken) return;
         try {
-          const plan = await api.plan(id, { mode: 'all', overrides: buildOverrides() });
-          if (!s || s.id !== id || mine !== s.planToken) return;
-          s.plan = plan;
+          const overrides = buildOverrides();
+          const targets = approveTargets();
+          if (targets.length) {
+            // outputs marked for approval: the plan of step 1 and the plan of everything (what is left to run once step 1 is done)
+            const [preview, all] = await Promise.all([api.plan(id, previewRequest({ targets, overrides })), api.plan(id, { mode: 'all', force: false, overrides })]);
+            if (!s || s.id !== id || mine !== s.planToken) return;
+            s.plans = { preview, all };
+            s.plan = null;
+          } else {
+            const plan = await api.plan(id, { mode: 'all', overrides });
+            if (!s || s.id !== id || mine !== s.planToken) return;
+            s.plan = plan;
+            s.plans = null;
+          }
           s.planError = null;
         } catch (error) {
           if (!s || s.id !== id || mine !== s.planToken) return;
           s.plan = null;
+          s.plans = null;
           s.planError = error;
         }
         renderRunButton();
@@ -481,35 +572,38 @@
       else await run();
     }
 
-    function allCached(plan) {
-      const nodes = plan && plan.nodes ? Object.values(plan.nodes) : [];
-      return nodes.length > 0 && nodes.every((node) => node.status === 'cached');
-    }
-
     function issueMessages(issues) {
       return (issues || []).filter((issue) => issue.level === 'error').map((issue) => ({ title: issue.nodeId ? titleOf(issue.nodeId) : '', message: ui.issueText(issue, 'app') }));
     }
 
     function renderRunButton() {
       if (!s || !s.refs) return;
-      const { runBtn, cancelBtn, hint } = s.refs;
+      const { runBtn, cancelBtn, hint, stepLine, redoBtn } = s.refs;
       const active = s.run.active || s.starting;
-      const rerun = !active && allCached(s.plan);
+      // An app with outputs marked for approval runs in two steps (approvalFlow); flow is null for any other app. The plan shown is the
+      // one of the step that is due: what is left to run, so the hint and the costs name only that.
+      const flow = currentFlow();
+      const plan = flow ? (flow.step === 'first' && !flow.done ? s.plans.preview : s.plans.all) : s.plan;
+      const rerun = !active && (flow ? flow.done : allCached(plan));
       runBtn.disabled = active;
       const working = s.run.active || (s.starting && !s.asking);
       runBtn.classList.toggle('is-working', working);
-      runBtn.querySelector('.nv-apprun-label').textContent = working ? T('nodes.app.running') : rerun ? T('nodes.app.runAgain') : T('nodes.app.run');
+      // (until the plans are there an app with marked outputs says "Start step 1": the first step is what a click would find first)
+      const label = flow ? (flow.step === 'approve' ? 'nodes.app.approveFinish' : 'nodes.app.approveStart') : approveTargets().length ? 'nodes.app.approveStart' : 'nodes.app.run';
+      runBtn.querySelector('.nv-apprun-label').textContent = working ? T('nodes.app.running') : rerun ? T('nodes.app.runAgain') : T(label);
       cancelBtn.classList.toggle('hidden', !s.run.active);
+      redoBtn.classList.toggle('hidden', active || !flow || flow.step !== 'approve');
+      stepLine.textContent = '';
       hint.textContent = '';
       hint.className = 'nv-apphint';
       if (active) return;
+      if (flow && !flow.done) stepLine.textContent = T(flow.step === 'approve' ? 'nodes.app.stepApprove' : 'nodes.app.stepFirst', { outputs: approvalLabels().join(', ') });
       if (s.planError) {
         const issues = issueMessages(s.planError.issues);
         hint.classList.add('is-warn');
         hint.append(icon('warning', 13), el('span', { text: issues.length ? `${issues[0].title ? `${issues[0].title}: ` : ''}${issues[0].message}` : s.planError.message }));
         return;
       }
-      const plan = s.plan;
       if (!plan) return;
       const info = runLib.describePlan(plan, titleOf);
       if (!info.valid) {
@@ -519,7 +613,7 @@
         return;
       }
       if (rerun) {
-        hint.append(icon('check', 13), el('span', { text: T('nodes.app.upToDate') }));
+        hint.append(icon('check', 13), el('span', { text: T(flow ? 'nodes.app.upToDateSteps' : 'nodes.app.upToDate') }));
         return;
       }
       const gate = runLib.gateOf(info);
@@ -628,7 +722,8 @@
       });
     }
 
-    async function startRun() {
+    // `redo`: "make step 1 again" of an app with outputs marked for approval (see approvalFlow).
+    async function startRun({ redo = false } = {}) {
       if (!s || s.starting || s.run.active) return;
       const bad = validateForm();
       if (bad) {
@@ -636,18 +731,40 @@
         return;
       }
       const id = s.id;
+      const targets = approveTargets();
+      const shown = currentFlow();
       s.starting = true;
       renderRunButton();
       try {
         const overrides = buildOverrides();
         // Unchanged inputs would be answered from the cache: "run again" forces fresh results. The cached state is
-        // asked from the server right now (s.plan is debounced and may be stale after a quick edit).
-        let force = false;
-        let planned;
+        // asked from the server right now (s.plan is debounced and may be stale after a quick edit). The same goes for the step of an
+        // app with outputs marked for approval: it is decided from plans asked now, and the plan of the request that starts is what
+        // the confirmation shows.
+        let request;
+        let planned = null;
         try {
-          force = allCached(await api.plan(id, { mode: 'all', force: false, overrides }));
-          if (!s || s.id !== id) return;
-          planned = await api.plan(id, { mode: 'all', force, overrides });
+          if (targets.length) {
+            const [preview, all] = await Promise.all([api.plan(id, previewRequest({ targets, overrides })), api.plan(id, { mode: 'all', force: false, overrides })]);
+            if (!s || s.id !== id) return;
+            const flow = approvalFlow({ targets, overrides, preview, all, hasResult, redo });
+            // Step 2 makes the expensive part. If the button did not say so (a result came from another tab, a field went back to an
+            // earlier value), nothing starts: the button and the results show how things stand now, and the next click decides.
+            if (flow.step === 'approve' && !(shown && shown.step === 'approve')) {
+              s.plans = { preview, all };
+              s.plan = null;
+              s.planError = null;
+              return;
+            }
+            request = flow.request;
+            // a request that is not forced is the one of a plan just asked (step 1, or everything); a forced one needs a plan of its own
+            if (!request.force) planned = flow.step === 'approve' ? all : preview;
+          } else {
+            const force = allCached(await api.plan(id, { mode: 'all', force: false, overrides }));
+            if (!s || s.id !== id) return;
+            request = { mode: 'all', force, overrides };
+          }
+          if (!planned) planned = await api.plan(id, request);
         } catch (error) {
           if (error.issues) await showIssues(issueMessages(error.issues));
           else ui.toast(T('nodes.run.startFailed', { error: error.message }), { kind: 'error' });
@@ -672,9 +789,9 @@
         }
         if (!s || s.id !== id) return;
         try {
-          const started = await api.startRun(id, { mode: 'all', force, overrides });
+          const started = await api.startRun(id, request);
           if (s && s.id === id && !s.run.active) {
-            dispatch({ type: 'run_started', runId: started.runId, mode: 'all', targets: planned.targets || [], plan: Object.fromEntries((planned.order || []).map((nodeId) => [nodeId, 'queued'])) });
+            dispatch({ type: 'run_started', runId: started.runId, mode: request.mode, targets: planned.targets || [], plan: Object.fromEntries((planned.order || []).map((nodeId) => [nodeId, 'queued'])) });
           }
         } catch (error) {
           if (error.status === 409 && error.code === 'RUN_ACTIVE') ui.toast(T('nodes.run.alreadyRunning'), { kind: 'warn' });
@@ -764,6 +881,7 @@
         s.run = runLib.clearResync(s.run);
         renderResults();
         renderStatus();
+        renderRunButton(); // the step that is due also depends on whether a result is there to show
       } catch (_) {
         /* the next event or reconnect refreshes again */
       }
@@ -830,7 +948,9 @@
         if (current.length) box.append(el('div', { class: 'nv-appstatus-now', text: current.join(' · ') }));
       } else {
         const failed = Object.entries(run.nodes).filter(([, info]) => info.status === 'error');
-        const text = run.status === 'completed' ? T('nodes.app.statusDone') : run.status === 'cancelled' ? T('nodes.run.result.cancelled') : run.status === 'interrupted' ? T('nodes.run.result.interrupted') : run.status === 'failed' ? T('nodes.app.statusFailed') : T('nodes.run.result.finished');
+        // a run of the marked outputs alone is only the first of two steps
+        const firstStep = approveTargets().length > 0 && Boolean(run.mode) && run.mode !== 'all';
+        const text = run.status === 'completed' ? T(firstStep ? 'nodes.app.statusFirstDone' : 'nodes.app.statusDone') : run.status === 'cancelled' ? T('nodes.run.result.cancelled') : run.status === 'interrupted' ? T('nodes.run.result.interrupted') : run.status === 'failed' ? T('nodes.app.statusFailed') : T('nodes.run.result.finished');
         head.append(el('span', { class: 'nv-appstatus-text', text }));
         if (run.startedAt && run.finishedAt) head.append(el('span', { class: 'nv-status-time', text: runLib.formatDuration(run.finishedAt - run.startedAt) }));
         const cost = costText(run.cost);
@@ -916,6 +1036,7 @@
       resultsHead.textContent = '';
       resultsHead.append(el('h2', { class: 'nv-appresults-title', text: T('nodes.app.results') }));
       let any = false;
+      const marked = new Set(approveTargets());
       for (const entry of app.outputs) {
         const node = nodeOf(entry.node);
         if (!node) continue;
@@ -924,7 +1045,9 @@
         const head = el('header', { class: 'nv-appout-head' });
         head.append(el('h3', { class: 'nv-appout-title', text: entry.label || titleOf(entry.node) }));
         if (!found) {
-          card.append(head, el('div', { class: 'nv-appout-empty' }, icon('image', 22), el('span', { text: s.run.active ? T('nodes.app.waitingResult') : T('nodes.app.noResultYet') })));
+          // with outputs marked for approval, an unmarked output is made in step 2: the run of step 1 does not include it
+          const later = marked.size > 0 && !marked.has(entry.node) && !(s.run.nodes && s.run.nodes[entry.node]);
+          card.append(head, el('div', { class: 'nv-appout-empty' }, icon('image', 22), el('span', { text: later ? T('nodes.app.comesInStep2') : s.run.active ? T('nodes.app.waitingResult') : T('nodes.app.noResultYet') })));
           outputsBox.append(card);
           continue;
         }
@@ -969,5 +1092,5 @@
     return { open, close, showError, relabel, setRegistry };
   }
 
-  OCD.appMode = { createAppView, countTextItems };
+  OCD.appMode = { createAppView, countTextItems, approvalTargets, previewRequest, approvalFlow };
 })(window);

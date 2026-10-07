@@ -155,7 +155,8 @@
     return { enabled: false, title: '', description: '', inputs: [], outputs: [] };
   }
 
-  // workflow.app with all fields present (older documents and imports may lack some).
+  // workflow.app with all fields present (older documents and imports may lack some). An output keeps `approve` only when it is
+  // exactly `true` (the server does the same).
   function normalizeApp(raw) {
     const app = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -163,7 +164,7 @@
       title: typeof app.title === 'string' ? app.title : '',
       description: typeof app.description === 'string' ? app.description : '',
       inputs: Array.isArray(app.inputs) ? app.inputs.filter((entry) => entry && typeof entry.node === 'string' && typeof entry.param === 'string').map((entry) => ({ node: entry.node, param: entry.param, label: typeof entry.label === 'string' ? entry.label : '' })) : [],
-      outputs: Array.isArray(app.outputs) ? app.outputs.filter((entry) => entry && typeof entry.node === 'string').map((entry) => ({ node: entry.node, label: typeof entry.label === 'string' ? entry.label : '' })) : []
+      outputs: Array.isArray(app.outputs) ? app.outputs.filter((entry) => entry && typeof entry.node === 'string').map((entry) => ({ node: entry.node, label: typeof entry.label === 'string' ? entry.label : '', ...(entry.approve === true ? { approve: true } : {}) })) : []
     };
   }
 
@@ -284,6 +285,18 @@
     changeApp({ outputs: [...app.outputs, { node: nodeId, label: String(node.params.label || node.title || (def ? ui.typeLabel(def) : '')).trim() }], enabled: true });
   }
 
+  // "Show first for approval": the mark lives in the entry of the output, so it goes when the output leaves the app.
+  function setAppApprove(nodeId, on) {
+    const outputs = currentApp().outputs.map((entry) => {
+      if (entry.node !== nodeId) return entry;
+      const next = { ...entry };
+      if (on) next.approve = true;
+      else delete next.approve;
+      return next;
+    });
+    changeApp({ outputs });
+  }
+
   function moveAppEntry(kind, index, delta) {
     const list = currentApp()[kind].slice();
     const target = index + delta;
@@ -297,13 +310,18 @@
       get: currentApp,
       signature(nodeId) {
         const app = currentApp();
-        if (nodeId) return `${app.enabled ? 1 : 0}:${app.inputs.filter((entry) => entry.node === nodeId).map((entry) => entry.param).join(',')}:${app.outputs.some((entry) => entry.node === nodeId) ? 'o' : ''}`;
-        return `${app.enabled ? 1 : 0}|${app.inputs.map((entry) => `${entry.node}.${entry.param}`).join(',')}|${app.outputs.map((entry) => entry.node).join(',')}`;
+        if (nodeId) {
+          const output = app.outputs.find((entry) => entry.node === nodeId);
+          return `${app.enabled ? 1 : 0}:${app.inputs.filter((entry) => entry.node === nodeId).map((entry) => entry.param).join(',')}:${output ? (output.approve === true ? 'oa' : 'o') : ''}`;
+        }
+        return `${app.enabled ? 1 : 0}|${app.inputs.map((entry) => `${entry.node}.${entry.param}`).join(',')}|${app.outputs.map((entry) => (entry.approve === true ? `${entry.node}!` : entry.node)).join(',')}`;
       },
       isExposed: (nodeId, paramId) => currentApp().inputs.some((entry) => entry.node === nodeId && entry.param === paramId),
       isOutput: (nodeId) => currentApp().outputs.some((entry) => entry.node === nodeId),
+      isApprove: (nodeId) => currentApp().outputs.some((entry) => entry.node === nodeId && entry.approve === true),
       toggleInput: toggleAppInput,
       toggleOutput: toggleAppOutput,
+      setApprove: setAppApprove,
       setEnabled: (enabled) => changeApp({ enabled }),
       setMeta: (patch) => changeApp(patch, { rebuild: false }),
       setLabel(kind, index, label) {

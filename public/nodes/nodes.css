@@ -5281,6 +5281,15 @@ button.nv-scene-preview:focus-visible {
   min-width: 0;
 }
 
+.nv-app-switch + .nv-app-switch {
+  margin-top: 14px;
+}
+
+/* a long hint next to the switch must not squeeze it */
+.nv-app-switch .nv-switch {
+  flex: none;
+}
+
 .nv-app-meta {
   margin: 14px 0 4px;
 }
@@ -6154,6 +6163,22 @@ button.nv-scene-preview:focus-visible {
 
 .nv-apphint.is-paid {
   color: var(--text-dim);
+}
+
+/* optional approval step: which step it is, and the way back to step 1 while step 2 is due */
+.nv-appstep {
+  margin-bottom: 12px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.nv-appstep:empty {
+  display: none;
+}
+
+.nv-appredo {
+  margin-top: 10px;
 }
 
 .nv-appstatus {

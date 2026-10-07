@@ -6,6 +6,8 @@
 //   - step 1 (only the node Storyboard): plan, branding, text template and pictures; no voice, no scene, no render
 //   - step 2 (everything): the lists of briefs, timing and pictures have the same length, every scene gets ITS picture as the last image
 //     of the writer and the check gets the contact sheet and then the picture; the film is cut with voice, music and captions
+//   - the app view takes the same two steps: the output Storyboard is marked for approval (approve: true), and the description and the
+//     note of every language say so, naming the button of step 2 as the page labels it
 // The language model, ElevenLabs, the render node and the image model are replaced; ffmpeg is real. Nothing is paid and nothing leaves the
 // machine. Skipped (after the shape checks) when ffmpeg is missing.
 
@@ -13,6 +15,7 @@ const assert = require('assert/strict');
 const fsp = require('fs/promises');
 const path = require('path');
 
+const { rows: i18nRows } = require('../public/nodes/i18n-nodes');
 const { createIsolatedApp } = require('./support/isolated-app');
 const { createAssStandIn } = require('./support/fake-ffmpeg');
 const { toneWav, createMedia } = require('./support/explainer-media');
@@ -170,9 +173,21 @@ async function run(iso, eleven) {
   assert.deepEqual(imageModels.allowedModels({ imageModel: 'openai/gpt-image-2', imageModels: iso.load('lib/config').DEFAULT_CONFIG.imageModels }).includes('google/gemini-nano-banana-2.1'), true, 'the model is on the default list of the server');
   assert.deepEqual(template.graph.groups.map((group) => group.id), ['g1', 'g2']);
   assert.deepEqual(template.app.outputs.map((entry) => entry.label), ['Video', 'Storyboard', 'Script', 'Subtitles']);
-  // the app view runs everything: the approval is a node view step, the note says so in every language
+  // the app view shows the Storyboard and the Script first and asks for the approval before the rest (SPEC §14): the outputs n8 and
+  // n13 are marked (the script costs nothing more, the plan runs in step 1 anyway)
+  assert.deepEqual(template.app.outputs.filter((entry) => entry.approve === true).map((entry) => entry.node), ['n8', 'n13']);
+  assert.equal(template.app.outputs.find((entry) => entry.node === 'n8').label, 'Storyboard');
+  assert.equal(template.app.outputs.find((entry) => entry.node === 'n13').label, 'Script');
+  assert.deepEqual(result.app.outputs.filter((entry) => entry.approve === true).map((entry) => entry.node), ['n8', 'n13'], 'the marks survive the import');
+  const approveFinish = (lang) => i18nRows.find((row) => row[0] === 'nodes.app.approveFinish')[{ de: 1, en: 2, es: 3 }[lang]];
   for (const lang of ['en', 'de', 'es']) {
     const doc = templates.resolveTemplate(ID, { lang });
+    // the description and the note say that the app view works in two steps, and name the button of step 2 as the page labels it
+    assert.deepEqual(doc.app.outputs.filter((entry) => entry.approve === true).map((entry) => entry.node), ['n8', 'n13'], `${lang}: the localized document keeps the marks`);
+    assert.ok(doc.graph.notes[0].text.includes(approveFinish(lang)), `${lang}: the note names the button «${approveFinish(lang)}»`);
+    assert.doesNotMatch(doc.graph.notes[0].text, /always runs|läuft immer alles|siempre se ejecuta todo/, `${lang}: the note no longer says the app view runs everything`);
+    assert.doesNotMatch(doc.app.description, /node view|Node-Ansicht|vista de nodos|at once|auf einmal|de una vez/, `${lang}: the description no longer sends the person to the node view`);
+    assert.match(doc.app.description, { en: /the script and the storyboard first/, de: /zuerst Skript und Storyboard/, es: /Primero ves el guion y el storyboard/ }[lang], `${lang}: the description names the approval`);
     assert.match(doc.graph.notes[0].text, /▶/, `${lang}: the note names the play button`);
     assert.match(doc.graph.notes[0].text, /Nano Banana 2\.1/, `${lang}: the note names the model`);
     assert.equal(doc.graph.groups.length, 2);

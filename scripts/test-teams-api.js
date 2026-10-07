@@ -603,6 +603,8 @@ async function testSharing(ctx) {
     ['POST', `/api/workflows/${id}/runs`, { mode: 'all' }],
     ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'items', nodeId: 'n1', items: [0] }],
     ['POST', `/api/workflows/${id}/runs`, { mode: 'items', nodeId: 'n1', items: [0] }],
+    ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'node', nodeIds: ['n1'] }],
+    ['POST', `/api/workflows/${id}/runs`, { mode: 'selection', nodeIds: ['n1'], force: true }],
     ['POST', `/api/workflows/${id}/assistant`, { question: 'Hallo', canvas: { nodes: [], edges: [] } }],
     ['GET', `/api/workflows/${id}/runs`],
     ['GET', `/api/workflows/${id}/runs/run-1`],
@@ -1476,6 +1478,17 @@ async function testBudgetNodes(ctx) {
   const crowdedPlan = await call(person, 'POST', `/api/workflows/${secondFlow.id}/runs/plan`, { mode: 'all', force: true });
   assert.equal(crowdedPlan.body.budget.enough, false);
   assert.equal(crowdedPlan.body.budget.code, 'BUDGET_INSUFFICIENT');
+  // a partial run (the first step of an app with an approval step: the marked outputs and what they need) is counted like a full one
+  const partOrder = ['txt', 'gen', 'out'];
+  const crowdedPartPlan = await call(person, 'POST', `/api/workflows/${secondFlow.id}/runs/plan`, { mode: 'selection', nodeIds: partOrder, force: true });
+  assert.equal(crowdedPartPlan.status, 200, crowdedPartPlan.text);
+  assert.equal(crowdedPartPlan.body.budget.enough, false);
+  assert.equal(crowdedPartPlan.body.budget.code, 'BUDGET_INSUFFICIENT');
+  assert.equal(crowdedPartPlan.body.totals.usd, 0.4);
+  const crowdedPart = await call(person, 'POST', `/api/workflows/${secondFlow.id}/runs`, { mode: 'selection', nodeIds: partOrder, force: true });
+  assert.equal(crowdedPart.status, 402);
+  assert.equal(crowdedPart.body.code, 'BUDGET_INSUFFICIENT');
+  assert.ok(Math.abs(crowdedPart.body.estimateUsd - 0.4) < 1e-9);
   await finish(flow.id, first.body.runId, person);
   restoreAll();
   patch(or, 'createImage', async () => {
@@ -1500,6 +1513,34 @@ async function testBudgetNodes(ctx) {
   const runsBefore = (await call(person, 'GET', `/api/workflows/${flow.id}/runs`)).body.runs.length;
   assert.equal((await call(person, 'POST', `/api/workflows/${flow.id}/runs`, { mode: 'all', force: true })).status, 402);
   assert.equal((await call(person, 'GET', `/api/workflows/${flow.id}/runs`)).body.runs.length, runsBefore, 'a refused run leaves no record');
+  // a partial run asks the same (SPEC §14, the first step of an app with an approval step): the part with the paid node is refused
+  // before the provider is called, the part before it is free and starts
+  const part = (await call(person, 'POST', '/api/workflows', { name: 'Teillauf' })).body.workflow;
+  await call(person, 'PUT', `/api/workflows/${part.id}`, { baseRev: 1, graph: graph() });
+  const partPlan = await call(person, 'POST', `/api/workflows/${part.id}/runs/plan`, { mode: 'node', nodeIds: ['out'] });
+  assert.equal(partPlan.status, 200, partPlan.text);
+  assert.deepEqual(partPlan.body.order, ['txt', 'gen', 'out'], 'what the output needs is part of the run');
+  assert.equal(partPlan.body.totals.paidNodes, 1);
+  assert.equal(partPlan.body.budget.enough, false);
+  assert.equal(partPlan.body.budget.code, 'BUDGET_EXHAUSTED');
+  const generatedBefore = generated;
+  for (const request of [{ mode: 'node', nodeIds: ['out'] }, { mode: 'selection', nodeIds: ['out'] }, { mode: 'selection', nodeIds: ['txt', 'gen', 'out'], force: true }]) {
+    const partRefused = await call(person, 'POST', `/api/workflows/${part.id}/runs`, request);
+    assert.equal(partRefused.status, 402, JSON.stringify(request));
+    assert.equal(partRefused.body.code, 'BUDGET_EXHAUSTED');
+  }
+  assert.equal(generated, generatedBefore, 'the provider was not called');
+  assert.equal((await call(person, 'GET', `/api/workflows/${part.id}/runs`)).body.runs.length, 0, 'a refused partial run leaves no record');
+  assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+  const partFreePlan = await call(person, 'POST', `/api/workflows/${part.id}/runs/plan`, { mode: 'node', nodeIds: ['txt'] });
+  assert.equal(partFreePlan.body.totals.paidNodes, 0);
+  assert.equal(partFreePlan.body.budget.enough, true, 'a part without a paid node needs no budget');
+  const partFree = await call(person, 'POST', `/api/workflows/${part.id}/runs`, { mode: 'node', nodeIds: ['txt'] });
+  assert.equal(partFree.status, 202, partFree.text);
+  const partDone = await finish(part.id, partFree.body.runId, person);
+  assert.equal(partDone.status, 'completed');
+  assert.deepEqual(Object.keys(partDone.nodes), ['txt'], 'only the part that was asked for ran');
+  assert.equal(generated, generatedBefore);
   assert.equal((await call(person, 'PATCH', `/api/workflows/${flow.id}/results/none`, {})).status >= 400, true, '(the route answers; the node does not exist)');
   // nodes that are free still run; a workflow without a paid node is never refused
   const free = (await call(person, 'POST', '/api/workflows', { name: 'Gratis' })).body.workflow;
@@ -1526,6 +1567,18 @@ async function testBudgetNodes(ctx) {
   assert.equal(hfRun.status, 403);
   assert.equal(hfRun.body.code, 'FORBIDDEN_FOR_ROLE');
   assert.equal(hfRun.body.feature, 'higgsfield');
+  assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
+  // a partial run follows the rule too: it is the node that would run that counts, not the mode of the run
+  const hfPartPlan = await call(person, 'POST', `/api/workflows/${hf.id}/runs/plan`, { mode: 'node', nodeIds: ['out'] });
+  assert.equal(hfPartPlan.status, 200, hfPartPlan.text);
+  assert.deepEqual(hfPartPlan.body.blocked, [{ nodeId: 'gen', feature: 'higgsfield' }]);
+  for (const request of [{ mode: 'node', nodeIds: ['out'] }, { mode: 'selection', nodeIds: ['gen', 'out'] }, { mode: 'selection', nodeIds: ['txt', 'gen', 'out'], force: true }]) {
+    const hfPartRun = await call(person, 'POST', `/api/workflows/${hf.id}/runs`, request);
+    assert.equal(hfPartRun.status, 403, JSON.stringify(request));
+    assert.equal(hfPartRun.body.code, 'FORBIDDEN_FOR_ROLE');
+    assert.equal(hfPartRun.body.feature, 'higgsfield');
+  }
+  assert.deepEqual((await call(person, 'POST', `/api/workflows/${hf.id}/runs/plan`, { mode: 'node', nodeIds: ['txt'] })).body.blocked, [], 'a part that stops before the Higgsfield node is not blocked');
   assert.equal(ctx.budget.defaultBudget.reservationCount(), 0);
 
   // single items of a list (mode 'items') follow the same rules: with a list result in the node, a participant is refused
@@ -1702,6 +1755,16 @@ async function testBudgetNodes(ctx) {
   assert.equal(guestRun.status, 402);
   assert.equal(guestRun.body.code, 'BUDGET_EXHAUSTED');
   assert.equal((await call(GUEST, 'POST', `/api/workflows/${gflow.id}/runs/plan`, { mode: 'all' })).body.budget.enough, false);
+  // a partial run is no way around it: the part with the paid node is refused, the part before it works
+  const guestPartPlan = await call(GUEST, 'POST', `/api/workflows/${gflow.id}/runs/plan`, { mode: 'node', nodeIds: ['out'] });
+  assert.equal(guestPartPlan.body.budget.enough, false);
+  assert.equal(guestPartPlan.body.budget.code, 'BUDGET_EXHAUSTED');
+  const guestPart = await call(GUEST, 'POST', `/api/workflows/${gflow.id}/runs`, { mode: 'node', nodeIds: ['out'] });
+  assert.equal(guestPart.status, 402);
+  assert.equal(guestPart.body.code, 'BUDGET_EXHAUSTED');
+  const guestFree = await call(GUEST, 'POST', `/api/workflows/${gflow.id}/runs`, { mode: 'node', nodeIds: ['txt'] });
+  assert.equal(guestFree.status, 202, guestFree.text);
+  assert.equal((await finish(gflow.id, guestFree.body.runId, GUEST)).status, 'completed');
 
   // LLM nodes: the model list of a participant has no ChatGPT models, the call needs budget
   const llm = ctx.iso.load('lib/nodes/llm');

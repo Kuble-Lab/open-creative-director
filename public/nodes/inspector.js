@@ -525,11 +525,15 @@
       return row;
     }
 
-    // Output node: expose its result as an output of the Design App.
+    // Output node: expose its result as an output of the Design App, and (only then) say whether the app shows it first, for approval.
     function appOutputSection(node) {
       const exposed = cb.app.isOutput(node.id);
-      const wrap = section(ui.T('nodes.app.section'), switchRow(ui.T('nodes.app.outputToggle'), exposed, () => cb.app.toggleOutput(node.id), ui.T('nodes.app.outputHint')));
-      return wrap;
+      const rows = [switchRow(ui.T('nodes.app.outputToggle'), exposed, () => cb.app.toggleOutput(node.id), ui.T('nodes.app.outputHint'))];
+      if (exposed) {
+        const approve = cb.app.isApprove(node.id);
+        rows.push(switchRow(ui.T('nodes.app.approveToggle'), approve, () => cb.app.setApprove(node.id, !approve), ui.T('nodes.app.approveHint')));
+      }
+      return section(ui.T('nodes.app.section'), ...rows);
     }
 
     function appRow(kind, entry, index, total, ctx) {
@@ -546,6 +550,7 @@
       sub.append(el('span', { text: kind === 'inputs' ? `${title} · ${ui.paramLabel(entry.param)}` : title }));
       const batch = kind === 'inputs' && def && (node.type === 'input.text_list' || node.type === 'input.media_list');
       if (batch) sub.append(el('span', { class: 'nv-badge is-batch', title: ui.T('nodes.app.batchHint'), text: ui.T('nodes.app.batch') }));
+      if (kind === 'outputs' && entry.approve === true) sub.append(el('span', { class: 'nv-badge is-app', title: ui.T('nodes.app.approveToggle'), text: ui.T('nodes.app.approveBadge') }));
       // An input that reaches no app output changes nothing in the result (for example after "Use as text"): mark it.
       const cut = kind === 'inputs' && node && ctx.deadAppInputs && ctx.deadAppInputs.has(`${entry.node}\u0000${entry.param}`);
       if (cut) {
