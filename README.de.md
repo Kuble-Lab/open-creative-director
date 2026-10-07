@@ -123,7 +123,7 @@ Neben dem Chat öffnet der Umschalter **Chat | Nodes** in der Kopfzeile eine Arb
 
 ## Motion-Graphics-Render-Node (optional)
 
-Das Tool `render_motion_graphics` schickt HTML/GSAP-Compositions an einen kleinen Render-Service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg), der auf demselben Rechner oder jedem anderen Computer laufen kann — direkt erreichbar oder über einen SSH-Tunnel. Der Service liegt in diesem Repo unter [`render-node/`](render-node/README.md). Mehrere Nodes werden automatisch verteilt (idle zuerst, dann kürzeste Queue), und importierte Medien streamen in Blöcken zum Node (bis 500 MB pro Render). Nodes verwaltest du in **Menü → Einstellungen → Render-Nodes**.
+Das Tool `render_motion_graphics` schickt HTML/GSAP-Compositions an einen kleinen Render-Service (Node + [hyperframes](https://www.npmjs.com/package/hyperframes) + Chrome + ffmpeg), der auf demselben Rechner oder jedem anderen Computer laufen kann — direkt erreichbar oder über einen SSH-Tunnel. Der Service liegt in diesem Repo unter [`render-node/`](render-node/README.md). Mehrere Nodes werden automatisch verteilt (idle zuerst, dann kürzeste Queue), und importierte Medien streamen in Blöcken zum Node (bis 500 MB pro Render). Nodes verwaltest du in **Menü → Einstellungen → Render-Nodes**. Der Render-Node braucht hyperframes 0.8: Nach einem Update `npm install` in `render-node/` ausführen und ihn neu starten; [`render-node/README.md`](render-node/README.md) nennt die Einstellungen, mit denen er hyperframes startet.
 
 ## Benutzerverwaltung (optional)
 

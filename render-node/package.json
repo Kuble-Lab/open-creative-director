@@ -5,6 +5,6 @@
   "main": "service.js",
   "type": "commonjs",
   "dependencies": {
-    "hyperframes": "^0.7.106"
+    "hyperframes": "^0.8.139"
   }
 }

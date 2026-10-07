@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 
-const { createRenderService } = require('../render-node/service');
+const { createRenderService, renderEnv, RENDER_ENV_DEFAULTS } = require('../render-node/service');
 const {
   createRenderNodeClient,
   chooseAssetTransport,
@@ -157,6 +157,19 @@ async function main() {
     );
 
     console.log('Render-Streaming: Upload-Staging, Stream-to-Disk, Render-Move und Client-Fallback sind korrekt.');
+
+    // the environment of the hyperframes CLI: no experimental capture, no update checks or installs, no usage reports, never skills;
+    // service.env (or the environment of the service) may change a default, but not the skills
+    const env = renderEnv({ PATH: '/bin' });
+    assert.equal(env.PATH, '/bin');
+    assert.equal(env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE, 'false');
+    assert.equal(env.HYPERFRAMES_NO_UPDATE_CHECK, '1');
+    assert.equal(env.HYPERFRAMES_NO_AUTO_INSTALL, '1');
+    assert.equal(env.HYPERFRAMES_NO_TELEMETRY, '1');
+    assert.equal(env.HYPERFRAMES_SKIP_SKILLS, '1');
+    assert.equal(renderEnv({ PRODUCER_EXPERIMENTAL_FAST_CAPTURE: 'true' }).PRODUCER_EXPERIMENTAL_FAST_CAPTURE, 'true', 'service.env wins');
+    assert.equal(renderEnv({ HYPERFRAMES_SKIP_SKILLS: '0' }).HYPERFRAMES_SKIP_SKILLS, '1', 'never skills');
+    assert.ok(Object.isFrozen(RENDER_ENV_DEFAULTS));
   } finally {
     await service.close();
     await fsp.rm(base, { recursive: true, force: true });
