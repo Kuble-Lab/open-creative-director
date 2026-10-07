@@ -164,6 +164,9 @@ async function run(iso, eleven) {
   assert.equal(nodeOf('n14').params.length, 45);
   assert.match(nodeOf('n6').params.template, /\{\{a\}\}/);
   assert.match(nodeOf('n6').params.template, /\{\{b\}\}/);
+  // Nano Banana 2.1 refused a frame of a real, named person twice with IMAGE_OTHER (live, 2026-10-07); with this line it drew
+  // a neutral figure at once
+  assert.ok(nodeOf('n6').params.template.includes('Never show a real, named person recognisably: draw people as simple neutral figures'), 'no likeness of real people');
   assert.deepEqual(imageModels.allowedModels({ imageModel: 'openai/gpt-image-2', imageModels: iso.load('lib/config').DEFAULT_CONFIG.imageModels }).includes('google/gemini-nano-banana-2.1'), true, 'the model is on the default list of the server');
   assert.deepEqual(template.graph.groups.map((group) => group.id), ['g1', 'g2']);
   assert.deepEqual(template.app.outputs.map((entry) => entry.label), ['Video', 'Storyboard', 'Script', 'Subtitles']);
@@ -331,6 +334,7 @@ async function run(iso, eleven) {
     assert.match(pictures[index].prompt, /^Storyboard key frame for one scene/, 'the template wraps the brief');
     assert.ok(pictures[index].prompt.includes(`Title ${index + 1}`), `picture ${index + 1} is made from the brief of scene ${index + 1}`);
     assert.match(pictures[index].prompt, /Brand profile:\n\S/, 'the brand profile follows');
+    assert.match(pictures[index].prompt, /Never show a real, named person recognisably/, 'the rule against likenesses reaches the image model');
   }
 
   // step 2: everything. The plan and the pictures are kept; the scenes follow the pictures
