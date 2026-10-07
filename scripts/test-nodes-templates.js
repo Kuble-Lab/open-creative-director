@@ -39,6 +39,7 @@ const EXPECTED = [
   'image-to-video',
   'masked-edit',
   'motion-title',
+  'motion-video-storyboard',
   'music-video',
   'music-video-stills',
   'photo-slideshow',
@@ -365,9 +366,9 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
       // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
-      for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text']) {
+      for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
       }
       // the music templates need the ElevenLabs key, and ffmpeg where the video is mixed
@@ -521,10 +522,10 @@ async function main() {
         // replace-people-in-video: an upload has no length, so the plan shows the upper bound of Kling O3 (15 s and the slack of 0.05 s at 0.14 USD a second)
         // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
         // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
-        const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic', 'typography-video', 'typography-video-text'].includes(id);
+        const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(id);
         assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' || id === 'replace-people-in-video' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
-        // the typography videos are 90 s long, so is their music (90 s at 0.20 USD a minute)
-        if (explainerVideo) assert.equal(cost.usd, id.startsWith('typography-') ? 0.3 : 0.4, `${id}: only the music is known beforehand`);
+        // the typography videos are 90 s long, so is their music (90 s at 0.20 USD a minute); the motion video with storyboard is 45 s (0.15)
+        if (explainerVideo) assert.equal(cost.usd, id.startsWith('typography-') ? 0.3 : id === 'motion-video-storyboard' ? 0.15 : 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));
         assert.deepEqual(cost.providers.every((key) => templates.PAID_PROVIDERS.includes(key)), true);
         if (FREE.includes(id)) assert.deepEqual(cost.providers, [], `${id}: nothing is billed`);

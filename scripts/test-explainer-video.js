@@ -9,7 +9,9 @@
 //     render gets the policy, the exact length and the source line that the app puts in (the model is not told its text), a failed attempt is answered in the same conversation (code problem, render error,
 //     blockers of the look at two frames), after the last try the fixed scene stands in (or the node stops), the look can be switched
 //     off, stills and figures are found by the number of the scene, a clip scene is a plain stand-in, the fonts of the brand are embedded,
-//     the video is silent and exactly as long as the voice plus 0.4 s (frame exact), the price and its booking, the errors
+//     the video is silent and exactly as long as the voice plus 0.4 s (frame exact), the price and its booking, the errors; with a
+//     storyboard frame (WP43) the writer gets it as the last image (no placeholder, not rendered) and the look gets exactly a contact
+//     sheet of 3x2 frames and the frame
 // A private copy of the app runs in a temp directory; nothing is paid, nothing leaves the machine (fetch guard). The parts with
 // ffmpeg are skipped when it is missing.
 
@@ -287,7 +289,8 @@ async function run(iso, { eleven, setVoiceBytes }) {
   assert.ok(sceneDef.timeoutMs >= 30 * 60 * 1000, 'a scene with retries may take its time');
   assert.deepEqual(portsOf(sceneDef.inputs), [
     ['brief', 'text', true, false], ['timing', 'text', true, false], ['brand', 'text', false, false], ['logo', 'image', false, false],
-    ['stills', 'image', false, true], ['pages', 'image', false, true], ['shots', 'text', false, false], ['pages_info', 'text', false, false]
+    ['stills', 'image', false, true], ['pages', 'image', false, true], ['shots', 'text', false, false], ['pages_info', 'text', false, false],
+    ['reference', 'image', false, false] // WP43: the optional storyboard frame
   ]);
   assert.deepEqual(portsOf(sceneDef.outputs), [['video', 'video', false, false]]);
   assert.deepEqual(real.normalizeParams(sceneDef, {}), { model: '', format: 'landscape', quality: 'standard', vision_check: true, max_retries: 2, fallback: true });
@@ -1275,6 +1278,88 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.equal(await frames(result.variants[0].video), 132, 'four seconds of silence and 0.4 s');
     const cueList = /Cue list[^:]*: ([^\n]*)\./.exec(writerCalls()[0].options.prompt)[1];
     assert.match(cueList, /e1 \(title\) at 0.3; e2 \(bullet\) at 0.65;/, 'staggered from 0.3 s in steps of 0.35 s');
+  }
+
+  /* ---------- a storyboard frame (WP43): the last image of the writer, a contact sheet and the frame for the look ---------- */
+
+  {
+    const board = await assetOf(await png('ff00ff', '640x360', 'board.png'), '.png', 'storyboard');
+    const boardUrl = await store.assetDataUrl(sessionId, board.assetId);
+    const sheetSize = async (dataUrl) => {
+      assert.match(dataUrl, /^data:image\/png;base64,/);
+      const file = path.join(workDir, `sheet-${Date.now()}.png`);
+      await fsp.writeFile(file, Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
+      const probe = await media.probe(file);
+      return [probe.width, probe.height];
+    };
+
+    // a still scene: the attached still first, the storyboard frame last; only the still is a file of the scene
+    reset();
+    const ctx = makeCtx();
+    const result = await exec('explainer.scene', ctx, baseInputs(sceneIndex('s2'), { stills: listValue('image', stills), reference: board }), {});
+    const writer = writerCalls()[0].options;
+    assert.equal(writer.images.length, 2, 'the still and the storyboard frame');
+    assert.equal(writer.images[0], await store.assetDataUrl(sessionId, stills[0].assetId), 'the attached file first');
+    assert.equal(writer.images[1], boardUrl, 'the storyboard frame last');
+    assert.match(writer.prompt, /\{\{asset:1\}\} = image \(png\): a still picture[^\n]*\nStoryboard: the last image of this request is the approved storyboard frame of this scene/);
+    assert.doesNotMatch(writer.prompt, /\{\{asset:2\}\}/, 'no placeholder for the frame');
+    assert.ok(!renders[0].html.includes(board.assetId), 'the frame is not in the page');
+    assert.ok(!JSON.stringify(renders[0].files || []).includes(board.assetId), 'nor sent to the render node');
+    // the look: exactly two images, the contact sheet (3 x 2 tiles of 640x360) and the frame
+    assert.equal(checkCalls().length, 1);
+    const check = checkCalls()[0].options;
+    assert.equal(check.images.length, 2);
+    assert.deepEqual(await sheetSize(check.images[0]), [3 * 640 + 2 * 8 + 2 * 8, 2 * 360 + 8 + 2 * 8], 'a contact sheet of 3 x 2 tiles');
+    assert.equal(check.images[1], boardUrl, 'then the storyboard frame');
+    assert.match(check.system, /^You check frames of a rendered explainer scene for layout defects\./);
+    assert.match(check.system, /One more blocker: the scene clearly departs from the storyboard/);
+    assert.match(check.prompt, /Image 1 is a contact sheet of 6 frames of this scene in 3 columns and 2 rows, read left to right, top to bottom: tile 1 at [\d.]+ s, .*tile 6 at 5\.72 s\./);
+    assert.match(check.prompt, /Image 2 is the approved storyboard frame of this scene\./);
+    assert.ok(ctx.logs.some((line) => /^s2: storyboard: the approved frame goes to the writer, the check compares a contact sheet of six frames with it$/.test(line)), ctx.logs.join(' | '));
+    assert.equal(await frames(result.variants[0].video), 176);
+    near(result.cost.usd, USD.writer + USD.check, 1e-9);
+    assert.deepEqual(await scratchLeft(), [], 'the frames and the sheet are gone with the scratch folder');
+
+    // a defect: the next try gets the frame again, last; the second look again exactly two images
+    reset();
+    queue.check.push({ ok: false, blockers: ['the main element of the storyboard is missing'], minor: [] });
+    const retried = makeCtx();
+    await exec('explainer.scene', retried, baseInputs(0, { reference: board }), {});
+    assert.equal(writerCalls().length, 2);
+    assert.deepEqual(writerCalls().map((call) => call.options.images.length), [1, 1], 'a motion scene without files: the frame alone');
+    assert.ok(writerCalls().every((call) => call.options.images[0] === boardUrl));
+    assert.match(writerCalls()[1].options.history[1].content, /The rendered scene has these problems:\n- the main element of the storyboard is missing/);
+    assert.deepEqual(checkCalls().map((call) => call.options.images.length), [2, 2]);
+    assert.ok(retried.logs.some((line) => /attempt 1 of 3: rendered in \d+ s, check: 1 defect \(the main element of the storyboard is missing\)/.test(line)));
+    assert.deepEqual(await scratchLeft(), []);
+
+    // the look switched off: the writer still follows the frame, nothing is looked at
+    reset();
+    const unchecked = makeCtx();
+    await exec('explainer.scene', unchecked, baseInputs(0, { reference: board }), { vision_check: false });
+    assert.equal(writerCalls()[0].options.images[0], boardUrl);
+    assert.match(writerCalls()[0].options.prompt, /\nStoryboard: /);
+    assert.equal(checkCalls().length, 0);
+    assert.ok(unchecked.logs.some((line) => /^s1: storyboard: the approved frame goes to the writer$/.test(line)));
+
+    // a clip scene reads no frame: no model, no look
+    reset();
+    await exec('explainer.scene', makeCtx(), baseInputs(sceneIndex('s4'), { reference: board }), {});
+    assert.equal(calls.length, 0);
+
+    // without the frame: two frames as ever, and a request without a word of a storyboard
+    reset();
+    await exec('explainer.scene', makeCtx(), baseInputs(0), {});
+    assert.doesNotMatch(writerCalls()[0].options.prompt, /storyboard/i);
+    assert.doesNotMatch(checkCalls()[0].options.system, /contact sheet|storyboard/i);
+    assert.match(checkCalls()[0].options.prompt, /Frame times: [\d.]+ s and 5\.72 s \(frame 1 and frame 2\)\./);
+    assert.equal(checkCalls()[0].options.images.length, 2);
+
+    // a frame of another session is refused, before any call
+    reset();
+    const foreign = await errorOf(exec('explainer.scene', makeCtx(), baseInputs(0, { reference: { ...board, sessionId: 'another-session' } }), {}));
+    assert.match(foreign.message, /belongs to another session/);
+    assert.equal(calls.length, 0);
   }
 
   /* ---------- errors ---------- */
