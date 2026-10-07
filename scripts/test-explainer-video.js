@@ -1360,6 +1360,22 @@ async function run(iso, { eleven, setVoiceBytes }) {
     const foreign = await errorOf(exec('explainer.scene', makeCtx(), baseInputs(0, { reference: { ...board, sessionId: 'another-session' } }), {}));
     assert.match(foreign.message, /belongs to another session/);
     assert.equal(calls.length, 0);
+
+    // a large frame (2K, 4K, a photo) goes to the writer and to the look as a JPEG of at most 1568 px on the long side; the small frame
+    // above went as it is (boardUrl, the PNG of the asset)
+    reset();
+    const big = await assetOf(await png('00ffff', '3000x1688', 'board-big.png'), '.png', 'storyboard 3000 px');
+    const scaled = makeCtx();
+    await exec('explainer.scene', scaled, baseInputs(0, { reference: big }), {});
+    const sent = writerCalls()[0].options.images[0];
+    assert.match(sent, /^data:image\/jpeg;base64,/);
+    const sentFile = path.join(workDir, 'board-big-sent.jpg');
+    await fsp.writeFile(sentFile, Buffer.from(sent.slice(sent.indexOf(',') + 1), 'base64'));
+    const sentProbe = await media.probe(sentFile);
+    assert.deepEqual([sentProbe.width, sentProbe.height], [1568, 882], 'scaled down, the aspect kept');
+    assert.equal(checkCalls()[0].options.images[1], sent, 'the look gets the same smaller frame');
+    assert.ok(scaled.logs.some((line) => /^s1: storyboard: the frame \(3000 x 1688 px, [\d.]+ MB\) goes to the model as a JPEG of at most 1568 px$/.test(line)), scaled.logs.join(' | '));
+    assert.deepEqual(await scratchLeft(), [], 'the smaller frame is gone with the scratch folder');
   }
 
   /* ---------- errors ---------- */
