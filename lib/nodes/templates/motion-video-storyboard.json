@@ -77,7 +77,7 @@
         "y": 100,
         "title": "Storyboard prompt per scene",
         "params": {
-          "template": "Storyboard key frame for one scene of an animated motion-graphics explainer video, 16:9. Clean flat 2D vector motion-graphics look; show the main moment of the scene in one frame with large simple shapes, few words and generous margins; keep the lower fifth of the frame free. Use the colours and fonts of the brand profile where it names any.\n\nScene brief:\n{{a}}\n\nBrand profile:\n{{b}}"
+          "template": "Storyboard key frame for one scene of an animated motion-graphics explainer video, 16:9. Clean flat 2D vector motion-graphics look; show the main moment of the scene in one frame with large simple shapes, few words and generous margins; keep the lower fifth of the frame free. Never show a real, named person recognisably: draw people as simple neutral figures without a portrait or likeness; their name may appear as text. Use the colours and fonts of the brand profile where it names any.\n\nScene brief:\n{{a}}\n\nBrand profile:\n{{b}}"
         }
       },
       {
