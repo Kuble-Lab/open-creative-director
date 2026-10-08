@@ -11,7 +11,8 @@
 //     the model out, a direct call is refused before it is paid (code VIDEO_FRAME_RATIO, in German and English), nothing is booked. The
 //     end frame is not looked at (not known what the model does with another format: marked "per live test" in lib/video-models.js)
 //   - the request of image to video: frame_images (first_frame, and last_frame in the node), resolution, duration and aspect_ratio; never
-//     generate_audio (the sound is on by default and part of the price)
+//     generate_audio (the sound is on by default and part of the price). The request of the paid live test of 2026-10-08 (a start image of
+//     720 x 1280, 5 s at 720p, aspect_ratio 9:16; accepted, billed 0.85 USD) is one of them and is pinned with its price
 //   - the node "Generate video": the model is on the list with its limits and its price at 720p and at 1080p, a run sends the right request
 //   - the texts of the card in German, English and Spanish: no promise of 1080p or of an end frame (the chat has neither)
 
@@ -210,7 +211,8 @@ function testListAndPrice() {
   assert.equal(videoModels.profileName(FLUX_EDIT), '', 'FLUX Video Edit has no card text: it is a model of the node "Edit video with references"');
 
   const job = (duration, resolution, extra = {}) => ({ duration, resolution, mode: 'text_to_video', aspectRatio: '16:9', hasVideoInput: false, ...extra });
-  // 0.17 USD per second at 720p: 5 s = 0.85, 10 s = 1.70, 20 s = 3.40 (one price: the general price of the list is the same)
+  // 0.17 USD per second at 720p: 5 s = 0.85 (billed exactly so in the live test of 2026-10-08), 10 s = 1.70, 20 s = 3.40 (one price: the
+  // general price of the list is the same)
   for (const [seconds, usd] of [[5, 0.85], [6, 1.02], [10, 1.7], [20, 3.4]]) {
     const price = videoModels.priceEstimate(FLUX3_ENTRY, job(seconds, '720p'));
     near(price.minPerSecond, 0.17, 'per second');
@@ -528,10 +530,12 @@ async function testPayloadAndNode(sessionId) {
   await run({ prompt: text('x') }, { duration: 3 });
   assert.deepEqual(plain(payloads[0]), { model: FLUX3, prompt: 'x', resolution: '720p', duration: 5, aspect_ratio: '16:9' });
   near((await lastJob()).estimateUsd, 0.85, '5 s at 720p');
-  // image to video with a start image: its own format goes out; no ratio of the node
+  // image to video with a start image: its own format goes out; no ratio of the node. This is the request of the live test of 2026-10-08
+  // (a start image of 720 x 1280, 5 s at 720p): OpenRouter took it, the video came back upright (704 x 1280) and was billed 0.85 USD = 5 x 0.17
   payloads.length = 0;
   await run({ prompt: text('x'), first_frame: tall }, { duration: 5 });
   assert.deepEqual(plain({ ...payloads[0], frame_images: payloads[0].frame_images.map((frame) => frame.frame_type) }), { model: FLUX3, prompt: 'x', resolution: '720p', duration: 5, aspect_ratio: '9:16', frame_images: ['first_frame'] });
+  near((await lastJob()).estimateUsd, 0.85, 'the estimate is the 0.85 USD that the live test of 2026-10-08 was billed');
   // ... and with an end frame (the node takes one)
   payloads.length = 0;
   await run({ prompt: text('x'), first_frame: tall, last_frame: { type: 'list', itemType: 'image', items: [tall] } }, { duration: 8, resolution: '1080p' });

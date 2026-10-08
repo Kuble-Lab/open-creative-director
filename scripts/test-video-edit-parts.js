@@ -980,7 +980,7 @@ async function main() {
     {
       reset();
       // 15 s per run (14.95 s a part, like Kling O3): 53.5 s are four parts of 402, 401, 401 and 401 frames. A part is priced by its length (0.03
-      // USD per second; none is as short as the 5 billed seconds), so the parts add up to 53.5 x 0.03 = 1.605 USD.
+      // USD per second, no minimum since the live test of 2026-10-08: a clip of 3 s was billed 0.09 USD), so the parts add up to 53.5 x 0.03 = 1.605 USD.
       const fluxPlan = await plan({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit' });
       assert.deepEqual(fluxPlan.parts.list.map((part) => part.frames), [402, 401, 401, 401]);
       assert.equal(fluxPlan.parts.list.every((part) => part.seconds <= 14.95 && part.seconds >= 1), true, 'every part is a run of at most 15 s');
@@ -992,6 +992,7 @@ async function main() {
       });
       // the plan of the graph (the length only) and the plan of the run (the frames) agree
       near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 53.5 } } }), 1.605, 'the plan of the graph', 1e-5);
+      near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 3 } } }), 0.09, 'a short video stays one run, priced by its length (the live test of 2026-10-08)');
       near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 5 } } }), 0.15, 'a video of one run stays one run');
       near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 15 } } }), 0.45, 'the longest run');
       near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 15.06 } } }), 0.4518, 'just over a run: two parts of 7.53 s', 1e-5);
