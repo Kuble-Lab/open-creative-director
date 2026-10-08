@@ -415,7 +415,7 @@ async function main() {
       assert.deepEqual(def.inputs.map((port) => `${port.id}:${port.type}${port.required ? '*' : ''}${port.multiple ? `+${port.max}` : ''}`), ['video:video*', 'images:image+4', 'prompt:text']);
       assert.deepEqual(def.outputs.map((port) => `${port.id}:${port.type}`), ['video:video']);
       const param = (id) => def.params.find((item) => item.id === id);
-      assert.deepEqual(param('model').options, ['kling_o3', 'wan_replace', 'gemini_omni', 'runway_aleph'], 'WP41 adds Runway Aleph 2.0 at the end');
+      assert.deepEqual(param('model').options, ['kling_o3', 'wan_replace', 'gemini_omni', 'runway_aleph', 'flux_video_edit'], 'WP41 adds Runway Aleph 2.0, FLUX Video Edit follows it (test-flux-video-edit.js)');
       assert.equal(param('model').default, 'kling_o3');
       assert.deepEqual(param('quality').options, ['standard', 'pro', '4k']);
       assert.equal(param('quality').default, 'standard');
@@ -433,8 +433,8 @@ async function main() {
       assert.deepEqual(param('keep_audio').showIf, { param: 'model', equals: 'kling_o3' });
       assert.deepEqual(param('resolution').showIf, { param: 'model', equals: 'gemini_omni' });
       assert.deepEqual(param('wan_resolution').showIf, { param: 'model', equals: 'wan_replace' });
-      assert.deepEqual(param('prompt').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph'] }, 'Wan takes no prompt: the field is not shown');
-      assert.deepEqual(param('cut_to_limit').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph'] }, 'Wan names no limit to cut to');
+      assert.deepEqual(param('prompt').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph', 'flux_video_edit'] }, 'Wan takes no prompt: the field is not shown');
+      assert.deepEqual(param('cut_to_limit').showIf, { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph', 'flux_video_edit'] }, 'Wan names no limit to cut to');
       // an old node of another type and the keys of the neighbours: unchanged
       assert.ok(defaultRegistry.get('fal.h3_reference') && defaultRegistry.get('fal.model') && defaultRegistry.get('fal.video_segment'));
       assert.ok(defaultRegistry.get(TYPE), 'in the default registry');
@@ -588,7 +588,7 @@ async function main() {
 
       // format (Kling: MP4 or MOV) - the app stores MP4 and WebM
       const webm = await media('video', '.webm', { duration: 10, width: 1280, height: 720 });
-      await refused({ video: webm, prompt }, {}, 'VIDEO_EDIT_VIDEO_FORMAT', { data: { model: 'Kling O3', format: 'WEBM' }, message: /MP4 or MOV.*Trim video/ });
+      await refused({ video: webm, prompt }, {}, 'VIDEO_EDIT_VIDEO_FORMAT', { data: { model: 'Kling O3', format: 'WEBM', formats: 'MP4 / MOV' }, message: /MP4 or MOV.*Trim video/ });
       resetCalls();
       await run({ video: webm, prompt }, { model: 'gemini_omni' });
       assert.equal(falCalls.upload[0].contentType, 'video/webm', 'Gemini Omni takes WebM');

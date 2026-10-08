@@ -97,6 +97,10 @@
     // A text about a number of connections has its own wording for "none" and "one" (nodes.issue.<code>.none / .one).
     const form = data.max === 0 ? 'none' : data.max === 1 ? 'one' : '';
     if (form && key === `nodes.issue.${item.code}` && hasIssueText(`${item.code}.${form}`)) key = `nodes.issue.${item.code}.${form}`;
+    // An issue that lacks the value of a placeholder (one saved before the placeholder was added to the text, such as {formats} of
+    // VIDEO_EDIT_VIDEO_FORMAT) shows the engine's own message, never a text with "{formats}" in it.
+    const missing = (String(T(key)).match(/\{\w+\}/g) || []).some((name) => vars[name.slice(1, -1)] === undefined);
+    if (missing && item.message) return item.message;
     const text = T(key, vars);
     // A provider that refuses an input and offers another one (a music prompt with an artist name): the suggestion follows
     // the text, on one line and cut short; the inspector shows it in full.

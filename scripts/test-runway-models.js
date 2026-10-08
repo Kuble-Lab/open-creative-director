@@ -7,7 +7,8 @@
 //     the node bills Aleph for at least 5 s since the live test of 2026-10-04: test-aleph-edit.js),
 //     a price without a minimum has exactly the shape it had before
 //   - the limits of the metadata: 2 to 10 s (a range is clamped), 720p only, 16:9 or 9:16
-//   - the card with six models (MAX_OPTIONS is 6: all of them, the grid wraps), a seventh from outside the list is cut from the end
+//   - the card: every compatible model of the curated list, up to MAX_OPTIONS (7 since FLUX.3 Video, whose own test is
+//     test-flux-3-video.js; the catalog here has no FLUX.3, so six curated models fit and a configured seventh still shows)
 //   - the format of the start image: another format than 16:9 or 9:16 is never cropped. The card leaves the model out, a direct call is
 //     refused before it is paid (code VIDEO_FRAME_RATIO, in German and English), nothing is booked. A start image that fits sends its
 //     own format as aspect_ratio (720 x 1280 = 9:16, 1280 x 720 = 16:9): without it OpenRouter takes 16:9 and cropped a 9:16 image in the
@@ -51,6 +52,7 @@ const KLING = 'kwaivgi/kling-v3.0-std';
 const WAN = 'alibaba/wan-2.7';
 const VEO = 'google/veo-3.1-lite';
 const RUNWAY = 'runway/gen-4.5';
+const FLUX3 = 'black-forest-labs/flux-3-video';
 const ALEPH = 'runway/aleph-2';
 const EXTRA = 'vendor/extra-video';
 
@@ -202,8 +204,8 @@ function testImageSize() {
 /* ---------- the list, the profile, the price ---------- */
 
 function testListAndPrice() {
-  // the list: the five that were there, in their order, then Runway
-  assert.deepEqual([...videoModels.CURATED_MODEL_IDS], [SEEDANCE, FAST, KLING, WAN, VEO, RUNWAY]);
+  // the list: the five that were there, in their order, then Runway, then FLUX.3 Video (test-flux-3-video.js)
+  assert.deepEqual([...videoModels.CURATED_MODEL_IDS], [SEEDANCE, FAST, KLING, WAN, VEO, RUNWAY, FLUX3]);
   // golden: the profiles of the five others did not change
   const golden = {
     [SEEDANCE]: ['Seedance 2.5', { images: 30, videos: 10, audios: 10 }],
@@ -361,9 +363,9 @@ async function testCard(sessionId) {
   const asset = async (width, height) => (await store.saveAsset(sessionId, { kind: 'upload', buffer: pngOf(width, height), ext: '.png', prompt: 'seed' })).id;
   const ids = (options) => options.map((option) => option.id);
 
-  // Gen-4.5 on the card: six models in all, with their price and the key of their texts
+  // Gen-4.5 on the card: the six models of this catalog, with their price and the key of their texts (FLUX.3 Video is not in it)
   let listed = await videoModels.listOptions({ prompt: 'x', duration_seconds: 6 }, SEEDANCE);
-  assert.deepEqual(ids(listed.options), [SEEDANCE, FAST, KLING, WAN, VEO, RUNWAY], 'MAX_OPTIONS is 6: all six curated models fit one card');
+  assert.deepEqual(ids(listed.options), [SEEDANCE, FAST, KLING, WAN, VEO, RUNWAY], 'the six curated models of this catalog fit one card');
   const runway = listed.options.find((option) => option.id === RUNWAY);
   assert.equal(runway.name, 'Runway Gen-4.5');
   assert.equal(runway.profileKey, 'runwayGen45');
@@ -377,9 +379,10 @@ async function testCard(sessionId) {
   // the others keep their profile keys (golden)
   assert.deepEqual(listed.options.map((option) => option.profileKey), ['seedance25', 'seedanceFast', 'klingStandard', 'wan27', 'veoLite', 'runwayGen45']);
 
-  // the card with a configured default model that is not on the list: it comes first and the list is cut at six, from the end
+  // the card with a configured default model that is not on the list: it comes first and the list is cut at MAX_OPTIONS (7), from the end
+  // (here seven candidates, all shown; with FLUX.3 Video in the catalog there are eight and FLUX.3 is cut: test-flux-3-video.js)
   listed = await videoModels.listOptions({ prompt: 'x', duration_seconds: 6 }, EXTRA);
-  assert.deepEqual(ids(listed.options), [EXTRA, SEEDANCE, FAST, KLING, WAN, VEO], 'seven candidates, six shown');
+  assert.deepEqual(ids(listed.options), [EXTRA, SEEDANCE, FAST, KLING, WAN, VEO, RUNWAY], 'seven candidates, seven shown');
   assert.equal(videoModels.MAX_PENDING_PER_SESSION, 20);
 
   // 5 s: Veo has fixed lengths (4, 6, 8) and drops out, as it always did; the others stay
@@ -665,7 +668,8 @@ function testCardTexts() {
   const source = fs.readFileSync(path.join(root, 'lib', 'video-models.js'), 'utf8');
   for (const match of source.matchAll(/key: '([A-Za-z0-9]+)'/g)) profileKeys.add(match[1]);
   assert.ok(profileKeys.has('runwayGen45'));
-  assert.equal(profileKeys.size, 7, 'the five, Runway and the neutral texts');
+  assert.ok(profileKeys.has('flux3Video'));
+  assert.equal(profileKeys.size, 8, 'the five, Runway, FLUX.3 Video and the neutral texts');
   for (const lang of ['de', 'en', 'es']) {
     for (const key of profileKeys) {
       for (const field of ['summary', 'pro', 'con']) {

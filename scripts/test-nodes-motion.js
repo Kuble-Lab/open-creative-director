@@ -316,6 +316,12 @@ function testI18n() {
   assert.match(sized, /data-height="1920"/);
   assert.match(sized, /1920×\?/);
   assert.equal(ui.issueText(null), '');
+  // an issue saved before a placeholder was added to its text (no `formats` in an older refusal) keeps the engine's message
+  const formatIssue = { code: 'VIDEO_EDIT_VIDEO_FORMAT', message: 'video: Kling O3 takes MP4 or MOV', data: { model: 'Kling O3', format: 'WEBM' } };
+  assert.equal(ui.issueText(formatIssue), formatIssue.message, 'a missing placeholder value: the message, not "{formats}"');
+  const formatText = ui.issueText({ ...formatIssue, data: { ...formatIssue.data, formats: 'MP4 / MOV' } });
+  assert.match(formatText, /MP4 \/ MOV/);
+  assert.doesNotMatch(formatText, /\{\w+\}/, 'every placeholder filled');
   const notHtmlIssue = { code: 'not_html', message: 'x', data: { format: 'landscape', width: 1920, height: 1080 } };
   assert.equal(ui.issueText(notHtmlIssue, 'plain'), dict.de['nodes.issue.not_html.plain']);
   assert.equal(ui.issueText(notHtmlIssue, 'app'), dict.de['nodes.issue.not_html.app']);
