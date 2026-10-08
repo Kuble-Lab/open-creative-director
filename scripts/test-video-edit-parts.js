@@ -913,6 +913,11 @@ async function main() {
       assert.equal(alephPlan.parts.list.every((part) => part.seconds <= 29.95 && part.seconds >= 2), true, 'every part is a run of at most 30 s');
       near(alephPlan.estimateUsd, 53.5 * 0.28, 'Aleph: 0.28 per second over the whole length', 1e-5);
       assert.equal(alephPlan.parts.list.every((part) => part.usd >= 1.4), true, 'the 5 billed seconds (1.40 USD) are in the price of each part');
+      // The key of an Aleph part is made of exactly these fields in this order (planEditParts, WP41): the paid parts of earlier runs are found
+      // by it, so it must stay the same when another OpenRouter model joins the node
+      alephPlan.parts.list.forEach((part) => {
+        assert.equal(part.key, editParts.partKey({ via: 'openrouter', target: 'runway/aleph-2', input: { prompt: 'Aleph parts' }, media: [], source: long.assetId, rate: '30', longest: 30, from: part.startFrame, frames: part.frames }), `part ${part.number}`);
+      });
       alephPlan.parts.list.forEach((part) => near(part.usd, (part.frames / 30) * 0.28, 'a part is priced by its length', 1e-6));
       // the plan of the graph (the length only) and the plan of the run (the frames) agree
       near(def.cost.estimate(normalised({ model: 'runway_aleph', in_parts: true }), { inputs: { video: { type: 'video', duration: 53.5 } } }), 14.98, 'the plan of the graph', 1e-5);
@@ -968,6 +973,75 @@ async function main() {
       assert.equal(orPayloads.length, 1);
       assert.match(orPayloads[0].input_references[0].video_url.url, /part-2\.mp4$/);
       // ... and the public addresses of the parts are published for the request only
+      assert.deepEqual(await scratchLeftovers(), []);
+    }
+
+    /* ----- FLUX Video Edit: parts of at most 15 s, through OpenRouter ----- */
+    {
+      reset();
+      // 15 s per run (14.95 s a part, like Kling O3): 53.5 s are four parts of 402, 401, 401 and 401 frames. A part is priced by its length (0.03
+      // USD per second; none is as short as the 5 billed seconds), so the parts add up to 53.5 x 0.03 = 1.605 USD.
+      const fluxPlan = await plan({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit' });
+      assert.deepEqual(fluxPlan.parts.list.map((part) => part.frames), [402, 401, 401, 401]);
+      assert.equal(fluxPlan.parts.list.every((part) => part.seconds <= 14.95 && part.seconds >= 1), true, 'every part is a run of at most 15 s');
+      near(fluxPlan.estimateUsd, 53.5 * 0.03, 'FLUX: 0.03 per second over the whole length', 1e-5);
+      // the key of a part: the OpenRouter way with the model id of FLUX and 15 s as the longest part (the key of an Aleph part is pinned in
+      // test-aleph-edit.js); the parts of the two models never share a key
+      fluxPlan.parts.list.forEach((part) => {
+        assert.equal(part.key, editParts.partKey({ via: 'openrouter', target: 'black-forest-labs/flux-video-edit', input: { prompt: 'FLUX parts' }, media: [], source: long.assetId, rate: '30', longest: 15, from: part.startFrame, frames: part.frames }), `part ${part.number}`);
+      });
+      // the plan of the graph (the length only) and the plan of the run (the frames) agree
+      near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 53.5 } } }), 1.605, 'the plan of the graph', 1e-5);
+      near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 5 } } }), 0.15, 'a video of one run stays one run');
+      near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 15 } } }), 0.45, 'the longest run');
+      near(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: 15.06 } } }), 0.4518, 'just over a run: two parts of 7.53 s', 1e-5);
+      assert.equal(def.cost.estimate(normalised({ model: 'flux_video_edit', in_parts: true }), { inputs: { video: { type: 'video', duration: null } } }), null, 'a length that is not known has no price');
+      // "in parts" wins over "cut to the allowed length": the whole video, not its first 15 s
+      const fluxBoth = await plan({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit', cut_to_limit: true });
+      assert.ok(fluxBoth.parts && fluxBoth.parts.list.length === 4, 'in parts wins');
+      assert.equal(fluxBoth.trimmed, false);
+      near(fluxBoth.estimateUsd, 1.605, 'the whole video, not the first 15 s', 1e-5);
+      // the cut alone is the first 15 s: one run of 0.45 USD
+      const fluxCut = await plan({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit', in_parts: false, cut_to_limit: true });
+      assert.equal(fluxCut.parts, undefined);
+      assert.equal(fluxCut.trimmed, true);
+      near(fluxCut.estimateUsd, 0.45, 'the first 15 s');
+      await fluxCut.cleanup();
+      // without either switch a video over 15 s is refused, with the length of FLUX
+      await assert.rejects(def.execute(ctxFor(), { video: long, prompt: textValue('FLUX parts') }, normalised({ model: 'flux_video_edit' })), (err) => err.code === 'VIDEO_EDIT_VIDEO_TOO_LONG' && err.data.max === 15 && err.data.model === 'FLUX Video Edit');
+      assert.equal(orPayloads.length, 0, 'nothing was paid');
+      assert.deepEqual(await scratchLeftovers(), []);
+
+      const outcome = await run({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit' });
+      assert.equal(falCalls.submit.length, 0, 'not through fal');
+      assert.equal(orPayloads.length, 4, 'one request for each part');
+      orPayloads.forEach((payload, index) => {
+        assert.deepEqual(Object.keys(payload), ['model', 'prompt', 'input_references'], 'the request of a part: the same three fields as a single run');
+        assert.equal(payload.model, 'black-forest-labs/flux-video-edit');
+        assert.equal(payload.prompt, 'FLUX parts');
+        assert.equal(payload.input_references.length, 1);
+        assert.equal(payload.input_references[0].type, 'video_url');
+        assert.match(payload.input_references[0].video_url.url, new RegExp(`^https://example\\.test/refs/.*part-${index + 1}\\.mp4$`));
+      });
+      const jobs = (await store.readSession(sessionId)).jobs.filter((job) => job.model === 'black-forest-labs/flux-video-edit' && job.partKey).slice(-4);
+      assert.equal(jobs.length, 4);
+      jobs.forEach((job) => assert.match(job.partKey, /^ep1-/));
+      jobs.forEach((job) => assert.equal(job.modelName, 'FLUX Video Edit', 'the name of the model, not Aleph\'s'));
+      assert.deepEqual(jobs.map((job) => job.partKey), fluxPlan.parts.list.map((part) => part.key));
+      // what each job reserved is what the plan priced its part at
+      jobs.forEach((job, index) => near(job.estimateUsd, ([402, 401, 401, 401][index] / 30) * 0.03, 'the estimate of a part', 1e-6));
+      near(jobs.reduce((sum, job) => sum + job.estimateUsd, 0), 1.605, 'the estimates of the parts add up to the plan', 1e-5);
+      near(outcome.cost.usd, 4 * behaviour.cost, 'the cost of the parts');
+      assert.equal(await framesOf(filmFile(outcome)), 1284, 'the film has the length of the original');
+      assert.ok(Math.abs((await pitchAt(filmFile(outcome), 30, 1)) - 440) < 25, 'the sound of the original lies over the film');
+      // the same again: nothing is paid
+      orPayloads.length = 0;
+      await run({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit' });
+      assert.equal(orPayloads.length, 0);
+      // a part again
+      await run({ video: long, prompt: textValue('FLUX parts') }, { model: 'flux_video_edit', redo_parts: '3' });
+      assert.equal(orPayloads.length, 1);
+      assert.match(orPayloads[0].input_references[0].video_url.url, /part-3\.mp4$/);
       assert.deepEqual(await scratchLeftovers(), []);
     }
 
@@ -1267,10 +1341,14 @@ function testTexts() {
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-fal.js'), 'utf8') + fs.readFileSync(path.join(root, 'lib', 'nodes', 'video-edit-parts.js'), 'utf8');
   const codes = [...new Set([...source.matchAll(/'(VIDEO_EDIT_[A-Z_]+)'/g)].map((match) => match[1]))];
   assert.ok(codes.includes('VIDEO_EDIT_PARTS_FAILED') && codes.includes('VIDEO_EDIT_PART_TOO_HEAVY') && codes.includes('VIDEO_EDIT_ALEPH_IMAGES'));
+  assert.ok(codes.includes('VIDEO_EDIT_FLUX_IMAGES') && codes.includes('VIDEO_EDIT_PROMPT_TOO_LONG'), 'the codes of FLUX Video Edit are found and need a text');
   assert.ok(codes.includes('VIDEO_EDIT_PART_LENGTH'), 'the part that comes back far from its length has a code');
   const placeholders = (text) => [...new Set((String(text).match(/\{[a-zA-Z]+\}/g) || []).map((item) => item.slice(1, -1)))].sort();
   const expected = {
     VIDEO_EDIT_ALEPH_IMAGES: ['model'],
+    VIDEO_EDIT_FLUX_IMAGES: ['model'],
+    VIDEO_EDIT_PROMPT_TOO_LONG: ['found', 'max', 'model'],
+    VIDEO_EDIT_VIDEO_FORMAT: ['format', 'formats', 'model'],
     VIDEO_EDIT_PUBLIC_URL: ['model'],
     VIDEO_EDIT_PARTS_FAILED: ['done', 'failed', 'reason', 'total'],
     VIDEO_EDIT_PARTS_REDO_INVALID: [],
@@ -1293,7 +1371,7 @@ function testTexts() {
   for (const lang of ['de', 'en', 'es']) {
     assert.ok(window.I18N[lang]['nodes.issue.VIDEO_EDIT_PART_LENGTH'].includes(window.I18N[lang]['nodes.param.redo_parts']), `${lang}: VIDEO_EDIT_PART_LENGTH names the field`);
   }
-  for (const key of ['nodes.param.in_parts', 'nodes.param.redo_parts', 'nodes.option.runway_aleph']) {
+  for (const key of ['nodes.param.in_parts', 'nodes.param.redo_parts', 'nodes.option.runway_aleph', 'nodes.option.flux_video_edit']) {
     for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][key] && window.I18N[lang][key].trim(), `${lang}: ${key}`);
   }
   assert.equal(window.I18N.de['nodes.param.in_parts'], 'Längere Videos in Teilen bearbeiten');

@@ -33,6 +33,7 @@ const videoNodeModels = require('../lib/video-node-models');
 const assets = require('../lib/nodes/assets');
 const ops = require('../lib/nodes/ffmpeg-ops');
 const alephEdit = require('../lib/nodes/aleph-edit');
+const editParts = require('../lib/nodes/video-edit-parts');
 const nodesBasic = require('../lib/nodes/nodes-basic');
 const nodesFal = require('../lib/nodes/nodes-fal');
 const { createRegistry } = require('../lib/nodes/registry');
@@ -124,6 +125,13 @@ function testAssumptionTable() {
   near(alephEdit.priceFor(5, { perSecondUsd: 0.3, minimumUsd: 0.6 }), 1.5);
   assert.equal(alephEdit.priceFor(0), null);
   assert.equal(alephEdit.priceFor(NaN), null);
+  // The key of a part (nodes-fal.js planEditParts): a paid part of an earlier run is found by it, so the fields, their values and their
+  // order must not change when another model joins the node (test-video-edit-parts.js derives the key of a real plan from the same fields).
+  // A fixed part of Aleph has this key since WP41.
+  assert.equal(
+    editParts.partKey({ via: 'openrouter', target: ALEPH, input: { prompt: 'Make it snow' }, media: [], source: 'vid-fixed-1', rate: '30', longest: 30, from: 0, frames: 803 }),
+    'ep1-931161f08d3b0a4c6b8bddc738254553'
+  );
   console.log('   ok testAssumptionTable');
 }
 
@@ -267,9 +275,9 @@ async function main() {
     /* ----- definition ----- */
     {
       const model = def.params.find((param) => param.id === 'model');
-      assert.deepEqual(model.options, ['kling_o3', 'wan_replace', 'gemini_omni', 'runway_aleph']);
+      assert.deepEqual(model.options, ['kling_o3', 'wan_replace', 'gemini_omni', 'runway_aleph', 'flux_video_edit'], 'FLUX Video Edit comes after Aleph (test-flux-video-edit.js)');
       assert.equal(model.default, 'kling_o3');
-      assert.deepEqual(plain(def.params.find((param) => param.id === 'in_parts').showIf), { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph'] });
+      assert.deepEqual(plain(def.params.find((param) => param.id === 'in_parts').showIf), { param: 'model', in: ['kling_o3', 'gemini_omni', 'runway_aleph', 'flux_video_edit'] });
       assert.equal(typeof def.available, 'function');
       // the description (node library, assistant) is written from the table: the longest run and the least a run costs
       assert.match(def.description, /Runway Aleph 2\.0: [^.]*one run takes 30 s at the most and costs at least 1\.40 USD \(OpenRouter bills at least 5 s\)/);
@@ -361,6 +369,9 @@ async function main() {
         input_references: [{ type: 'video_url', video_url: { url: `https://example.test/refs/${source.assetId}.mp4` } }]
       });
       for (const field of ['duration', 'resolution', 'aspect_ratio', 'frame_images', 'generate_audio', 'seed']) assert.equal(field in payloads[0], false, `no ${field}`);
+      // byte for byte, the order of the keys included (model, prompt, the extra fields of the model: none, input_references): what the live tests of
+      // 2026-10-04 sent. The request is built for every model of the tool edit_video_openrouter from one place; this line keeps Aleph's as it was.
+      assert.equal(JSON.stringify(payloads[0]), `{"model":"runway/aleph-2","prompt":"Make it snow","input_references":[{"type":"video_url","video_url":{"url":"https://example.test/refs/${source.assetId}.mp4"}}]}`);
       assert.deepEqual(published, [{ asset: source.assetId }]);
       assert.equal(outcome.variants.length, 1);
       assert.equal(outcome.variants[0].video.type, 'video');
