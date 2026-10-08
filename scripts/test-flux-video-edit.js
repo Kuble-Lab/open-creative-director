@@ -2,12 +2,15 @@
 
 // FLUX Video Edit (black-forest-labs/flux-video-edit) as the fifth model of the node "Edit video with references" (fal.video_edit),
 // through OpenRouter, next to Runway Aleph 2.0. A fake OpenRouter and a fake ffmpeg: nothing is paid and nothing leaves the machine.
-//   - everything the app knows or ASSUMES about the model stands in lib/nodes/flux-video-edit.js (FACTS read on 2026-10-08, ASSUMPTIONS
-//     marked "per live test"): the table is read here, so a change of an assumption shows up in this test
+//   - everything the app knows or ASSUMES about the model stands in lib/nodes/flux-video-edit.js (FACTS read on 2026-10-08 and measured by
+//     the paid live test of the same day; ASSUMPTIONS marked "confirmed by the live test of 2026-10-08" or "per live test"): the table is
+//     read here, so a change of an assumption shows up in this test
 //   - the request: model, prompt and the video in input_references (video_url) like Aleph's, byte for byte; no duration, resolution,
-//     aspect ratio, frames, sound or seed (the maker answers HTTP 422 to fields it does not know)
-//   - the price: 0.03 USD per second of the result; the plan counts at least 5 billed seconds (an assumption taken from Aleph, 3 s = 0.15) and
-//     the length above that (8 s = 0.24, 15 s = 0.45); the live list and the constants give the same price
+//     aspect ratio, frames, sound or seed (the maker answers HTTP 422 to fields it does not know). This is the request the live test sent
+//     and OpenRouter took without an error
+//   - the price: 0.03 USD per second of the result, billed by its length with no minimum: the live test billed a clip of 3 s 0.09 USD, not
+//     the 0.15 of a flat 5 s (Aleph's). So 3 s = 0.09, 5 s = 0.15, 8 s = 0.24, 15 s = 0.45, and a short clip is planned and reserved by its
+//     length; the live list and the constants give the same price
 //   - the checks before the run, with the limits of the model: 1 to 15 s, MP4 only, 50 MiB, 160 px on the smaller side and no largest side,
 //     no images (never), a prompt of at most 4096 characters, the keys and the address of the server
 //   - "Cut to the allowed length" cuts to 15 s (a cut file is published and removed afterwards)
@@ -104,13 +107,30 @@ function testAssumptionTable() {
   near(fluxEdit.FACTS.perSecondUsd, 0.03);
   near(fluxEdit.FACTS.minimumUsd, 0);
   assert.equal(fluxEdit.FACTS.fetched, '2026-10-08');
-  // the assumptions: one place, every one of them named as such in the file (nothing was tried with a paid run yet)
+  // measured by the live test of 2026-10-08 (a clip of 3 s, billed 0.09 USD = 3 s x 0.03): there is no minimum. Like Aleph's 5 s, a measured
+  // number is a fact and no assumption; the 5 s that were taken from Aleph are gone from the assumptions
+  assert.equal(fluxEdit.FACTS.billedMinimumSeconds, 0);
+  assert.equal('billedMinimumSeconds' in fluxEdit.ASSUMPTIONS, false, 'the live test refuted the 5 s assumed from Aleph');
+  // the assumptions: one place, every one of them marked in the file by the comment above it: proven by the live test of 2026-10-08 (the way
+  // the video travels, the request without extra fields) or still "per live test" (the limits and the formats, which were not tried)
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'flux-video-edit.js'), 'utf8');
-  assert.ok((source.match(/per live test/g) || []).length >= 10, 'every assumption is marked "per live test"');
+  const assumptionsSource = source.slice(source.indexOf('const ASSUMPTIONS'), source.indexOf('const LIMITS'));
+  const marks = [...assumptionsSource.matchAll(/^ {2}\/\/ (confirmed by the live test of 2026-10-08|per live test)\b[^\n]*(?:\n {2}\/\/[^\n]*)*\n {2}(\w+):/gm)].map((match) => [match[2], match[1]]);
+  assert.deepEqual(marks.map(([key]) => key), Object.keys(fluxEdit.ASSUMPTIONS), 'every assumption is marked in the comment above it');
+  assert.deepEqual(Object.fromEntries(marks), {
+    videoReferenceType: 'confirmed by the live test of 2026-10-08',
+    extraFields: 'confirmed by the live test of 2026-10-08',
+    minSeconds: 'per live test',
+    maxSeconds: 'per live test',
+    maxBytes: 'per live test',
+    minEdge: 'per live test',
+    maxPrompt: 'per live test',
+    formats: 'per live test',
+    aspectRatioChecked: 'per live test'
+  });
   assert.equal(fluxEdit.ASSUMPTIONS.videoReferenceType, 'video_url');
   assert.deepEqual(plain(fluxEdit.ASSUMPTIONS.extraFields), {});
   assert.deepEqual(plain(fluxEdit.ASSUMPTIONS.formats), ['.mp4']);
-  assert.equal(fluxEdit.ASSUMPTIONS.billedMinimumSeconds, 5);
   assert.equal(fluxEdit.ASSUMPTIONS.aspectRatioChecked, false);
   assert.deepEqual(plain(fluxEdit.LIMITS), { minSeconds: 1, maxSeconds: 15, maxBytes: 50 * MB, minEdge: 160, maxPrompt: 4096, formats: ['.mp4'], maxImages: 0 });
   assert.ok(Object.isFrozen(fluxEdit.ASSUMPTIONS) && Object.isFrozen(fluxEdit.LIMITS) && Object.isFrozen(fluxEdit.FACTS));
@@ -127,12 +147,14 @@ function testAssumptionTable() {
   assert.deepEqual(plain(fluxEdit.videoReference('https://example.test/v.mp4')), { type: 'video_url', video_url: { url: 'https://example.test/v.mp4' } });
   assert.deepEqual(plain(fluxEdit.videoReference('https://example.test/v.mp4')), plain(alephEdit.videoReference('https://example.test/v.mp4')));
   assert.deepEqual(plain(fluxEdit.requestExtras()), {});
-  // the price: 0.03 per second of at least 5 billed seconds. The list and the maker bill by the length of the result with no minimum (3 s =
-  // 0.09); the plan takes the 5 s of Aleph's live test as an upper bound until a paid test shows what a short clip costs
-  for (const [seconds, usd] of [[0.5, 0.15], [1, 0.15], [3, 0.15], [4.95, 0.15], [5, 0.15], [5.04, 0.1512], [8, 0.24], [10, 0.3], [15, 0.45], [15.05, 0.4515]]) near(fluxEdit.priceFor(seconds), usd, `${seconds} s`);
-  assert.equal(fluxEdit.billedSeconds(3), 5);
+  // the price: 0.03 per second of the length of the video, with no minimum. The list and the maker say so, and the live test of 2026-10-08
+  // billed a clip of 3 s 0.09 USD, not the 0.15 of Aleph's flat 5 s
+  near(fluxEdit.priceFor(3), 0.09, 'the live test of 2026-10-08: 3 s were billed 0.09 USD');
+  for (const [seconds, usd] of [[0.5, 0.015], [1, 0.03], [3, 0.09], [4.95, 0.1485], [5, 0.15], [5.04, 0.1512], [8, 0.24], [10, 0.3], [15, 0.45], [15.05, 0.4515]]) near(fluxEdit.priceFor(seconds), usd, `${seconds} s`);
+  assert.equal(fluxEdit.billedSeconds(3), 3, 'a short clip is billed by its length, with no minimum of 5 s');
+  assert.equal(fluxEdit.billedSeconds(0.5), 0.5);
   assert.equal(fluxEdit.billedSeconds(7.5), 7.5, 'a longer video is billed by its length');
-  near(fluxEdit.priceFor(1, { perSecondUsd: 0.04 }), 0.2, 'the numbers of the live list, 5 billed seconds');
+  near(fluxEdit.priceFor(1, { perSecondUsd: 0.04 }), 0.04, 'the numbers of the live list, by length');
   near(fluxEdit.priceFor(1, { perSecondUsd: 0.01, minimumUsd: 0.2 }), 0.2, 'never below a minimum of the live list');
   assert.equal(fluxEdit.priceFor(0), null);
   assert.equal(fluxEdit.priceFor(NaN), null);
@@ -305,7 +327,8 @@ async function main() {
       // the options of the other models are not shown for FLUX Video Edit
       for (const id of ['quality', 'image_role', 'keep_audio', 'resolution', 'wan_resolution']) assert.notDeepEqual(param(id).in, withLimit.in, id);
       // the description (node library, assistant) is written from the table: the longest run, the price and what the model does not take
-      assert.match(def.description, /FLUX Video Edit: changes the video by text, never images; one run takes 15 s at the most and costs 0\.03 USD per second \(planned for at least 5 s, 0\.15 USD\); the sound of the video stays\./);
+      assert.match(def.description, /FLUX Video Edit: changes the video by text, never images; one run takes 15 s at the most and costs 0\.03 USD per second of the video, billed by its length with no minimum \(3 s = 0\.09 USD\); the sound of the video stays\./);
+      assert.doesNotMatch(def.description, /planned for at least|0\.15 USD/, 'no minimum of 5 s for FLUX Video Edit: the live test of 2026-10-08 was billed 3 s for 3 s');
       assert.match(def.description, /Runway Aleph and FLUX Video Edit through OpenRouter/);
       assert.match(def.description, /Runway Aleph 2\.0: [^.]*one run takes 30 s at the most and costs at least 1\.40 USD \(OpenRouter bills at least 5 s\)/, 'the sentence of Aleph is as it was');
       assert.ok(def.keywords.includes('flux') && def.keywords.includes('aleph'), 'found by "flux"');
@@ -354,9 +377,10 @@ async function main() {
 
     /* ----- price ----- */
     {
-      // the constants (the list is not read yet): 0.03 per second, at least 5 billed seconds
+      // the constants (the list is not read yet): 0.03 per second of the length, no minimum (the live test of 2026-10-08 billed 3 s 0.09 USD)
       videoNodeModels.reset();
-      for (const [seconds, usd] of [[1, 0.15], [2, 0.15], [3, 0.15], [5, 0.15], [8, 0.24], [10, 0.3], [15, 0.45]]) near(estimate({}, seconds), usd, `${seconds} s`);
+      for (const [seconds, usd] of [[1, 0.03], [2, 0.06], [3, 0.09], [5, 0.15], [8, 0.24], [10, 0.3], [15, 0.45]]) near(estimate({}, seconds), usd, `${seconds} s`);
+      assert.ok(estimate({}, 3) < estimate({}, 5), 'a short clip is planned by its length and not as 5 s');
       near(nodesFal.videoEditPlanUsd(normalised({ model: 'flux_video_edit' }), { inputs: {} }), 0.03 * 15.05, 'no video known: the longest one (15 s and the slack)');
       // longer than the limit without the cut: the whole length is the price asked (the run is refused later)
       near(estimate({ cut_to_limit: true }, 60), 0.03 * 15, 'cut to 15 s');
@@ -369,15 +393,16 @@ async function main() {
       videoNodeModels.reset();
       const fromConstants = seconds.map((value) => estimate({}, value));
       assert.deepEqual(fromList, fromConstants, 'the same seconds are billed with the live list and without it');
-      near(fromConstants[2], 0.15, '3 s');
+      near(fromConstants[2], 0.09, '3 s: what the live test of 2026-10-08 was billed');
+      near(fromConstants[3], 0.1485, '4.95 s is billed by its length and not as 5 s');
       near(fromConstants[5], 0.1512, '5.04 s is billed by its length');
       near(fromConstants[8], 0.375, '12.5 s');
-      // the live list wins: another price of the provider; the billed seconds are the same way
+      // the live list wins: another price of the provider; the billed seconds (the length) are the same way
       patch(discovery, 'listVideoModels', async () => ({ data: [{ ...FLUX_ENTRY, pricing_skus: { cents_per_second_output: '4' } }] }));
       discovery.resetVideoModelCache();
       videoNodeModels.reset();
       await videoNodeModels.load();
-      near(estimate({}, 3), 0.2, 'the price of the list, 5 billed seconds');
+      near(estimate({}, 3), 0.12, 'the price of the list, by length: 3 x 0.04');
       near(estimate({}, 10), 0.4, 'the price of the list, 10 s');
       patch(discovery, 'listVideoModels', async () => CATALOG);
       discovery.resetVideoModelCache();
@@ -409,12 +434,12 @@ async function main() {
       assert.equal(outcome.variants.length, 1);
       assert.equal(outcome.variants[0].video.type, 'video');
       near(outcome.cost.usd, 0.12, 'the cost of the run is the one the provider booked (the fake books what it likes)');
-      // the job record carries the name of THIS model; the estimate is the price of 3 s (5 billed seconds)
+      // the job record carries the name of THIS model; the estimate is the price of 3 s by its length, the 0.09 USD of the live test of 2026-10-08
       const job = (await jobsNow()).slice(-1)[0];
       assert.equal(job.mode, 'video_edit');
       assert.equal(job.model, FLUX);
       assert.equal(job.modelName, 'FLUX Video Edit');
-      near(job.estimateUsd, 0.15, 'the estimate of the job');
+      near(job.estimateUsd, 0.09, 'the estimate of the job');
       assert.deepEqual(job.publicRefFiles, [`${source.assetId}.mp4`]);
       assert.equal('partKey' in job, false, 'a single run has no part key');
       // the prompt is sent as written: no @-names, nothing is translated, German or not
@@ -425,11 +450,11 @@ async function main() {
       reset();
       await run({ video: await video({ duration: 3 }), prompt: textValue('x'.repeat(4096)) }, {});
       assert.equal(payloads[0].prompt.length, 4096);
-      // 1 s is the shortest video, priced as 5 s
+      // 1 s is the shortest video, priced by its length
       reset();
       await run({ video: await video({ duration: 1 }), prompt: textValue('Make it night') }, {});
       assert.equal(payloads[0].prompt, 'Make it night');
-      near((await jobsNow()).slice(-1)[0].estimateUsd, 0.15, '1 s: billed as 5 s');
+      near((await jobsNow()).slice(-1)[0].estimateUsd, 0.03, '1 s: billed by its length');
       // 15 s is ONE run: sent as it is, the estimate of the job is the price by its length
       reset();
       const fifteen = await video({ duration: 15 });
@@ -457,12 +482,12 @@ async function main() {
       assert.equal((await jobsNow()).slice(-1)[0].modelName, 'Runway Aleph 2.0', 'the job of Aleph carries Aleph\'s name next to FLUX\'s');
     }
 
-    /* ----- the billed minimum in the plan ----- */
+    /* ----- a short clip is planned by its length (no billed minimum) ----- */
     {
       reset();
-      near((await plan({ video: await video({ duration: 1 }), prompt })).estimateUsd, 0.15, '1 s');
-      near((await plan({ video: await video({ duration: 3 }), prompt })).estimateUsd, 0.15, '3 s');
-      near((await plan({ video: await video({ duration: 4.5 }), prompt })).estimateUsd, 0.15, '4.5 s');
+      near((await plan({ video: await video({ duration: 1 }), prompt })).estimateUsd, 0.03, '1 s');
+      near((await plan({ video: await video({ duration: 3 }), prompt })).estimateUsd, 0.09, '3 s: the live test of 2026-10-08 was billed 0.09 USD');
+      near((await plan({ video: await video({ duration: 4.5 }), prompt })).estimateUsd, 0.135, '4.5 s');
       near((await plan({ video: await video({ duration: 5 }), prompt })).estimateUsd, 0.15, '5 s');
       near((await plan({ video: await video({ duration: 5.04 }), prompt })).estimateUsd, 0.03 * 5.04, '5.04 s: billed by its length');
       near((await plan({ video: await video({ duration: 8 }), prompt })).estimateUsd, 0.24, '8 s');
@@ -477,7 +502,7 @@ async function main() {
 
     /* ----- the reservation is never below what is billed ----- */
     {
-      // a participant's call reserves the estimate of the node (executeTool -> budget.begin): the price of the billed seconds
+      // a participant's call reserves the estimate of the node (executeTool -> budget.begin): the price of the billed seconds, that is of the length
       const begun = [];
       patch(access, 'viewerOf', () => ({ active: true, kind: 'participant', email: 'p@example.test' }));
       patch(budget, 'begin', async (_viewer, options) => {
@@ -486,20 +511,23 @@ async function main() {
       });
       reset();
       await run({ video: await video({ duration: 3 }), prompt }, {});
-      assert.deepEqual(begun, [0.15], 'the reservation of a run of 3 s is the price of 5 s');
+      assert.deepEqual(begun, [0.09], 'the reservation of a run of 3 s is the price of 3 s (it was reserved as 5 s, 0.15, before the live test of 2026-10-08)');
       begun.length = 0;
       await run({ video: await video({ duration: 8 }), prompt }, {});
       assert.deepEqual(begun, [0.24]);
       begun.length = 0;
       await run({ video: await video({ duration: 45 }), prompt }, { cut_to_limit: true });
       assert.deepEqual(begun, [0.45], 'cut to the first 15 s: the price of the limit (the cut file is 14.95 s)');
-      // the budget stops a run that does not fit before anything is started
+      // the budget stops a run that does not fit before anything is started: 0.10 USD are enough for a clip of 3 s (0.09), not for one of 5 s (0.15)
       patch(budget, 'begin', async (viewer, options) => {
         if (options.estimateUsd > 0.1) throw new budget.BudgetError('BUDGET_INSUFFICIENT', 'not enough', 'nicht genug', { estimateUsd: options.estimateUsd });
         return budget.NOOP_GRANT;
       });
       reset();
-      const error = await run({ video: await video({ duration: 3 }), prompt }, {}).catch((err) => err);
+      await run({ video: await video({ duration: 3 }), prompt }, {});
+      assert.equal(payloads.length, 1, 'a clip of 3 s fits into 0.10 USD: it is no longer reserved as 5 s');
+      reset();
+      const error = await run({ video: await video({ duration: 5 }), prompt }, {}).catch((err) => err);
       assert.equal(error.code, 'BUDGET_INSUFFICIENT');
       assert.equal(error.estimateUsd, 0.15);
       assert.equal(payloads.length, 0, 'the provider was not called');
@@ -670,12 +698,33 @@ async function main() {
     assert.match(d['nodes.portdesc.fal.video_edit.images'], /FLUX Video Edit/, `${lang}: images`);
     assert.match(d['nodes.portdesc.fal.video_edit.prompt'], /FLUX[^.]*4096/, `${lang}: the longest prompt`);
     assert.match(d['nodes.issue.VIDEO_EDIT_PROMPT_REQUIRED'], /FLUX Video Edit/, `${lang}: prompt required`);
-    // what is not tried yet is said so
-    assert.match(d['nodes.portdesc.fal.video_edit.video.out'], /(ungetestet|untested|sin probar)/, `${lang}: not tried yet`);
+    // what the live test of 2026-10-08 measured is said so (1920 x 1080 came back as 1248 x 704), and the result is no longer called untested
+    assert.match(d['nodes.portdesc.fal.video_edit.video.out'], /1248 x 704/, `${lang}: the size that came back`);
+    assert.doesNotMatch(d['nodes.portdesc.fal.video_edit.video.out'], /(ungetestet|untested|sin probar)/, `${lang}: measured, not untested`);
+    // FLUX has no minimum: the "at least" of the tip belongs to Aleph alone
+    assert.doesNotMatch(d['nodes.type.fal.video_edit.tip.3'], /FLUX[^,.]*(mindestens|at least|mín)/, `${lang}: no minimum for FLUX`);
     // Aleph's lines are still there
     assert.match(d['nodes.type.fal.video_edit.tip.3'], /Aleph 0\.28/, `${lang}: Aleph`);
     assert.match(d['nodes.type.fal.video_edit.tip.3'], /1\.40/, `${lang}: Aleph's least`);
     assert.match(d['nodes.portdesc.fal.video_edit.video.in'], /Runway Aleph 2\.0: [^.]*\b30 s/, `${lang}: Aleph's 30 s`);
+  }
+
+  /* ---------- the help says what the live test of 2026-10-08 measured (three languages; the READMEs are not pinned) ---------- */
+  {
+    const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
+    const help = read('public', 'help.html');
+    // a clip of 3 s costs 0.09 USD, billed by its length: in the help of every language
+    for (const phrase of [
+      'FLUX Video Edit 0.03 (nach Länge, ohne Minimum: 3 s = 0.09 pro Lauf)',
+      'FLUX Video Edit 0.03 (by length, no minimum: 3 s = 0.09 per run)',
+      'FLUX Video Edit 0.03 (según la duración, sin mínimo: 3 s = 0.09 por ejecución)'
+    ]) assert.ok(help.includes(phrase), `help.html: ${phrase}`);
+    // and the help no longer says what held before the live test: a plan of at least 5 s for FLUX Video Edit
+    const stale = [
+      /planned for at least 5 s, so 0\.15|geplant mit mindestens 5 s, also 0\.15|se planifica con al menos 5 s, es decir, 0\.15/,
+      /the plan counts at least 5 s \(0\.15 USD\)|der Plan rechnet mindestens 5 s \(0\.15 USD\)|el plan cuenta al menos 5 s \(0\.15 USD\)/
+    ];
+    for (const pattern of stale) assert.doesNotMatch(help, pattern, `help.html: ${pattern}`);
   }
   console.log('test-flux-video-edit.js: ok');
 }
