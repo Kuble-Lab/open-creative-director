@@ -245,8 +245,9 @@ async function main() {
       assert.deepEqual(byId['music-video'].graph.edges.filter((edge) => edge.from.node === 'n2').map((edge) => `${edge.to.node}.${edge.to.port}`), ['n8.images', 'n9.images']);
       for (const id of ['n6', 'n7']) assert.match(musicNode(id).params.template, /reference photo/);
       assert.deepEqual(byId['music-video'].app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n2.asset', 'n5.brief', 'n4.lyrics', 'n5.characters', 'n5.shots_per_minute', 'n5.performance_share', 'n12.transition', 'n12.captions']);
-      // karaoke captions at the bottom, from the lyric times: shipped on, the person can switch them off in the form (WP35)
-      assert.equal(musicNode('n12').params.captions, 'karaoke');
+      // karaoke captions at the bottom, from the lyric times: shipped off since 2026-10-09 (no burnt-in text unless asked for), the person
+      // switches them on in the form (WP35)
+      assert.equal(musicNode('n12').params.captions, 'off');
       assert.equal(musicNode('n12').params.captions_position, 'bottom');
       assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get('music_video.edit'), musicNode('n12').params), musicNode('n12').params, 'every param of the cut is one of the node, with a valid value');
       assert.equal(byId['music-video'].graph.nodes.find((node) => node.id === 'n4').type, 'audio.lyrics_timing');

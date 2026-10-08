@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Music video from a song",
-  "description": "Turn a song into a music video cut to the beat. The song is analysed, ElevenLabs finds when each line is sung, a language model plans the scenes from your idea, every scene gets an image of your reference photo and an AI video clip (the story clips come from H3 Max turbo on fal.ai, 768P, 5 s, about 0.20 US dollars each, because Seedance refuses images that may show a real person; singer scenes get lip sync), and ffmpeg cuts it all to the song and shows the sung words as karaoke captions (they can be switched off). About 13 scenes per minute, each with an image and a clip: a 2-minute song costs about 11 US dollars with the preset settings (roughly 5 to 20, depending on the number of scenes and the video settings). Nothing is charged before you confirm.",
+  "description": "Turn a song into a music video cut to the beat. The song is analysed, ElevenLabs finds when each line is sung, a language model plans the scenes from your idea, every scene gets an image of your reference photo and an AI video clip (the story clips come from H3 Max turbo on fal.ai, 768P, 5 s, about 0.20 US dollars each, because Seedance refuses images that may show a real person; singer scenes get lip sync), and ffmpeg cuts it all to the song; it can show the sung words as karaoke captions (off by default, switch them on in the form). About 13 scenes per minute, each with an image and a clip: a 2-minute song costs about 11 US dollars with the preset settings (roughly 5 to 20, depending on the number of scenes and the video settings). Nothing is charged before you confirm.",
   "requires": [
     "openrouter",
     "ffmpeg",
@@ -165,7 +165,7 @@
           "fps": "25",
           "fit": "crop",
           "fade_out": 1,
-          "captions": "karaoke",
+          "captions": "off",
           "captions_position": "bottom"
         }
       },
@@ -499,7 +499,7 @@
   "i18n": {
     "de": {
       "name": "Musikvideo aus Song",
-      "description": "Mache aus einem Song ein Musikvideo (Music Video), das im Takt geschnitten ist. Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell plant die Szenen nach deiner Idee, jede Szene bekommt ein Bild mit deinem Referenzfoto und einen KI-Videoclip (die Handlungsclips kommen von H3 Max turbo auf fal.ai, 768P, 5 s, etwa 0.20 US-Dollar je Clip, weil Seedance Bilder ablehnt, auf denen eine echte Person zu sehen sein könnte; Gesangsszenen bekommen Lippensync), und ffmpeg schneidet alles zum Song und blendet die gesungenen Wörter als Karaoke-Untertitel ein (abschaltbar). Rund 13 Szenen pro Minute, je mit Bild und Clip: Ein Song von 2 Minuten kostet mit den voreingestellten Einstellungen etwa 11 US-Dollar (grob 5 bis 20, je nach Zahl der Szenen und den Video-Einstellungen). Vor deiner Bestätigung wird nichts berechnet.",
+      "description": "Mache aus einem Song ein Musikvideo (Music Video), das im Takt geschnitten ist. Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell plant die Szenen nach deiner Idee, jede Szene bekommt ein Bild mit deinem Referenzfoto und einen KI-Videoclip (die Handlungsclips kommen von H3 Max turbo auf fal.ai, 768P, 5 s, etwa 0.20 US-Dollar je Clip, weil Seedance Bilder ablehnt, auf denen eine echte Person zu sehen sein könnte; Gesangsszenen bekommen Lippensync), und ffmpeg schneidet alles zum Song; auf Wunsch blendet er die gesungenen Wörter als Karaoke-Untertitel ein (standardmässig aus, im Formular einschaltbar). Rund 13 Szenen pro Minute, je mit Bild und Clip: Ein Song von 2 Minuten kostet mit den voreingestellten Einstellungen etwa 11 US-Dollar (grob 5 bis 20, je nach Zahl der Szenen und den Video-Einstellungen). Vor deiner Bestätigung wird nichts berechnet.",
       "node.n1": "Song",
       "node.n2": "Referenzfoto",
       "node.n6": "Handlungs-Prompts mit Foto",
@@ -525,7 +525,7 @@
     },
     "es": {
       "name": "Videoclip a partir de una canción",
-      "description": "Convierte una canción en un videoclip cortado al ritmo. Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje planifica las escenas según tu idea, cada escena recibe una imagen con tu foto de referencia y un clip de vídeo de IA (los clips de la historia vienen de H3 Max turbo en fal.ai, 768P, 5 s, unos 0,20 dólares por clip, porque Seedance rechaza las imágenes en las que pueda aparecer una persona real; las escenas de canto llevan sincronización labial), y ffmpeg lo corta todo al ritmo de la canción y muestra las palabras cantadas como subtítulos de karaoke (se pueden desactivar). Unas 13 escenas por minuto, cada una con imagen y clip: una canción de 2 minutos cuesta unos 11 dólares con los ajustes predefinidos (de 5 a 20 aproximadamente, según el número de escenas y los ajustes de vídeo). No se cobra nada antes de que confirmes.",
+      "description": "Convierte una canción en un videoclip cortado al ritmo. Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje planifica las escenas según tu idea, cada escena recibe una imagen con tu foto de referencia y un clip de vídeo de IA (los clips de la historia vienen de H3 Max turbo en fal.ai, 768P, 5 s, unos 0,20 dólares por clip, porque Seedance rechaza las imágenes en las que pueda aparecer una persona real; las escenas de canto llevan sincronización labial), y ffmpeg lo corta todo al ritmo de la canción; si quieres, muestra las palabras cantadas como subtítulos de karaoke (desactivados por defecto, se activan en el formulario). Unas 13 escenas por minuto, cada una con imagen y clip: una canción de 2 minutos cuesta unos 11 dólares con los ajustes predefinidos (de 5 a 20 aproximadamente, según el número de escenas y los ajustes de vídeo). No se cobra nada antes de que confirmes.",
       "node.n1": "Canción",
       "node.n2": "Foto de referencia",
       "node.n6": "Prompts de la historia con la foto",

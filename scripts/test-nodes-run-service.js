@@ -443,7 +443,7 @@ async function run(iso) {
   ]);
   assert.deepEqual(music.inputs.find((input) => input.id === 'n5.shots_per_minute'), { id: 'n5.shots_per_minute', node: 'n5', param: 'shots_per_minute', label: 'Szenen pro Minute', list: false, hasValue: true, derived: false, type: 'number', required: false, integer: false, min: 6, max: 30 });
   assert.deepEqual(music.inputs.find((input) => input.id === 'n12.transition').options, ['cut', 'crossfade', 'flash']);
-  assert.deepEqual(music.inputs.find((input) => input.id === 'n12.captions').options, ['off', 'karaoke', 'words', 'lines'], 'the person can switch the captions off');
+  assert.deepEqual(music.inputs.find((input) => input.id === 'n12.captions').options, ['off', 'karaoke', 'words', 'lines'], 'the person can switch the captions on');
   assert.equal(music.inputs.find((input) => input.id === 'n12.captions').label, 'Untertitel (Songtext im Bild)');
   assert.deepEqual(music.outputs, [{ node: 'n13', label: 'Musikvideo' }]);
   assert.equal(music.paid, true);
