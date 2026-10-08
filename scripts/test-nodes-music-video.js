@@ -1135,7 +1135,7 @@ async function run(iso) {
   const engineConfig = { imageModel: 'openai/gpt-image-2', videoModel: 'bytedance/seedance-2.5', defaultBrain: 'vendor/default-brain', brainModels: ['vendor/default-brain'] };
   const engine = createEngine({ store: flowStore, registry, events: bus, getConfig: () => engineConfig, limits: { jobPollMs: 20 } });
 
-  // The template burns the lyrics in as karaoke captions, and libass (the filter "ass") is not in every ffmpeg - not in the one of the machine
+  // The run burns the lyrics in as karaoke captions (switched on above), and libass (the filter "ass") is not in every ffmpeg - not in the one of the machine
   // that runs this test, maybe. The cut therefore runs with a stand-in: the real ffmpeg, which lists the filter as present and takes it out
   // of the graph, after writing the script down. So the wiring (times node -> cut -> one script for the encoder) is tested everywhere; the
   // picture of the captions is tested with libass where there is one (test-captions-ass.js, test-music-video-captions.js).
@@ -1168,6 +1168,9 @@ async function run(iso) {
     set('n2', { asset: refOf(flowPhoto) });
     set('n4', { lyrics: LYRICS_TEXT });
     set('n5', { brief: 'A drummer crosses a quiet harbour town at dawn.', shots_per_minute: 12, performance_share: 0.3 });
+    // the template ships the captions off: the person switches the karaoke captions on in the form
+    assert.equal(graph.nodes.find((node) => node.id === 'n12').params.captions, 'off');
+    set('n12', { captions: 'karaoke' });
     await flowStore.saveGraph(workflow.id, { baseRev: workflow.rev, graph });
   }
   const resultOf = async (nodeId) => (await flowStore.readResults(workflow.id)).nodes[nodeId].history[0];
@@ -1461,6 +1464,9 @@ async function run(iso) {
     setStills('n2', { asset: { assetId: stillsPhoto.assetId, sessionId: stillsSession } });
     setStills('n4', { lyrics: LYRICS_TEXT });
     setStills('n5', { brief: 'A drummer crosses a quiet harbour town at dawn.', shots_per_minute: 12, performance_share: 0.3 });
+    // this template ships the captions off as well: switched on in the form, as for the first one
+    assert.equal(graph.nodes.find((node) => node.id === 'n12').params.captions, 'off');
+    setStills('n12', { captions: 'karaoke' });
     await flowStore.saveGraph(stills.id, { baseRev: stills.rev, graph });
 
     await runAll({}, stills.id);
