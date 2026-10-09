@@ -705,15 +705,20 @@ async function run(iso) {
         const expected = PALETTE[shot.index % PALETTE.length];
         assert.equal(await colourAt(baseCut, (shot.start + shot.end) / 2), expected, `unit ${shot.index} (${shot.kind}) shows its own picture`);
       }
-      // the render: the style of the plan (auto) takes Kuble, no karaoke, standard quality; the pages carry the style and the switch
+      // the render: the style of the plan (auto) takes Kuble, no karaoke, the beat effects strong (WP45), standard quality; the pages carry the
+      // style, the switch and the effects
       assert.equal(seen.render.length, 1);
-      assert.deepEqual([seen.render[0].params.theme, seen.render[0].params.karaoke, seen.render[0].params.quality, seen.render[0].params.endcard], ['auto', false, 'standard', true]);
+      assert.deepEqual(
+        [seen.render[0].params.theme, seen.render[0].params.karaoke, seen.render[0].params.effects, seen.render[0].params.quality, seen.render[0].params.endcard],
+        ['auto', false, 'strong', 'standard', true]
+      );
       assert.equal(seen.render[0].graphics, (await outputOf(workflow, 'n4', 'graphics')).value, 'the render draws the plan as it is');
       assert.equal(JSON.parse(seen.render[0].graphics).theme, 'kuble');
       assert.ok(submits.length >= 1);
       for (const submit of submits) {
         assert.match(submit.html, /data-theme="kuble"/, 'auto takes Kuble from the plan');
         assert.match(submit.html, /"options":\{"karaoke":false,"endcard":true\}/, 'the karaoke line is off');
+        assert.match(submit.html, /<div id="fx"><div id="cam">/, 'the beat effects are on');
         assert.equal(submit.fps, 24);
       }
       // the film and the contact sheet

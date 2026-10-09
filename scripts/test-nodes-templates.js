@@ -399,8 +399,8 @@ async function main() {
       // the base cut: hard cuts, 1080p, 24 frames per second, no captions anywhere (the HUD draws the words) and no fade (the film goes on in the render)
       assert.deepEqual(hudNode('n16').params, { transition: 'cut', resolution: '1080p', fps: '24', fit: 'crop', fade_out: 0, captions: 'off', captions_position: 'bottom' });
       assert.equal(hudDoc.graph.edges.some((edge) => edge.to.node === 'n16' && edge.to.port === 'captions'), false, 'no lyric times go into the cut');
-      // the render takes the style of the plan (auto), the karaoke line is off, standard quality, with the end card
-      assert.deepEqual(hudNode('n17').params, { theme: 'auto', accent: '#3B82F6', karaoke: false, grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
+      // the render takes the style of the plan (auto), the karaoke line is off, the beat effects strong (WP45), standard quality, with the end card
+      assert.deepEqual(hudNode('n17').params, { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
       // the planner: HUD Blue, the default model, the figure Claudia (the canon text; word for word in test-music-video-hud-template.js), the idea ships empty
       assert.deepEqual([hudNode('n4').params.theme, hudNode('n4').params.model, hudNode('n4').params.brief, hudNode('n4').params.hud_language], ['hud', '', '', 'en']);
       assert.match(hudNode('n4').params.figure, /^NAME: Claudia\nFULL: a 28-year-old /);
@@ -408,13 +408,14 @@ async function main() {
       assert.match(hudNode('n4').params.figure, /\nCREDIT: Claudia by anabology \(claudia\.gallery\)$/);
       // the lyric times: optional text, the method decides (auto)
       assert.deepEqual(hudNode('n3').params, { lyrics: '', method: 'auto' });
-      // the form: the song, the idea, the figure, the style, the lyrics, the karaoke line (and the language of the graphics); the film first, then the
-      // contact sheet, then the marked outputs
-      assert.deepEqual(hudDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n4.brief', 'n4.figure', 'n4.theme', 'n3.lyrics', 'n17.karaoke', 'n4.hud_language']);
+      // the form: the song, the idea, the figure, the style, the lyrics, the karaoke line, the beat effects (and the language of the graphics); the film
+      // first, then the contact sheet, then the marked outputs
+      assert.deepEqual(hudDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n4.brief', 'n4.figure', 'n4.theme', 'n3.lyrics', 'n17.karaoke', 'n17.effects', 'n4.hud_language']);
       assert.deepEqual(hudDoc.app.outputs.map((entry) => entry.node), ['n18', 'n19', 'n20', 'n21', 'n22', 'n23', 'n24']);
       const labelOf = (lang, node, param) => templates.resolveTemplate('music-video-hud', { lang }).app.inputs.find((entry) => entry.node === node && entry.param === param).label;
       assert.deepEqual([labelOf('en', 'n4', 'theme'), labelOf('de', 'n4', 'theme'), labelOf('es', 'n4', 'theme')], ['Style', 'Stil', 'Estilo']);
       assert.deepEqual([labelOf('en', 'n17', 'karaoke'), labelOf('de', 'n17', 'karaoke')], ['Subtitles (karaoke line)', 'Untertitel (Karaoke-Zeile)']);
+      assert.deepEqual([labelOf('en', 'n17', 'effects'), labelOf('de', 'n17', 'effects'), labelOf('es', 'n17', 'effects')], ['Effects', 'Effekte', 'Efectos']);
       assert.equal(templates.resolveTemplate('music-video-hud', { lang: 'de' }).name, 'Musikvideo im HUD-Stil (eigener Song)');
       assert.equal(templates.resolveTemplate('music-video-hud', { lang: 'en' }).name, 'Music video in the HUD style (your song)');
       assert.match(templates.resolveTemplate('music-video-hud', { lang: 'es' }).name, /Videoclip en estilo HUD/);
@@ -444,8 +445,12 @@ async function main() {
       assert.deepEqual(elevenNode('n1').params, { prompt: '', plan: '', length: 30, instrumental: false, model: 'music_v2_5' }, 'the song text sets the length of the music, with vocals');
       assert.match(elevenNode('n26').params.text, /deadpan, clipped spoken verses rising into euphoric sung choruses/, 'the voice of the default figure');
       assert.equal(elevenNode('n25').params.prompt, '', 'the idea is the one input only the person can give');
-      assert.deepEqual(elevenDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n25.prompt', 'n28.length', 'n26.text', 'n4.figure', 'n4.theme', 'n17.karaoke', 'n4.hud_language']);
+      assert.deepEqual(elevenDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n25.prompt', 'n28.length', 'n26.text', 'n4.figure', 'n4.theme', 'n17.karaoke', 'n17.effects', 'n4.hud_language']);
       assert.deepEqual(elevenDoc.app.outputs.map((entry) => entry.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
+      for (const id of ['music-video-hud-elevenlabs', 'music-video-hud-suno']) {
+        const effectsLabel = (lang) => templates.resolveTemplate(id, { lang }).app.inputs.find((entry) => entry.node === 'n17' && entry.param === 'effects').label;
+        assert.deepEqual(['en', 'de', 'es'].map(effectsLabel), ['Effects', 'Effekte', 'Efectos'], `${id}: the field of the beat effects`);
+      }
       assert.equal(templates.resolveTemplate('music-video-hud-elevenlabs', { lang: 'de' }).name, 'Musikvideo im HUD-Stil (Song von ElevenLabs)');
       assert.equal(templates.resolveTemplate('music-video-hud-elevenlabs', { lang: 'en' }).name, 'Music video in the HUD style (song by ElevenLabs)');
     }
@@ -500,7 +505,7 @@ async function main() {
       }
       assert.equal(nodeIn(doc, 'n4').params.brief, '', 'the idea comes through the edge');
       // the form: idea, singer, song, then the fields of the film; the lyrics stay optional (Suno may change words, the pack does not go to the times)
-      assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n25.prompt', 'n26.text', 'n1.asset', 'n4.figure', 'n4.theme', 'n3.lyrics', 'n17.karaoke', 'n4.hud_language']);
+      assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n25.prompt', 'n26.text', 'n1.asset', 'n4.figure', 'n4.theme', 'n3.lyrics', 'n17.karaoke', 'n17.effects', 'n4.hud_language']);
       assert.equal(doc.graph.edges.some((edge) => edge.to.node === 'n3' && edge.to.port === 'lyrics'), false, 'no edge brings the pack to the lyric times');
       assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
       // the hint of step 1 says what to do before step 2, and names the field of the song and the button of step 2 as the app view words them
