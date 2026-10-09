@@ -214,6 +214,7 @@ async function testDefinition(h) {
     ['shots', 'text', true],
     ['story', 'video', true],
     ['performance', 'video', false],
+    ['still_clips', 'video', false],
     ['captions', 'text', false]
   ]);
   assert.deepEqual(registry.paramDefaults(node), { transition: 'cut', resolution: '720p', fps: '25', fit: 'crop', fade_out: 1, captions: 'off', captions_position: 'bottom' });

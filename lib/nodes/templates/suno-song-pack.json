@@ -1,0 +1,187 @@
+{
+  "id": "suno-song-pack",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Suno song pack",
+  "description": "Write a complete song pack for Suno from an idea and a singer: the four blocks TITLE, STYLE, EXCLUDE and LYRICS in the shape Suno works best with (sections in square brackets, lyrics of 1800 to 2400 characters, numbers written the way they are sung), made by Claude Opus 5.5 for about 3 US cents per pack. Copy the blocks into Suno, create the song there and then upload the finished song in the template “Music video in the HUD style (your song)”. The default singer is Claudia (voice: deadpan, clipped spoken verses rising into euphoric sung choruses). Nothing is charged before you confirm.",
+  "requires": [
+    "openrouter"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Idea for the song",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Singer (voice and persona)",
+        "params": {
+          "text": "Claudia, an adult AI pop singer in her late twenties. Voice: deadpan, clipped spoken verses rising into euphoric sung choruses, close and dry, every word crisp. Persona: deadpan and curious."
+        }
+      },
+      {
+        "id": "n3",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 220,
+        "title": "Request",
+        "params": {
+          "template": "IDEA\n{{a}}\n\nSINGER (voice and persona)\n{{b}}"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "llm.chat",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 220,
+        "title": "Suno song pack",
+        "params": {
+          "model": "anthropic/claude-opus-5.5",
+          "system": "You write a complete Suno song pack for an AI pop singer. The user gives an idea and the singer (voice and persona). Answer in plain text with exactly these four blocks and nothing else:\n\nTITLE\n<a short title>\n\nSTYLE\n<one line for Suno's style field, at most 900 characters: genre and sub-genre, BPM, time signature, key (and a lift for the chorus if it helps), the main instruments and sound design, and the vocal delivery of the singer in concrete words, e.g. \"deadpan female spoken-word verses, close and dry, clipped and confident, rising into euphoric sung choruses, every word crisp and intelligible\">\n\nEXCLUDE\n<a comma-separated list for Suno's exclude field, e.g. \"rap, rock guitar, lo-fi, male lead vocal, mumbled vocals, big room EDM, dubstep\">\n\nLYRICS\n<the lyrics for Suno's lyrics field>\n\nRules for the lyrics:\n- The topic is obvious in the first two lines; one listen must be enough. Obscure references belong in the video, not in the words.\n- Sections in square brackets: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Drop], [Outro]. Sung parts may go in round brackets. Short stage directions in square brackets are allowed, e.g. [darker, the bass drops out].\n- Spoken verse lines are natural sentences of 10 to 13 syllables with the stressed words where speech stresses them; couplets rhyme on the last word. Sung hooks have 4 to 8 syllables and repeat.\n- Every line gives the video something to show: a number, a place, an object, a thing someone says. Numbers and abbreviations are written the way they are sung (\"two thousand and forty-eight\", \"A G I\").\n- Length: 1800 to 2400 characters in total (about two and a half minutes; Suno cuts everything after about 3000).\n- Write in the language of the idea unless the user asks for another one.\n- No real people, brands or song quotes.",
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 260,
+        "params": {
+          "label": "Suno song pack"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n3",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "text"
+        },
+        "to": {
+          "node": "n3",
+          "port": "b"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "text"
+        },
+        "to": {
+          "node": "n4",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "text"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 80,
+        "y": 760,
+        "w": 520,
+        "h": 520,
+        "text": "Write the idea and, if you like, change the singer (voice and persona). One answer of Claude Opus 5.5 gives the four blocks TITLE, STYLE, EXCLUDE and LYRICS. Paste them into the matching fields of Suno (title, style, exclude, lyrics), create the song there and download it. Then open the template “Music video in the HUD style (your song)” and upload the finished song. The pack keeps to what works in Suno: the topic is clear in the first two lines, numbers are written the way they are sung, the lyrics have 1800 to 2400 characters (Suno cuts everything after about 3000), and the style line has at most 900 characters. The default singer is Claudia (Claudia by anabology, claudia.gallery): credit her and say that the song is made with AI. If your account may not use Claude Opus 5.5, choose another model in the node Suno song pack."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Suno song pack",
+    "description": "Write your idea and choose the singer: you get a text with TITLE, STYLE, EXCLUDE and LYRICS that you copy into Suno. Make the song there and upload it in the template for the HUD music video.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Idea for the song"
+      },
+      {
+        "node": "n2",
+        "param": "text",
+        "label": "Singer: voice and persona (default: Claudia)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n5",
+        "label": "Suno song pack"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Suno-Songpaket",
+      "description": "Schreibe aus einer Idee und einer Sängerin ein vollständiges Songpaket für Suno: die vier Blöcke TITLE, STYLE, EXCLUDE und LYRICS in der Form, mit der Suno am besten arbeitet (Abschnitte in eckigen Klammern, Songtext mit 1800 bis 2400 Zeichen, Zahlen so geschrieben, wie sie gesungen werden), geschrieben von Claude Opus 5.5 für etwa 3 US-Cent pro Paket. Kopiere die Blöcke in Suno, erstelle den Song dort und lade den fertigen Song danach in der Vorlage «Musikvideo im HUD-Stil (eigener Song)» hoch. Standardsängerin ist Claudia (Stimme: trocken, abgehackte Sprechstrophen, die in euphorische gesungene Refrains steigen). Vor deiner Bestätigung wird nichts berechnet.",
+      "node.n1": "Idee für den Song",
+      "node.n2": "Sängerin (Stimme und Persona)",
+      "node.n3": "Anfrage",
+      "node.n4": "Suno-Songpaket",
+      "note.t1": "Schreibe die Idee und ändere bei Bedarf die Sängerin (Stimme und Persona). Eine Antwort von Claude Opus 5.5 liefert die vier Blöcke TITLE, STYLE, EXCLUDE und LYRICS. Füge sie in die passenden Felder von Suno ein (Titel, Stil, Ausschluss, Songtext), erstelle dort den Song und lade ihn herunter. Öffne danach die Vorlage «Musikvideo im HUD-Stil (eigener Song)» und lade den fertigen Song hoch. Das Paket hält sich an das, was bei Suno funktioniert: Das Thema ist in den ersten zwei Zeilen klar, Zahlen sind so geschrieben, wie sie gesungen werden, der Songtext hat 1800 bis 2400 Zeichen (Suno schneidet alles nach etwa 3000 ab) und die Stilzeile höchstens 900 Zeichen. Standardsängerin ist Claudia (Claudia by anabology, claudia.gallery): Nenne sie im Credit und sage, dass der Song mit KI gemacht ist. Darf dein Konto Claude Opus 5.5 nicht nutzen, wähle im Node «Suno-Songpaket» ein anderes Modell.",
+      "app.title": "Suno-Songpaket",
+      "app.description": "Schreibe deine Idee und wähle die Sängerin: Du erhältst einen Text mit TITLE, STYLE, EXCLUDE und LYRICS, den du in Suno kopierst. Erstelle dort den Song und lade ihn in der Vorlage für das HUD-Musikvideo hoch.",
+      "app.input.n1.prompt": "Idee für den Song",
+      "app.input.n2.text": "Sängerin: Stimme und Persona (Standard: Claudia)",
+      "app.output.n5": "Suno-Songpaket",
+      "param.n5.label": "Suno-Songpaket"
+    },
+    "es": {
+      "name": "Paquete de canción para Suno",
+      "description": "Escribe a partir de una idea y de una cantante un paquete de canción completo para Suno: los cuatro bloques TITLE, STYLE, EXCLUDE y LYRICS en la forma con la que mejor trabaja Suno (secciones entre corchetes, letra de 1800 a 2400 caracteres, números escritos como se cantan), escrito por Claude Opus 5.5 por unos 3 centavos de dólar por paquete. Copia los bloques en Suno, crea allí la canción y sube después la canción terminada en la plantilla «Videoclip en estilo HUD (tu propia canción)». La cantante por defecto es Claudia (voz: inexpresiva, versos hablados cortantes que suben a estribillos cantados eufóricos). No se cobra nada antes de que confirmes.",
+      "node.n1": "Idea para la canción",
+      "node.n2": "Cantante (voz y personaje)",
+      "node.n3": "Petición",
+      "node.n4": "Paquete de canción para Suno",
+      "note.t1": "Escribe la idea y, si quieres, cambia la cantante (voz y personaje). Una respuesta de Claude Opus 5.5 entrega los cuatro bloques TITLE, STYLE, EXCLUDE y LYRICS. Pégalos en los campos correspondientes de Suno (título, estilo, exclusión, letra), crea allí la canción y descárgala. Después abre la plantilla «Videoclip en estilo HUD (tu propia canción)» y sube la canción terminada. El paquete se atiene a lo que funciona en Suno: el tema queda claro en las dos primeras líneas, los números se escriben como se cantan, la letra tiene de 1800 a 2400 caracteres (Suno corta todo lo que pasa de unos 3000) y la línea de estilo, como mucho 900 caracteres. La cantante por defecto es Claudia (Claudia by anabology, claudia.gallery): da su crédito e indica que la canción está hecha con IA. Si tu cuenta no puede usar Claude Opus 5.5, elige otro modelo en el nodo «Paquete de canción para Suno».",
+      "app.title": "Paquete de canción para Suno",
+      "app.description": "Escribe tu idea y elige la cantante: recibes un texto con TITLE, STYLE, EXCLUDE y LYRICS que copias en Suno. Crea allí la canción y súbela en la plantilla del videoclip HUD.",
+      "app.input.n1.prompt": "Idea para la canción",
+      "app.input.n2.text": "Cantante: voz y personaje (por defecto: Claudia)",
+      "app.output.n5": "Paquete de canción para Suno",
+      "param.n5.label": "Paquete de canción para Suno"
+    }
+  }
+}
