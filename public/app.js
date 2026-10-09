@@ -2418,6 +2418,14 @@ function settingsStatusText(key) {
   return t('settings.notSet');
 }
 
+// Optional texts of a key: a readable name (settings.label.<NAME>) and a hint (settings.help.<NAME>). A key without them shows its
+// name only, as before.
+function settingsKeyText(kind, name) {
+  const id = `settings.${kind}.${name}`;
+  const text = t(id);
+  return text && text !== id ? text : '';
+}
+
 function setSettingsBusy(row, busy) {
   for (const control of row.querySelectorAll('input, button')) control.disabled = busy;
 }
@@ -2514,14 +2522,16 @@ function renderSettings() {
     const copy = document.createElement('div');
     copy.className = 'settings-key-copy';
     const inputId = `settingsInput-${key.name}`;
+    const readableName = settingsKeyText('label', key.name);
     const label = document.createElement('label');
-    label.className = 'settings-key-name';
+    label.className = `settings-key-name${readableName ? ' is-readable' : ''}`;
     label.htmlFor = inputId;
-    label.textContent = key.name;
+    label.textContent = readableName || key.name;
     copy.appendChild(label);
     const status = document.createElement('div');
     status.className = `settings-key-status${key.source === 'settings' ? ' is-set' : ''}`;
-    status.textContent = settingsStatusText(key);
+    // a key with a readable name shows its technical name (the one of .env) next to the status
+    status.textContent = readableName ? `${key.name} · ${settingsStatusText(key)}` : settingsStatusText(key);
     copy.appendChild(status);
     row.appendChild(copy);
 
@@ -2553,6 +2563,13 @@ function renderSettings() {
       actions.appendChild(remove);
     }
     row.appendChild(actions);
+    const help = settingsKeyText('help', key.name);
+    if (help) {
+      const note = document.createElement('p');
+      note.className = 'settings-hint settings-key-help';
+      note.textContent = help;
+      row.appendChild(note);
+    }
     el.settingsList.appendChild(row);
   }
 }
