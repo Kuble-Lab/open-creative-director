@@ -294,6 +294,7 @@
           "theme": "auto",
           "accent": "#3B82F6",
           "karaoke": false,
+          "effects": "strong",
           "grain": 0.35,
           "glitch": 0.6,
           "endcard": true,
@@ -925,6 +926,11 @@
         "label": "Subtitles (karaoke line)"
       },
       {
+        "node": "n17",
+        "param": "effects",
+        "label": "Effects"
+      },
+      {
         "node": "n4",
         "param": "hud_language",
         "label": "Language of the graphics and the AI label"
@@ -1007,6 +1013,7 @@
       "app.input.n4.theme": "Stil",
       "app.input.n3.lyrics": "Songtext (optional, der endgültige Text aus Suno)",
       "app.input.n17.karaoke": "Untertitel (Karaoke-Zeile)",
+      "app.input.n17.effects": "Effekte",
       "app.input.n4.hud_language": "Sprache der Grafiken und der KI-Kennzeichnung",
       "app.output.n18": "Musikvideo",
       "app.output.n19": "Kontaktbogen",
@@ -1060,6 +1067,7 @@
       "app.input.n4.theme": "Estilo",
       "app.input.n3.lyrics": "Letra de la canción (opcional, el texto final de Suno)",
       "app.input.n17.karaoke": "Subtítulos (línea de karaoke)",
+      "app.input.n17.effects": "Efectos",
       "app.input.n4.hud_language": "Idioma de los gráficos y de la indicación de IA",
       "app.output.n18": "Videoclip",
       "app.output.n19": "Hoja de contactos",

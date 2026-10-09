@@ -1398,7 +1398,10 @@ async function testNode(binaries) {
   const portsOf = (list) => list.map((port) => [port.id, port.type, Boolean(port.required)]);
   assert.deepEqual(portsOf(def.inputs), [['video', 'video', true], ['audio', 'audio', true], ['graphics', 'text', true]]);
   assert.deepEqual(portsOf(def.outputs), [['video', 'video', false], ['sheet', 'image', false]]);
-  assert.deepEqual(real.normalizeParams(def, {}), { theme: 'auto', accent: '#3B82F6', karaoke: false, grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
+  assert.deepEqual(real.normalizeParams(def, {}), { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
+  // WP45: the beat effects, strong by default; off makes the film of before (scripts/test-music-video-hud-effects.js)
+  assert.deepEqual(def.params.find((param) => param.id === 'effects').options, ['off', 'subtle', 'strong']);
+  assert.deepEqual(real.checkParams(def, real.normalizeParams(def, { effects: 'wild' })), ['param effects: "wild" is not a valid option']);
   assert.deepEqual(def.params.find((param) => param.id === 'quality').options, ['draft', 'standard', 'high']);
   assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['auto', 'hud', 'kuble'], 'the styles: the one of the plan (auto) is the default, HUD Blue and Kuble force one');
   assert.equal(def.params.find((param) => param.id === 'theme').default, 'auto');

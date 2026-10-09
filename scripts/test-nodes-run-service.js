@@ -471,7 +471,7 @@ async function run(iso) {
   assert.ok((await realService.listRunnable(v.s1, { query: 'günstig', lang: 'de' })).items.some((item) => item.id === 'music-video-stills'), '"günstig" alone finds it among others');
 
   // the films in the HUD style (WP44): the Director asks for the song (or only the idea) and the idea; the figure (Claudia), the style, the lyrics and the
-  // karaoke line (off) have their values. Nothing is priced before the run: the units come from the plan
+  // karaoke line (off) have their values, and so have the beat effects (WP45, strong). Nothing is priced before the run: the units come from the plan
   const hudFilm = realTemplates.find((item) => item.id === 'music-video-hud');
   assert.deepEqual(hudFilm.inputs.map((input) => [input.id, input.type, input.required]), [
     ['n1.asset', 'audio', true],
@@ -480,12 +480,14 @@ async function run(iso) {
     ['n4.theme', 'select', false],
     ['n3.lyrics', 'text', false],
     ['n17.karaoke', 'boolean', false],
+    ['n17.effects', 'select', false],
     ['n4.hud_language', 'select', false]
   ]);
   assert.deepEqual(hudFilm.inputs.find((input) => input.id === 'n4.theme').options, ['hud', 'kuble']);
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.theme').label, 'Stil');
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').label, 'Untertitel (Karaoke-Zeile)');
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').value, undefined, 'a switch holds no value in the list');
+  assert.deepEqual(['options', 'label', 'hasValue'].map((key) => hudFilm.inputs.find((input) => input.id === 'n17.effects')[key]), [['off', 'subtle', 'strong'], 'Effekte', true]);
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.figure').hasValue, true, 'the figure is Claudia unless the person writes another');
   assert.deepEqual(hudFilm.outputs.map((output) => output.node), ['n18', 'n19', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the film first, then the sheet and what is shown for the approval');
   assert.deepEqual([hudFilm.name, hudFilm.paid, hudFilm.cost.kind], ['Musikvideo im HUD-Stil (eigener Song)', true, 'unknown']);
@@ -497,6 +499,7 @@ async function run(iso) {
     ['n4.figure', 'text', false],
     ['n4.theme', 'select', false],
     ['n17.karaoke', 'boolean', false],
+    ['n17.effects', 'select', false],
     ['n4.hud_language', 'select', false]
   ]);
   assert.deepEqual([hudSong.name, hudSong.paid, hudSong.cost.kind], ['Musikvideo im HUD-Stil (Song von ElevenLabs)', true, 'unknown']);
@@ -513,6 +516,7 @@ async function run(iso) {
     ['n4.theme', 'select', false],
     ['n3.lyrics', 'text', false],
     ['n17.karaoke', 'boolean', false],
+    ['n17.effects', 'select', false],
     ['n4.hud_language', 'select', false]
   ]);
   assert.deepEqual(hudSuno.outputs.map((output) => output.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
