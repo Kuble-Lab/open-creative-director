@@ -46,6 +46,15 @@ const SKIPPED_WITHOUT_GIT = new Set(['.git', 'node_modules', 'data', 'projects',
 // write into them without starting the app.
 const DATA_DIRS = ['data', 'projects', 'assets'];
 
+// The environment of the shell without GEMINI_API_KEY: with it, lib/tools.js sends the Google image models straight to Google, so
+// the tests that replace only OpenRouter (test-teams-api.js, test-result-meta.js, test-nodes-image-models.js ...) would call Google
+// for real. A test that needs the key sets it itself.
+function testEnvironment() {
+  const env = { ...process.env };
+  delete env.GEMINI_API_KEY;
+  return env;
+}
+
 function parseArgs(argv) {
   const options = { timeoutSeconds: DEFAULT_TIMEOUT_SECONDS, jobs: DEFAULT_JOBS, filters: [], keep: false };
   for (let i = 0; i < argv.length; i++) {
@@ -169,7 +178,7 @@ function runTest(name, timeoutSeconds, root) {
 
     const child = spawn(process.execPath, [path.join('scripts', name)], {
       cwd: root,
-      env: process.env,
+      env: testEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe']
     });
     running.add(child);

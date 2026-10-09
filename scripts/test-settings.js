@@ -18,6 +18,7 @@ async function main() {
   try {
     process.env.OPENROUTER_API_KEY = 'env-fallback-value';
     delete process.env.GTS_API_TOKEN;
+    delete process.env.GEMINI_API_KEY; // a key in the shell must not become the fallback of this store
     const settings = createSettingsStore({ file, env: process.env });
     settings.loadSettings();
 
@@ -85,6 +86,20 @@ async function main() {
     );
     settings.setSetting('FAL_KEY', '');
     assert.equal(process.env.FAL_KEY, undefined);
+    assert.deepEqual(JSON.parse(await fsp.readFile(file, 'utf8')), {});
+
+    // Google AI Studio key (lib/gemini-images.js): whitelisted, mirrored into the environment, masked; any form of key (no prefix)
+    assert.ok(SETTING_NAMES.includes('GEMINI_API_KEY'));
+    assert.equal(settings.listSettingsStatus().find((entry) => entry.name === 'GEMINI_API_KEY').source, null);
+    settings.setSetting('GEMINI_API_KEY', ' test-only-gemini-key-not-real ');
+    assert.equal(settings.getSetting('GEMINI_API_KEY'), 'test-only-gemini-key-not-real');
+    assert.equal(process.env.GEMINI_API_KEY, 'test-only-gemini-key-not-real');
+    assert.deepEqual(
+      settings.listSettingsStatus().find((entry) => entry.name === 'GEMINI_API_KEY'),
+      { name: 'GEMINI_API_KEY', source: 'settings', masked: 'test…real' }
+    );
+    settings.setSetting('GEMINI_API_KEY', '');
+    assert.equal(process.env.GEMINI_API_KEY, undefined);
     assert.deepEqual(JSON.parse(await fsp.readFile(file, 'utf8')), {});
 
     // plain on/off switches: a default, a whitelist, stored under "preferences", never in the key list

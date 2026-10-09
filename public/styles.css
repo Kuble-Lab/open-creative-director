@@ -767,10 +767,22 @@ code {
   white-space: nowrap;
 }
 
+/* a key with a readable name (settings.label.<NAME>): no monospace, and the name wraps instead of being cut */
+.settings-key-name.is-readable {
+  font-family: inherit;
+  white-space: normal;
+}
+
 .settings-key-status {
   margin-top: 4px;
   color: var(--text-faint);
   font-size: 11.5px;
+}
+
+/* the hint of a key (settings.help.<NAME>) spans the whole row of the grid */
+.settings-key-help {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .settings-key-status.is-set {
