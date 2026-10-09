@@ -157,12 +157,12 @@ function testTexts({ planLib, editLib, tools }) {
       assert.equal(need(lang, `nodes.type.${type}.help`).includes('ß'), false);
     }
     // the messages of the codes, with the placeholders their data fills
-    for (const code of ['BEATS_AUDIO_TOO_SHORT', 'TIMING_NO_LYRICS', 'TIMING_AUDIO_TOO_LONG', 'TIMING_BAD_ARGUMENT', 'MUSICVIDEO_ANALYSIS_INVALID', 'MUSICVIDEO_SHOTS_INVALID', 'MUSICVIDEO_STORY_MISMATCH', 'MUSICVIDEO_PERFORMANCE_MISMATCH', 'MUSICVIDEO_NO_TIMING', 'MUSICVIDEO_NO_CAPTIONS_TIMING', 'CAPTIONS_NO_LIBASS', 'CAPTIONS_TIMING_INVALID']) {
+    for (const code of ['BEATS_AUDIO_TOO_SHORT', 'TIMING_NO_LYRICS', 'TIMING_AUDIO_TOO_LONG', 'TIMING_BAD_ARGUMENT', 'MUSICVIDEO_ANALYSIS_INVALID', 'MUSICVIDEO_SHOTS_INVALID', 'MUSICVIDEO_STORY_MISMATCH', 'MUSICVIDEO_PERFORMANCE_MISMATCH', 'MUSICVIDEO_STILL_MISMATCH', 'MUSICVIDEO_NO_TIMING', 'MUSICVIDEO_NO_CAPTIONS_TIMING', 'CAPTIONS_NO_LIBASS', 'CAPTIONS_TIMING_INVALID']) {
       const text = need(lang, `nodes.issue.${code}`);
       assert.equal(text.includes('ß'), false, `${lang}: ${code} has no sharp s`);
     }
     assert.match(need(lang, 'nodes.issue.TIMING_AUDIO_TOO_LONG'), /\{minutes\}/);
-    for (const code of ['MUSICVIDEO_STORY_MISMATCH', 'MUSICVIDEO_PERFORMANCE_MISMATCH']) {
+    for (const code of ['MUSICVIDEO_STORY_MISMATCH', 'MUSICVIDEO_PERFORMANCE_MISMATCH', 'MUSICVIDEO_STILL_MISMATCH']) {
       assert.match(need(lang, `nodes.issue.${code}`), /\{expected\}/);
       assert.match(need(lang, `nodes.issue.${code}`), /\{got\}/);
     }
@@ -227,9 +227,12 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   const edit = registry.get('music_video.edit');
   assert.equal(edit.category, 'edit-video');
   assert.equal(edit.paid, false);
-  assert.deepEqual(ports(edit.inputs), [['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true], ['captions', 'text', false, false]]);
+  assert.deepEqual(ports(edit.inputs), [
+    ['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true], ['still_clips', 'video', false, true], ['captions', 'text', false, false]
+  ]);
   assert.equal(edit.inputs.find((port) => port.id === 'story').max, planLib.MAX_SCENES);
   assert.equal(edit.inputs.find((port) => port.id === 'performance').max, planLib.MAX_SCENES);
+  assert.equal(edit.inputs.find((port) => port.id === 'still_clips').max, planLib.MAX_SCENES, 'WP44: the clips of the stills, as many as there are scenes at most');
   assert.deepEqual(ports(edit.outputs), [['video', 'video', false, false]]);
   assert.deepEqual(edit.params.find((param) => param.id === 'transition').options, editLib.TRANSITIONS);
   assert.deepEqual(edit.params.find((param) => param.id === 'resolution').options, editLib.RESOLUTIONS);
@@ -631,6 +634,16 @@ async function run(iso) {
   near(analysed.analysis.duration, SONG_SECONDS, 0.1);
   assert.ok(analysed.analysis.beats.length >= 50 && analysed.analysis.sections.length >= 1);
   assert.equal(analysed.analysis.bpm, analysed.bpm);
+  // WP44: the first beat of every bar and the strong onsets come with the analysis, after the fields that were there before (which are as they were, in
+  // their order, with the version of the analysis unchanged); the plan of the music video does not look at them
+  assert.deepEqual(Object.keys(analysed.analysis), ['version', 'duration', 'bpm', 'tempoConfidence', 'beats', 'sections', 'energy', 'sectionSource', 'warnings', 'downbeats', 'hits']);
+  assert.equal(analysed.analysis.version, 1);
+  const { beats: analysedBeats, downbeats, hits } = analysed.analysis;
+  assert.ok(downbeats.length >= Math.floor(analysedBeats.length / 4) && downbeats.length <= Math.ceil(analysedBeats.length / 4), `${downbeats.length} bars for ${analysedBeats.length} beats`);
+  assert.ok(downbeats.every((time) => analysedBeats.includes(time)), 'a downbeat is a beat');
+  assert.ok(hits.length >= 20 && hits.every((hit) => hit.t >= 0 && hit.t <= analysed.analysis.duration && hit.strength > 0 && hit.strength <= 1), `${hits.length} hits`);
+  assert.ok(hits.every((hit, index) => index === 0 || hit.t > hits[index - 1].t), 'the hits are in order of time');
+  assert.deepEqual(Object.keys(planLib.parseAnalysis(analysed.analysis)), ['duration', 'bpm', 'beats', 'sections', 'energy'], 'the plan reads what it read');
   assert.deepEqual(await scratchLeft(), []);
 
   /* ---------- the plan ---------- */
@@ -916,6 +929,38 @@ async function run(iso) {
     const onlyPerformance = handShots({ story: 0, performance: 1, shots: [{ ...handShots().shots[1], start: 0, end: 12, duration: 12, clip: 0 }] });
     const single = await exec('music_video.edit', makeCtx(), { song: editSong, shots: textValue(JSON.stringify(onlyPerformance)), story: listValue('video', []), performance: yellow }, { transition: 'cut' });
     near((await probeFile(path.join(sessionDir, single.variants[0].video.file))).duration, 12, 0.08);
+    assert.deepEqual(await scratchLeft(), []);
+
+    // WP44: scenes of the kind "still" take their clips from the input still_clips, in the order of the scenes of that kind, and every other scene reads
+    // the clip it read before (story 0, singer 0, still 0 and 1: red, yellow, green and blue); a still clip that is too short is slowed down like a
+    // story clip. The clip of the second still (blue) is long enough, that of the first (green, 2 s for 3 s) is not.
+    const scene = (index, kind, clip) => ({ index, start: 3 * index, end: 3 * index + 3, duration: 3, kind, clip, section: 'A', line: null, prompt: 'p', motion: kind === 'performance' ? '' : 'm', character: null });
+    const withStills = handShots({ story: 1, performance: 1, still: 2, shots: [scene(0, 'story', 0), scene(1, 'still', 0), scene(2, 'performance', 0), scene(3, 'still', 1)] });
+    const stillInputs = (extra = {}) => ({
+      song: editSong,
+      shots: textValue(JSON.stringify(withStills)),
+      story: listValue('video', [red]),
+      performance: listValue('video', [yellow]),
+      still_clips: listValue('video', [green, blue]),
+      ...extra
+    });
+    const stillCtx = makeCtx();
+    const stillCut = await exec('music_video.edit', stillCtx, stillInputs(), { transition: 'cut' });
+    const stillFile = path.join(sessionDir, stillCut.variants[0].video.file);
+    for (const [index, hex] of ['ff0000', '00ff00', 'ffff00', '0000ff'].entries()) assert.equal(await colourAt(stillFile, 3 * index + 1.5), hex, `scene ${index} of the film with stills shows its own clip`);
+    near((await probeFile(stillFile)).duration, 12, 0.08);
+    assert.ok(stillCtx.logs.some((line) => /^4 scenes, 12 s at 25 fps, 1280x720, cut in 2 batches, 1 clips slowed down, 1 clips too short \(last frame held\)$/.test(line)), stillCtx.logs.join(' | '));
+    // a single clip given as a value is a list of one
+    const onlyStill = handShots({ story: 0, performance: 0, still: 1, shots: [scene(0, 'still', 0)].map((item) => ({ ...item, end: 12, duration: 12 })) });
+    const stillSingle = await exec('music_video.edit', makeCtx(), { song: editSong, shots: textValue(JSON.stringify(onlyStill)), story: listValue('video', []), still_clips: blue }, { transition: 'cut' });
+    assert.equal(await colourAt(path.join(sessionDir, stillSingle.variants[0].video.file), 6), '0000ff');
+    // the wrong number of clips: the code, with the numbers, before anything is cut - also for clips that no scene of the plan asks for
+    const stillShort = await errorOf(exec('music_video.edit', makeCtx(), stillInputs({ still_clips: listValue('video', [green]) })));
+    assert.deepEqual([stillShort.code, stillShort.data], ['MUSICVIDEO_STILL_MISMATCH', { expected: 2, got: 1 }]);
+    const stillMissing = await errorOf(exec('music_video.edit', makeCtx(), stillInputs({ still_clips: undefined })));
+    assert.deepEqual([stillMissing.code, stillMissing.data], ['MUSICVIDEO_STILL_MISMATCH', { expected: 2, got: 0 }], 'a port that is not connected counts as no clips');
+    const stillExtra = await errorOf(exec('music_video.edit', makeCtx(), editInputs({ still_clips: listValue('video', [green]) })));
+    assert.deepEqual([stillExtra.code, stillExtra.data], ['MUSICVIDEO_STILL_MISMATCH', { expected: 0, got: 1 }]);
     assert.deepEqual(await scratchLeft(), []);
   }
 

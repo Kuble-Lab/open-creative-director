@@ -3,6 +3,7 @@
 // The plan of a music video (lib/music-video-plan.js, WP34): the cut grid (boundaries on beats, lengths, at most 50 scenes, the
 // scenes for the singer), what the language model is asked, how its answer is checked (JSON, a prompt for every scene), the simple
 // prompts that replace what it did not deliver, and the shots JSON that the cutting node reads. Invented song data; no model is called.
+// WP44 (the HUD planner): the bars and hits of an analysis with the fallback for old analyses, and the kind "still" of the shots JSON.
 
 const assert = require('assert/strict');
 
@@ -454,6 +455,84 @@ function testShots() {
   assert.equal(all.story, result.scenes.length);
 }
 
+// WP44: the bars and the hits of an analysis, with the fallback for an analysis that was made before they came
+function testBeatGrid() {
+  const beats = ANALYSIS.beats;
+  // an analysis of the old kind: the bars are every fourth beat from the first one, no hits, and it says so
+  const old = plan.parseBeatGrid(ANALYSIS);
+  assert.deepEqual(old.downbeats, beats.filter((_time, index) => index % 4 === 0));
+  assert.deepEqual(old.hits, []);
+  assert.equal(old.measured, false);
+  assert.deepEqual(plan.parseBeatGrid(JSON.stringify(ANALYSIS)), old, 'text or object');
+  // with the fields: as they are, in order, inside the song, the strength between 0 and 1
+  const given = {
+    ...ANALYSIS,
+    downbeats: [beats[8], beats[0], beats[4], -1, 500, 'x', null],
+    hits: [{ t: 12.5, strength: 0.4 }, { t: 3.2, strength: 1.7 }, { t: 7, strength: -1 }, { t: 7.5 }, { t: 200, strength: 1 }, { t: -1, strength: 1 }, { strength: 1 }, null, 'x', { t: 'x' }]
+  };
+  const read = plan.parseBeatGrid(given);
+  assert.deepEqual(read.downbeats, [beats[0], beats[4], beats[8]]);
+  assert.deepEqual(read.hits, [{ t: 3.2, strength: 1 }, { t: 7, strength: 0 }, { t: 7.5, strength: 0.5 }, { t: 12.5, strength: 0.4 }]);
+  assert.equal(read.measured, true);
+  assert.deepEqual(plan.parseBeatGrid(JSON.stringify(given)), read);
+  // no usable bar given: the fallback, but the hits that are there stay
+  const empty = plan.parseBeatGrid({ ...ANALYSIS, downbeats: [], hits: [{ t: 5, strength: 0.9 }] });
+  assert.deepEqual(empty.downbeats, old.downbeats);
+  assert.deepEqual(empty.hits, [{ t: 5, strength: 0.9 }]);
+  assert.equal(empty.measured, false);
+  // not an array: the same as not there
+  assert.deepEqual(plan.parseBeatGrid({ ...ANALYSIS, downbeats: 'a', hits: { t: 1 } }), old);
+  // an analysis without beats has no bars; one that cannot be read is null (as with parseAnalysis)
+  assert.deepEqual(plan.parseBeatGrid(makeAnalysis({ beats: false })), { downbeats: [], hits: [], measured: false });
+  for (const nothing of [null, undefined, '', '{', '[]', 'null', 42, { duration: 0 }, { duration: 'x' }]) assert.equal(plan.parseBeatGrid(nothing), null, String(nothing));
+  // the plan reads the analysis as it did: the new fields are not part of what parseAnalysis returns
+  assert.deepEqual(Object.keys(plan.parseAnalysis(given)), ['duration', 'bpm', 'beats', 'sections', 'energy']);
+}
+
+// WP44: the kind "still" (the plan of the HUD music video): its clips come on a list of their own, numbered 0, 1, 2 ... like those of the other kinds.
+// music_video.plan makes none, and what it writes is as it was (no count of stills in its text, which the cutting node reads as 0).
+function testStillShots() {
+  assert.deepEqual(plan.SHOT_KINDS, ['story', 'performance', 'still']);
+  const result = plan.planScenes(ANALYSIS, TIMING, { cutOn: 'lines', performanceShare: 0.3 });
+  const contents = result.scenes.map((scene) => plan.fallbackContent(scene, { brief: 'x' }));
+  const made = plan.buildShots(result, contents, { aspectRatio: '16:9', brief: 'x' });
+  assert.equal('still' in made, false, 'music_video.plan writes no count of stills');
+  assert.ok(made.shots.every((shot) => shot.kind !== 'still'));
+  assert.equal(plan.parseShots(made).still, 0, 'a plan without stills has none');
+
+  // the first and the third scene of the story become stills; the clips of each kind are numbered again, in the order of the scenes
+  const stories = made.shots.filter((shot) => shot.kind === 'story');
+  assert.ok(stories.length >= 4);
+  const changed = JSON.parse(JSON.stringify(made));
+  const kindsAt = new Map([[stories[0].index, 'still'], [stories[2].index, 'still']]);
+  let story = 0;
+  let performance = 0;
+  let still = 0;
+  for (const shot of changed.shots) {
+    if (kindsAt.has(shot.index)) shot.kind = kindsAt.get(shot.index);
+    shot.clip = shot.kind === 'performance' ? performance++ : shot.kind === 'still' ? still++ : story++;
+  }
+  const back = plan.parseShots(JSON.stringify(changed));
+  assert.deepEqual([back.story, back.performance, back.still], [stories.length - 2, made.performance, 2]);
+  assert.deepEqual(back.shots.filter((shot) => shot.kind === 'still').map((shot) => shot.clip), [0, 1]);
+  assert.equal(back.shots.length, made.shots.length);
+  // the numbers are checked for every kind
+  const refuse = (change, message) => {
+    const copy = JSON.parse(JSON.stringify(changed));
+    change(copy);
+    assert.throws(() => plan.parseShots(copy), (err) => err.code === 'MUSICVIDEO_SHOTS_INVALID' && message.test(err.message), String(message));
+  };
+  const stillAt = (copy, nth) => copy.shots.filter((shot) => shot.kind === 'still')[nth];
+  refuse((copy) => { stillAt(copy, 1).clip = 0; }, /valid clip number/);
+  refuse((copy) => { stillAt(copy, 0).clip = 5; }, /The still clips are not numbered 0 to 1 \(clip 0 is missing\)/);
+  refuse((copy) => { stillAt(copy, 0).kind = 'poster'; }, /neither story nor performance nor still/);
+  // a kind that is none of them is refused as before (the old text is part of the new one)
+  refuse((copy) => { copy.shots[1].kind = 'other'; }, /neither story nor performance/);
+  // only stills: the lists of the others are empty
+  const onlyStills = { aspect_ratio: '16:9', shots: [{ start: 0, end: 2, kind: 'still', clip: 0 }, { start: 2, end: 4, kind: 'still', clip: 1 }] };
+  assert.deepEqual([plan.parseShots(onlyStills).story, plan.parseShots(onlyStills).performance, plan.parseShots(onlyStills).still], [0, 0, 2]);
+}
+
 testGridModes();
 testCutsOnBeats();
 testDensity();
@@ -464,4 +543,6 @@ testPrompts();
 testReadContent();
 testFallback();
 testShots();
+testBeatGrid();
+testStillShots();
 console.log('test-music-video-plan.js: ok');

@@ -1,0 +1,1080 @@
+{
+  "id": "music-video-hud-elevenlabs",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Music video in the HUD style (song by ElevenLabs)",
+  "description": "The same film as “Music video in the HUD style (your song)”, but you need no song: ElevenLabs writes a song text with sections from your idea (free of credits) and makes the music from it. Then the song is analysed and a language model (by default Claude Opus 5.5) plans the film; the figure (by default Claudia), the lip sync, the story clips, the stills and the HUD in the look HUD Blue or Kuble follow as in that template (Nano Banana 2.1 for the pictures, H3 Max on fal.ai for the clips; the karaoke line is off by default). The idea feeds the song and the film, the voice field tells ElevenLabs how the singer sounds. The song is 90 seconds by default: long enough for a complete song with verses and choruses, short enough to keep the film near 6 US dollars. The film costs about 3.5 US dollars per minute of song according to the planner (about 5.5 for 90 seconds, about 7 for two minutes), the music about 0.20 US dollars per minute and needs a paid ElevenLabs plan: about 6 US dollars in all with the preset length. Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 1 makes the song, the board (with the estimate for the whole film), the character sheet and the pictures for about 1 US dollar per minute of song; you approve them before step 2 makes the expensive rest. The end card says that the film is AI-generated and credits the figure.",
+  "requires": [
+    "openrouter",
+    "ffmpeg",
+    "elevenlabs",
+    "fal",
+    "rendernode"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n25",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Idea for song and video",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n26",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Voice and sound of the song",
+        "params": {
+          "text": "Electroclash techno at 128 BPM in 4/4 with a dry analog kick, a rolling acid bassline and cold detuned synth stabs, sweeping strings on the builds. Female lead vocal: deadpan, clipped spoken verses rising into euphoric sung choruses, close and dry, every word crisp and intelligible. No rap, no male vocals."
+        }
+      },
+      {
+        "id": "n27",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 250,
+        "title": "Song request",
+        "params": {
+          "template": "{{a}}\n\nVoice and sound: {{b}}"
+        }
+      },
+      {
+        "id": "n28",
+        "type": "audio.music_plan",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 250,
+        "title": "Song text and structure",
+        "params": {
+          "prompt": "",
+          "length": 90,
+          "model": "music_v2_5"
+        }
+      },
+      {
+        "id": "n1",
+        "type": "audio.music",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 80,
+        "title": "Song (ElevenLabs)",
+        "params": {
+          "prompt": "",
+          "plan": "",
+          "length": 30,
+          "instrumental": false,
+          "model": "music_v2_5"
+        }
+      },
+      {
+        "id": "n29",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 440,
+        "params": {
+          "label": "Song"
+        }
+      },
+      {
+        "id": "n2",
+        "type": "audio.beats",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 60,
+        "params": {}
+      },
+      {
+        "id": "n3",
+        "type": "audio.lyrics_timing",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 360,
+        "params": {
+          "lyrics": "",
+          "method": "auto"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "music_video.hud_plan",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 200,
+        "params": {
+          "model": "",
+          "brief": "",
+          "figure": "NAME: Claudia\nFULL: a 28-year-old Caucasian American woman with a grown-up angular face, defined cheekbones and a strong jawline, pale skin and light freckles, a glossy black blunt jaw-length bob with heavy straight bangs and one clay-orange streak through the bangs, a small flat clay-orange eight-pointed star hair clip, a thin headset microphone at her cheek\nSHORT: a Caucasian American woman in her late twenties with pale skin and a glossy black blunt bob with heavy straight bangs and one clay-orange streak, a thin headset microphone\nLOOKS: editorial pop-star wardrobe that changes per chapter (for example a white cropped puff-sleeve shirt with a black pleated coated-nylon skirt, a liquid-chrome bodysuit, a glossy cobalt-blue patent-leather trench over white satin); the clay-orange streak and the star clip are the only clay accents on her\nFACE: a deadpan, curious resting face; when she sings, her mouth opens wide\nNEVER: a second Claudia, the word young, a microphone in front of her mouth when she sings\nCREDIT: Claudia by anabology (claudia.gallery)",
+          "style": "",
+          "theme": "hud",
+          "accent": "#3B82F6",
+          "hud_language": "en",
+          "cuts_per_minute": 24,
+          "max_units": 40,
+          "lipsync_seconds_per_minute": 22,
+          "motion_share": 0.3,
+          "clip_seconds": 5
+        }
+      },
+      {
+        "id": "n5",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 60,
+        "title": "Character sheet",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "3:4",
+          "count": 1
+        }
+      },
+      {
+        "id": "n6",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 620,
+        "title": "Sung prompts with the sheet",
+        "params": {
+          "template": "The attached image is the character sheet of the main person. If this person appears in the picture, keep the face, hair, build and every accessory exactly as on the sheet, but take framing, pose, expression, clothes, place and light from the description, not from the sheet. {{a}}"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 920,
+        "title": "Story prompts with the sheet",
+        "params": {
+          "template": "The attached image is the character sheet of the main person. If this person appears in the picture, keep the face, hair, build and every accessory exactly as on the sheet, but take framing, pose, expression, clothes, place and light from the description, not from the sheet. {{a}}"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 1220,
+        "title": "Still prompts with the sheet",
+        "params": {
+          "template": "The attached image is the character sheet of the main person. If this person appears in the picture, keep the face, hair, build and every accessory exactly as on the sheet, but take framing, pose, expression, clothes, place and light from the description, not from the sheet. {{a}}"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 620,
+        "title": "Sung images",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n10",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 920,
+        "title": "Story images",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n11",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 1220,
+        "title": "Still images",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n12",
+        "type": "fal.h3_lipsync",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 620,
+        "title": "Sung clips (lip sync)",
+        "params": {
+          "resolution": "768P",
+          "transcription": false,
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n13",
+        "type": "fal.h3_video",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 920,
+        "title": "Story clips (H3 Max turbo)",
+        "params": {
+          "prompt": "",
+          "model": "turbo",
+          "resolution": "768P",
+          "aspect_ratio": "16:9",
+          "duration": 5,
+          "prompt_expansion": "balanced",
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n14",
+        "type": "fal.depth_map",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 1220,
+        "title": "Depth maps (parallax)",
+        "params": {
+          "enabled": true
+        }
+      },
+      {
+        "id": "n15",
+        "type": "image.to_video",
+        "typeVersion": 1,
+        "x": 4040,
+        "y": 1220,
+        "title": "Still clips (parallax)",
+        "params": {
+          "duration": 5,
+          "match_audio": false,
+          "fps": 24,
+          "zoom": "parallax_in",
+          "parallax_strength": 30
+        }
+      },
+      {
+        "id": "n16",
+        "type": "music_video.edit",
+        "typeVersion": 1,
+        "x": 4480,
+        "y": 920,
+        "title": "Base cut (no captions)",
+        "params": {
+          "transition": "cut",
+          "resolution": "1080p",
+          "fps": "24",
+          "fit": "crop",
+          "fade_out": 0,
+          "captions": "off",
+          "captions_position": "bottom"
+        }
+      },
+      {
+        "id": "n17",
+        "type": "music_video.hud_render",
+        "typeVersion": 1,
+        "x": 4920,
+        "y": 920,
+        "params": {
+          "theme": "auto",
+          "accent": "#3B82F6",
+          "karaoke": false,
+          "grain": 0.35,
+          "glitch": 0.6,
+          "endcard": true,
+          "quality": "standard"
+        }
+      },
+      {
+        "id": "n18",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5360,
+        "y": 880,
+        "params": {
+          "label": "Music video"
+        }
+      },
+      {
+        "id": "n19",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5360,
+        "y": 1100,
+        "params": {
+          "label": "Contact sheet"
+        }
+      },
+      {
+        "id": "n20",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 60,
+        "params": {
+          "label": "Board"
+        }
+      },
+      {
+        "id": "n21",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 280,
+        "params": {
+          "label": "Character sheet"
+        }
+      },
+      {
+        "id": "n22",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 620,
+        "params": {
+          "label": "Sung images"
+        }
+      },
+      {
+        "id": "n23",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 920,
+        "params": {
+          "label": "Story images"
+        }
+      },
+      {
+        "id": "n24",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 1220,
+        "params": {
+          "label": "Still images"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n2",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n3",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "analysis"
+        },
+        "to": {
+          "node": "n4",
+          "port": "analysis"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n3",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n4",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n4",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n4",
+          "port": "sheet_prompt"
+        },
+        "to": {
+          "node": "n5",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n4",
+          "port": "performance_prompts"
+        },
+        "to": {
+          "node": "n6",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "story_prompts"
+        },
+        "to": {
+          "node": "n7",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n4",
+          "port": "still_prompts"
+        },
+        "to": {
+          "node": "n8",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n6",
+          "port": "text"
+        },
+        "to": {
+          "node": "n9",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n9",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n7",
+          "port": "text"
+        },
+        "to": {
+          "node": "n10",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n10",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n8",
+          "port": "text"
+        },
+        "to": {
+          "node": "n11",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n11",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n9",
+          "port": "image"
+        },
+        "to": {
+          "node": "n12",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n4",
+          "port": "performance_audio"
+        },
+        "to": {
+          "node": "n12",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n10",
+          "port": "image"
+        },
+        "to": {
+          "node": "n13",
+          "port": "first_frame"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n4",
+          "port": "story_motion"
+        },
+        "to": {
+          "node": "n13",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n11",
+          "port": "image"
+        },
+        "to": {
+          "node": "n14",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n11",
+          "port": "image"
+        },
+        "to": {
+          "node": "n15",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n14",
+          "port": "depth"
+        },
+        "to": {
+          "node": "n15",
+          "port": "depth"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n16",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e24",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n16",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e25",
+        "from": {
+          "node": "n13",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "story"
+        }
+      },
+      {
+        "id": "e26",
+        "from": {
+          "node": "n12",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "performance"
+        }
+      },
+      {
+        "id": "e27",
+        "from": {
+          "node": "n15",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "still_clips"
+        }
+      },
+      {
+        "id": "e28",
+        "from": {
+          "node": "n16",
+          "port": "video"
+        },
+        "to": {
+          "node": "n17",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e29",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n17",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e30",
+        "from": {
+          "node": "n4",
+          "port": "graphics"
+        },
+        "to": {
+          "node": "n17",
+          "port": "graphics"
+        }
+      },
+      {
+        "id": "e31",
+        "from": {
+          "node": "n17",
+          "port": "video"
+        },
+        "to": {
+          "node": "n18",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e32",
+        "from": {
+          "node": "n17",
+          "port": "sheet"
+        },
+        "to": {
+          "node": "n19",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e33",
+        "from": {
+          "node": "n4",
+          "port": "board"
+        },
+        "to": {
+          "node": "n20",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e34",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n21",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e35",
+        "from": {
+          "node": "n9",
+          "port": "image"
+        },
+        "to": {
+          "node": "n22",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e36",
+        "from": {
+          "node": "n10",
+          "port": "image"
+        },
+        "to": {
+          "node": "n23",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e37",
+        "from": {
+          "node": "n11",
+          "port": "image"
+        },
+        "to": {
+          "node": "n24",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e38",
+        "from": {
+          "node": "n25",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n27",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e39",
+        "from": {
+          "node": "n26",
+          "port": "text"
+        },
+        "to": {
+          "node": "n27",
+          "port": "b"
+        }
+      },
+      {
+        "id": "e40",
+        "from": {
+          "node": "n27",
+          "port": "text"
+        },
+        "to": {
+          "node": "n28",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e41",
+        "from": {
+          "node": "n28",
+          "port": "plan"
+        },
+        "to": {
+          "node": "n1",
+          "port": "plan"
+        }
+      },
+      {
+        "id": "e42",
+        "from": {
+          "node": "n28",
+          "port": "plan"
+        },
+        "to": {
+          "node": "n2",
+          "port": "plan"
+        }
+      },
+      {
+        "id": "e43",
+        "from": {
+          "node": "n28",
+          "port": "plan"
+        },
+        "to": {
+          "node": "n3",
+          "port": "lyrics"
+        }
+      },
+      {
+        "id": "e44",
+        "from": {
+          "node": "n25",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e45",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n29",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 1400,
+        "y": 760,
+        "w": 400,
+        "h": 640,
+        "text": "Write the idea (it feeds the song and the film) and, if you like, change the voice and sound of the song. ElevenLabs writes a song text with sections from them (free of credits), then makes the music from it (about 0.20 US dollars per minute, a paid ElevenLabs plan is needed). The song is 90 seconds by default: set the length in the form (60 to 150 seconds fit the default settings, 40 units). Step 1 makes the song, the board (the plan of the film with the graphic of every line and the estimate), the character sheet and one picture per unit: listen to the song, look at the rest and change the idea or the figure if they are not right. Step 2 (“Approve and finish” in the app view) makes the lip sync, the story clips, the parallax of the stills, the cut and the HUD. In the node view run the output nodes Song, Board, Character sheet, Sung images, Story images and Still images first, then everything."
+      },
+      {
+        "id": "t2",
+        "x": 1400,
+        "y": 1440,
+        "w": 400,
+        "h": 880,
+        "text": "The pieces that have to agree: the clip length of the plan (5 s) is also the duration of the story clips and of the parallax clips; the pictures are 16:9 (the character sheet 3:4); the cut is 1080p at 24 frames per second with hard cuts and no captions, because the HUD draws the words itself (switch the karaoke line on in the form). All image nodes use Nano Banana 2.1. The prompts of the plan already contain the identity text of the figure, so the three text nodes in front of the picture nodes only tell the image model that the attached image is the character sheet and what to take from it. Style sets the look of the plan and, through “auto” in the node Draw music video HUD, of the render. The song text of the plan also goes to the lyric times (the times become more exact) and to the song analysis (it names the sections). Rules for the figure Claudia (Claudia by anabology, claudia.gallery): say that the film is made with AI (the end card does it: keep it on), credit her, keep her an adult and make nothing explicit. She is fan work about Claude and has no connection to Anthropic."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Music video in the HUD style (song by ElevenLabs)",
+    "description": "Write your idea and get a music video in the HUD style with a song made for it: ElevenLabs writes and plays the song, then a photoreal AI singer, lip sync, cuts on the beat and a graphic for every lyric line follow. You approve the song, the board, the character sheet and the pictures first (step 1), then the rest is made. Before each start you see the paid steps and their estimate.",
+    "inputs": [
+      {
+        "node": "n25",
+        "param": "prompt",
+        "label": "Idea for song and video (story, mood, setting)"
+      },
+      {
+        "node": "n28",
+        "param": "length",
+        "label": "Length of the song (seconds; 60 to 150 fit the default settings)"
+      },
+      {
+        "node": "n26",
+        "param": "text",
+        "label": "Voice and sound of the song (the default fits Claudia)"
+      },
+      {
+        "node": "n4",
+        "param": "figure",
+        "label": "Figure (optional, default: Claudia)"
+      },
+      {
+        "node": "n4",
+        "param": "theme",
+        "label": "Style"
+      },
+      {
+        "node": "n17",
+        "param": "karaoke",
+        "label": "Subtitles (karaoke line)"
+      },
+      {
+        "node": "n4",
+        "param": "hud_language",
+        "label": "Language of the graphics and the AI label"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n18",
+        "label": "Music video"
+      },
+      {
+        "node": "n19",
+        "label": "Contact sheet"
+      },
+      {
+        "node": "n29",
+        "label": "Song",
+        "approve": true
+      },
+      {
+        "node": "n20",
+        "label": "Board",
+        "approve": true
+      },
+      {
+        "node": "n21",
+        "label": "Character sheet",
+        "approve": true
+      },
+      {
+        "node": "n22",
+        "label": "Sung images",
+        "approve": true
+      },
+      {
+        "node": "n23",
+        "label": "Story images",
+        "approve": true
+      },
+      {
+        "node": "n24",
+        "label": "Still images",
+        "approve": true
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Musikvideo im HUD-Stil (Song von ElevenLabs)",
+      "description": "Derselbe Film wie «Musikvideo im HUD-Stil (eigener Song)», nur brauchst du keinen Song: ElevenLabs schreibt aus deiner Idee einen Songtext mit Abschnitten (ohne Credits) und macht daraus die Musik. Danach wird der Song analysiert und ein Sprachmodell (standardmässig Claude Opus 5.5) plant den Film; die Figur (standardmässig Claudia), der Lippensync, die Handlungsclips, die Standbilder und das HUD im Look HUD Blue oder Kuble folgen wie in jener Vorlage (Nano Banana 2.1 für die Bilder, H3 Max auf fal.ai für die Clips; die Karaoke-Zeile ist standardmässig aus). Die Idee speist Song und Film, das Feld für die Stimme sagt ElevenLabs, wie die Sängerin klingt. Der Song dauert standardmässig 90 Sekunden: genug für einen vollständigen Song mit Strophen und Refrains, wenig genug, um den Film bei etwa 6 US-Dollar zu halten. Der Film kostet laut Planer rund 3.5 US-Dollar pro Minute Song (etwa 5.5 für 90 Sekunden, etwa 7 für zwei Minuten), die Musik etwa 0.20 US-Dollar pro Minute und braucht ein bezahltes ElevenLabs-Abo: mit der voreingestellten Länge zusammen etwa 6 US-Dollar. Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 1 macht den Song, das Board (mit der Schätzung für den ganzen Film), das Figurenblatt und die Bilder für etwa 1 US-Dollar pro Minute Song; du gibst sie frei, bevor Schritt 2 den teuren Rest macht. Die Endkarte sagt, dass der Film KI-generiert ist, und nennt die Figur im Credit.",
+      "node.n1": "Song (ElevenLabs)",
+      "node.n25": "Idee für Song und Video",
+      "node.n26": "Stimme und Klang des Songs",
+      "node.n27": "Songwunsch",
+      "node.n28": "Songtext und Struktur",
+      "node.n5": "Figurenblatt",
+      "node.n6": "Gesangs-Prompts mit Figurenblatt",
+      "node.n7": "Handlungs-Prompts mit Figurenblatt",
+      "node.n8": "Standbild-Prompts mit Figurenblatt",
+      "node.n9": "Gesangsbilder",
+      "node.n10": "Handlungsbilder",
+      "node.n11": "Standbilder",
+      "node.n12": "Gesangsclips (Lippensync)",
+      "node.n13": "Handlungsclips (H3 Max turbo)",
+      "node.n14": "Tiefenbilder (Parallaxe)",
+      "node.n15": "Standbild-Clips (Parallaxe)",
+      "node.n16": "Grundschnitt (ohne Untertitel)",
+      "note.t1": "Schreibe die Idee (sie speist den Song und den Film) und ändere bei Bedarf Stimme und Klang des Songs. ElevenLabs schreibt daraus einen Songtext mit Abschnitten (ohne Credits) und macht danach die Musik (etwa 0.20 US-Dollar pro Minute, ein bezahltes ElevenLabs-Abo ist nötig). Der Song dauert standardmässig 90 Sekunden: Stelle die Länge im Formular ein (60 bis 150 Sekunden passen zu den Standardeinstellungen, 40 Einheiten). Schritt 1 macht den Song, das Board (der Plan des Films mit der Grafik jeder Zeile und der Schätzung), das Figurenblatt und ein Bild pro Einheit: Höre den Song an, sieh dir den Rest an und ändere die Idee oder die Figur, wenn sie nicht stimmen. Schritt 2 («Freigeben und fertigstellen» in der App-Ansicht) macht den Lippensync, die Handlungsclips, die Parallaxe der Standbilder, den Schnitt und das HUD. In der Node-Ansicht führst du zuerst die Ausgabe-Nodes «Song», «Board», «Figurenblatt», «Gesangsbilder», «Handlungsbilder» und «Standbilder» aus, dann alles.",
+      "note.t2": "Was zusammenpassen muss: Die Clip-Länge des Plans (5 s) ist auch die Dauer der Handlungsclips und der Parallaxe-Clips; die Bilder sind 16:9 (das Figurenblatt 3:4); der Schnitt ist 1080p mit 24 Bildern pro Sekunde, harten Schnitten und ohne Untertitel, weil das HUD die Wörter selbst zeichnet (die Karaoke-Zeile schaltest du im Formular ein). Alle Bild-Nodes nutzen Nano Banana 2.1. Die Prompts des Plans enthalten den Identitätstext der Figur schon; die drei Text-Nodes vor den Bild-Nodes sagen dem Bildmodell nur, dass das angehängte Bild das Figurenblatt ist und was es davon übernehmen soll. «Stil» legt den Look des Plans und, über «auto» im Node «Musikvideo-HUD zeichnen», des Renders fest. Der Songtext des Plans geht auch an die Zeilenzeiten (die Zeiten werden genauer) und an die Songanalyse (sie benennt die Abschnitte). Regeln für die Figur Claudia (Claudia by anabology, claudia.gallery): Sage, dass der Film mit KI gemacht ist (die Endkarte tut es, lass sie an), nenne sie im Credit, lass sie erwachsen und mache nichts Explizites. Sie ist Fan-Arbeit über Claude und hat keine Verbindung zu Anthropic.",
+      "app.title": "Musikvideo im HUD-Stil (Song von ElevenLabs)",
+      "app.description": "Schreibe deine Idee und erhalte ein Musikvideo im HUD-Stil mit einem Song, der dafür gemacht wird: ElevenLabs schreibt und spielt den Song, danach folgen eine fotorealistische KI-Sängerin, Lippensync, Schnitte im Takt und eine Grafik für jede Textzeile. Zuerst gibst du den Song, das Board, das Figurenblatt und die Bilder frei (Schritt 1), dann entsteht der Rest. Vor jedem Start siehst du die bezahlten Schritte und ihre Schätzung.",
+      "app.input.n25.prompt": "Idee für Song und Video (Geschichte, Stimmung, Ort)",
+      "app.input.n28.length": "Länge des Songs (Sekunden; 60 bis 150 passen zu den Standardeinstellungen)",
+      "app.input.n26.text": "Stimme und Klang des Songs (Standard passt zu Claudia)",
+      "app.input.n4.figure": "Figur (optional, Standard: Claudia)",
+      "app.input.n4.theme": "Stil",
+      "app.input.n17.karaoke": "Untertitel (Karaoke-Zeile)",
+      "app.input.n4.hud_language": "Sprache der Grafiken und der KI-Kennzeichnung",
+      "app.output.n18": "Musikvideo",
+      "app.output.n19": "Kontaktbogen",
+      "app.output.n29": "Song",
+      "app.output.n20": "Board",
+      "app.output.n21": "Figurenblatt",
+      "app.output.n22": "Gesangsbilder",
+      "app.output.n23": "Handlungsbilder",
+      "app.output.n24": "Standbilder",
+      "param.n29.label": "Song",
+      "param.n18.label": "Musikvideo",
+      "param.n19.label": "Kontaktbogen",
+      "param.n20.label": "Board",
+      "param.n21.label": "Figurenblatt",
+      "param.n22.label": "Gesangsbilder",
+      "param.n23.label": "Handlungsbilder",
+      "param.n24.label": "Standbilder"
+    },
+    "es": {
+      "name": "Videoclip en estilo HUD (canción de ElevenLabs)",
+      "description": "La misma película que «Videoclip en estilo HUD (tu propia canción)», pero sin necesitar una canción: ElevenLabs escribe a partir de tu idea una letra con secciones (sin créditos) y crea la música con ella. Después se analiza la canción y un modelo de lenguaje (por defecto Claude Opus 5.5) planifica el vídeo; la figura (por defecto Claudia), la sincronización labial, los clips de la historia, las imágenes fijas y el HUD con el aspecto HUD Blue o Kuble siguen como en esa plantilla (Nano Banana 2.1 para las imágenes, H3 Max en fal.ai para los clips; la línea de karaoke está desactivada por defecto). La idea alimenta la canción y el vídeo; el campo de la voz le dice a ElevenLabs cómo suena la cantante. La canción dura 90 segundos por defecto: lo bastante para una canción completa con estrofas y estribillos, y lo justo para que el vídeo quede en unos 6 dólares. El vídeo cuesta unos 3,5 dólares por minuto de canción según el planificador (unos 5,5 para 90 segundos, unos 7 para dos minutos), la música unos 0,20 dólares por minuto y requiere un plan de pago de ElevenLabs: unos 6 dólares en total con la duración predefinida. Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 1 crea la canción, el tablero (con la estimación de todo el vídeo), la hoja del personaje y las imágenes por unos 1 dólar por minuto de canción; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro. La tarjeta final indica que el vídeo está generado con IA y da el crédito de la figura.",
+      "node.n1": "Canción (ElevenLabs)",
+      "node.n25": "Idea para la canción y el vídeo",
+      "node.n26": "Voz y sonido de la canción",
+      "node.n27": "Petición de la canción",
+      "node.n28": "Letra y estructura",
+      "node.n5": "Hoja del personaje",
+      "node.n6": "Prompts de canto con la hoja",
+      "node.n7": "Prompts de la historia con la hoja",
+      "node.n8": "Prompts de imágenes fijas con la hoja",
+      "node.n9": "Imágenes de canto",
+      "node.n10": "Imágenes de la historia",
+      "node.n11": "Imágenes fijas",
+      "node.n12": "Clips de canto (sincronización labial)",
+      "node.n13": "Clips de la historia (H3 Max turbo)",
+      "node.n14": "Mapas de profundidad (paralaje)",
+      "node.n15": "Clips de imágenes fijas (paralaje)",
+      "node.n16": "Montaje base (sin subtítulos)",
+      "note.t1": "Escribe la idea (alimenta la canción y el vídeo) y, si quieres, cambia la voz y el sonido de la canción. ElevenLabs escribe con ellos una letra con secciones (sin créditos) y crea después la música (unos 0,20 dólares por minuto, hace falta un plan de pago de ElevenLabs). La canción dura 90 segundos por defecto: ajusta la duración en el formulario (de 60 a 150 segundos encajan con los ajustes predefinidos, 40 unidades). El paso 1 crea la canción, el tablero (el plan del vídeo con el gráfico de cada línea y la estimación), la hoja del personaje y una imagen por unidad: escucha la canción, mira el resto y cambia la idea o la figura si no son correctas. El paso 2 («Aprobar y terminar» en la vista de app) crea la sincronización labial, los clips de la historia, el paralaje de las imágenes fijas, el montaje y el HUD. En la vista de nodos ejecuta primero los nodos de salida Canción, Tablero, Hoja del personaje, Imágenes de canto, Imágenes de la historia e Imágenes fijas, después todo.",
+      "note.t2": "Lo que tiene que coincidir: la duración de clip del plan (5 s) es también la duración de los clips de la historia y de los clips de paralaje; las imágenes son 16:9 (la hoja del personaje 3:4); el montaje es 1080p a 24 fotogramas por segundo, con cortes secos y sin subtítulos, porque el HUD dibuja las palabras él mismo (la línea de karaoke se activa en el formulario). Todos los nodos de imagen usan Nano Banana 2.1. Los prompts del plan ya contienen el texto de identidad de la figura, así que los tres nodos de texto delante de los nodos de imagen solo le dicen al modelo de imagen que la imagen adjunta es la hoja del personaje y qué debe tomar de ella. «Estilo» fija el aspecto del plan y, mediante «auto» en el nodo «Dibujar HUD del videoclip», el del render. La letra del plan va también a los tiempos de las líneas (los tiempos son más exactos) y al análisis de la canción (nombra las secciones). Reglas para la figura Claudia (Claudia by anabology, claudia.gallery): indica que el vídeo está hecho con IA (la tarjeta final lo hace: déjala activada), da su crédito, mantenla adulta y no hagas nada explícito. Es un trabajo de fans sobre Claude y no tiene ninguna relación con Anthropic.",
+      "app.title": "Videoclip en estilo HUD (canción de ElevenLabs)",
+      "app.description": "Escribe tu idea y recibe un videoclip en estilo HUD con una canción hecha para él: ElevenLabs escribe e interpreta la canción, y después llegan una cantante de IA fotorrealista, sincronización labial, cortes al ritmo y un gráfico para cada línea de la letra. Primero apruebas la canción, el tablero, la hoja del personaje y las imágenes (paso 1), después se crea el resto. Antes de cada inicio ves los pasos de pago y su estimación.",
+      "app.input.n25.prompt": "Idea para la canción y el vídeo (historia, ambiente, lugar)",
+      "app.input.n28.length": "Duración de la canción (segundos; de 60 a 150 encajan con los ajustes predefinidos)",
+      "app.input.n26.text": "Voz y sonido de la canción (el valor por defecto va con Claudia)",
+      "app.input.n4.figure": "Figura (opcional, por defecto: Claudia)",
+      "app.input.n4.theme": "Estilo",
+      "app.input.n17.karaoke": "Subtítulos (línea de karaoke)",
+      "app.input.n4.hud_language": "Idioma de los gráficos y de la indicación de IA",
+      "app.output.n18": "Videoclip",
+      "app.output.n19": "Hoja de contactos",
+      "app.output.n29": "Canción",
+      "app.output.n20": "Tablero",
+      "app.output.n21": "Hoja del personaje",
+      "app.output.n22": "Imágenes de canto",
+      "app.output.n23": "Imágenes de la historia",
+      "app.output.n24": "Imágenes fijas",
+      "param.n29.label": "Canción",
+      "param.n18.label": "Videoclip",
+      "param.n19.label": "Hoja de contactos",
+      "param.n20.label": "Tablero",
+      "param.n21.label": "Hoja del personaje",
+      "param.n22.label": "Imágenes de canto",
+      "param.n23.label": "Imágenes de la historia",
+      "param.n24.label": "Imágenes fijas"
+    }
+  }
+}

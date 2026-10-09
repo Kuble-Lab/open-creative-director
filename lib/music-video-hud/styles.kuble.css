@@ -1,0 +1,164 @@
+/* The look of the second style of the HUD of the music video, Kuble (WP44). It comes after styles.css in the page of a chunk and changes what it needs
+   to change: Night Ink as the ground, Ink as the writing, Kuble Blue as the signal (--acc, and its lighter form --blue-t for writing and glow) and
+   Amber (--amber) as the one warm counterpoint, never two elements at once (state.js decides which). Montserrat for the big words and the numbers, JetBrains
+   Mono for the labels, Instrument Serif Italic for the quiet lines. The colours are not written here: composition.js puts the ones of the table of the
+   style (themes.js) into custom properties (--night, --ink-c, --amber and their -rgb forms) and the accent comes with the page. All sizes are px at
+   1920 x 1080; the ones that decide the size of a device are in the table of the style as well (themes.js sizes), because the layout reads them. */
+
+[data-theme=kuble]{font-synthesis:none}
+[data-theme=kuble] .dv{--inv:var(--night)}
+[data-theme=kuble] #stage,[data-theme=kuble] #stage.ink-dark{--hi:var(--ink-rgb);--hs:rgba(var(--night-rgb),.7);--hscrim:var(--night-rgb)}
+/* the gradients of Night Ink at the top and the bottom: the writing of the frame and the karaoke line lie on them. --sk (0.25 to 1, from the state)
+   makes them light on a dark picture and full on a bright one; at full strength the karaoke line stands on 70 % of Night Ink or more */
+[data-theme=kuble] #scrim{background:
+  linear-gradient(180deg,rgba(var(--night-rgb),calc(.66 * var(--sk,1))) 0,rgba(var(--night-rgb),calc(.5 * var(--sk,1))) 110px,rgba(var(--night-rgb),0) 270px),
+  linear-gradient(0deg,rgba(var(--night-rgb),calc(.8 * var(--sk,1))) 0,rgba(var(--night-rgb),calc(.72 * var(--sk,1))) 150px,rgba(var(--night-rgb),calc(.3 * var(--sk,1))) 270px,rgba(var(--night-rgb),0) 410px)}
+[data-theme=kuble] #vig{background:radial-gradient(ellipse at 50% 50%,rgba(var(--night-rgb),0) 56%,rgba(var(--night-rgb),.4) 100%)}
+
+/* ---- the frame ---- */
+[data-theme=kuble] .corner{border-color:rgba(var(--hi),.5)}
+.k-title{position:absolute;left:48px;top:26px;font:800 34px/40px 'Montserrat',system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;white-space:nowrap;color:rgb(var(--hi));text-shadow:0 0 16px rgba(var(--night-rgb),.7),0 0 calc(34px * var(--hit,0)) rgba(var(--blue-t-rgb),.95)}
+.k-chap{position:absolute;left:48px;top:72px;font:500 13px/16px 'JetBrains Mono',monospace;letter-spacing:.18em;white-space:pre;color:rgba(var(--hi),.8);text-shadow:0 0 8px rgba(var(--night-rgb),.8)}
+.k-prog{position:absolute;left:48px;top:100px;width:420px;height:2px;background:rgba(var(--hi),.2)}
+.k-prog b{display:block;height:2px;background:var(--acc);box-shadow:0 0 10px rgba(var(--acc-rgb),.9)}
+.k-prog i{position:absolute;top:-3px;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:var(--ink-c);box-shadow:0 0 12px 3px rgba(var(--blue-t-rgb),.95);transform:scale(calc(1 + 1.4 * var(--hit,0)))}
+.k-meta{position:absolute;right:50px;top:24px;font:500 14px/18px 'JetBrains Mono',monospace;letter-spacing:.14em;white-space:nowrap;color:rgba(var(--hi),.84);text-shadow:0 0 8px rgba(var(--night-rgb),.8)}
+.k-meta.raised{color:var(--ink-c);text-shadow:0 0 16px rgba(var(--blue-t-rgb),.95),0 0 4px rgba(var(--night-rgb),.6)}
+.k-count{position:absolute;right:50px;top:40px;display:flex;align-items:flex-end;gap:18px;white-space:nowrap}
+.k-clab{padding-bottom:18px;font:500 13px/16px 'JetBrains Mono',monospace;letter-spacing:.2em;color:rgba(var(--hi),.8);text-shadow:0 0 8px rgba(var(--night-rgb),.8)}
+.k-cnum{display:inline-block;font:900 88px/88px 'Montserrat',system-ui,sans-serif;letter-spacing:-.01em;color:rgb(var(--hi));text-shadow:0 0 22px rgba(var(--night-rgb),.6),0 0 calc(40px * var(--hit,0)) rgba(var(--blue-t-rgb),.95);transform-origin:right center}
+.k-count.roll .k-cnum{color:var(--blue-t);text-shadow:0 0 calc(34px * var(--roll)) rgba(var(--blue-t-rgb),.95);transform:scale(calc(1 + .05 * var(--roll)))}
+.k-drop{position:absolute;right:50px;top:128px;font:500 17px/22px 'JetBrains Mono',monospace;letter-spacing:.14em;white-space:pre;color:rgba(var(--hi),.9);text-shadow:0 0 8px rgba(var(--night-rgb),.8)}
+.k-drop.hot{color:var(--ink-c);text-shadow:0 0 16px rgba(var(--blue-t-rgb),.95),0 0 4px rgba(var(--night-rgb),.6)}
+.k-status{position:absolute;left:48px;top:1006px;height:22px;font:500 16px/22px 'JetBrains Mono',monospace;letter-spacing:.12em;white-space:pre;color:rgba(var(--hi),.9)}
+.k-status::before{content:'> ';color:var(--blue-t)}
+.k-cur{display:inline-block;width:9px;height:16px;margin-left:4px;background:var(--blue-t);vertical-align:-3px}
+.k-beats{position:absolute;left:48px;top:1038px;display:flex;gap:6px}
+.k-beats i{display:block;width:12px;height:12px;border-radius:2px;background:rgba(var(--hi),.2)}
+.k-beats i:nth-child(4n+1):not(:first-child){margin-left:8px}
+.k-beats i.t2{background:rgba(var(--blue-t-rgb),.34)}
+.k-beats i.t1{background:rgba(var(--blue-t-rgb),.62)}
+.k-beats i.on{background:var(--blue-t);box-shadow:0 0 10px 1px rgba(var(--blue-t-rgb),.95)}
+.k-beats i.on.dn{background:var(--amber);box-shadow:0 0 12px 1px rgba(var(--amber-rgb),.95)}
+
+/* ---- the karaoke line: no band, the gradient of the frame lies under it ---- */
+[data-theme=kuble] .kar{bottom:84px}
+[data-theme=kuble] .band{max-width:1640px;padding:0 24px;background:none;font:600 46px/1.18 'Montserrat',system-ui,sans-serif;letter-spacing:-.005em;color:var(--ink-3);text-shadow:0 2px 18px rgba(var(--night-rgb),.85)}
+[data-theme=kuble] .band .sung{color:var(--ink-c)}
+[data-theme=kuble] .band .next{color:var(--ink-3)}
+[data-theme=kuble] .band .cur{color:var(--blue-t);text-shadow:0 0 22px rgba(var(--blue-t-rgb),.8);text-decoration:underline;text-decoration-color:var(--acc);text-decoration-thickness:4px;text-underline-offset:9px;text-decoration-skip-ink:none}
+
+/* ---- the devices: cards, and the writing without shadows on them ---- */
+[data-theme=kuble] .dv.card{padding:16px;border-radius:14px;background:rgba(var(--night-rgb),.72);box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.12);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+[data-theme=kuble] .dv.card.acc{box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.55),0 0 34px rgba(var(--acc-rgb),.38)}
+[data-theme=kuble] .dv .lab{font:500 15px/24px 'JetBrains Mono',monospace;letter-spacing:.16em;color:rgba(var(--ink-rgb),.74);text-shadow:none}
+[data-theme=kuble] .dv.card .lab,[data-theme=kuble] .dv.card .stitle,[data-theme=kuble] .dv.card .srow,[data-theme=kuble] .dv.card .lrow,[data-theme=kuble] .dv.card .vrow{text-shadow:none}
+[data-theme=kuble] .stopwatch .lab,[data-theme=kuble] .toggle .lab,[data-theme=kuble] .progress .lab,[data-theme=kuble] .ctext .lab{line-height:28px}
+[data-theme=kuble] .dv .num,[data-theme=kuble] .dv .big{font-family:'Montserrat',system-ui,sans-serif;font-weight:900;line-height:1;letter-spacing:-.01em;color:var(--ink);text-shadow:none}
+[data-theme=kuble] .counter .num{margin-top:4px}
+[data-theme=kuble] .dv.acc .num,[data-theme=kuble] .dv.acc .big{color:var(--blue-t);text-shadow:0 0 28px rgba(var(--acc-rgb),.55)}
+[data-theme=kuble] .dv .tot{font-size:.42em;color:var(--dim);margin-left:.2em;letter-spacing:.02em}
+.dg{display:inline-block;width:var(--cell);text-align:center;font-style:normal}
+[data-theme=kuble] .dv .mult{display:inline-block;border-radius:10px;background:var(--acc);color:var(--ink-c);font-family:'Montserrat',system-ui,sans-serif;font-weight:900;line-height:1;letter-spacing:-.01em;padding:4px 28px;box-shadow:0 0 36px rgba(var(--acc-rgb),.55)}
+[data-theme=kuble] .dv:not(.acc) .mult{background:var(--ink);color:var(--inv);box-shadow:none}
+
+/* the big words */
+[data-theme=kuble] .display .drow{font-family:'Montserrat',system-ui,sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:-.02em;color:var(--ink);text-shadow:0 2px 26px var(--shade)}
+[data-theme=kuble] .display.serif .drow{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-style:italic;text-transform:none;letter-spacing:-.012em}
+[data-theme=kuble] .display.acc .drow.acc{color:var(--blue-t)}
+[data-theme=kuble] .dbox{padding:0 .14em}
+[data-theme=kuble] .dbox .boxtext{color:var(--ink-c)}
+[data-theme=kuble] .boxback{background:var(--acc);border-radius:.06em;box-shadow:0 0 46px rgba(var(--acc-rgb),.5)}
+[data-theme=kuble] .dv:not(.acc) .boxback{background:var(--ink);box-shadow:none}
+[data-theme=kuble] .dv:not(.acc) .dbox .boxtext{color:var(--inv)}
+
+/* tag and pin label */
+[data-theme=kuble] .tag .tagbox{height:36px;padding:0 14px;font:500 14px/36px 'JetBrains Mono',monospace;letter-spacing:.14em}
+[data-theme=kuble] .tag .tagbox,[data-theme=kuble] .pintag .tagbox{border-radius:6px;background:rgba(var(--night-rgb),.84);color:var(--ink-c);box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.14)}
+[data-theme=kuble] .tag.acc .tagbox{background:var(--acc);box-shadow:0 0 26px rgba(var(--acc-rgb),.5)}
+
+/* the stamp (an amber outline when it may be amber, an Ink one when not), the strike */
+[data-theme=kuble] .stampbox{font:700 40px/1.1 'JetBrains Mono',monospace;letter-spacing:.16em;color:var(--ink-c);border:4px solid var(--ink-c);border-radius:8px;padding:8px 20px;background:rgba(var(--night-rgb),.42)}
+[data-theme=kuble] .stampbox.amb{color:var(--amber);border-color:var(--amber);background:rgba(var(--amber-rgb),.1)}
+[data-theme=kuble] .strk{font:900 84px/1 'Montserrat',system-ui,sans-serif;letter-spacing:-.01em;color:var(--ink);text-shadow:0 2px 22px var(--shade)}
+[data-theme=kuble] .strikeline{background:var(--ink-c)}
+[data-theme=kuble] .strikeline.amb{background:var(--amber);box-shadow:0 0 16px rgba(var(--amber-rgb),.6)}
+[data-theme=kuble] .redact{background:var(--ink-3)}
+
+/* the list and the table of facts */
+[data-theme=kuble] .stitle{height:38px;font:500 15px/38px 'JetBrains Mono',monospace;letter-spacing:.16em;color:var(--blue-t);text-shadow:none}
+[data-theme=kuble] .list .stitle{height:36px;line-height:36px}
+[data-theme=kuble] .srow{border-bottom:1px solid rgba(var(--ink-rgb),.14);font:700 17px/1 'JetBrains Mono',monospace;color:var(--ink)}
+[data-theme=kuble] .srow .bar{background:var(--ink-3)}
+[data-theme=kuble] .lrow{color:var(--ink-2)}
+
+/* the drawing, the chart: a panel of its own, a blue line that glows */
+[data-theme=kuble] .blueprint svg,[data-theme=kuble] .chart svg,[data-theme=kuble] .voice svg{filter:none}
+[data-theme=kuble] .blueprint{color:var(--ink)}
+.kpanel{fill:rgba(var(--night-rgb),.8);stroke:rgba(var(--ink-rgb),.16);stroke-width:1}
+.kline{filter:drop-shadow(0 0 7px rgba(var(--acc-rgb),.95))}
+[data-theme=kuble] .voice polyline{stroke:var(--blue-t);filter:drop-shadow(0 0 6px rgba(var(--acc-rgb),.9))}
+
+/* the terminal */
+[data-theme=kuble] .terminal{background:rgba(var(--night-rgb),.9);border:2px solid rgba(var(--ink-rgb),.14);border-radius:14px;overflow:hidden}
+[data-theme=kuble] .tbar{height:38px;border-bottom:1px solid rgba(var(--ink-rgb),.12);color:var(--ink-c)}
+[data-theme=kuble] .tbar i,[data-theme=kuble] .tbar i.r,[data-theme=kuble] .tbar i.g{background:var(--ink-3)}
+[data-theme=kuble] .tbar i.b{background:var(--acc)}
+[data-theme=kuble] .tbody{padding:16px 18px;color:var(--ink-c)}
+[data-theme=kuble] .tline.out{color:var(--ink-2)}
+[data-theme=kuble] .tline b{color:var(--blue-t)}
+[data-theme=kuble] .terminal:not(.acc) .tline b{color:var(--ink-c)}
+[data-theme=kuble] .cursor{background:var(--blue-t)}
+
+/* the chat: her bubbles are blue, the others are Ink at 10 % on Night Ink */
+[data-theme=kuble] .chat{gap:14px}
+[data-theme=kuble] .bub{max-width:580px;padding:14px 24px;border-radius:22px;color:var(--ink-c);font:600 28px/1.2 'Montserrat',system-ui,sans-serif;letter-spacing:-.005em}
+[data-theme=kuble] .bub.them{background:linear-gradient(rgba(var(--ink-rgb),.1),rgba(var(--ink-rgb),.1)),rgba(var(--night-rgb),.74);box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.1)}
+[data-theme=kuble] .bub.her,[data-theme=kuble] .chat:not(.acc) .bub.her{background:var(--acc);color:var(--ink-c);box-shadow:0 0 26px rgba(var(--acc-rgb),.4)}
+
+/* the notification: a card of glass */
+[data-theme=kuble] .ncard{width:100%;height:100%;padding:14px 20px 0 84px;border-radius:18px;background:rgba(var(--night-rgb),.76);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);color:var(--ink-c);box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.14),0 14px 34px rgba(var(--night-rgb),.4)}
+[data-theme=kuble] .ncard .ico{border-radius:11px;background:var(--acc);color:var(--ink-c);font:800 24px/48px 'Montserrat',system-ui,sans-serif}
+[data-theme=kuble] .nmeta{font:500 12px/16px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--ink-3)}
+[data-theme=kuble] .ntitle{font:800 20px/26px 'Montserrat',system-ui,sans-serif;color:var(--ink-c)}
+[data-theme=kuble] .ntext{font:600 17px/24px 'Montserrat',system-ui,sans-serif;color:var(--ink-2)}
+
+/* the clock: a blue arc */
+[data-theme=kuble] .clock{gap:26px}
+[data-theme=kuble] .cdial{width:210px;height:210px}
+[data-theme=kuble] .cdial path{filter:drop-shadow(0 0 6px rgba(var(--acc-rgb),.95))}
+
+/* the switch: a blue track */
+[data-theme=kuble] .trow{gap:24px}
+[data-theme=kuble] .track{width:124px;height:62px;border-radius:31px;background:rgba(var(--ink-rgb),.2)}
+[data-theme=kuble] .track.on{background:var(--acc);box-shadow:0 0 24px rgba(var(--acc-rgb),.55)}
+[data-theme=kuble] .track i{top:6px;width:50px;height:50px;background:var(--ink-c);box-shadow:0 3px 8px rgba(var(--night-rgb),.4)}
+[data-theme=kuble] .tstate{font-family:'Montserrat',system-ui,sans-serif;font-weight:900;line-height:1;color:var(--ink-c)}
+[data-theme=kuble] .tstate.off{color:var(--ink-3)}
+
+/* the progress bar: blue with a glow */
+[data-theme=kuble] .pnum{font-family:'Montserrat',system-ui,sans-serif;font-weight:900;line-height:1;letter-spacing:-.01em;color:var(--ink-c)}
+[data-theme=kuble] .pbar{height:14px;margin-top:10px;border-radius:7px;background:rgba(var(--ink-rgb),.16)}
+[data-theme=kuble] .pbar b{height:14px;border-radius:7px;background:var(--acc);box-shadow:0 0 18px rgba(var(--acc-rgb),.95)}
+
+/* the pin: a blue pin on a pulsing ring */
+[data-theme=kuble] .pin svg circle{stroke:var(--blue-t)}
+
+/* ---- over everything ---- */
+[data-theme=kuble] .flash{background:var(--ink-c)}
+.k-pulse{position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 46%,rgba(var(--acc-rgb),.72) 0,var(--acc) 100%);mix-blend-mode:plus-lighter}
+.k-sweep{position:absolute;top:-12%;height:124%;transform:skewX(-24deg);mix-blend-mode:screen;
+  background:linear-gradient(90deg,rgba(var(--acc-rgb),0) 0,rgba(var(--acc-rgb),.55) 36%,var(--ink-c) 50%,rgba(var(--acc-rgb),.55) 64%,rgba(var(--acc-rgb),0) 100%)}
+.k-sweep.wipe{opacity:1}
+.k-sparks{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.k-sparks i{position:absolute;border-radius:50%;background:var(--amber);box-shadow:0 0 8px rgba(var(--amber-rgb),.85)}
+
+/* ---- the end card: Night Ink, the title in Montserrat Black, one blue line and one amber dot ---- */
+[data-theme=kuble] .end{background:var(--night)}
+.k-eline{display:flex;align-items:center;gap:14px;height:14px;margin-bottom:36px}
+.k-eline b{display:block;height:2px;background:var(--acc);box-shadow:0 0 14px rgba(var(--acc-rgb),.9)}
+.k-edot{display:block;width:12px;height:12px;border-radius:50%;background:var(--amber);box-shadow:0 0 14px rgba(var(--amber-rgb),.9)}
+[data-theme=kuble] .end .etitle{min-height:60px;font-family:'Montserrat',system-ui,sans-serif;font-weight:900;letter-spacing:-.01em;text-transform:uppercase;color:var(--ink-c);white-space:pre}
+[data-theme=kuble] .end .ecur{width:.09em;height:.74em;margin-left:.06em;background:var(--blue-t);vertical-align:-.03em}
+/* the lines under the title (the AI label and the credit) are bigger than in the first style: they must be readable on a phone */
+[data-theme=kuble] .end .eline{margin-top:14px;min-height:36px;font-size:23px;line-height:36px;color:var(--ink-2)}

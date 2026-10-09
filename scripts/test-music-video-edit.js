@@ -9,8 +9,12 @@
 // against the one a single process makes (the same frames, also at the batch boundaries under a crossfade), the number of clips any
 // process holds, 50 scenes, and an abort, a failing batch, a failing encoder, a time-out and a wrong frame count (no process is left).
 // The part that needs ffmpeg is skipped when it is missing.
+// WP44: a film without scenes of the kind "still" is cut as it always was. A fingerprint of the plans and the ffmpeg arguments of many films
+// (every transition, one process and batches, 1 to 50 scenes, sizes, frame rates, fits, captions, scenes that cut hard), made with the code as
+// it was before the kind "still" came in, holds that byte for byte; the scenes of the kind "still" are covered after it.
 
 const assert = require('assert/strict');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 const fsp = require('fs/promises');
 const os = require('os');
@@ -120,6 +124,141 @@ function testPieces() {
   const slice = edit.sliceAudioArgs('/in.mp3', 12.3456, 5.5, '/out.wav');
   assert.deepEqual(slice.slice(slice.indexOf('-af'), slice.indexOf('-af') + 2), ['-af', 'atrim=start=12.3456:duration=5.5,asetpts=PTS-STARTPTS']);
   assert.ok(slice.includes('pcm_s16le') && slice[slice.length - 1] === '/out.wav');
+}
+
+/* ---------- a film without stills is cut as it always was ---------- */
+
+const sha = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
+// What the cut makes of a film: the plan (graphs, input options, outputs, summary) and the arguments that ffmpeg gets, for a set of films.
+function editFingerprints() {
+  const out = {};
+  const argsOf = (plan, film) => {
+    const files = ['/song.wav', ...film.order.map((index) => `/clip-${index}.mp4`)];
+    if (plan.mode === 'single') return ops.assembleArgs(plan.spec, files, ['/out.mp4']);
+    return { batches: plan.batches.map((batch) => edit.batchArgs(batch, files)), encoder: ops.assembleArgs(plan.final, ['pipe:0', '/song.wav'], ['/out.mp4']) };
+  };
+  const add = (name, film, extra = {}) => {
+    const plan = edit.buildEditPlan({ ...film, ...extra });
+    out[name] = sha({ plan, args: argsOf(plan, film), geometry: edit.geometry({ shots: film.shots, params: extra.params }) });
+  };
+  for (const transition of ['cut', 'crossfade', 'flash']) {
+    for (const n of [1, 2, 3, 4, 9, 10]) add(`${transition} ${n} scenes`, filmOf(n), { params: { ...PARAMS, transition } });
+    add(`${transition} 50 scenes`, filmOf(50, { seconds: 2.4 }), { params: { ...PARAMS, transition } });
+  }
+  add('vertical 1080p 24 fps padded, no fade', filmOf(9, { aspect: '9:16' }), { params: { ...PARAMS, transition: 'crossfade', resolution: '1080p', fps: 24, fit: 'pad', fade_out: 0 } });
+  add('square 30 fps', filmOf(5, { aspect: '1:1' }), { params: { ...PARAMS, transition: 'flash', fps: 30 } });
+  add('captions, one process', filmOf(3), { params: PARAMS, captionsFile: '/s/captions.ass' });
+  add('captions, batches', filmOf(7), { params: { ...PARAMS, transition: 'crossfade' }, captionsFile: '/s/captions.ass' });
+  for (const batchScenes of [1, 2, 5]) add(`crossfade batches of ${batchScenes}`, filmOf(10), { params: { ...PARAMS, transition: 'crossfade' }, batchScenes });
+  // scenes that name their own fit or cut hard (the explainer video does)
+  const hard = filmOf(6);
+  hard.shots.shots[1] = { ...hard.shots.shots[1], hardCut: true };
+  hard.shots.shots[2] = { ...hard.shots.shots[2], fit: 'pad' };
+  add('hard cut and own fit', hard, { params: { ...PARAMS, transition: 'crossfade' } });
+  // a scene of one frame, clips of unknown length
+  const odd = filmOf(6);
+  odd.shots.shots[2] = { ...odd.shots.shots[2], start: 6, end: 6.001 };
+  odd.infos[3] = { video: {}, duration: null };
+  add('a scene of one frame, a clip of unknown length', odd, { params: { ...PARAMS, transition: 'crossfade' } });
+  out.slice = sha(edit.sliceAudioArgs('/in.mp3', 12.3456, 5.5, '/out.wav'));
+  return out;
+}
+
+// The fingerprints of the code before the kind "still" (PRINT_GOLDEN=1 node scripts/test-music-video-edit.js prints them again; only a change
+// that is meant to move the cut of a film without stills may replace them).
+const EDIT_GOLDEN = {
+  'cut 1 scenes': 'c4405c1ef6ee710f48642b072ae90aebdecddbecb0f257e212783cec96e8cc8b',
+  'cut 2 scenes': 'a1692488c991a60d3da24e0eec1a4826487973a0cbf12af0c5681e807a3aef65',
+  'cut 3 scenes': '314014275da1b337a3f115961fee360ce3eb360a476ad0a3d161cc5f78dde8ca',
+  'cut 4 scenes': 'f634c1094a531d5eeb94e10336b66a3b4b32d291dcc753366824d9714de2cd98',
+  'cut 9 scenes': 'c5fd880c3f345cc60d6eff34aa93d6237d4965f74b4e283dffe2de4b4bba0dfd',
+  'cut 10 scenes': 'fe3734620a72869c21a65569301e76173bc0b2fa7bff4af437c0b655f1ba7209',
+  'cut 50 scenes': '19c387ce11df4d2118bdb198578bcaf718a5d239c874f88693ac3132375e53f8',
+  'crossfade 1 scenes': 'c4405c1ef6ee710f48642b072ae90aebdecddbecb0f257e212783cec96e8cc8b',
+  'crossfade 2 scenes': '2f943ff367893054addc0dd698c16b1a2c947bb311b5d3d57518a0485ebc500d',
+  'crossfade 3 scenes': '1ea429487f714aac01171e3016d7667cd34b7ab9313b3786d3f6b8f68e6d1821',
+  'crossfade 4 scenes': '8ab39d0ba6728a59df3761b8bf273f696adb31f0b0f91167aa7beafd91080dec',
+  'crossfade 9 scenes': '40e9158f88c2f60e97e796a0b3e8aadd6fa2c6917563722f659d1f10c6ba16bc',
+  'crossfade 10 scenes': '05ad3805087196030036be70defe753e88b6dc1dd3dc6b29a5f9927079fe0d4c',
+  'crossfade 50 scenes': '944af26176e92250bce5761135cd3527080783fb3dc08d85dd7f7fbcaad7a870',
+  'flash 1 scenes': 'c4405c1ef6ee710f48642b072ae90aebdecddbecb0f257e212783cec96e8cc8b',
+  'flash 2 scenes': '283ffd9b302ea0540fe95c8ef9b15bc85c73df61933bdbb7562f7a4a9993deec',
+  'flash 3 scenes': '33a62bdedb4e48a9960a65f51524f0065f5d8d78d517f585f3eb77d770d1c4fb',
+  'flash 4 scenes': '270aa8b45a58d4a5d87ecc3c857e6a1eb9f8b5bf20c0adf0686a867966406750',
+  'flash 9 scenes': '73d39bcb1fb9efb90b5172ee524f60b8e86ecd3bde60ff25d0cbb6d525179b30',
+  'flash 10 scenes': '65233603bbb6c5de4c32016e2fbeac7081755dcce76adae3f747a3a6cc7c9d2e',
+  'flash 50 scenes': '146dc5adef34dd0786f17aabf5ca405a018dc8c3940d0a0909e79ea344c590ee',
+  'vertical 1080p 24 fps padded, no fade': '7566eba44ab9b9c4a506f1773003d3bbd1dccebe3ca7ebb866ffd83e475266bf',
+  'square 30 fps': '7fc66e586f6e4afcbd9cc0b124fe7c04d87faf22f12f3aa9ceae208529bfd03c',
+  'captions, one process': 'd3bd35a1cfbc87eb6f6609c2c3945725e6d8d58a77757c047f57bbb4303e0ca3',
+  'captions, batches': '687b3390eaa16a7b36438b3a1ea43b3d8aa90b85a676b8b0a3c93c4986105143',
+  'crossfade batches of 1': 'c0b98d24043d437c74c08c6ac9f65131d0bb9dbfab47cb45399a40c5cce6551b',
+  'crossfade batches of 2': 'c0b98d24043d437c74c08c6ac9f65131d0bb9dbfab47cb45399a40c5cce6551b',
+  'crossfade batches of 5': 'cf5ff2f248185f508f926e0873100bd88421de8d3e0c0805f0a4924a1e950705',
+  'hard cut and own fit': '2cefa7e82e4690d7cf2c290c367f91a6f70aed41ea6de555413a81da1717d9e2',
+  'a scene of one frame, a clip of unknown length': '527d151920313d37a0efd459fd87ced7d5ba14df686cd533d70a0f3cecc3bb39',
+  'slice': 'a67f01871b8aacdee2a15f059c68035987b52cee61ad45cf3d9f0c155d7203dd'
+};
+
+function testEditUnchanged() {
+  const found = editFingerprints();
+  if (process.env.PRINT_GOLDEN) console.log(JSON.stringify(found, null, 2));
+  assert.deepEqual(Object.keys(found).sort(), Object.keys(EDIT_GOLDEN).sort(), 'the same films are fingerprinted');
+  for (const name of Object.keys(EDIT_GOLDEN)) assert.equal(found[name], EDIT_GOLDEN[name], `the cut of "${name}" changed`);
+}
+
+/* ---------- scenes of the kind "still" (WP44) ---------- */
+
+// A still is a picture that image.to_video moves (zoom or parallax): its clip is cut like a story clip. Every clip is found by the place the
+// node gives it (`order`), so a film with all three kinds takes each clip for its own scene.
+function testStills() {
+  const base = { seconds: 2, frames: 100, fps: 25, width: 1280, height: 720, fit: 'crop', flash: false };
+  const story = edit.sceneChain({ kind: 'story', ...base });
+  const still = edit.sceneChain({ kind: 'still', ...base });
+  assert.deepEqual(still, story, 'a still clip is cut like a story clip');
+  assert.equal(still.speed, 0.8, 'slowed down to 0.8 at most');
+  assert.match(still.chain, /setpts=1\.25\*PTS/);
+  assert.match(still.chain, /tpad=stop=100:stop_mode=clone,trim=end_frame=100/, 'then the last frame is held');
+  assert.equal(edit.sceneChain({ kind: 'still', ...base, seconds: 5 }).speed, 1, 'a clip that is long enough is not slowed down');
+  assert.equal(edit.sceneChain({ kind: 'still', ...base, seconds: null }).speed, 1, 'a clip of unknown length neither');
+  assert.equal(edit.sceneChain({ kind: 'performance', ...base }).speed, 1, 'the singer still is not');
+  assert.equal(edit.sceneChain({ kind: 'other', ...base }).speed, 1, 'a kind that is not known is not slowed down either');
+
+  // five scenes of three kinds; the clips come in this order: song, the story clips (2), the singer (1), the stills (2) - as the node lists them
+  const scenes = {
+    aspect_ratio: '16:9',
+    shots: [
+      { start: 0, end: 3, kind: 'story', clip: 0 },
+      { start: 3, end: 6, kind: 'still', clip: 0 },
+      { start: 6, end: 9, kind: 'performance', clip: 0 },
+      { start: 9, end: 12, kind: 'still', clip: 1 },
+      { start: 12, end: 15, kind: 'story', clip: 1 }
+    ]
+  };
+  const infos = [{ audio: {}, video: null, duration: 15 }, { video: {}, duration: 5 }, { video: {}, duration: 5 }, { video: {}, duration: 2 }, { video: {}, duration: 2.4 }, { video: {}, duration: 5 }];
+  const order = [1, 4, 3, 5, 2];
+  const spec = edit.buildEditSpec({ shots: scenes, order, infos, params: { ...PARAMS } });
+  assert.deepEqual(spec.summary.map((item) => item.kind), ['story', 'still', 'performance', 'still', 'story']);
+  assert.deepEqual(spec.summary.map((item) => item.fromClip), [5, 2.4, 2, 5, 5], 'every scene reads the clip that `order` names');
+  assert.deepEqual(spec.summary.map((item) => item.speed), [1, 0.8, 1, 1, 1], 'only the still with the short clip is slowed down: the singer is held, not slowed');
+  assert.deepEqual(spec.summary.map((item) => item.frames), [75, 75, 75, 75, 75]);
+  order.forEach((file, index) => assert.ok(spec.graph.includes(`[${file}:v]`), `scene ${index} opens clip ${file}`));
+  assert.equal(spec.frames, 375);
+  // a plan of batches carries the same
+  const batched = edit.buildEditPlan({ shots: scenes, order, infos, params: { ...PARAMS }, batchScenes: 2 });
+  assert.equal(batched.mode, 'batched');
+  assert.deepEqual(batched.batches.map((batch) => batch.inputs), [[1, 4], [3, 5], [2]]);
+  assert.deepEqual(batched.summary, spec.summary);
+  // the clip of a still is not special for a crossfade: the same plan as for a story clip in its place
+  const asStory = { ...scenes, shots: scenes.shots.map((shot) => (shot.kind === 'still' ? { ...shot, kind: 'story' } : shot)) };
+  for (const transition of ['cut', 'crossfade', 'flash']) {
+    assert.equal(
+      edit.buildEditSpec({ shots: scenes, order, infos, params: { ...PARAMS, transition } }).graph,
+      edit.buildEditSpec({ shots: asStory, order, infos, params: { ...PARAMS, transition } }).graph,
+      `${transition}: a still is cut like a story scene`
+    );
+  }
 }
 
 /* ---------- the plan: one process, or batches ---------- */
@@ -775,6 +914,8 @@ async function probeAudioStreams(file) {
 }
 
 (async () => {
+  testEditUnchanged();
+  testStills();
   testPieces();
   await testWithFfmpeg();
   console.log('test-music-video-edit.js: ok');

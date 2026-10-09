@@ -1,0 +1,169 @@
+/* The look of the HUD of the music video (WP44), after the Stilblatt: one accent colour (--acc, at most two accent elements in the content of a
+   picture: the karaoke word and one device), Anton for the big words, Instrument Serif Italic for the quiet lines, JetBrains Mono for the HUD,
+   Inter Tight for the karaoke line. All sizes are px at 1920 x 1080. The markup comes from view.js; the faces are embedded by composition.js.
+   --hi is the ink of the frame of the HUD as an RGB triple (white; dark on a bright picture), --hs the shadow that keeps it readable. */
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#000;overflow:hidden}
+#main-composition{position:relative;width:1920px;height:1080px;overflow:hidden;background:#000;color:#fff;
+  font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;font-variant-ligatures:none;
+  --acc:#3B82F6;--acc2:color-mix(in srgb,var(--acc),#fff 45%)}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:50% 50%;--hi:255,255,255;--hs:rgba(0,0,0,.75);--hscrim:0,0,0}
+#stage.ink-dark{--hi:14,16,19;--hs:rgba(255,255,255,.6);--hscrim:255,255,255}
+#cam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+#cam video{position:absolute;left:0;top:0;width:1920px;height:1080px;object-fit:cover}
+.layer{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;overflow:hidden}
+#scrim{background:linear-gradient(180deg,rgba(var(--hscrim),.34) 0,rgba(var(--hscrim),0) 150px,rgba(var(--hscrim),0) 930px,rgba(var(--hscrim),.5) 1080px)}
+#vig{background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 62%,rgba(0,0,0,.28) 100%)}
+
+/* ---- the frame of the HUD ---- */
+.corner{position:absolute;width:16px;height:16px;border:0 solid rgba(var(--hi),.72)}
+.corner.tl{left:25px;top:25px;border-left-width:1.5px;border-top-width:1.5px}
+.corner.tr{right:25px;top:25px;border-right-width:1.5px;border-top-width:1.5px}
+.corner.bl{left:25px;bottom:25px;border-left-width:1.5px;border-bottom-width:1.5px}
+.corner.br{right:25px;bottom:25px;border-right-width:1.5px;border-bottom-width:1.5px}
+.title{position:absolute;left:48px;top:37px;height:23px;white-space:nowrap;font-size:0}
+.tile{display:inline-block;position:relative;vertical-align:top;width:18px;height:23px;margin-right:3px;border-radius:2px;background:rgba(11,13,16,.88);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);color:#fff;font:700 15px/23px 'JetBrains Mono',monospace;font-style:normal;text-align:center}
+.tile::after{content:'';position:absolute;left:0;right:0;top:11px;height:1px;background:rgba(255,255,255,.12)}
+.tile.sp{background:rgba(11,13,16,.5)}
+.tile.scr{color:rgba(255,255,255,.7)}
+.tile.num.hot{background:#F4F2EA;color:#0B0D10}
+.console{position:absolute;left:48px;top:68px;font:500 11px/14px 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(var(--hi),.85);white-space:pre;text-shadow:0 0 6px var(--hs)}
+.progress{position:absolute;left:48px;top:91px;width:420px;height:3px;background:rgba(var(--hi),.26)}
+.progress b{display:block;height:3px;background:var(--acc)}
+.inst{position:absolute;right:50px;top:36px;font:700 16px/22px 'JetBrains Mono',monospace;letter-spacing:.075em;color:rgb(var(--hi));white-space:nowrap;text-shadow:0 0 7px var(--hs)}
+.inst.raised{color:var(--acc)}
+.stats{position:absolute;right:50px;top:65px;font:500 11px/14px 'JetBrains Mono',monospace;letter-spacing:.126em;white-space:pre;color:rgb(var(--hi));text-shadow:0 0 6px var(--hs)}
+.stats span{opacity:.66}
+.stats b{font-weight:700}
+.meter{position:absolute;right:50px;top:86px;width:140px;height:14px;display:flex;align-items:flex-end;gap:1px}
+.meter i{flex:1 1 0;background:rgba(var(--hi),.3)}
+.meter i.on{background:rgba(var(--hi),.92)}
+.meter i.top{background:var(--acc)}
+.ruler{position:absolute;left:32px;width:9px;border-right:1px solid rgba(var(--hi),.55)}
+.ruler i{position:absolute;height:1px;background:rgba(var(--hi),.55)}
+.ruler-mark{position:absolute;left:23px;width:17px;height:2px;margin-top:-1px;background:var(--acc)}
+.barbeat{position:absolute;left:44px;top:140px;font:500 9px/12px 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(var(--hi),.6);white-space:pre;text-shadow:0 0 5px var(--hs)}
+.drop{position:absolute;right:96px;top:146px;font:500 15px/20px 'JetBrains Mono',monospace;letter-spacing:.12em;color:rgba(var(--hi),.88);white-space:pre;text-shadow:0 0 6px var(--hs)}
+.drop.hot{color:var(--acc)}
+.tick-line{position:absolute;left:0;top:1027px;width:1920px;height:1px;background:rgba(var(--hi),.36)}
+.ticker{position:absolute;left:0;top:1032px;width:1920px;height:20px;overflow:hidden}
+.ticker span{position:absolute;left:0;top:0;white-space:pre;font:500 13px/20px 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(var(--hi),.92);text-shadow:0 0 6px var(--hs);will-change:transform}
+.rec{position:absolute;left:48px;top:1058px;font:500 11px/14px 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(var(--hi),.85);white-space:pre;text-shadow:0 0 6px var(--hs)}
+.rec b{display:inline-block;width:8px;height:8px;margin-right:10px;border-radius:50%;background:#E5484D;vertical-align:1px}
+.rec b.off{background:transparent;box-shadow:inset 0 0 0 1.5px #E5484D}
+.tc{position:absolute;right:100px;top:1059px;font:500 10px/12px 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(var(--hi),.66);text-shadow:0 0 6px var(--hs)}
+
+/* ---- the karaoke line ---- */
+.kar{position:absolute;left:0;bottom:54px;width:1920px;text-align:center}
+.band{display:inline-block;max-width:1580px;padding:6px 24px 7px;background:rgba(11,13,16,.66);color:#fff;
+  font:700 48px/1.1 'Inter Tight',system-ui,sans-serif;letter-spacing:-.012em;white-space:normal}
+.band .sung{color:#fff}
+.band .next{color:rgba(255,255,255,.56)}
+.band .cur{color:var(--acc);text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:9px;text-decoration-skip-ink:none}
+
+/* ---- the devices ---- */
+/* --a: accent for writing and lines (the ink, when the device does not carry the accent); --ac: accent for a fill that has white writing on it
+   (a dark grey, when it does not); --a2: the light accent of a thin line */
+.dv{position:absolute;color:var(--ink);font-family:'JetBrains Mono',monospace;--a:var(--ink);--ac:#3A3F4A;--a2:var(--ink);--inv:#0E1013}
+.dv.acc{--a:var(--acc);--ac:var(--acc);--a2:var(--acc2)}
+.dv .lab{font:500 15px/24px 'JetBrains Mono',monospace;letter-spacing:.16em;color:var(--ink);white-space:pre;text-shadow:0 0 12px var(--shade)}
+.dv .num,.dv .big{font-family:'Anton',Impact,sans-serif;font-weight:400;line-height:.96;color:var(--ink);white-space:nowrap;letter-spacing:.004em;transform-origin:left center;text-shadow:0 2px 22px var(--shade)}
+.dv.acc .num{color:var(--acc)}
+.dv .tot{font-size:.42em;color:var(--dim);margin-left:.2em;letter-spacing:.02em}
+.dv .mult{display:inline-block;background:var(--ac);color:#fff;font-family:'Anton',Impact,sans-serif;line-height:1;padding:6px 38px;white-space:nowrap}
+.dv:not(.acc) .mult{background:var(--ink);color:var(--inv)}
+
+.display .drow{font-family:'Anton',Impact,sans-serif;font-weight:400;text-transform:uppercase;color:var(--ink);white-space:nowrap;letter-spacing:.004em;text-shadow:0 2px 24px var(--shade)}
+.display.serif .drow{font-family:'Instrument Serif',Georgia,serif;font-style:italic;text-transform:none;letter-spacing:-.012em}
+.display.acc .drow.acc{color:var(--acc)}
+.display.right{text-align:right}
+.display.around.al{text-align:right}
+.tok{display:inline-block}
+.dbox{display:inline-block;position:relative;padding:0 .13em;transform-origin:left center;color:#fff}
+.boxback{position:absolute;left:0;right:0;top:.04em;bottom:.02em;background:var(--ac)}
+.dv:not(.acc) .boxback{background:var(--ink)}
+.dv:not(.acc) .dbox{color:var(--inv)}
+.boxtext{position:relative}
+
+.tag .tagbox,.pintag .tagbox{display:inline-block;height:34px;padding:0 12px;background:rgba(11,13,16,.88);color:#fff;font:500 15px/34px 'JetBrains Mono',monospace;letter-spacing:.12em;white-space:pre}
+.tag.acc .tagbox{background:var(--acc)}
+.pintag .tagbox{height:38px;font-size:17px;line-height:38px;padding:0 14px}
+.subj{position:absolute;left:0;top:0}
+
+.stampbox{position:absolute;white-space:nowrap;font:700 44px/1.1 'JetBrains Mono',monospace;letter-spacing:.14em;color:#E5484D;border:5px solid #E5484D;padding:10px 22px;background:rgba(229,72,77,.1)}
+
+.strk{position:relative;display:inline-block;font:400 96px/1 'Anton',Impact,sans-serif;color:var(--ink);white-space:nowrap;text-transform:uppercase;text-shadow:0 2px 20px var(--shade)}
+.strtext.hidden{opacity:0}
+.strikeline{position:absolute;left:-8px;top:50%;height:6px;margin-top:-3px;background:#E5484D}
+.redact{position:absolute;left:-10px;top:5%;height:92%;background:#7A1212}
+
+.stitle{height:34px;font:500 15px/34px 'JetBrains Mono',monospace;letter-spacing:.16em;color:var(--a);white-space:pre;text-shadow:0 0 12px var(--shade)}
+.srow{display:flex;justify-content:space-between;align-items:center;height:46px;border-bottom:1px dotted var(--hair);font:700 17px/1 'JetBrains Mono',monospace;letter-spacing:.12em;color:var(--ink);white-space:pre;text-shadow:0 0 10px var(--shade)}
+.srow .bar{display:inline-block;width:150px;height:18px;background:#7A1212}
+
+.blueprint{color:var(--ink)}
+.blueprint svg,.chart svg,.voice svg{filter:drop-shadow(0 0 5px var(--shade))}
+.blueprint svg text{letter-spacing:.14em}
+
+.chart svg{overflow:visible}
+
+.terminal{background:rgba(8,10,13,.92);border:2px solid rgba(255,255,255,.88)}
+.tbar{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.18);font:500 15px/1 'JetBrains Mono',monospace;color:#fff}
+.tbar i{width:12px;height:12px;border-radius:50%;background:#59606b}
+.tbar i.r{background:#FF5F57}
+.tbar i.b{background:var(--ac)}
+.tbar span{margin-left:10px;letter-spacing:.06em}
+.tbody{padding:14px 18px;font:500 17px/27px 'JetBrains Mono',monospace;color:#fff}
+.tline{white-space:pre}
+.tline.out{color:rgba(255,255,255,.72);padding-left:1.4em}
+.tline b{color:var(--a);font-weight:700}
+.terminal:not(.acc) .tline b{color:#fff}
+.cursor{display:inline-block;width:10px;height:19px;margin-left:2px;background:#fff;vertical-align:-3px}
+
+.chat{display:flex;flex-direction:column;gap:14px}
+.bub{display:inline-block;max-width:600px;padding:16px 26px;border-radius:28px;color:#fff;font:600 30px/1.2 'Inter Tight',system-ui,sans-serif;white-space:normal}
+.bub.them{align-self:flex-start;background:rgba(34,38,46,.94);transform-origin:left bottom}
+.bub.her{align-self:flex-end;background:var(--ac);transform-origin:right bottom}
+.chat:not(.acc) .bub.her{background:rgba(244,242,234,.96);color:#0E1013}
+
+.ncard{position:relative;width:480px;height:108px;padding:14px 20px 0 84px;border-radius:24px;background:rgba(246,247,250,.96);color:#0E1013;box-shadow:0 14px 34px rgba(0,0,0,.35)}
+.ncard .ico{position:absolute;left:20px;top:20px;width:48px;height:48px;border-radius:12px;background:var(--ac);color:#fff;font:700 24px/48px 'Inter Tight',sans-serif;font-style:normal;text-align:center}
+.nmeta{display:flex;justify-content:space-between;font:600 13px/16px 'Inter Tight',sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#6B7280}
+.ntitle{margin-top:3px;font:700 21px/26px 'Inter Tight',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ntext{font:500 18px/24px 'Inter Tight',sans-serif;color:#2B2F36;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.vrow{display:flex;justify-content:space-between;font:500 14px/22px 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--ink);text-shadow:0 0 10px var(--shade)}
+
+.clock{display:flex;align-items:center;gap:30px}
+.cdial{width:230px;height:230px;color:var(--ink);flex:none}
+.ctext .big{white-space:nowrap}
+
+.lrow{height:29px;font:500 17px/29px 'JetBrains Mono',monospace;letter-spacing:.1em;color:var(--dim);white-space:pre;text-shadow:0 0 10px var(--shade)}
+
+.trow{display:flex;align-items:center;gap:26px}
+.track{position:relative;flex:none;width:132px;height:68px;border-radius:34px;background:rgba(255,255,255,.3)}
+.track.on{background:var(--ac)}
+.track i{position:absolute;top:6px;width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.35)}
+.tstate{font-family:'Anton',Impact,sans-serif;line-height:1;color:var(--ink);white-space:nowrap}
+.tstate.off{color:#E5484D}
+
+.prow{display:flex;justify-content:space-between;align-items:flex-end}
+.pnum{font-family:'Anton',Impact,sans-serif;line-height:.96;color:var(--ink)}
+.pbar{height:16px;margin-top:10px;background:rgba(255,255,255,.24)}
+.pbar b{display:block;height:16px;background:var(--a)}
+
+.pin{pointer-events:none}
+.pintag{position:absolute}
+
+/* ---- over everything ---- */
+.flash{position:absolute;left:0;top:0;width:1920px;height:1080px;background:#fff}
+.wipe{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden}
+.wipe i{position:absolute;left:0;width:1920px;height:360px;background:var(--acc)}
+
+.end{position:absolute;left:0;top:0;width:1920px;height:1080px;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.eacc{height:2px;margin-bottom:38px;background:var(--acc)}
+.etitle{min-height:40px;font:700 30px/40px 'JetBrains Mono',monospace;letter-spacing:.2em;color:#fff;white-space:pre}
+.ecur{display:inline-block;width:14px;height:28px;margin-left:6px;background:#fff;vertical-align:-4px}
+.eline{margin-top:12px;min-height:30px;font:500 17px/30px 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(255,255,255,.62);white-space:pre}
