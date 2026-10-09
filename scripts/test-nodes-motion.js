@@ -208,11 +208,11 @@ function testValidation() {
   assert.equal(plan.nodes.m1.reasonCode, 'not_html');
   assert.deepEqual(plan.nodes.m1.reasonData, { format: 'landscape', width: 1920, height: 1080 });
   assert.match(plan.nodes.m1.reason, /HTML code/);
-  // other invalid nodes keep working without data
+  // a missing input carries only the name of its empty field (the input HTML has the field html), so the text can say that the field is empty
   const missing = { graph: { ...workflow.graph, nodes: [workflow.graph.nodes[1]].map((node) => ({ ...node, params: {} })), edges: [] } };
   const missingPlan = engineLib.computePlan({ workflow: missing, results: {}, request: engineLib.normaliseRequest({ mode: 'all' }, missing, registry), registry, limits: engineLib.resolveLimits() });
   assert.equal(missingPlan.nodes.m1.reasonCode, 'missing_input');
-  assert.equal(missingPlan.nodes.m1.reasonData, undefined);
+  assert.deepEqual(missingPlan.nodes.m1.reasonData, { field: 'html' });
 }
 
 async function testToolMessages() {
@@ -316,6 +316,13 @@ function testI18n() {
   assert.match(sized, /data-height="1920"/);
   assert.match(sized, /1920×\?/);
   assert.equal(ui.issueText(null), '');
+  // an empty field of a required input (data.field from the engine) says that the field is empty, in the run dialog as on the card;
+  // a missing input without a field and the wording of the app stay as they were
+  const fill = (key, port) => dict.de[key].split('{port}').join(port);
+  const briefLabel = ui.portLabel('brief');
+  assert.equal(ui.issueText({ code: 'missing_input', port: 'brief', data: { field: 'brief' }, message: 'x' }), fill('nodes.issue.missing_input.param', briefLabel));
+  assert.equal(ui.issueText({ code: 'missing_input', port: 'brief', message: 'x' }), fill('nodes.issue.missing_input', briefLabel));
+  assert.equal(ui.issueText({ code: 'missing_input', port: 'brief', data: { field: 'brief' }, message: 'x' }, 'app'), fill('nodes.issue.missing_input.app', briefLabel));
   // an issue saved before a placeholder was added to its text (no `formats` in an older refusal) keeps the engine's message
   const formatIssue = { code: 'VIDEO_EDIT_VIDEO_FORMAT', message: 'video: Kling O3 takes MP4 or MOV', data: { model: 'Kling O3', format: 'WEBM' } };
   assert.equal(ui.issueText(formatIssue), formatIssue.message, 'a missing placeholder value: the message, not "{formats}"');

@@ -40,14 +40,17 @@ const errorOf = async (promise) => {
   return null;
 };
 
-// The songs of the tests (each gives a good answer without a note of the layout, see the fixtures). `options` are the settings of the grid.
+// The songs of the tests (each gives a good answer without a note of the layout, see the fixtures). `options` are the settings of the grid: a share
+// of motion of 0.3 and at most 40 units (the defaults before every unit moved), so that the grids hold all three kinds of unit; the defaults (every unit
+// a clip, at most 50 units) have tests of their own (testAllMotion, the prices).
+const MIXED = Object.freeze({ motionShare: 0.3, maxUnits: 40 });
 const SONGS = {
-  s60: { song: { seconds: 60, seed: 3 }, options: {} },
-  s72: { song: { seconds: 72, seed: 7 }, options: {} },
-  dense: { song: { seconds: 72, seed: 11, pace: 0.3 }, options: {} },
-  slow: { song: { seconds: 100, seed: 5, bpm: 96 }, options: {} },
-  fast: { song: { seconds: 120, seed: 9, bpm: 140 }, options: {} },
-  long: { song: { seconds: 150, seed: 2 }, options: { maxUnits: 50 } }
+  s60: { song: { seconds: 60, seed: 3 }, options: MIXED },
+  s72: { song: { seconds: 72, seed: 7 }, options: MIXED },
+  dense: { song: { seconds: 72, seed: 11, pace: 0.3 }, options: MIXED },
+  slow: { song: { seconds: 100, seed: 5, bpm: 96 }, options: MIXED },
+  fast: { song: { seconds: 120, seed: 9, bpm: 140 }, options: MIXED },
+  long: { song: { seconds: 150, seed: 2 }, options: { ...MIXED, maxUnits: 50 } }
 };
 const songOf = (name) => makeSong(SONGS[name].song);
 const gridOf = (name, extra = {}) => {
@@ -190,8 +193,8 @@ function testGrid() {
   // the settings and their ranges
   const song = songOf('s72');
   const read = (options) => hudPlan.normalizeSettings(options);
-  assert.deepEqual(read({}), { cutsPerMinute: 24, maxUnits: 40, lipsyncSecondsPerMinute: 22, motionShare: 0.3, clipSeconds: 5 });
-  assert.deepEqual(read({ cutsPerMinute: 5, maxUnits: 99, lipsyncSecondsPerMinute: 99, motionShare: 2, clipSeconds: 1 }), { cutsPerMinute: 14, maxUnits: 50, lipsyncSecondsPerMinute: 60, motionShare: 0.6, clipSeconds: 2 });
+  assert.deepEqual(read({}), { cutsPerMinute: 24, maxUnits: 50, lipsyncSecondsPerMinute: 22, motionShare: 1, clipSeconds: 5 });
+  assert.deepEqual(read({ cutsPerMinute: 5, maxUnits: 99, lipsyncSecondsPerMinute: 99, motionShare: 2, clipSeconds: 1 }), { cutsPerMinute: 14, maxUnits: 50, lipsyncSecondsPerMinute: 60, motionShare: 1, clipSeconds: 2 });
   assert.deepEqual(read({ cutsPerMinute: 99, maxUnits: 1, motionShare: -1, clipSeconds: 99 }), { cutsPerMinute: 40, maxUnits: 6, lipsyncSecondsPerMinute: 22, motionShare: 0, clipSeconds: 10 });
   assert.equal(read({ cutsPerMinute: 'x', maxUnits: null }).cutsPerMinute, 24, 'a setting that is no number is the default');
   const fast = hudPlan.planGrid(song.analysis, song.timing, { cutsPerMinute: 40 });
@@ -210,6 +213,16 @@ function testGrid() {
   assert.equal(noMotion.stats.story, 0, 'no motion, no story clip');
   const motion = hudPlan.planGrid(song.analysis, song.timing, { motionShare: 0.6 });
   assert.ok(motion.stats.story > grid.stats.story, `motion share: ${motion.stats.story} > ${grid.stats.story}`);
+  // the default: every unit that is not sung is a clip of the video model, the first one (the portrait of the hook) too, so no still is left
+  const everything = hudPlan.planGrid(song.analysis, song.timing, {});
+  assert.equal(everything.stats.still, 0, 'every unit moves: no still');
+  assert.equal(everything.stats.story, everything.units.length - everything.stats.sung);
+  assert.ok(everything.units[0].kind === 'story' || everything.units[0].kind === 'performance', `the hook moves too (${everything.units[0].kind})`);
+  checkGrid(everything, song, 'every unit moves');
+  // just under 1, the hook stays a still
+  const almost = hudPlan.planGrid(song.analysis, song.timing, { motionShare: 0.95 });
+  assert.ok(almost.units[0].kind !== 'story', 'a share under 1 keeps the portrait of the hook a still');
+  assert.ok(almost.stats.story > motion.stats.story, `${almost.stats.story} clips at 0.95 > ${motion.stats.story} at 0.6`);
   const shortClips = hudPlan.planGrid(song.analysis, song.timing, { clipSeconds: 3, maxUnits: 50 });
   checkGrid(shortClips, song, 'clips of 3 s');
   const fewUnits = hudPlan.planGrid(song.analysis, song.timing, { maxUnits: 20 });
@@ -229,14 +242,14 @@ function testGridErrors() {
     }
     return null;
   })();
-  assert.ok(tooLong, 'a song of 300 s does not fit into 40 units of 5 s');
+  assert.ok(tooLong, 'a song of 300 s does not fit into 50 units of 5 s');
   assert.equal(tooLong.code, 'HUDPLAN_TOO_LONG');
   assert.deepEqual(Object.keys(tooLong.data).sort(), ['clip', 'needed', 'seconds', 'units']);
   assert.equal(tooLong.data.seconds, 300);
-  assert.equal(tooLong.data.units, 40);
+  assert.equal(tooLong.data.units, 50);
   assert.equal(tooLong.data.clip, 5);
-  assert.ok(tooLong.data.needed > 40, `${tooLong.data.needed} units are needed`);
-  assert.match(tooLong.message, /300 s long.*5 s.*about \d+ units.*at most 40/);
+  assert.ok(tooLong.data.needed > 50, `${tooLong.data.needed} units are needed`);
+  assert.match(tooLong.message, /300 s long.*5 s.*about \d+ units.*at most 50/);
   // more units or longer clips make it
   const bigger = hudPlan.planGrid(longSong.analysis, longSong.timing, { maxUnits: 50, clipSeconds: 10 });
   assert.ok(bigger.units.length <= 50);
@@ -1038,27 +1051,45 @@ async function testPrice() {
     assert.deepEqual(real.llm, { inputPerMillion: 4, outputPerMillion: 20, charsPerToken: 3 }, 'Claude Opus 5.5');
     assert.equal(hudNode.hudPrices('vendor/unknown-model').llm, null, 'a model without a price: the language model is unknown');
 
-    // the songs of 60 and 120 s at the default settings, and the guide in the texts of the node
-    const rows = [];
-    for (const name of ['s60', 's72', 'slow', 'fast', 'long']) {
-      const { song, grid } = gridOf(name);
-      const figure = figureOf();
-      const chars = hudPlan.systemPrompt({ theme: 'hud' }).length + hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid }).length;
-      const cost = hudPlan.estimateCost({ grid, settings: grid.settings, prices: real, promptChars: chars });
-      assert.notEqual(cost.total, null, name);
-      rows.push({ name, seconds: song.seconds, cost });
-    }
-    const of = (name) => rows.find((row) => row.name === name).cost;
-    assert.ok(of('s60').total >= 3.2 && of('s60').total <= 3.9, `60 s: ${of('s60').total} USD`);
-    assert.ok(of('fast').total >= 6.6 && of('fast').total <= 7.6, `120 s: ${of('fast').total} USD`);
-    assert.ok(of('s60').parts.llm >= 0.1 && of('s60').parts.llm <= 0.3 && of('fast').parts.llm >= 0.2 && of('fast').parts.llm <= 0.4, 'the language model: about 0.2 and 0.3 USD');
-    const average = rows.reduce((sum, row) => sum + row.cost.perMinute, 0) / rows.length;
-    assert.ok(average >= 3.3 && average <= 3.8, `${average.toFixed(2)} USD per minute of song`);
+    // the songs of 60 and 120 s at the default settings (every unit that is not sung is a clip) and with the share of motion of the songs (0.3: stills that
+    // move by parallax), and the guide in the texts of the node
+    const priced = (options) => {
+      const rows = [];
+      for (const name of ['s60', 's72', 'slow', 'fast', 'long']) {
+        const { song, grid } = gridOf(name, options);
+        const figure = figureOf();
+        const chars = hudPlan.systemPrompt({ theme: 'hud' }).length + hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid }).length;
+        const cost = hudPlan.estimateCost({ grid, settings: grid.settings, prices: real, promptChars: chars });
+        assert.notEqual(cost.total, null, name);
+        rows.push({ name, seconds: song.seconds, cost });
+      }
+      const of = (name) => rows.find((row) => row.name === name).cost;
+      const average = rows.reduce((sum, row) => sum + row.cost.perMinute, 0) / rows.length;
+      return { rows, of, average };
+    };
     const def = require('../lib/nodes/registry').get('music_video.hud_plan');
-    assert.match(def.description, /about 3\.5 USD per minute of song/, 'the guide in the description is the one measured here');
-    assert.match(def.description, /about 0\.2 USD for a minute of song and 0\.3 USD for two/);
-    // the lip sync is the biggest part
-    for (const row of rows) assert.ok(row.cost.parts.lipsync > row.cost.parts.plates && row.cost.parts.lipsync > row.cost.parts.clips, `${row.name}: ${JSON.stringify(row.cost.parts)}`);
+    {
+      const { rows, of, average } = priced({ motionShare: hudPlan.DEFAULTS.motionShare, maxUnits: hudPlan.DEFAULTS.maxUnits });
+      assert.ok(of('s60').total >= 5.3 && of('s60').total <= 6.1, `60 s: ${of('s60').total} USD`);
+      assert.ok(of('fast').total >= 10.6 && of('fast').total <= 12, `120 s: ${of('fast').total} USD`);
+      assert.ok(of('s60').parts.llm >= 0.1 && of('s60').parts.llm <= 0.3 && of('fast').parts.llm >= 0.2 && of('fast').parts.llm <= 0.4, 'the language model: about 0.2 and 0.3 USD');
+      assert.ok(average >= 5.2 && average <= 5.9, `${average.toFixed(2)} USD per minute of song`);
+      assert.match(def.description, /about 5\.5 USD per minute of song at the default settings/, 'the guide in the description is the one measured here');
+      assert.match(def.description, /about 11\.5 USD for two minutes/);
+      assert.match(def.description, /about 0\.2 USD for a minute of song and 0\.3 USD for two/);
+      // the clips and the lip sync are the biggest parts, nothing is spent on depth maps
+      for (const row of rows) {
+        const { parts } = row.cost;
+        assert.ok(parts.clips > parts.plates && parts.lipsync > parts.plates && parts.depth === 0, `${row.name}: ${JSON.stringify(parts)}`);
+      }
+    }
+    {
+      const { rows, average } = priced({});
+      assert.ok(average >= 3.3 && average <= 3.8, `${average.toFixed(2)} USD per minute of song at a share of motion of 0.3`);
+      assert.match(def.description, /about 3\.5 USD per minute at 0\.3/);
+      // there the lip sync is the biggest part
+      for (const row of rows) assert.ok(row.cost.parts.lipsync > row.cost.parts.plates && row.cost.parts.lipsync > row.cost.parts.clips, `${row.name}: ${JSON.stringify(row.cost.parts)}`);
+    }
   }
 
   // the board: the same numbers, one block for every unit
@@ -1132,10 +1163,10 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', cuts_per_minute: 24, max_units: 40, lipsync_seconds_per_minute: 22, motion_share: 0.3, clip_seconds: 5
+    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5
   });
   assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 99, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
-    ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 50, lipsync_seconds_per_minute: 0, motion_share: 0.6, clip_seconds: 2
+    ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 50, lipsync_seconds_per_minute: 0, motion_share: 1, clip_seconds: 2
   });
   assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['hud', 'kuble'], 'the planner writes one of the two styles (auto is for the renderer)');
   assert.deepEqual(def.params.find((param) => param.id === 'hud_language').options, ['en', 'de', 'es']);
@@ -1372,7 +1403,9 @@ async function testNode() {
       song: songValue,
       ...extra
     });
-    const exec = (ctx, ins, raw = {}) => def.execute(ctx, ins, real.normalizeParams(def, { model: 'anthropic/claude-opus-5.5', ...raw }));
+    // the settings of the test songs (MIXED: stills, clips and sung windows); the defaults, where every unit moves, have a block of their own
+    const exec = (ctx, ins, raw = {}) =>
+      def.execute(ctx, ins, real.normalizeParams(def, { model: 'anthropic/claude-opus-5.5', motion_share: MIXED.motionShare, max_units: MIXED.maxUnits, ...raw }));
 
     /* a good answer: one request, every output, the slices of the song */
     {
@@ -1413,6 +1446,21 @@ async function testNode() {
       assert.ok(ctx.logs.some((line) => new RegExp(`^${stats.units} units \\(${stats.sung} sung, ${stats.story} story, ${stats.still} still\\), ${stats.cuts} cuts \\([\\d.]+/min\\), 60 s, \\d+ graphics for ${grid.lines.length} lines, 1 answer of the model, the film costs about 3\\.45 USD$`).test(line)), ctx.logs.join(' | '));
       assert.ok(!ctx.logs.some((line) => /plain|corrected|no place/.test(line)), 'a clean run says nothing about repairs');
       assert.deepEqual(await scratchLeft(), [], 'no scratch folder is left');
+    }
+
+    /* the defaults of the node: every unit that is not sung is a clip, the list of the stills is empty (the nodes behind it make nothing) */
+    {
+      const everything = hudPlan.planGrid(song.analysis, song.timing, {});
+      reset([goodAnswer(everything, figure)]);
+      const ctx = makeCtx();
+      const result = await exec(ctx, inputs(), { motion_share: def.params.find((param) => param.id === 'motion_share').default, max_units: def.params.find((param) => param.id === 'max_units').default });
+      assert.equal(calls.length, 1, 'the answer for the grid of the defaults is good at once');
+      const out = result.variants[0];
+      const shots = planLib.parseShots(out.shots.value);
+      assert.deepEqual([shots.still, shots.story, shots.performance], [0, everything.units.length - everything.stats.sung, everything.stats.sung]);
+      assert.deepEqual([out.still_prompts.type, out.still_prompts.items.length], ['list', 0]);
+      assert.equal(out.story_prompts.items.length, everything.stats.story);
+      assert.match(out.board.value, /^NUMBERS .*· \d+ units \(\d+ sung, \d+ story, 0 still\)/m);
     }
 
     /* a bad answer, then a good one: both are paid, the problems go to the second request */
