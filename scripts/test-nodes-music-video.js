@@ -1459,6 +1459,7 @@ async function run(iso) {
     assert.equal(emptyIdea.valid, false);
     const problem = emptyIdea.issues.find((issue) => issue.nodeId === 'n5' && issue.port === 'brief');
     assert.ok(problem && problem.level === 'error' && problem.code === 'missing_input', JSON.stringify(emptyIdea.issues));
+    assert.deepEqual(problem.data, { field: 'brief' }, 'the issue names the empty field, so the text says that the field is empty');
     resetProviders();
     const refusedRun = await errorOf(engine.start(workflow.id, { mode: 'all', user: STAFF, overrides: { n5: { brief: '' } } }));
     assert.ok(refusedRun, 'the run is refused');

@@ -236,6 +236,7 @@ function testInvalidFix() {
     assert.match(dict['nodes.fix.addInput'], /\{name\}/);
   }
   assert.equal(T('nodes.issue.missing_input', { port: 'HTML' }), 'Eingang «HTML» fehlt. Verbinde einen passenden Node damit.');
+  for (const lang of LANGS) assert.match(dictionaries[lang]['nodes.issue.missing_input.param'], /\{port\}/, `${lang}: the field wording names the field`);
 }
 
 function testWiring() {

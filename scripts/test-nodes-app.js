@@ -5,10 +5,13 @@
 // a free local flow with an exposed text list that runs as a batch through the engine (overrides,
 // no change of the saved graph), and static checks of the browser wiring (script order, no native
 // dialogs, no innerHTML, every CSS class of the new modules is defined, i18n keys exist in three languages).
-// The optional approval step (outputs marked `approve: true`): the field in the app section (kept only as
-// `true`, in the server and in the client, through save, export, import and duplicate), the pure decision of
-// the app view (which step is due, which request starts it) and the whole flow through the real engine
-// (step 1 makes only the marked outputs, step 2 takes their results from the cache, "again" is forced).
+// The optional approval steps (outputs marked `approve`): the field in the app section (`true` for step 1, also
+// written as 1, a whole number from 2 to 5 for a later step, anything else dropped; the hint of a marked output;
+// in the server and in the client, through save, export, import and duplicate), the pure decision of the app view
+// (which step is due, which request starts it; with marks of one stage exactly the decision of before, checked
+// against a frozen copy of it) and the whole flow through the real engine, with one stage (step 1 makes only the
+// marked outputs, step 2 takes their results from the cache, "again" is forced) and with two (a stage that needs
+// an upload waits for it while the first one stays in the cache, the last step makes the rest).
 
 const assert = require('assert/strict');
 const fs = require('fs');
@@ -182,7 +185,15 @@ function extractClientNormalizeApp() {
   return new Function(`${match[0]}; return normalizeApp;`)();
 }
 
-const WRONG_MARKS = ['yes', 'true', 'TRUE', 1, 0, null, false, undefined, {}, []];
+// Values that are no mark (step 1 is `true` or 1, a later step a whole number from 2 to 5): the store and the browser drop them.
+const WRONG_MARKS = ['yes', 'true', 'TRUE', '1', '2', 0, 6, 1.5, 2.5, -1, NaN, Infinity, null, false, undefined, {}, []];
+
+// The step of a mark as the node view reads it (public/nodes/main.js): cut out of the source like normalizeApp
+function extractApproveStepOf() {
+  const match = read('public/nodes/main.js').match(/function approveStepOf\(entry\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(match, 'main.js has approveStepOf');
+  return new Function(`${match[0]}; return approveStepOf;`)();
+}
 
 function testApprovalField() {
   const graph = freeGraph();
@@ -190,17 +201,40 @@ function testApprovalField() {
   const client = extractClientNormalizeApp();
   const clientOutputs = (outputs) => client({ enabled: true, inputs: [], outputs }).outputs;
   for (const [name, outputsOf] of [['server', server], ['client', clientOutputs]]) {
-    // exactly `true` is the mark and stays
+    // `true` is step 1 and stays; 1 is step 1 as well and is stored as `true` (the way every app of before stores it)
     assert.deepEqual(outputsOf([{ node: 'n4', label: 'Cards', approve: true }]), [{ node: 'n4', label: 'Cards', approve: true }], `${name}: true stays`);
+    assert.deepEqual(outputsOf([{ node: 'n4', label: 'Cards', approve: 1 }]), [{ node: 'n4', label: 'Cards', approve: true }], `${name}: 1 is step 1, stored as true`);
+    // a later step is a whole number from 2 to 5 and stays as it is
+    for (const step of [2, 3, 4, 5]) assert.deepEqual(outputsOf([{ node: 'n4', label: 'Cards', approve: step }]), [{ node: 'n4', label: 'Cards', approve: step }], `${name}: step ${step} stays`);
     // anything else is no mark and does not stay (no key at all)
     for (const wrong of WRONG_MARKS) {
       const [entry] = outputsOf([{ node: 'n4', label: 'Cards', approve: wrong }]);
       assert.deepEqual(entry, { node: 'n4', label: 'Cards' }, `${name}: ${JSON.stringify(wrong)} is dropped`);
       assert.equal('approve' in entry, false, `${name}: no approve key for ${JSON.stringify(wrong)}`);
     }
-    // an output without the field is stored as it always was, byte for byte
+    // an output without the field, and one of an app of before, is stored as it always was, byte for byte
     assert.equal(JSON.stringify(outputsOf([{ node: 'n4', label: 'Cards' }])), '[{"node":"n4","label":"Cards"}]', `${name}: unchanged without the field`);
+    assert.equal(JSON.stringify(outputsOf([{ node: 'n4', label: 'Cards', approve: true }])), '[{"node":"n4","label":"Cards","approve":true}]', `${name}: unchanged with the mark of before`);
+    // the hint of a marked output: a text, trimmed, of at most 300 characters, after the mark; anything else is dropped. It stays without a mark
+    // as well (the app view shows it only with one), so taking the mark away and giving it back keeps it
+    assert.equal(JSON.stringify(outputsOf([{ hint: '  Upload the song.  ', approve: 2, label: 'Cards', node: 'n4' }])), '[{"node":"n4","label":"Cards","approve":2,"hint":"Upload the song."}]', `${name}: the hint, trimmed, in a fixed order`);
+    assert.equal([...outputsOf([{ node: 'n4', label: 'Cards', approve: true, hint: '\u{1F3B5}'.repeat(400) }])[0].hint].length, 300, `${name}: at most 300 characters`);
+    for (const wrong of ['', '   ', 5, null, {}, ['a'], true]) assert.equal('hint' in outputsOf([{ node: 'n4', label: 'Cards', approve: true, hint: wrong }])[0], false, `${name}: hint ${JSON.stringify(wrong)} is dropped`);
+    assert.deepEqual(outputsOf([{ node: 'n4', label: 'Cards', hint: 'Later.' }]), [{ node: 'n4', label: 'Cards', hint: 'Later.' }], `${name}: a hint without a mark stays`);
   }
+  // the server and the browser agree on every value
+  for (const approve of [true, 1, 2, 3, 4, 5, ...WRONG_MARKS]) {
+    for (const hint of [undefined, '', ' x ', 'Upload it.', 7]) {
+      const entry = [{ node: 'n4', label: 'Cards', approve, hint }];
+      assert.equal(JSON.stringify(clientOutputs(entry)), JSON.stringify(server(entry)), `approve ${JSON.stringify(approve)}, hint ${JSON.stringify(hint)}`);
+    }
+  }
+  // the step the node view reads from an entry: 1 for step 1, 2 to 5, 0 without a mark
+  const approveStepOf = extractApproveStepOf();
+  assert.deepEqual([true, 1, 2, 3, 4, 5].map((approve) => approveStepOf({ node: 'n4', approve })), [1, 1, 2, 3, 4, 5]);
+  for (const wrong of WRONG_MARKS) assert.equal(approveStepOf({ node: 'n4', approve: wrong }), 0, `${JSON.stringify(wrong)} is no step`);
+  assert.equal(approveStepOf(undefined), 0);
+  assert.equal(approveStepOf({ node: 'n4' }), 0);
   // the client keeps the entries of an app the way they are (labels, order) and the other fields of the app
   const app = client({ enabled: true, title: 'T', description: 'D', inputs: [{ node: 'n1', param: 'text', label: 'L' }], outputs: [{ node: 'n4', label: 'A', approve: true }, { node: 'n9', label: 'B' }] });
   assert.deepEqual(app, { enabled: true, title: 'T', description: 'D', inputs: [{ node: 'n1', param: 'text', label: 'L' }], outputs: [{ node: 'n4', label: 'A', approve: true }, { node: 'n9', label: 'B' }] });
@@ -257,6 +291,22 @@ async function testApprovalStore(tmpDir, created) {
   const without = { ...current.graph, nodes: current.graph.nodes.filter((node) => node.id !== 'n4'), edges: current.graph.edges.filter((edge) => edge.to.node !== 'n4') };
   await wfStore.saveGraph(id, { baseRev: current.rev, graph: without });
   assert.deepEqual((await wfStore.readWorkflow(id)).app.outputs, [], 'the mark leaves with its output');
+
+  // a later step and its hint take the same ways
+  const staged = [{ node: 'n4', label: 'Cards', approve: 3, hint: 'Upload the song, then go on.' }];
+  const stagedId = track(await wfStore.createWorkflow({ document: { ...doc, app: { ...doc.app, outputs: staged } } }));
+  assert.deepEqual((await wfStore.readWorkflow(stagedId)).app.outputs, staged, 'an imported document keeps the step and the hint');
+  const stagedExport = await wfStore.exportWorkflow(stagedId);
+  assert.deepEqual(stagedExport.app.outputs, staged, 'the export carries them');
+  assert.deepEqual((await wfStore.readWorkflow(track(await wfStore.createWorkflow({ document: stagedExport })))).app.outputs, staged, 'and an import of that export keeps them');
+  assert.deepEqual((await wfStore.readWorkflow(track(await wfStore.duplicateWorkflow(stagedId)))).app.outputs, staged, 'a copy keeps them');
+  let stagedNow = await wfStore.readWorkflow(stagedId);
+  await wfStore.saveGraph(stagedId, { baseRev: stagedNow.rev, graph: stagedNow.graph, name: 'renamed' });
+  stagedNow = await wfStore.readWorkflow(stagedId);
+  assert.deepEqual(stagedNow.app.outputs, staged, 'a save without app keeps them');
+  // a step out of range is no mark; the hint stays for a mark given later
+  await wfStore.saveGraph(stagedId, { baseRev: stagedNow.rev, graph: stagedNow.graph, app: { ...stagedNow.app, outputs: [{ ...staged[0], approve: 6 }] } });
+  assert.deepEqual((await wfStore.readWorkflow(stagedId)).app.outputs, [{ node: 'n4', label: 'Cards', hint: 'Upload the song, then go on.' }]);
 }
 
 /* ---------- optional approval step: the decision of the app view ---------- */
@@ -273,8 +323,11 @@ function loadApprovalLogic() {
   const plain = (value) => (value === undefined ? value : JSON.parse(JSON.stringify(value)));
   return {
     raw,
+    plain,
     approvalTargets: (...args) => plain(raw.approvalTargets(...args)),
+    approvalStages: (...args) => plain(raw.approvalStages(...args)),
     previewRequest: (...args) => plain(raw.previewRequest(...args)),
+    stageFlow: (...args) => plain(raw.stageFlow(...args)),
     approvalFlow: (...args) => plain(raw.approvalFlow(...args))
   };
 }
@@ -346,6 +399,149 @@ function testApprovalFlow() {
   for (const flow of [raw.approvalFlow({ targets: ['n3'], overrides, preview: stale }), raw.approvalFlow({ targets: ['n3'], overrides, preview: cachedPreview, all: restStale }), raw.approvalFlow({ targets: ['n3'], overrides, preview: cachedPreview, all: everythingCached })]) {
     assert.equal(flow.request.overrides, overrides);
   }
+}
+
+// The decision of the app view with one stage of marks, as it was before there were stages (app-mode.js of 2026-10-07), frozen: an app of
+// before must get the same step and the same request, byte for byte. (A mark of 1 did not exist then: the store dropped it.)
+const LEGACY = (() => {
+  function allCached(plan) {
+    const nodes = plan && plan.nodes ? Object.values(plan.nodes) : [];
+    return nodes.length > 0 && nodes.every((node) => node.status === 'cached');
+  }
+  function approvalTargets(outputs, hasNode) {
+    const ids = [];
+    for (const entry of Array.isArray(outputs) ? outputs : []) {
+      if (entry && entry.approve === true && typeof entry.node === 'string' && hasNode(entry.node) && !ids.includes(entry.node)) ids.push(entry.node);
+    }
+    return ids;
+  }
+  function previewRequest({ targets, overrides, force = false, order = null }) {
+    const nodeIds = force && Array.isArray(order) && order.length ? order.slice() : targets.slice();
+    return { mode: nodeIds.length === 1 ? 'node' : 'selection', nodeIds, force, overrides };
+  }
+  function approvalFlow({ targets, overrides, preview, all = null, hasResult = () => true, redo = false }) {
+    if (!targets || !targets.length) return null;
+    const nodes = (preview && preview.nodes) || {};
+    const current = targets.every((id) => nodes[id] && nodes[id].status === 'cached' && hasResult(id));
+    const done = current && allCached(all);
+    if (current && !done && !redo) return { step: 'approve', done: false, request: { mode: 'all', force: false, overrides } };
+    return { step: 'first', done, request: previewRequest({ targets, overrides, force: redo || done, order: preview && preview.order }) };
+  }
+  return { approvalTargets, previewRequest, approvalFlow };
+})();
+
+// Apps of before (marks of one stage): the same marked outputs, and in every state the same step and request as before, byte for byte;
+// the stages of such an app are one stage, and stageFlow says the same in its own words (index 0 is step 1, index 1 the approval).
+function testOneStageAsBefore() {
+  const { raw, plain, approvalTargets, approvalStages, approvalFlow, stageFlow } = loadApprovalLogic();
+  const exists = (id) => ['n3', 'n5', 'n7'].includes(id);
+  const outputsOfBefore = [
+    [{ node: 'n5', approve: true }, { node: 'n3' }, { node: 'n7', approve: true }, { node: 'n5', approve: true }, { node: 'gone', approve: true }],
+    [{ node: 'n3', approve: true }],
+    [{ node: 'n3' }, { node: 'n5' }],
+    [{ node: 'n3', approve: 'yes' }, { node: 'n5', approve: true }],
+    []
+  ];
+  for (const outputs of outputsOfBefore) {
+    assert.deepEqual(approvalTargets(outputs, exists), LEGACY.approvalTargets(outputs, exists), JSON.stringify(outputs));
+    const stages = approvalStages(outputs, exists);
+    assert.deepEqual(stages, LEGACY.approvalTargets(outputs, exists).length ? [LEGACY.approvalTargets(outputs, exists)] : [], `one stage: ${JSON.stringify(outputs)}`);
+  }
+  const overrides = { n1: { text: 'topic' } };
+  const statusesOf = (status) => (status === 'missing' ? {} : { n1: 'cached', n2: status, n3: status, n5: status });
+  const previews = [null, undefined, planOf({}), ...['cached', 'stale', 'forced', 'invalid', 'unavailable', 'missing'].map((status) => planOf(statusesOf(status))), planOf({ n1: 'cached', n3: 'cached', n5: 'stale' })];
+  const alls = [null, planOf({}), planOf({ n1: 'cached', n3: 'cached', n5: 'cached', n9: 'stale' }), planOf({ n1: 'cached', n3: 'cached', n5: 'cached', n9: 'cached' })];
+  const results = [() => true, () => false, (id) => id === 'n3'];
+  let cases = 0;
+  for (const targets of [['n3'], ['n3', 'n5'], [], undefined]) {
+    for (const preview of previews) {
+      for (const all of alls) {
+        for (const hasResult of results) {
+          for (const redo of [false, true]) {
+            const args = { targets, overrides, preview, all, hasResult, redo };
+            const before = LEGACY.approvalFlow(args);
+            const now = raw.approvalFlow(args);
+            assert.equal(JSON.stringify(now), JSON.stringify(before), `as before: ${JSON.stringify({ targets, preview, all, redo, result: hasResult('n5') })}`);
+            if (before) assert.equal(now.request.overrides, overrides, 'the same values as the form');
+            const flow = targets && targets.length ? stageFlow({ stages: [targets], overrides, previews: [preview], all, hasResult, redo }) : null;
+            if (before) assert.deepEqual([flow.index === 0 ? 'first' : 'approve', flow.done, flow.total, flow.request], [before.step, before.done, 2, plain(before.request)]);
+            cases += 1;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(cases > 500, `${cases} states compared`);
+  assert.equal(approvalFlow({ targets: ['n3'], overrides }).step, 'first');
+}
+
+// Several stages (SPEC §14): the stage of a mark, the outputs by stage, and the step that is due with its request.
+function testStageFlow() {
+  const { raw, approvalTargets, approvalStages, stageFlow } = loadApprovalLogic();
+  const exists = (id) => ['n3', 'n5', 'n7', 'n8', 'n9'].includes(id);
+
+  // the stage of a mark: 1 for true and 1, 2 to 5, 0 for anything else
+  assert.deepEqual([true, 1, 2, 3, 4, 5].map((value) => raw.approvalStage(value)), [1, 1, 2, 3, 4, 5]);
+  for (const wrong of WRONG_MARKS) assert.equal(raw.approvalStage(wrong), 0, `${JSON.stringify(wrong)} is no stage`);
+
+  // the outputs by stage: the lowest stage first, the order of the app inside a stage, a node once (with its first mark), outputs that are
+  // gone and stages without outputs left out: marks 1 and 3 are two steps of approval, not three
+  assert.deepEqual(
+    approvalStages([{ node: 'n9', approve: 3 }, { node: 'n3' }, { node: 'n5', approve: true }, { node: 'n7', approve: 3 }, { node: 'n5', approve: 2 }, { node: 'gone', approve: 2 }, { node: 'n8', approve: 'x' }], exists),
+    [['n5'], ['n9', 'n7']]
+  );
+  assert.deepEqual(approvalStages([{ node: 'n3', approve: true }, { node: 'n5', approve: 1 }], exists), [['n3', 'n5']], 'true and 1 are the same step');
+  assert.deepEqual(approvalStages([{ node: 'n3', approve: 5 }], exists), [['n3']], 'a single stage is step 1, whatever its number');
+  assert.deepEqual(approvalStages(undefined, exists), []);
+  assert.deepEqual(approvalStages([null, 'n3', { node: 3, approve: 2 }], exists), []);
+  // every marked output, of any stage, in the order of the app
+  assert.deepEqual(approvalTargets([{ node: 'n9', approve: 3 }, { node: 'n5', approve: true }, { node: 'n3', approve: 0 }], exists), ['n9', 'n5']);
+
+  // no stage, or a stage without outputs: nothing to decide
+  for (const stages of [[], null, undefined, [[]], [['n3'], []], 'n3']) assert.equal(stageFlow({ stages, overrides: {} }), null, JSON.stringify(stages));
+
+  // two stages, three steps. Stage 1 is the Suno pack (n3, made from the idea n1); stage 2 the board and the sheet (n7, n8), made from the idea
+  // and the song (n4, an upload); the rest makes the film (n9)
+  const overrides = { n1: { text: 'idea' } };
+  const stages = [['n3'], ['n7', 'n8']];
+  const pack = (status) => planOf({ n1: 'cached', n2: status, n3: status });
+  const board = (status) => planOf({ n1: 'cached', n4: status, n5: status, n7: status, n8: status });
+  const film = (pack3, board78, rest) => planOf({ n1: 'cached', n2: pack3, n3: pack3, n4: board78, n5: board78, n7: board78, n8: board78, n6: rest, n9: rest });
+  const decide = (previews, all, extra = {}) => stageFlow({ stages, overrides, previews, all, ...extra });
+
+  // nothing made: step 1 of 3, the pack and what it needs
+  assert.deepEqual(decide([pack('stale'), board('stale')], film('stale', 'stale', 'stale')), { index: 0, total: 3, done: false, request: { mode: 'node', nodeIds: ['n3'], force: false, overrides } });
+  assert.equal(decide([null, null], null).index, 0, 'while the plans are not there');
+  // the pack is made, the song is not there (the plan of stage 2 is invalid): step 2 is due, its request makes only the outputs of stage 2;
+  // the pack is not forced, it comes from the cache. The app view checks the form for it and starts nothing without the song
+  assert.deepEqual(decide([pack('cached'), board('invalid')], film('cached', 'invalid', 'invalid')), { index: 1, total: 3, done: false, request: { mode: 'selection', nodeIds: ['n7', 'n8'], force: false, overrides } });
+  // with the song: the same step, now with a valid plan
+  assert.deepEqual(decide([pack('cached'), board('stale')], film('cached', 'stale', 'stale')).request, { mode: 'selection', nodeIds: ['n7', 'n8'], force: false, overrides });
+  // stage 2 made: the last step makes everything, not forced
+  assert.deepEqual(decide([pack('cached'), board('cached')], film('cached', 'cached', 'stale')), { index: 2, total: 3, done: false, request: { mode: 'all', force: false, overrides } });
+  assert.equal(decide([pack('cached'), board('cached')], null).index, 2, 'while the plan of everything is not known');
+  // everything made: "Run again" begins at step 1 again, forced, with what stage 1 needs
+  assert.deepEqual(decide([pack('cached'), board('cached')], film('cached', 'cached', 'cached')), { index: 0, total: 3, done: true, request: { mode: 'selection', nodeIds: ['n1', 'n2', 'n3'], force: true, overrides } });
+  // the lowest stage that is not up to date is due: a new idea makes the pack stale again, even with the board still in the cache
+  assert.equal(decide([pack('stale'), board('cached')], film('stale', 'cached', 'cached')).index, 0);
+  // up to date means: cached and with a result the app can show
+  assert.equal(decide([pack('cached'), board('cached')], film('cached', 'cached', 'stale'), { hasResult: (id) => id !== 'n8' }).index, 1);
+  assert.equal(decide([pack('cached'), board('cached')], film('cached', 'cached', 'stale'), { hasResult: (id) => id !== 'n3' }).index, 0);
+  assert.equal(decide([pack('cached')], film('cached', 'cached', 'stale')).index, 1, 'a stage without its plan is not up to date');
+
+  // "make step n again": the stage that stands for approval, forced with what it needs
+  assert.deepEqual(decide([pack('cached'), board('invalid')], null, { redo: true }), { index: 0, total: 3, done: false, request: { mode: 'selection', nodeIds: ['n1', 'n2', 'n3'], force: true, overrides } });
+  assert.deepEqual(decide([pack('cached'), board('cached')], film('cached', 'cached', 'stale'), { redo: true }), {
+    index: 1,
+    total: 3,
+    done: false,
+    request: { mode: 'selection', nodeIds: ['n1', 'n4', 'n5', 'n7', 'n8'], force: true, overrides }
+  });
+  assert.deepEqual(decide([pack('stale'), board('stale')], null, { redo: true }), { index: 0, total: 3, done: false, request: { mode: 'selection', nodeIds: ['n1', 'n2', 'n3'], force: true, overrides } }, 'step 1 is due itself: it is made again');
+  // with everything done the flow is the one of "Run again" (the app view shows no redo button then)
+  assert.equal(decide([pack('cached'), board('cached')], film('cached', 'cached', 'cached'), { redo: true }).done, true);
+  // the request always carries the values of the form itself
+  assert.equal(raw.stageFlow({ stages, overrides, previews: [pack('cached'), board('stale')] }).request.overrides, overrides);
 }
 
 // The two steps through the real engine, with free nodes only: step 1 makes only the marked output and what it needs, step 2 takes
@@ -478,6 +674,157 @@ async function testApprovalThroughEngine(tmpDir, created) {
   assert.equal((await wfStore.readWorkflow(id)).graph.nodes.find((item) => item.id === 'n1').params.text, 'topic');
 }
 
+// Two stages through the real engine, with free nodes only, in the shape of the music video with the song by Suno: the idea makes the pack
+// (stage 1); the idea and an upload make the board (stage 2); the board makes the film (the last step). A node that counts its runs per node
+// proves what comes from the cache; the upload is a test node that is invalid without its file, like an empty song field.
+async function testStagesThroughEngine(tmpDir, created) {
+  const appMode = loadApprovalLogic();
+  const registry = createRegistry();
+  nodesBasic.registerAll(registry);
+  const runs = {};
+  registry.register({
+    type: 'test.count',
+    category: 'text',
+    inputs: [{ id: 'in', type: 'text', required: true }],
+    outputs: [{ id: 'text', type: 'text' }],
+    execute: async (ctx, inputs) => {
+      runs[ctx.nodeId] = (runs[ctx.nodeId] || 0) + 1;
+      return { variants: [{ text: { type: 'text', value: `${inputs.in.value} #${runs[ctx.nodeId]}` } }] };
+    }
+  });
+  registry.register({
+    type: 'test.upload',
+    category: 'input',
+    inputs: [],
+    outputs: [{ id: 'text', type: 'text' }],
+    params: [{ id: 'file', kind: 'text', default: '' }],
+    validate: (params) => (params.file ? [] : [{ code: 'no_asset', message: 'file: no asset selected' }]),
+    execute: async (_ctx, _inputs, params) => ({ variants: [{ text: { type: 'text', value: params.file } }] })
+  });
+  const bus = createEventBus();
+  const wfStore = createWorkflowsStore({ dir: tmpDir, registry, events: bus });
+  const engine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => ({}), limits: { jobPollMs: 20 } });
+  const node = (id, type, x, params = {}) => ({ id, type, x, y: 0, params });
+  const edge = (id, from, fromPort, to, toPort) => ({ id, from: { node: from, port: fromPort }, to: { node: to, port: toPort } });
+  const doc = {
+    format: 'ocd.workflow',
+    version: 1,
+    name: 'Stages test',
+    description: '',
+    graph: {
+      // idea -> pack -> [Pack]; idea + song -> board -> [Board] -> film -> [Film]
+      nodes: [
+        node('n1', 'input.text', 0, { text: 'idea' }),
+        node('n2', 'test.count', 300),
+        node('n3', 'output.result', 600, { label: 'Pack' }),
+        node('n4', 'test.upload', 0),
+        node('n5', 'text.template', 300, { template: '{{a}} / {{b}}' }),
+        node('n6', 'test.count', 600),
+        node('n7', 'output.result', 900, { label: 'Board' }),
+        node('n8', 'test.count', 900),
+        node('n9', 'output.result', 1200, { label: 'Film' })
+      ],
+      edges: [
+        edge('e1', 'n1', 'text', 'n2', 'in'),
+        edge('e2', 'n2', 'text', 'n3', 'inputs'),
+        edge('e3', 'n1', 'text', 'n5', 'a'),
+        edge('e4', 'n4', 'text', 'n5', 'b'),
+        edge('e5', 'n5', 'text', 'n6', 'in'),
+        edge('e6', 'n6', 'text', 'n7', 'inputs'),
+        edge('e7', 'n6', 'text', 'n8', 'in'),
+        edge('e8', 'n8', 'text', 'n9', 'inputs')
+      ],
+      notes: [],
+      groups: []
+    },
+    app: {
+      enabled: true,
+      title: 'Three steps',
+      description: '',
+      inputs: [{ node: 'n1', param: 'text', label: 'Idea' }, { node: 'n4', param: 'file', label: 'Song' }],
+      outputs: [{ node: 'n9', label: 'Film' }, { node: 'n3', label: 'Pack', approve: true, hint: 'Make the song and upload it.' }, { node: 'n7', label: 'Board', approve: 2 }]
+    }
+  };
+  const made = await wfStore.createWorkflow({ document: doc });
+  created.workflows.push(made.workflow.id);
+  created.sessions.push(made.workflow.sessionId);
+  const id = made.workflow.id;
+  const app = (await wfStore.readWorkflow(id)).app;
+  assert.deepEqual(app.outputs.map((entry) => [entry.node, entry.approve, entry.hint]), [['n9', undefined, undefined], ['n3', true, 'Make the song and upload it.'], ['n7', 2, undefined]], 'the store keeps the stages and the hint');
+  const stages = appMode.approvalStages(app.outputs, (nodeId) => made.workflow.graph.nodes.some((item) => item.id === nodeId));
+  assert.deepEqual(stages, [['n3'], ['n7']]);
+
+  // what the app view does: the plan of every stage and of everything for the form values, the results it shows, then the decision
+  const decide = async (overrides, extra = {}) => {
+    const results = await wfStore.readResults(id);
+    const hasResult = (nodeId) => Boolean(results.nodes[nodeId] && results.nodes[nodeId].selected);
+    const previews = [];
+    for (const targets of stages) previews.push(await engine.plan(id, appMode.previewRequest({ targets, overrides })));
+    const all = await engine.plan(id, { mode: 'all', force: false, overrides });
+    return { previews, all, flow: appMode.stageFlow({ stages, overrides, previews, all, hasResult, ...extra }) };
+  };
+  const run = async (request) => {
+    const runId = await engine.start(id, { ...request, user: 'tester' });
+    const record = await engine.whenFinished(id, runId);
+    assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
+    return record;
+  };
+  const statuses = (record) => Object.fromEntries(Object.entries(record.nodes).map(([nodeId, entry]) => [nodeId, entry.status]));
+  const noSong = { n1: { text: 'an idea' } };
+  const withSong = { n1: { text: 'an idea' }, n4: { file: 'song.mp3' } };
+
+  // step 1 of 3 without the song: the plan of the pack is valid, the ones of the board and of everything are not
+  let state = await decide(noSong);
+  assert.deepEqual([state.flow.index, state.flow.total, state.flow.done], [0, 3, false]);
+  assert.deepEqual(state.flow.request, { mode: 'node', nodeIds: ['n3'], force: false, overrides: noSong });
+  assert.equal(state.previews[0].valid, true, 'the pack needs no song');
+  assert.equal(state.previews[1].valid, false, 'the board does');
+  assert.deepEqual(state.previews[1].issues.filter((issue) => issue.level === 'error').map((issue) => [issue.nodeId, issue.code]), [['n4', 'no_asset']]);
+  assert.ok(state.previews[1].order.includes('n4'), 'the plan of stage 2 names the node of the song: the app view checks that field before it starts');
+  const first = await run(state.flow.request);
+  assert.deepEqual(statuses(first), { n1: 'done', n2: 'done', n3: 'done' }, 'stage 1 runs without the song');
+  assert.deepEqual(runs, { n2: 1 });
+
+  // step 2 is due, but its request is invalid until the song is there; nothing ran for it
+  state = await decide(noSong);
+  assert.deepEqual([state.flow.index, state.flow.request], [1, { mode: 'node', nodeIds: ['n7'], force: false, overrides: noSong }]);
+  assert.equal(state.previews[1].valid, false);
+  await assert.rejects(engine.start(id, { ...state.flow.request, user: 'tester' }), (error) => Array.isArray(error.issues) && error.issues.some((issue) => issue.code === 'no_asset'), 'the engine refuses it as well');
+  // the song is uploaded: the pack stays in the cache, step 2 is due with a valid plan
+  state = await decide(withSong);
+  assert.equal(state.previews[0].nodes.n3.status, 'cached', 'the pack stays in the cache after the upload');
+  assert.deepEqual([state.flow.index, state.previews[1].valid], [1, true]);
+  const second = await run(state.flow.request);
+  assert.deepEqual(statuses(second), { n1: 'cached', n4: 'done', n5: 'done', n6: 'done', n7: 'done' }, 'stage 2 makes only its part, the pack is not in it');
+  assert.deepEqual(runs, { n2: 1, n6: 1 });
+
+  // step 3 (approve and finish): the rest, with both stages from the cache
+  state = await decide(withSong);
+  assert.deepEqual([state.flow.index, state.flow.request], [2, { mode: 'all', force: false, overrides: withSong }]);
+  const third = await run(state.flow.request);
+  assert.deepEqual(statuses(third), { n1: 'cached', n2: 'cached', n3: 'cached', n4: 'cached', n5: 'cached', n6: 'cached', n7: 'cached', n8: 'done', n9: 'done' });
+  assert.deepEqual(runs, { n2: 1, n6: 1, n8: 1 }, 'nothing of the earlier steps is made or paid again');
+  assert.equal(third.cost.usd, 0);
+
+  // everything is up to date: "Run again" begins at step 1, forced
+  state = await decide(withSong);
+  assert.deepEqual([state.flow.index, state.flow.done, state.flow.request.force], [0, true, true]);
+  assert.deepEqual([...state.flow.request.nodeIds].sort(), ['n1', 'n2', 'n3']);
+  // "make step 2 again" while step 3 would be due: a new song instead makes stage 2 due, the pack stays
+  state = await decide({ ...withSong, n4: { file: 'take-2.mp3' } });
+  assert.deepEqual([state.flow.index, state.previews[0].nodes.n3.status], [1, 'cached'], 'a new song: step 2 again, not step 1');
+  await run(state.flow.request);
+  state = await decide({ ...withSong, n4: { file: 'take-2.mp3' } });
+  assert.equal(state.flow.index, 2);
+  const redo = (await decide({ ...withSong, n4: { file: 'take-2.mp3' } }, { redo: true })).flow;
+  assert.deepEqual([redo.index, redo.request.force, [...redo.request.nodeIds].sort()], [1, true, ['n1', 'n4', 'n5', 'n6', 'n7']]);
+  const redone = await run(redo.request);
+  assert.deepEqual(statuses(redone), { n1: 'done', n4: 'done', n5: 'done', n6: 'done', n7: 'done' });
+  assert.deepEqual(runs, { n2: 1, n6: 3, n8: 1 }, 'the pack was not made again');
+  // a new idea: step 1 is due again
+  assert.equal((await decide({ ...withSong, n1: { text: 'another idea' } })).flow.index, 0);
+}
+
 /* ---------- static checks of the browser wiring ---------- */
 
 function definedClasses() {
@@ -539,6 +886,28 @@ function testI18n() {
     for (const match of read(file).matchAll(/\bT\('(nodes\.[A-Za-z0-9_.]+)'/g)) assert.ok(keys.has(match[1]), `${file}: i18n key ${match[1]} exists`);
   }
   for (const key of ['nodes.app.batchCount', 'nodes.app.batchTruncated']) assert.ok(keys.has(key));
+  // the approval keys of the inspector (the step of a mark) exist too
+  for (const match of read('public/nodes/inspector.js').matchAll(/\bT\('(nodes\.app\.approve[A-Za-z0-9_.]*)'/g)) assert.ok(keys.has(match[1]), `inspector.js: i18n key ${match[1]} exists`);
+
+  // An app of before (marks of one stage) reads as before: the texts with steps, filled in for two steps, are the texts of before, word for word
+  const { rows } = require('../public/nodes/i18n-nodes');
+  const text = (key, lang, vars) => Object.entries(vars).reduce((out, [name, value]) => out.replaceAll(`{${name}}`, String(value)), rows.find((row) => row[0] === key)[{ de: 1, en: 2, es: 3 }[lang]]);
+  const BEFORE = [
+    ['nodes.app.stepFirst', { total: 2, outputs: 'X' }, ['Schritt 1 von 2: Zuerst entsteht nur: X. Danach gibst du frei.', 'Step 1 of 2: first only this is made: X. Then you approve.', 'Paso 1 de 2: primero solo se genera: X. Después apruebas.']],
+    ['nodes.app.stepApprove', { step: 2, total: 2, outputs: 'X' }, ['Schritt 2 von 2: Prüfe X. «Freigeben und fertigstellen» erzeugt den Rest.', 'Step 2 of 2: check X. “Approve and finish” makes the rest.', 'Paso 2 de 2: revisa X. «Aprobar y terminar» genera el resto.']],
+    ['nodes.app.approveRedo', { step: 1 }, ['Schritt 1 neu erzeugen', 'Make step 1 again', 'Volver a generar el paso 1']],
+    ['nodes.app.comesInStep', { step: 2 }, ['Kommt in Schritt 2, nach deiner Freigabe.', 'Comes in step 2, after your approval.', 'Llega en el paso 2, tras tu aprobación.']],
+    ['nodes.app.statusStepDone', { step: 1 }, ['Schritt 1 fertig', 'Step 1 done', 'Paso 1 listo']],
+    ['nodes.app.approveStart', {}, ['Schritt 1 starten', 'Start step 1', 'Iniciar paso 1']],
+    ['nodes.app.approveFinish', {}, ['Freigeben und fertigstellen', 'Approve and finish', 'Aprobar y terminar']]
+  ];
+  for (const [key, vars, before] of BEFORE) {
+    ['de', 'en', 'es'].forEach((lang, index) => assert.equal(text(key, lang, vars), before[index], `${key} ${lang}: as before`));
+  }
+  // with more stages the button and the line name the step: "Start step 1 of 3", "Approve and go on with step 2"
+  assert.equal(text('nodes.app.stageStart', 'de', { step: 1, total: 3 }), 'Schritt 1 von 3 starten');
+  assert.equal(text('nodes.app.stageNext', 'de', { step: 2 }), 'Freigeben und weiter mit Schritt 2');
+  assert.equal(text('nodes.app.stepHint', 'de', { step: 2, total: 3, hint: 'Lade den Song hoch.' }), 'Schritt 2 von 3: Lade den Song hoch.');
 }
 
 async function main() {
@@ -551,7 +920,10 @@ async function main() {
     testApprovalField();
     await testApprovalStore(tmpDir, created);
     testApprovalFlow();
+    testOneStageAsBefore();
+    testStageFlow();
     await testApprovalThroughEngine(tmpDir, created);
+    await testStagesThroughEngine(tmpDir, created);
     testStatic();
     testI18n();
   } finally {

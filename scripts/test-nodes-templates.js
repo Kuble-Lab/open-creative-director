@@ -43,6 +43,7 @@ const EXPECTED = [
   'music-video',
   'music-video-hud',
   'music-video-hud-elevenlabs',
+  'music-video-hud-suno',
   'music-video-stills',
   'photo-slideshow',
   'photo-to-3d',
@@ -143,10 +144,16 @@ async function main() {
       for (const entry of result.app.outputs) {
         assert.equal(result.graph.nodes.find((item) => item.id === entry.node).type, 'output.result');
       }
-      // an output "shown first for approval" is `approve: true` in the file (any other value would be dropped silently by the import)
+      // an output "shown first for approval" is `approve: true` (step 1) or a later step from 2 to 5 in the file (any other value would be dropped
+      // silently by the import); its hint is a text of at most 300 characters, and it goes only with a mark
       for (const [index, entry] of template.app.outputs.entries()) {
-        if (entry.approve !== undefined) assert.equal(entry.approve, true, `${template.id}: approve is true or not there`);
+        if (entry.approve !== undefined) assert.ok(entry.approve === true || (Number.isInteger(entry.approve) && entry.approve >= 2 && entry.approve <= 5), `${template.id}: approve is true, 2 to 5 or not there`);
         assert.equal(result.app.outputs[index].approve, entry.approve, `${template.id}: the mark of output ${entry.node} survives the import`);
+        if (entry.hint !== undefined) {
+          assert.ok(entry.approve !== undefined, `${template.id}: a hint goes with a mark (${entry.node})`);
+          assert.ok(typeof entry.hint === 'string' && entry.hint.trim() === entry.hint && entry.hint.length > 10 && [...entry.hint].length <= 300, `${template.id}: the hint of ${entry.node}`);
+        }
+        assert.equal(result.app.outputs[index].hint, entry.hint, `${template.id}: the hint of output ${entry.node} survives the import`);
       }
     }
 
@@ -156,12 +163,14 @@ async function main() {
     // the app view makes the marked outputs first and asks for the approval before the rest (SPEC §14): the motion video with
     // storyboard marks its Storyboard (n8) and its Script (n13); the two music videos in the HUD style (WP44) mark the board, the character
     // sheet and the three lists of pictures (n20 to n24; the second also its song, n29), so the person sees the plan, the figure and the pictures
-    // before the lip sync and the clips are paid. No other template asks for it
-    const markedIn = (app) => app.outputs.filter((entry) => entry.approve === true).map((entry) => entry.node);
+    // before the lip sync and the clips are paid. The third one (song by Suno) has two stages: the Suno song pack (n29) in step 1, the board,
+    // the sheet and the pictures in step 2 (written "n20@2"). No other template asks for it
+    const markedIn = (app) => app.outputs.filter((entry) => entry.approve !== undefined).map((entry) => (entry.approve === true ? entry.node : `${entry.node}@${entry.approve}`));
     const MARKED = {
       'motion-video-storyboard': ['n8', 'n13'],
       'music-video-hud': ['n20', 'n21', 'n22', 'n23', 'n24'],
-      'music-video-hud-elevenlabs': ['n29', 'n20', 'n21', 'n22', 'n23', 'n24']
+      'music-video-hud-elevenlabs': ['n29', 'n20', 'n21', 'n22', 'n23', 'n24'],
+      'music-video-hud-suno': ['n29', 'n20@2', 'n21@2', 'n22@2', 'n23@2', 'n24@2']
     };
     assert.deepEqual(Object.fromEntries(all.map((template) => [template.id, markedIn(template.app)]).filter(([, nodes]) => nodes.length)), MARKED);
     for (const lang of ['en', 'de', 'es']) {
@@ -465,6 +474,53 @@ async function main() {
       assert.match(templates.resolveTemplate('suno-song-pack', { lang: 'es' }).name, /Suno/);
     }
 
+    // music-video-hud-suno: the Suno song pack and the film of the first template in one workflow. One idea feeds the pack and the planner (like
+    // the template with the song by ElevenLabs); the song is uploaded between the steps. The pack is step 1, the board, the sheet and the pictures
+    // step 2: the film does not depend on the pack, the person makes the song at Suno in between
+    assert.deepEqual(types('music-video-hud-suno'), [
+      'input.prompt', 'input.text', 'text.template', 'llm.chat', 'output.result', ...types('music-video-hud')
+    ]);
+    assert.deepEqual(byId['music-video-hud-suno'].requires, ['openrouter', 'ffmpeg', 'elevenlabs', 'fal', 'rendernode']);
+    assert.deepEqual(edgesOf('music-video-hud-suno'), [...HUD_CHAIN_EDGES, 'n25.prompt>n27.a', 'n26.text>n27.b', 'n27.text>n28.prompt', 'n28.text>n29.inputs', 'n25.prompt>n4.brief']);
+    {
+      const doc = byId['music-video-hud-suno'];
+      const nodeIn = (template, id) => template.graph.nodes.find((node) => node.id === id);
+      for (const node of doc.graph.nodes) {
+        const normalized = nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params);
+        for (const [key, value] of Object.entries(node.params)) assert.deepEqual(normalized[key], value, `${node.id} (${node.type}): ${key} is a param of the node, with a valid value`);
+      }
+      // the film is the one of the first template, node by node (the song too: an upload); only the place on the canvas and the title of the song differ
+      for (let number = 1; number <= 24; number += 1) {
+        const [a, b] = [byId['music-video-hud'], doc].map((template) => nodeIn(template, `n${number}`));
+        assert.deepEqual({ type: b.type, params: b.params, title: number === 1 ? a.title : b.title }, { type: a.type, params: a.params, title: a.title }, `n${number}`);
+      }
+      // the pack is the one of the Suno song pack: the same singer, request, model and system prompt (word for word in test-music-video-hud-template.js)
+      for (const [own, pack] of [['n25', 'n1'], ['n26', 'n2'], ['n27', 'n3'], ['n28', 'n4'], ['n29', 'n5']]) {
+        assert.deepEqual([nodeIn(doc, own).type, nodeIn(doc, own).params], [nodeIn(byId['suno-song-pack'], pack).type, nodeIn(byId['suno-song-pack'], pack).params], `${own} is ${pack} of the Suno song pack`);
+      }
+      assert.equal(nodeIn(doc, 'n4').params.brief, '', 'the idea comes through the edge');
+      // the form: idea, singer, song, then the fields of the film; the lyrics stay optional (Suno may change words, the pack does not go to the times)
+      assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n25.prompt', 'n26.text', 'n1.asset', 'n4.figure', 'n4.theme', 'n3.lyrics', 'n17.karaoke', 'n4.hud_language']);
+      assert.equal(doc.graph.edges.some((edge) => edge.to.node === 'n3' && edge.to.port === 'lyrics'), false, 'no edge brings the pack to the lyric times');
+      assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
+      // the hint of step 1 says what to do before step 2, and names the field of the song and the button of step 2 as the app view words them
+      const { rows: i18nRows } = require('../public/nodes/i18n-nodes');
+      const stageNext = (lang) => i18nRows.find((row) => row[0] === 'nodes.app.stageNext')[{ de: 1, en: 2, es: 3 }[lang]].replace('{step}', '2');
+      for (const lang of ['en', 'de', 'es']) {
+        const resolved = templates.resolveTemplate('music-video-hud-suno', { lang });
+        const pack = resolved.app.outputs.find((entry) => entry.node === 'n29');
+        assert.match(pack.hint, lang === 'en' ? /Suno.*field Song\b/ : lang === 'de' ? /Suno.*Feld «Song»/ : /Suno.*campo «Canción»/, `${lang}: the hint says where the song goes`);
+        assert.ok(resolved.app.inputs.find((entry) => entry.node === 'n1').label.startsWith(lang === 'es' ? 'Canción (' : 'Song ('), `${lang}: the field is called so in the form`);
+        assert.ok(pack.hint.includes(stageNext(lang)), `${lang}: the hint names the button «${stageNext(lang)}»`);
+      }
+      assert.equal(templates.resolveTemplate('music-video-hud-suno', { lang: 'de' }).name, 'Musikvideo im HUD-Stil (Song von Suno)');
+      assert.equal(templates.resolveTemplate('music-video-hud-suno', { lang: 'en' }).name, 'Music video in the HUD style (song by Suno)');
+      assert.equal(templates.resolveTemplate('music-video-hud-suno', { lang: 'es' }).name, 'Videoclip en estilo HUD (canción de Suno)');
+      // the short notes of the node view: the three steps, the third with the button of the node view
+      assert.deepEqual(doc.graph.notes.map((note) => note.id), ['t1', 't2', 't3', 't4', 't5']);
+      assert.deepEqual(['t3', 't4', 't5'].map((id) => doc.i18n.de[`note.${id}`].slice(0, 2)), ['1.', '2.', '3.']);
+    }
+
     // frame-chain: the clip edges into concat are in playback order
     const concatEdges = byId['frame-chain'].graph.edges.filter((edge) => edge.to.port === 'clips');
     assert.deepEqual(concatEdges.map((edge) => edge.from.node), ['n2', 'n5']);
@@ -481,6 +537,8 @@ async function main() {
       for (const group of template.graph.groups) expectedKeys.add(`group.${group.id}`);
       for (const entry of template.app.inputs) expectedKeys.add(`app.input.${entry.node}.${entry.param}`);
       for (const entry of template.app.outputs) expectedKeys.add(`app.output.${entry.node}`);
+      // the hint of an output marked for approval (SPEC §14) is said in every language
+      for (const entry of template.app.outputs) if (entry.hint) expectedKeys.add(`app.hint.${entry.node}`);
       for (const lang of ['de', 'es']) {
         const strings = i18n[lang];
         assert.ok(strings, `${template.id} has ${lang} texts`);
@@ -513,7 +571,7 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
       // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
       for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
@@ -527,6 +585,7 @@ async function main() {
       // WP44: the lyric times of the HUD film come from ElevenLabs, and so does the music of the one that makes its own song; the Suno pack needs the language model only
       assert.deepEqual(noAudio.find((item) => item.id === 'music-video-hud').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'music-video-hud-elevenlabs').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
+      assert.deepEqual(noAudio.find((item) => item.id === 'music-video-hud-suno').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], 'the song from Suno gets its lyric times from ElevenLabs too');
       assert.equal(noAudio.find((item) => item.id === 'suno-song-pack').available, true);
       // Higgsfield is a requirement of its own: a template with hf.* nodes is available exactly when Higgsfield is connected
       const noHiggsfield = templates.listTemplates({ lang: 'en', checks: { ...allOn, higgsfield: () => 'Higgsfield is not connected' } });
@@ -541,23 +600,24 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'explainer-video-presenter', 'video-cutout-overlay', 'replace-people-in-video'].includes(item.id)).every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'explainer-video-presenter', 'video-cutout-overlay', 'replace-people-in-video'].includes(item.id)).every((item) => item.available));
       assert.deepEqual(noFal.find((item) => item.id === 'explainer-video-presenter').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'only the presenter needs fal.ai (the lip sync); the other two explainer videos run without it');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-stills').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes still does');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-hud').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'WP44: the lip sync, the story clips and the depth maps of the HUD film run on fal.ai');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-hud-elevenlabs').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
+      assert.deepEqual(noFal.find((item) => item.id === 'music-video-hud-suno').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.equal(noFal.find((item) => item.id === 'suno-song-pack').available, true);
-      // the HUD is drawn on a render node: the two films are not available without one, the Suno pack is
+      // the HUD is drawn on a render node: the three films are not available without one, the Suno pack is
       const noRender = templates.listTemplates({ lang: 'en', checks: { ...allOn, rendernode: () => 'No render node configured' } });
-      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs']) {
+      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno']) {
         assert.deepEqual(noRender.find((item) => item.id === id).missing, [{ key: 'rendernode', reason: 'No render node configured' }], `${id}: the HUD needs a render node`);
       }
       assert.equal(noRender.find((item) => item.id === 'suno-song-pack').available, true);
       assert.equal(noRender.find((item) => item.id === 'music-video-stills').available, true, 'the older films are drawn without a render node');
       // the language model is a requirement of the films (the planner and the pictures) and of the Suno pack
       const noModel = templates.listTemplates({ lang: 'en', checks: { ...allOn, openrouter: () => 'OPENROUTER_API_KEY is not set' } });
-      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'suno-song-pack']) assert.deepEqual(noModel.find((item) => item.id === id).missing, [{ key: 'openrouter', reason: 'OPENROUTER_API_KEY is not set' }], `${id}: needs the language model`);
+      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack']) assert.deepEqual(noModel.find((item) => item.id === id).missing, [{ key: 'openrouter', reason: 'OPENROUTER_API_KEY is not set' }], `${id}: needs the language model`);
       assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
       assert.deepEqual(noFal.find((item) => item.id === 'photo-to-3d').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(noFal.find((item) => item.id === 'video-cutout-overlay').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the segmentation runs on fal.ai (WP33b)');
@@ -594,8 +654,9 @@ async function main() {
       assert.deepEqual([...templates.ORDER].sort(), EXPECTED, 'ORDER lists every template once and nothing else');
       assert.deepEqual(all.map((template) => template.id), [...templates.ORDER], 'templates are loaded in the order of ORDER');
       assert.equal(new Set(templates.ORDER).size, templates.ORDER.length);
-      // WP44: the two films in the HUD style and the Suno pack follow the older music videos, the dubbing stays last
-      assert.deepEqual(templates.ORDER.slice(templates.ORDER.indexOf('music-video')), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'suno-song-pack', 'dub-clip']);
+      // WP44: the three films in the HUD style and the Suno pack follow the older music videos (the one with the song by Suno right after the one
+      // with the song by ElevenLabs), the dubbing stays last
+      assert.deepEqual(templates.ORDER.slice(templates.ORDER.indexOf('music-video')), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack', 'dub-clip']);
 
       // the new ones: shapes, cheap defaults, usable for participants (no Higgsfield, no credits)
       assert.deepEqual(types('image-to-video'), ['input.image', 'input.prompt', 'video.seedance', 'output.result']);
@@ -723,9 +784,11 @@ async function main() {
       assert.equal(summary['music-video-stills'].batch, false);
       // WP44: the same for the films in the HUD style - the length of the song and the number of units come from the plan, so no figure (the descriptions
       // name the order of magnitude): the times, the planner, the sheet, three kinds of pictures, the lip sync, the clips and the depth maps are the nine
-      // paid steps of the first; the music is the tenth of the second (its song text is free of credits). The Suno pack is one answer of a language model
+      // paid steps of the first; the music is the tenth of the second (its song text is free of credits), the Suno pack the tenth of the third. The Suno
+      // pack alone is one answer of a language model
       assert.deepEqual(summary['music-video-hud'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 9, providers: ['openrouter', 'elevenlabs', 'fal'] });
       assert.deepEqual(summary['music-video-hud-elevenlabs'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 10, providers: ['openrouter', 'elevenlabs', 'fal'] });
+      assert.deepEqual(summary['music-video-hud-suno'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 10, providers: ['openrouter', 'elevenlabs', 'fal'] });
       assert.deepEqual(summary['suno-song-pack'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 1, providers: ['openrouter'] });
       const flowOf = (id) => summary[id].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`));
       assert.deepEqual(flowOf('music-video-hud'), [
@@ -737,9 +800,15 @@ async function main() {
         ['image.generate*1', 'text.template*3', 'output.result*1'], ['image.edit*3', 'output.result*1'], ['fal.h3_lipsync*1', 'fal.h3_video*1', 'fal.depth_map*1', 'output.result*3'],
         ['image.to_video*1'], ['music_video.edit*1'], ['music_video.hud_render*1'], ['output.result*2']
       ], 'the same film behind the song');
+      assert.deepEqual(flowOf('music-video-hud-suno'), [
+        ['input.prompt*1', 'input.text*1', 'input.audio*1'], ['text.template*1', 'audio.beats*1', 'audio.lyrics_timing*1'], ['llm.chat*1', 'music_video.hud_plan*1'],
+        ['output.result*2', 'image.generate*1', 'text.template*3'], ['image.edit*3', 'output.result*1'], ['fal.h3_lipsync*1', 'fal.h3_video*1', 'fal.depth_map*1', 'output.result*3'],
+        ['image.to_video*1'], ['music_video.edit*1'], ['music_video.hud_render*1'], ['output.result*2']
+      ], 'the pack beside the song: the film does not wait for it');
       assert.deepEqual(flowOf('suno-song-pack'), [['input.prompt*1', 'input.text*1'], ['text.template*1'], ['llm.chat*1'], ['output.result*1']]);
       assert.equal(summary['music-video-hud'].batch, false);
       assert.equal(summary['music-video-hud-elevenlabs'].batch, false);
+      assert.equal(summary['music-video-hud-suno'].batch, false);
       assert.equal(summary['suno-song-pack'].batch, false);
 
       const priced = createRegistry();
@@ -894,6 +963,7 @@ async function main() {
         assert.equal(wf.name, templates.resolveTemplate(id, { lang: 'de' }).name);
         assert.equal(wf.app.enabled, true);
         assert.deepEqual(markedIn(wf.app), markedIn(byId[id].app), `${id}: the marked outputs of the template are the ones of the new workflow`);
+        assert.deepEqual(wf.app.outputs.map((entry) => entry.hint || null), templates.resolveTemplate(id, { lang: 'de' }).app.outputs.map((entry) => entry.hint || null), `${id}: the hints in the language of the workflow`);
         assert.equal(wf.graph.nodes.length, byId[id].graph.nodes.length);
         // media inputs come without an asset; the copy is a fresh workflow with its own backing session
         assert.equal(wf.rev, 1);

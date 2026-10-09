@@ -452,8 +452,8 @@ async function run(iso) {
     const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
     assert.ok(hits.includes('music-video'), `"${query}" (${lang}) finds the music video: ${hits}`);
   }
-  // WP44: the two films in the HUD style carry the word in their names, and the description of the Suno pack names the one it leads to
-  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'suno-song-pack'], 'a search narrows the list down');
+  // WP44: the three films in the HUD style carry the word in their names, and the description of the Suno pack names the one it leads to
+  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack'], 'a search narrows the list down');
   // the variant with moving images (WP35): the same inputs, no clips to pay for, found by the words of its name and of its price
   const stills = realTemplates.find((item) => item.id === 'music-video-stills');
   assert.deepEqual(stills.inputs.map((input) => input.id), [...music.inputs.map((input) => input.id), 'n14.enabled', 'n10.zoom'], 'the person is asked for the same things, plus the switch for the depth maps and the motion of the scenes');
@@ -503,13 +503,27 @@ async function run(iso) {
   const sunoPack = realTemplates.find((item) => item.id === 'suno-song-pack');
   assert.deepEqual(sunoPack.inputs.map((input) => [input.id, input.type, input.required]), [['n1.prompt', 'text', true], ['n2.text', 'text', false]]);
   assert.deepEqual([sunoPack.name, sunoPack.paid, sunoPack.outputs.map((output) => output.node)], ['Suno-Songpaket', true, ['n5']]);
-  for (const [query, lang, expected] of [['Suno', 'de', ['suno-song-pack']], ['Songpaket', 'de', ['suno-song-pack']], ['Suno song pack', 'en', ['suno-song-pack']], ['paquete de canción', 'es', ['suno-song-pack']]]) {
+  // the film with the song by Suno makes the same pack in its step 1: a search for the pack finds both, the film first (the order of the gallery)
+  const hudSuno = realTemplates.find((item) => item.id === 'music-video-hud-suno');
+  assert.deepEqual(hudSuno.inputs.map((input) => [input.id, input.type, input.required]), [
+    ['n25.prompt', 'text', true],
+    ['n26.text', 'text', false],
+    ['n1.asset', 'audio', true],
+    ['n4.figure', 'text', false],
+    ['n4.theme', 'select', false],
+    ['n3.lyrics', 'text', false],
+    ['n17.karaoke', 'boolean', false],
+    ['n4.hud_language', 'select', false]
+  ]);
+  assert.deepEqual(hudSuno.outputs.map((output) => output.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
+  assert.deepEqual([hudSuno.name, hudSuno.paid, hudSuno.cost.kind], ['Musikvideo im HUD-Stil (Song von Suno)', true, 'unknown']);
+  for (const [query, lang, expected] of [['Suno', 'de', ['music-video-hud-suno', 'suno-song-pack']], ['Songpaket', 'de', ['music-video-hud-suno', 'suno-song-pack']], ['Suno song pack', 'en', ['music-video-hud-suno', 'suno-song-pack']], ['paquete de canción', 'es', ['music-video-hud-suno', 'suno-song-pack']]]) {
     const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
     assert.deepEqual(hits, expected, `"${query}" (${lang}) finds the song pack: ${hits}`);
   }
   for (const [query, lang] of [['HUD-Stil', 'de'], ['HUD style', 'en'], ['estilo HUD', 'es'], ['Karaoke', 'de']]) {
     const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
-    assert.ok(hits.includes('music-video-hud') && hits.includes('music-video-hud-elevenlabs'), `"${query}" (${lang}) finds the films in the HUD style: ${hits}`);
+    assert.ok(hits.includes('music-video-hud') && hits.includes('music-video-hud-elevenlabs') && hits.includes('music-video-hud-suno'), `"${query}" (${lang}) finds the films in the HUD style: ${hits}`);
   }
   assert.deepEqual((await realService.listRunnable(v.s1, { query: 'video nichts-dergleichen', lang: 'de' })).items.filter((item) => item.kind === 'template'), [], 'all words have to appear');
   assert.deepEqual((await realService.listRunnable(v.s1, { query: 'ab' })).items.filter((item) => item.kind === 'template').length > 0, true, 'a short word is searched as typed');

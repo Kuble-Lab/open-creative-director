@@ -93,7 +93,9 @@
     // specific wording (a setting that does not fit).
     if (vars.port === undefined && item.port) vars.port = portLabel(item.port);
     if (vars.message === undefined && item.message) vars.message = item.message;
-    let key = variant && hasIssueText(`${item.code}.${variant}`) ? `nodes.issue.${item.code}.${variant}` : `nodes.issue.${item.code}`;
+    // An empty field of a required input (data.field from the engine) has its own wording wherever no other one is asked for.
+    const wording = variant || (item.code === 'missing_input' && data.field ? 'param' : '');
+    let key = wording && hasIssueText(`${item.code}.${wording}`) ? `nodes.issue.${item.code}.${wording}` : `nodes.issue.${item.code}`;
     // A text about a number of connections has its own wording for "none" and "one" (nodes.issue.<code>.none / .one).
     const form = data.max === 0 ? 'none' : data.max === 1 ? 'one' : '';
     if (form && key === `nodes.issue.${item.code}` && hasIssueText(`${item.code}.${form}`)) key = `nodes.issue.${item.code}.${form}`;

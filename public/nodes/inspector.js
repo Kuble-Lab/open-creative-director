@@ -526,14 +526,28 @@
     }
 
     // Output node: expose its result as an output of the Design App, and (only then) say whether the app shows it first, for approval.
+    // The switch marks step 1; a marked output also gets the choice of its step (1 to 5, or off), so outputs of a later step are made
+    // after the approval of the earlier ones. An output of a later step shows only that choice (the switch is about step 1).
     function appOutputSection(node) {
       const exposed = cb.app.isOutput(node.id);
       const rows = [switchRow(ui.T('nodes.app.outputToggle'), exposed, () => cb.app.toggleOutput(node.id), ui.T('nodes.app.outputHint'))];
       if (exposed) {
-        const approve = cb.app.isApprove(node.id);
-        rows.push(switchRow(ui.T('nodes.app.approveToggle'), approve, () => cb.app.setApprove(node.id, !approve), ui.T('nodes.app.approveHint')));
+        const step = cb.app.approveStep(node.id);
+        if (step <= 1) rows.push(switchRow(ui.T('nodes.app.approveToggle'), step === 1, () => cb.app.setApprove(node.id, step === 1 ? 0 : 1), ui.T('nodes.app.approveHint')));
+        if (step >= 1) rows.push(approveStepRow(node.id, step));
       }
       return section(ui.T('nodes.app.section'), ...rows);
+    }
+
+    // The step of the approval of a marked output: off, or 1 to 5 (outputs with the same number come in the same step).
+    function approveStepRow(nodeId, step) {
+      const label = ui.T('nodes.app.approveStep');
+      const select = el('select', { class: 'nv-input nv-select nv-nodrag nv-app-step', 'aria-label': label });
+      select.append(el('option', { value: '0', text: ui.T('nodes.app.approveStepOff') }));
+      for (let number = 1; number <= 5; number += 1) select.append(el('option', { value: String(number), text: String(number) }));
+      select.value = String(step);
+      select.addEventListener('change', () => cb.app.setApprove(nodeId, Number(select.value)));
+      return el('div', { class: 'nv-app-switch' }, el('div', { class: 'nv-app-switch-text' }, el('span', { class: 'nv-field-label', text: label }), el('span', { class: 'nv-field-hint', text: ui.T('nodes.app.approveStepHint') })), select);
     }
 
     function appRow(kind, entry, index, total, ctx) {
@@ -550,7 +564,9 @@
       sub.append(el('span', { text: kind === 'inputs' ? `${title} · ${ui.paramLabel(entry.param)}` : title }));
       const batch = kind === 'inputs' && def && (node.type === 'input.text_list' || node.type === 'input.media_list');
       if (batch) sub.append(el('span', { class: 'nv-badge is-batch', title: ui.T('nodes.app.batchHint'), text: ui.T('nodes.app.batch') }));
-      if (kind === 'outputs' && entry.approve === true) sub.append(el('span', { class: 'nv-badge is-app', title: ui.T('nodes.app.approveToggle'), text: ui.T('nodes.app.approveBadge') }));
+      const step = kind === 'outputs' ? cb.app.approveStep(entry.node) : 0;
+      if (step === 1) sub.append(el('span', { class: 'nv-badge is-app', title: ui.T('nodes.app.approveToggle'), text: ui.T('nodes.app.approveBadge') }));
+      else if (step) sub.append(el('span', { class: 'nv-badge is-app', text: ui.T('nodes.app.approveBadgeStep', { step }) }));
       // An input that reaches no app output changes nothing in the result (for example after "Use as text"): mark it.
       const cut = kind === 'inputs' && node && ctx.deadAppInputs && ctx.deadAppInputs.has(`${entry.node}\u0000${entry.param}`);
       if (cut) {
