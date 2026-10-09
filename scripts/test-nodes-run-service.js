@@ -471,11 +471,12 @@ async function run(iso) {
   assert.ok((await realService.listRunnable(v.s1, { query: 'günstig', lang: 'de' })).items.some((item) => item.id === 'music-video-stills'), '"günstig" alone finds it among others');
 
   // the films in the HUD style (WP44): the Director asks for the song (or only the idea) and the idea; the figure (Claudia), the style, the lyrics and the
-  // karaoke line (off) have their values, and so have the beat effects (WP45, strong). Nothing is priced before the run: the units come from the plan
+  // karaoke line (off) have their values, and so have the beat effects (WP45, strong). Nothing is priced before the run: the units come from the plan.
+  // With your own song the idea is optional since WP48 (an empty field: the model writes the brief from the lyrics), and the brief is shown in step 1
   const hudFilm = realTemplates.find((item) => item.id === 'music-video-hud');
   assert.deepEqual(hudFilm.inputs.map((input) => [input.id, input.type, input.required]), [
     ['n1.asset', 'audio', true],
-    ['n4.brief', 'text', true],
+    ['n4.brief', 'text', false],
     ['n4.figure', 'text', false],
     ['n4.theme', 'select', false],
     ['n3.lyrics', 'text', false],
@@ -489,7 +490,8 @@ async function run(iso) {
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').value, undefined, 'a switch holds no value in the list');
   assert.deepEqual(['options', 'label', 'hasValue'].map((key) => hudFilm.inputs.find((input) => input.id === 'n17.effects')[key]), [['off', 'subtle', 'strong'], 'Effekte', true]);
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.figure').hasValue, true, 'the figure is Claudia unless the person writes another');
-  assert.deepEqual(hudFilm.outputs.map((output) => output.node), ['n18', 'n19', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the film first, then the sheet and what is shown for the approval');
+  assert.deepEqual(hudFilm.outputs.map((output) => output.node), ['n18', 'n19', 'n30', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the film first, then the sheet and what is shown for the approval (the brief first)');
+  assert.equal(hudFilm.outputs.find((output) => output.node === 'n30').label, 'Briefing');
   assert.deepEqual([hudFilm.name, hudFilm.paid, hudFilm.cost.kind], ['Musikvideo im HUD-Stil (eigener Song)', true, 'unknown']);
   const hudSong = realTemplates.find((item) => item.id === 'music-video-hud-elevenlabs');
   assert.deepEqual(hudSong.inputs.map((input) => [input.id, input.type, input.required]), [
@@ -666,6 +668,20 @@ async function run(iso) {
   await fsp.rm(path.join(sessions.sessionAssetDir(chat.id), ghost.file));
   await bad({ photo: ghost.id }, 'INVALID_INPUT', (err) => assert.equal(err.reason, 'asset_unavailable'));
   assert.equal(await countWorkflows(), before, 'the half-made workflow was deleted');
+  // WP48: the film in the HUD style with your own song starts without an idea (the model writes the brief from the lyrics); the film with the song by
+  // ElevenLabs still needs it (the idea makes the song), so does the one with the song by Suno (the idea makes the song pack)
+  for (const template of ['music-video-hud-elevenlabs', 'music-video-hud-suno']) {
+    const inputs = template === 'music-video-hud-suno' ? { 'n1.asset': audio.id } : {};
+    await rejects(realService.prepare(v.s1, { templateId: template, sourceSessionId: chat.id, inputs, lang: 'de' }), 'MISSING_INPUT', (err) => assert.deepEqual(err.missing.map((item) => item.id), ['n25.prompt'], template));
+  }
+  assert.equal(await countWorkflows(), before, 'nothing was created without the idea');
+  prepared = await realService.prepare(v.s1, { templateId: 'music-video-hud', sourceSessionId: chat.id, inputs: { 'n1.asset': audio.id }, lang: 'de' });
+  assert.equal(prepared.created, true);
+  stored = await wfStore.readWorkflow(prepared.workflowId);
+  assert.equal(stored.graph.nodes.find((item) => item.id === 'n4').params.brief, '', 'the idea stays empty');
+  assert.equal(stored.graph.nodes.find((item) => item.id === 'n1').params.asset.type, 'audio');
+  assert.deepEqual(prepared.inputs.filter((item) => item.applied).map((item) => item.id), ['n1.asset']);
+  assert.equal(await countWorkflows(), before + 1, 'one workflow for the film without an idea');
 
   // existing workflows: own and shared are used as they are (inputs set in place), foreign ones refused
   const rev0 = (await wfStore.readWorkflow(own.id)).rev;

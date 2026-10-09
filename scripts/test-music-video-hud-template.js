@@ -13,6 +13,8 @@
 //     Step 1 (the marked outputs) makes the board, the character sheet and the pictures and nothing expensive; step 2 makes the rest from
 //     the cache. The pictures use Nano Banana 2.1 with the character sheet as reference, captions are off in the base cut and the karaoke
 //     line is off in the render, the lists fit the cut (sung, story and still clips), the style "Kuble" reaches the plan and the render
+//   - the same template without an idea (WP48): step 1 asks the model for the brief, then for the plan, the brief is a result of step 1 and the
+//     board says that it was written; a second step 1 and step 2 take the brief and the plan from the cache (no new brief, nothing paid twice)
 //   - the second template: the song comes from the idea (plan, then music), the song text goes to the analysis and to the lyric times, the
 //     idea goes to the planner, step 1 holds the song and again nothing expensive
 //   - the Suno song pack: the system prompt reaches the model word for word, the idea and the singer are in the request
@@ -390,9 +392,25 @@ async function run(iso) {
   const llmCalls = [];
   const LLM_USD = 0.25;
   const SUNO_PACK = 'TITLE\nMoth Parade\n\nSTYLE\nelectroclash techno, 128 BPM\n\nEXCLUDE\nrap, lo-fi\n\nLYRICS\n[Verse 1]\ntest line one\ntest line two';
+  // the brief that the model writes when the field "Idea" is empty (WP48)
+  const BRIEF_TEXT = [
+    'Theme: a woman keeps a light on in a city that switches off, and the night comes to look at it.',
+    'Arc:',
+    '- Intro: a dark street, one window glows.',
+    '- Verse 1: she checks the fuses, the counter of the watts climbs, moths gather at the glass.',
+    '- Chorus 1: the whole block watches the window, the light pulses on the beat.',
+    '- Outro: dawn, the light is still on.',
+    'Machine in the HUD: LAMP WATCH counts WATTS KEPT, watched by the night shift; ticker: fuse reports, moth sightings, power grid.',
+    'Look: a white cropped shirt and a black pleated skirt, a stairwell of concrete, warm bulbs against blue night.',
+    'Graphics for the lines: a fuse log, a watt counter, a map of the dark blocks, a chat with the night shift.',
+    'End card: STILL ON, one light outlasted the night.',
+    'Not: no brands, no logos, no real people, nothing suggestive.'
+  ].join('\n');
+  const BRIEF_USD = 0.02;
   patch(llm, 'completeText', async (options) => {
     llmCalls.push(options);
     if (options.system === SUNO_SYSTEM) return { text: SUNO_PACK, usd: 0.03 };
+    if (/^You write the brief for an AI pop music video/.test(options.system)) return { text: BRIEF_TEXT, usd: BRIEF_USD };
     return { text: JSON.stringify(goodAnswer(GRID, FIGURE)), usd: LLM_USD };
   });
 
@@ -471,7 +489,7 @@ async function run(iso) {
     return { variants: [{ analysis: textValue(JSON.stringify(SONG.analysis)), bpm: numberValue(SONG.analysis.bpm) }] };
   });
   double('audio.lyrics_timing', async (_ctx, inputs, params) => {
-    seen.timing.push({ lyrics: inputs.lyrics ? inputs.lyrics.value : null, method: params.method });
+    seen.timing.push({ lyrics: inputs.lyrics ? inputs.lyrics.value : null, method: params.method, voices: params.voices });
     return { variants: [{ timing: textValue(JSON.stringify(SONG.timing)), lyrics: textValue(SONG.timing.lines.map((line) => line.text).join('\n')) }] };
   });
   double('image.generate', async (ctx, inputs, params) => {
@@ -587,7 +605,7 @@ async function run(iso) {
       set('n3', { lyrics: LYRICS });
       set('n4', { brief: 'A woman and a light that stays on.' });
     });
-    assert.deepEqual(approveTargets(workflow), ['n20', 'n21', 'n22', 'n23', 'n24'], 'the board, the character sheet and the three picture lists are shown first');
+    assert.deepEqual(approveTargets(workflow), ['n30', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the brief, the board, the character sheet and the three picture lists are shown first');
     const owner = workflow.sessionId;
     const fileOf = (value) => path.join(store.sessionAssetDir(owner), value.file);
 
@@ -607,7 +625,8 @@ async function run(iso) {
       assert.equal(seen.timing.length, 1);
       assert.equal(seen.timing[0].lyrics, LYRICS, 'the lyrics of the form reach the times');
       assert.equal(seen.timing[0].method, 'auto');
-      assert.equal(llmCalls.length, 1, 'one request to the planner');
+      assert.equal(seen.timing[0].voices, 'auto', 'the choir is detected where the lyrics mark none (WP48)');
+      assert.equal(llmCalls.length, 1, 'one request to the planner: the idea is given, no brief is written');
       assert.equal(llmCalls[0].system, hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false }), 'HUD Blue is the style of the template');
       assert.match(llmCalls[0].prompt, /A woman and a light that stays on\./, 'the idea reaches the planner');
       assert.match(llmCalls[0].prompt, /glossy black blunt/, 'and the figure Claudia, the default');
@@ -619,6 +638,8 @@ async function run(iso) {
       const board = boardValue.value;
       assert.match(board, /^TREATMENT\n/);
       assert.match(board, /estimate \d+\.\d\d USD$/m, 'the estimate is on the board');
+      // the result "Brief" is the idea of the form
+      assert.deepEqual((await shown(workflow, 'n30')).map((item) => [item.type, item.value]), [['text', 'A woman and a light that stays on.']]);
       // the character sheet: the sheet prompt of the planner, a portrait, Nano Banana 2.1
       assert.equal(seen.sheet.length, 1);
       assert.deepEqual([seen.sheet[0].prompt, seen.sheet[0].model, seen.sheet[0].aspect, seen.sheet[0].count], [hudPlan.sheetPrompt(FIGURE), NANO_BANANA, '3:4', 1]);
@@ -729,6 +750,52 @@ async function run(iso) {
       assert.ok(filmInfo.duration > GRID.duration, 'the end card is behind the song');
       assert.deepEqual((await shown(workflow, 'n19')).map((item) => item.type), ['image'], 'the contact sheet');
     }
+  }
+
+  /* ---------- "Music video in the HUD style (your song)" without an idea (WP48): the brief from the lyrics, once ---------- */
+
+  {
+    const workflow = await startWorkflow('music-video-hud', async ({ set, workflow: wf }) => {
+      const upload = await seedAsset(toneWav(SONG.seconds + 2, 330), '.wav', wf.sessionId);
+      set('n1', { asset: refOf(upload, wf.sessionId) });
+      set('n3', { lyrics: LYRICS });
+    });
+    assert.equal(nodeOf(workflow, 'n4').params.brief, '', 'the field "Idea" is empty in the template');
+    const plan0 = await engine.plan(workflow.id, { mode: 'all', user: STAFF });
+    assert.equal(plan0.valid, true, `an empty idea is no mistake: ${JSON.stringify(plan0.issues)}`);
+
+    // step 1: the brief, then the plan with the brief as the idea; the brief is a result, the board says it was written
+    clearSeen();
+    await step1(workflow);
+    assert.equal(llmCalls.length, 2, 'two requests: the brief, then the plan');
+    assert.equal(llmCalls[0].system, hudPlan.briefSystemPrompt({ theme: 'hud', hudLanguage: 'en', briefLanguage: 'en' }));
+    assert.match(llmCalls[0].prompt, new RegExp(`\\nLYRICS \\(index \\| time \\| part \\| line\\)\\n0 \\| [\\d.]+-[\\d.]+ s \\| [^|]+ \\| ${SONG.timing.lines[0].text}\\n`), 'the brief is written from the lyrics');
+    assert.match(llmCalls[0].prompt, /\nFIGURE\nNAME: Claudia\nLOOK: a Caucasian American woman in her late twenties/);
+    assert.equal(llmCalls[1].system, hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false }));
+    assert.ok(llmCalls[1].prompt.startsWith(`IDEA\n${BRIEF_TEXT}\n\nSTYLE\n`), 'the brief is the idea of the plan');
+    assert.deepEqual((await shown(workflow, 'n30')).map((item) => [item.type, item.value]), [['text', BRIEF_TEXT]], 'the result "Brief"');
+    const [board] = await shown(workflow, 'n20');
+    assert.match(board.value, /^BRIEF {6}written by the language model from the lyrics, since the field "Idea" was empty/);
+    assert.match(board.value, /^ESTIMATE .* \+ brief \d+\.\d\d = \d+\.\d\d USD/m, 'the brief is part of the estimate');
+    const planned = await resultOf(workflow, 'n4');
+    near(planned.cost.usd, BRIEF_USD + LLM_USD, 1e-9, 'both requests are paid');
+    assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, seen.edit.length, seen.render.length, submits.length], [0, 0, 0, 0, 0, 0], 'step 1 stops before the expensive part');
+
+    // the same step again: the brief and the plan come from the cache, no request
+    llmCalls.length = 0;
+    await step1(workflow);
+    assert.equal(llmCalls.length, 0, 'no new brief and no new plan in a second step 1');
+    const planNow = await engine.plan(workflow.id, { mode: 'all', user: STAFF });
+    assert.equal(planNow.nodes.n4.status, 'cached', 'step 2 takes the plan with its brief from the cache');
+
+    // step 2: the rest of the film, the brief is not written again
+    const sheets = seen.sheet.length;
+    await step2(workflow);
+    assert.equal(llmCalls.length, 0, 'no new brief and no new plan in step 2');
+    assert.equal(seen.sheet.length, sheets);
+    assert.deepEqual([seen.lipsync.length, seen.video.length, seen.edit.length, seen.render.length], [STATS.sung, STATS.story, 1, 1], 'the film is made');
+    assert.deepEqual((await shown(workflow, 'n30')).map((item) => item.value), [BRIEF_TEXT], 'the same brief');
+    assert.match((await shown(workflow, 'n20'))[0].value, /^BRIEF /);
   }
 
   /* ---------- "Music video in the HUD style (song by ElevenLabs)": graph and ports ---------- */

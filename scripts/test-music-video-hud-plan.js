@@ -255,16 +255,24 @@ function testGridErrors() {
   assert.ok(bigger.units.length <= 50);
   checkGrid(bigger, longSong, '300 s with 50 units of 10 s', { rate: false });
 
-  // no sung line
-  const noLines = (() => {
-    try {
-      hudPlan.planGrid(song.analysis, { version: 1, lines: [], words: [] }, {});
-    } catch (err) {
-      return err;
-    }
-    return null;
-  })();
-  assert.equal(noLines && noLines.code, 'HUDPLAN_NO_LINES');
+  // no sung line (an instrumental, or a transcript that heard no word): since WP48 a grid of clips, the warning says why there is no sung unit
+  const silent = { version: 1, lines: [], words: [] };
+  const instrumental = hudPlan.planGrid(song.analysis, silent, {});
+  assert.deepEqual([instrumental.lines.length, instrumental.stats.sung, instrumental.warnings], [0, 0, ['NO_LINES']]);
+  assert.ok(instrumental.units.length >= 1 && instrumental.units.every((unit) => unit.kind === 'story' && unit.lines.length === 0));
+  checkGrid(instrumental, { ...song, timing: silent }, 'no sung line');
+  // a timing that cannot be read is still an error
+  for (const bad of ['', 'nothing', '{"words": []}', '[1,2]']) {
+    const noLines = (() => {
+      try {
+        hudPlan.planGrid(song.analysis, bad, {});
+      } catch (err) {
+        return err;
+      }
+      return null;
+    })();
+    assert.equal(noLines && noLines.code, 'HUDPLAN_NO_LINES', JSON.stringify(bad));
+  }
   // an analysis that cannot be read
   for (const bad of ['', 'nothing', '[1,2]', '{"beats": []}']) {
     let err = null;
@@ -1148,9 +1156,10 @@ async function testDefinition() {
   assert.equal(def.cacheStampAdopts, true);
   assert.equal(typeof explainerNodes.fallbackBrainStamp, 'function');
   const ports = (list) => list.map((port) => [port.id, port.type, Boolean(port.required), port.param || null]);
-  assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', true, 'brief'], ['figure', 'text', true, 'figure'], ['song', 'audio', true, null]]);
+  // the idea is optional since WP48 (an empty field: the model writes the brief from the song), and the brief that was used is an output
+  assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', false, 'brief'], ['figure', 'text', true, 'figure'], ['song', 'audio', true, null]]);
   assert.deepEqual(def.outputs.map((port) => [port.id, port.type]), [
-    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text']
+    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text']
   ]);
   // the same ports as the plan of the music video, so that the template of the nodes before and after it fits
   const plain = real.get('music_video.plan');
@@ -1163,8 +1172,9 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5
+    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5
   });
+  assert.deepEqual(def.params.find((param) => param.id === 'brief_language').options, ['en', 'de', 'es']);
   assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 99, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
     ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 50, lipsync_seconds_per_minute: 0, motion_share: 1, clip_seconds: 2
   });
@@ -1243,6 +1253,15 @@ async function testDefinition() {
 
 /* ---------- the texts ---------- */
 
+// The texts of the ports of the node in the help: a port whose id is an input and an output (the idea in, the brief out) has one text per side.
+function portKeys(def) {
+  const both = new Set(def.inputs.map((port) => port.id).filter((id) => def.outputs.some((port) => port.id === id)));
+  return [
+    ...def.inputs.map((port) => `nodes.portdesc.music_video.hud_plan.${port.id}${both.has(port.id) ? '.in' : ''}`),
+    ...def.outputs.map((port) => `nodes.portdesc.music_video.hud_plan.${port.id}${both.has(port.id) ? '.out' : ''}`)
+  ];
+}
+
 function testI18n() {
   const storage = new Map([['vcd-lang', 'de']]);
   const window = {
@@ -1259,9 +1278,9 @@ function testI18n() {
     `${type}.label`, `${type}.keywords`, `${type}.help`, `${type}.example`, `${type}.tip.1`, `${type}.tip.2`, `${type}.tip.3`,
     ...[...def.inputs, ...def.outputs].map((port) => `nodes.port.${port.id}`),
     ...[...def.inputs, ...def.outputs].map((port) => `nodes.portdesc.${port.id}`),
-    ...[...def.inputs, ...def.outputs].map((port) => `nodes.portdesc.music_video.hud_plan.${port.id}`),
+    ...portKeys(def),
     ...def.params.map((param) => `nodes.param.${param.id}`),
-    'nodes.issue.HUDPLAN_NO_BRIEF', 'nodes.issue.HUDPLAN_NO_FIGURE', 'nodes.issue.HUDPLAN_NO_LINES', 'nodes.issue.HUDPLAN_TOO_LONG'
+    'nodes.issue.HUDPLAN_BRIEF_FAILED', 'nodes.issue.HUDPLAN_IDEA_EMPTY', 'nodes.issue.HUDPLAN_NO_BRIEF', 'nodes.issue.HUDPLAN_NO_FIGURE', 'nodes.issue.HUDPLAN_NO_LINES', 'nodes.issue.HUDPLAN_TOO_LONG'
   ];
   for (const lang of ['de', 'en', 'es']) {
     for (const key of keys) {
@@ -1272,9 +1291,8 @@ function testI18n() {
     // the limits of the help test
     assert.ok(window.I18N[lang][`${type}.help`].length <= 320 && window.I18N[lang][`${type}.example`].length <= 260, `${lang}: help and example`);
     for (const n of [1, 2, 3]) assert.ok(window.I18N[lang][`${type}.tip.${n}`].length <= 240, `${lang}: tip ${n}`);
-    for (const port of [...def.inputs, ...def.outputs]) {
-      for (const key of [`nodes.portdesc.${port.id}`, `nodes.portdesc.music_video.hud_plan.${port.id}`]) assert.ok(window.I18N[lang][key].length >= 12 && window.I18N[lang][key].length <= 360, `${lang}: ${key}`);
-    }
+    for (const port of [...def.inputs, ...def.outputs]) assert.ok(window.I18N[lang][`nodes.portdesc.${port.id}`].length >= 12 && window.I18N[lang][`nodes.portdesc.${port.id}`].length <= 360, `${lang}: nodes.portdesc.${port.id}`);
+    for (const key of portKeys(def)) assert.ok(window.I18N[lang][key].length >= 12 && window.I18N[lang][key].length <= 360, `${lang}: ${key}`);
     const phrases = window.I18N[lang][`${type}.keywords`].split(',').map((item) => item.trim());
     assert.ok(phrases.length >= 3 && phrases.every(Boolean) && new Set(phrases.map((item) => item.toLowerCase())).size === phrases.length, `${lang}: keywords`);
     for (const param of def.params.filter((item) => item.kind === 'select' && item.options)) for (const option of param.options) assert.ok(window.I18N[lang][`nodes.option.${option}`], `${lang}: option ${option}`);
@@ -1285,7 +1303,7 @@ function testI18n() {
   // the codes of the errors: every code the planner can throw has a text, and the figures it names are placeholders
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-music-video-hud.js'), 'utf8') + fs.readFileSync(path.join(root, 'lib', 'music-video-hud', 'plan.js'), 'utf8');
   const codes = new Set([...source.matchAll(/'(HUDPLAN_[A-Z_]+)'/g)].map((match) => match[1]));
-  assert.deepEqual([...codes].sort(), ['HUDPLAN_NO_BRIEF', 'HUDPLAN_NO_FIGURE', 'HUDPLAN_NO_LINES', 'HUDPLAN_TOO_LONG']);
+  assert.deepEqual([...codes].sort(), ['HUDPLAN_BRIEF_FAILED', 'HUDPLAN_IDEA_EMPTY', 'HUDPLAN_NO_BRIEF', 'HUDPLAN_NO_FIGURE', 'HUDPLAN_NO_LINES', 'HUDPLAN_TOO_LONG']);
   for (const code of codes) for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][`nodes.issue.${code}`], `${lang}: no text for ${code}`);
   for (const lang of ['de', 'en', 'es']) for (const name of ['seconds', 'units', 'clip', 'needed']) assert.ok(window.I18N[lang]['nodes.issue.HUDPLAN_TOO_LONG'].includes(`{${name}}`), `${lang}: HUDPLAN_TOO_LONG names {${name}}`);
   // the data of the error are the placeholders of the text
@@ -1441,11 +1459,50 @@ async function testNode() {
       assert.equal(graphics.cuts.length, grid.cuts.length);
       assert.match(out.board.value, /^TREATMENT\n/);
       assert.equal(out.sheet_prompt.value, hudPlan.sheetPrompt(figure));
+      assert.equal(out.brief.value, 'A made-up film about a light that stays on', 'the output "brief" is the idea that was given');
+      assert.ok(!ctx.logs.some((line) => /^The brief \(output/.test(line)), 'no brief was written');
       // the price of the film on the board is the one of the table, and the log says what was made
       assert.match(out.board.value, /^NUMBERS .* estimate 3\.45 USD$/m);
       assert.ok(ctx.logs.some((line) => new RegExp(`^${stats.units} units \\(${stats.sung} sung, ${stats.story} story, ${stats.still} still\\), ${stats.cuts} cuts \\([\\d.]+/min\\), 60 s, \\d+ graphics for ${grid.lines.length} lines, 1 answer of the model, the film costs about 3\\.45 USD$`).test(line)), ctx.logs.join(' | '));
       assert.ok(!ctx.logs.some((line) => /plain|corrected|no place/.test(line)), 'a clean run says nothing about repairs');
       assert.deepEqual(await scratchLeft(), [], 'no scratch folder is left');
+    }
+
+    /* WP48: no idea (the field empty, nothing connected): the model writes the brief from the song, then plans with it; both calls are paid */
+    {
+      const written = [
+        'Theme: a light that stays on in a harbour town, and everybody who comes to see it.',
+        'Arc:',
+        ...grid.sections.map((section, at) => `- Part ${at + 1}: the lamp at the window, a new street comes to see it, the counter climbs.`),
+        'Machine in the HUD: LAMP WATCH counts VISITORS, watched by the night ferry; ticker: tides, fuses, moth reports.',
+        'Look: a grey wool coat, wet stone, sodium light that turns into the blue of the dawn.',
+        'Graphics for the lines: a visitor log, a tide chart, a map of the streets, a chat with the ferry.',
+        'End card: STILL ON, the lamp outlasts the night.',
+        'Not: no brands, no logos, no real people, nothing suggestive.'
+      ].join('\n');
+      reset([written, goodAnswer(grid, figure)]);
+      const ctx = makeCtx();
+      const { brief: _idea, ...withoutIdea } = inputs();
+      const result = await exec(ctx, withoutIdea, { brief: '', brief_language: 'de' });
+      assert.equal(calls.length, 2, 'two calls: the brief, then the plan');
+      assert.equal(calls[0].system, hudPlan.briefSystemPrompt({ theme: 'hud', hudLanguage: 'en', briefLanguage: 'de' }));
+      assert.equal(calls[0].prompt, hudPlan.briefUserPrompt({ grid, figure }));
+      assert.deepEqual([calls[0].model, calls[0].json, calls[0].maxTokens, calls[0].sessionId], ['anthropic/claude-opus-5.5', undefined, hudPlan.BRIEF_MAX_TOKENS, sessionId]);
+      assert.ok(calls[1].prompt.startsWith(`IDEA\n${written}\n\nSTYLE\n`), 'the brief is the idea of the plan');
+      const out = result.variants[0];
+      assert.equal(out.brief.value, written);
+      near(result.cost.usd, 2 * LLM_USD, 1e-9);
+      assert.match(out.board.value, /^BRIEF {6}written by the language model from the lyrics/);
+      assert.match(out.board.value, /^ESTIMATE .* \+ brief [\d.]+ = [\d.]+ USD/m);
+      assert.ok(ctx.logs.some((line) => /^The field "Idea" is empty: the language model wrote the brief from the lyrics \(\d+ words\)\.$/.test(line)), ctx.logs.join(' | '));
+      assert.ok(ctx.logs.some((line) => /^The brief \(output "brief"\): anthropic\/claude-opus-5\.5, 0\.2500 USD; copy it into the field "Idea" to change it\.$/.test(line)), ctx.logs.join(' | '));
+      // a brief that does not come: the error has a code, what was paid is counted, no plan is asked for
+      reset([new Error('the service is busy'), 'Too short.']);
+      const failed = await errorOf(exec(makeCtx(), withoutIdea, { brief: '' }));
+      assert.equal(failed?.code, 'HUDPLAN_BRIEF_FAILED');
+      assert.deepEqual(failed.costs, [LLM_USD]);
+      assert.equal(calls.length, 2);
+      assert.deepEqual(await scratchLeft(), []);
     }
 
     /* the defaults of the node: every unit that is not sung is a clip, the list of the stills is empty (the nodes behind it make nothing) */

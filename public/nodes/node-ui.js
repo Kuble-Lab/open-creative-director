@@ -64,6 +64,9 @@
   const categoryLabel = (category) => tr(`nodes.category.${category}`, humanize(category));
   const portLabel = (id) => tr(`nodes.port.${id}`, humanize(id));
   const paramLabel = (id) => tr(`nodes.param.${id}`, humanize(id));
+  // The hint under the field of one parameter of one node type (nodes.paramhint.<type>.<param>, for example how the lyrics mark the lines of a choir,
+  // WP48), in the inspector and in the app view; '' for a field without one.
+  const paramHint = (type, id) => tr(`nodes.paramhint.${type}.${id}`, '');
   const optionLabel = (value) => tr(`nodes.option.${value}`, String(value));
   // The label of an option of one parameter: nodes.option.<param>.<value> where the parameter has its own wording (the language of the
   // explainer nodes says "Same as input" for "auto"), else the label of the value for every parameter.
@@ -2027,6 +2030,7 @@
     categoryLabel,
     portLabel,
     paramLabel,
+    paramHint,
     optionLabel,
     optionLabelOf,
     hasIssueText,

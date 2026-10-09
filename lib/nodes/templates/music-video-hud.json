@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Music video in the HUD style (your song)",
-  "description": "Turn your own song into a music video in the HUD style: a photoreal AI singer (by default Claudia), sung stretches with lip sync, hard cuts on the beat and a layer of graphics that explains every lyric line, in the look HUD Blue or Kuble (the karaoke line is off by default). The song is analysed, ElevenLabs finds when each line is sung, a language model (by default Claude Opus 5.5) plans the film, Nano Banana 2.1 makes a character sheet and one picture per unit, H3 Max on fal.ai makes the lip sync and a clip for every other unit (turbo, 768P, 5 s; with a lower share of motion in the plan some units are stills with a parallax effect instead), ffmpeg cuts the base film and a render node draws the HUD. About 5.5 US dollars per minute of song according to the planner (about 8.5 for 90 seconds, about 11.5 for two minutes; the clips and the lip sync are the biggest parts). Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 1 makes the board (the plan with the graphic of every line and the estimate for your whole film), the character sheet and the pictures for under 1 US dollar per minute of song; you approve them before step 2 makes the expensive rest. The end card says that the film is AI-generated and credits the figure.",
+  "description": "Turn your own song into a music video in the HUD style: a photoreal AI singer (by default Claudia), sung stretches with lip sync, hard cuts on the beat and a layer of graphics that explains every lyric line, in the look HUD Blue or Kuble (the karaoke line is off by default). The song is analysed, ElevenLabs finds when each line is sung, a language model (by default Claude Opus 5.5) plans the film, Nano Banana 2.1 makes a character sheet and one picture per unit, H3 Max on fal.ai makes the lip sync and a clip for every other unit (turbo, 768P, 5 s; with a lower share of motion in the plan some units are stills with a parallax effect instead), ffmpeg cuts the base film and a render node draws the HUD. Leave the idea empty and the language model first writes a brief from the lyrics, which you see and approve with the board; lines sung by a choir get no lip sync (mark them in the lyrics, or Gemini hears them). About 5.5 US dollars per minute of song according to the planner (about 8.5 for 90 seconds, about 11.5 for two minutes; the clips and the lip sync are the biggest parts). Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 1 makes the board (the plan with the graphic of every line and the estimate for your whole film), the character sheet and the pictures for under 1 US dollar per minute of song; you approve them before step 2 makes the expensive rest. The end card says that the film is AI-generated and credits the figure.",
   "requires": [
     "openrouter",
     "ffmpeg",
@@ -40,7 +40,8 @@
         "y": 360,
         "params": {
           "lyrics": "",
-          "method": "auto"
+          "method": "auto",
+          "voices": "auto"
         }
       },
       {
@@ -57,6 +58,7 @@
           "theme": "hud",
           "accent": "#3B82F6",
           "hud_language": "en",
+          "brief_language": "en",
           "cuts_per_minute": 24,
           "max_units": 50,
           "lipsync_seconds_per_minute": 22,
@@ -313,6 +315,16 @@
         "y": 1220,
         "params": {
           "label": "Still images"
+        }
+      },
+      {
+        "id": "n30",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 4040,
+        "y": 60,
+        "params": {
+          "label": "Brief"
         }
       }
     ],
@@ -723,6 +735,17 @@
           "node": "n24",
           "port": "inputs"
         }
+      },
+      {
+        "id": "e38",
+        "from": {
+          "node": "n4",
+          "port": "brief"
+        },
+        "to": {
+          "node": "n30",
+          "port": "inputs"
+        }
       }
     ],
     "groups": [],
@@ -732,13 +755,13 @@
         "x": 80,
         "y": 700,
         "w": 400,
-        "h": 560,
-        "text": "Upload the song (mp3, wav or m4a) and write the idea. The lyrics are optional: with them the line times are more exact, without them the words are recognised from the audio. Step 1 makes only the board (the plan of the film with the graphic of every line and the estimate), the character sheet and one picture per unit, for under 1 US dollar per minute of song: look at them and change the idea or the figure if they are not right. Step 2 (“Approve and finish” in the app view) makes the lip sync, the clips, the parallax of any stills, the cut and the HUD. In the node view run the output nodes Board, Character sheet, Sung images, Story images and Still images first, look at the results, then run everything. A song of up to about 3 minutes fits the default settings (50 units); for a longer one raise the clip length in the plan."
+        "h": 760,
+        "text": "Upload the song (mp3, wav or m4a) and write the idea, or leave it empty: the planner then first writes a brief from the lyrics (the result Brief: copy it, change it and put it into the field to plan with it). The lyrics are optional: with them the line times are more exact, without them the words are recognised from the audio. Lines a choir sings are marked with [Choir] above them or “Choir:” in front (else “Detect choir” in Lyrics timing hears them): they get no lip sync. Step 1 makes only the brief, the board (the plan of the film with the graphic of every line and the estimate), the character sheet and one picture per unit, for under 1 US dollar per minute of song: look at them and change the idea or the figure if they are not right. Step 2 (“Approve and finish” in the app view) makes the lip sync, the clips, the parallax of any stills, the cut and the HUD. In the node view run the output nodes Brief, Board, Character sheet, Sung images, Story images and Still images first, look at the results, then run everything. A song of up to about 3 minutes fits the default settings (50 units); for a longer one raise the clip length in the plan."
       },
       {
         "id": "t2",
         "x": 80,
-        "y": 1300,
+        "y": 1500,
         "w": 400,
         "h": 780,
         "text": "The pieces that have to agree: the clip length of the plan (5 s) is also the duration of the story clips and of the parallax clips; the pictures are 16:9 (the character sheet 3:4); the cut is 1080p at 24 frames per second with hard cuts and no captions, because the HUD draws the words itself (switch the karaoke line on in the form). All image nodes use Nano Banana 2.1. The prompts of the plan already contain the identity text of the figure, so the three text nodes in front of the picture nodes only tell the image model that the attached image is the character sheet and what to take from it. Style sets the look of the plan and, through “auto” in the node Draw music video HUD, of the render. Rules for the figure Claudia (Claudia by anabology, claudia.gallery): say that the film is made with AI (the end card does it: keep it on), credit her, keep her an adult and make nothing explicit. She is fan work about Claude and has no connection to Anthropic."
@@ -753,7 +776,7 @@
   "app": {
     "enabled": true,
     "title": "Music video in the HUD style (your song)",
-    "description": "Upload your song, write the idea and get a music video in the HUD style: a photoreal AI singer with lip sync, cuts on the beat and a graphic for every lyric line. You approve the board, the character sheet and the pictures first (step 1), then the rest is made. Before each start you see the paid steps and their estimate.",
+    "description": "Upload your song, write the idea (or leave it empty: the brief then comes from the lyrics) and get a music video in the HUD style: a photoreal AI singer with lip sync, cuts on the beat and a graphic for every lyric line. You approve the brief, the board, the character sheet and the pictures first (step 1), then the rest is made. Before each start you see the paid steps and their estimate.",
     "inputs": [
       {
         "node": "n1",
@@ -763,7 +786,7 @@
       {
         "node": "n4",
         "param": "brief",
-        "label": "Idea for the video (story, mood, setting)"
+        "label": "Idea for the video (leave empty: from the lyrics)"
       },
       {
         "node": "n4",
@@ -778,7 +801,7 @@
       {
         "node": "n3",
         "param": "lyrics",
-        "label": "Song lyrics (optional)"
+        "label": "Song lyrics (optional; mark a choir with [Choir])"
       },
       {
         "node": "n17",
@@ -804,6 +827,11 @@
       {
         "node": "n19",
         "label": "Contact sheet"
+      },
+      {
+        "node": "n30",
+        "label": "Brief",
+        "approve": true
       },
       {
         "node": "n20",
@@ -835,7 +863,7 @@
   "i18n": {
     "de": {
       "name": "Musikvideo im HUD-Stil (eigener Song)",
-      "description": "Mache aus deinem eigenen Song ein Musikvideo im HUD-Stil: eine fotorealistische KI-Sängerin (standardmässig Claudia), gesungene Stellen mit Lippensync, harte Schnitte im Takt und eine Grafikebene, die jede Textzeile erklärt, im Look HUD Blue oder Kuble (die Karaoke-Zeile ist standardmässig aus). Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell (standardmässig Claude Opus 5.5) plant den Film, Nano Banana 2.1 macht ein Figurenblatt und ein Bild pro Einheit, H3 Max auf fal.ai macht den Lippensync und für jede andere Einheit einen Clip (turbo, 768P, 5 s; mit weniger «Anteil Bewegung» im Plan werden einige Einheiten stattdessen Standbilder mit Parallaxe-Effekt), ffmpeg schneidet den Grundfilm und ein Render-Node zeichnet das HUD. Rund 5.5 US-Dollar pro Minute Song laut Planer (etwa 8.5 für 90 Sekunden, etwa 11.5 für zwei Minuten; Clips und Lippensync sind die grössten Teile). Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 1 macht das Board (der Plan mit der Grafik jeder Zeile und der Schätzung für den ganzen Film), das Figurenblatt und die Bilder für unter 1 US-Dollar pro Minute Song; du gibst sie frei, bevor Schritt 2 den teuren Rest macht. Die Endkarte sagt, dass der Film KI-generiert ist, und nennt die Figur im Credit.",
+      "description": "Mache aus deinem eigenen Song ein Musikvideo im HUD-Stil: eine fotorealistische KI-Sängerin (standardmässig Claudia), gesungene Stellen mit Lippensync, harte Schnitte im Takt und eine Grafikebene, die jede Textzeile erklärt, im Look HUD Blue oder Kuble (die Karaoke-Zeile ist standardmässig aus). Der Song wird analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell (standardmässig Claude Opus 5.5) plant den Film, Nano Banana 2.1 macht ein Figurenblatt und ein Bild pro Einheit, H3 Max auf fal.ai macht den Lippensync und für jede andere Einheit einen Clip (turbo, 768P, 5 s; mit weniger «Anteil Bewegung» im Plan werden einige Einheiten stattdessen Standbilder mit Parallaxe-Effekt), ffmpeg schneidet den Grundfilm und ein Render-Node zeichnet das HUD. Bleibt die Idee leer, schreibt das Sprachmodell zuerst ein Briefing aus dem Songtext, das du mit dem Board siehst und freigibst; Zeilen eines Chors bekommen keinen Lippensync (markiere sie im Songtext, oder Gemini hört sie heraus). Rund 5.5 US-Dollar pro Minute Song laut Planer (etwa 8.5 für 90 Sekunden, etwa 11.5 für zwei Minuten; Clips und Lippensync sind die grössten Teile). Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 1 macht das Board (der Plan mit der Grafik jeder Zeile und der Schätzung für den ganzen Film), das Figurenblatt und die Bilder für unter 1 US-Dollar pro Minute Song; du gibst sie frei, bevor Schritt 2 den teuren Rest macht. Die Endkarte sagt, dass der Film KI-generiert ist, und nennt die Figur im Credit.",
       "node.n1": "Song",
       "node.n5": "Figurenblatt",
       "node.n6": "Gesangs-Prompts mit Figurenblatt",
@@ -849,20 +877,21 @@
       "node.n14": "Tiefenbilder (Parallaxe)",
       "node.n15": "Standbild-Clips (Parallaxe)",
       "node.n16": "Grundschnitt (ohne Untertitel)",
-      "note.t1": "Lade den Song hoch (mp3, wav oder m4a) und schreibe die Idee. Der Songtext ist optional: Mit ihm sind die Zeilenzeiten genauer, ohne ihn werden die Wörter aus dem Audio erkannt. Schritt 1 macht nur das Board (der Plan des Films mit der Grafik jeder Zeile und der Schätzung), das Figurenblatt und ein Bild pro Einheit, für unter 1 US-Dollar pro Minute Song: Sieh sie dir an und ändere die Idee oder die Figur, wenn sie nicht stimmen. Schritt 2 («Freigeben und fertigstellen» in der App-Ansicht) macht den Lippensync, die Clips, die Parallaxe allfälliger Standbilder, den Schnitt und das HUD. In der Node-Ansicht führst du zuerst die Ausgabe-Nodes «Board», «Figurenblatt», «Gesangsbilder», «Handlungsbilder» und «Standbilder» aus, siehst dir die Ergebnisse an und führst dann alles aus. Ein Song bis etwa 3 Minuten passt zu den Standardeinstellungen (50 Einheiten); für einen längeren erhöhst du die Clip-Länge im Plan.",
+      "note.t1": "Lade den Song hoch (mp3, wav oder m4a) und schreibe die Idee, oder lass sie leer: Dann schreibt der Planer zuerst ein Briefing aus dem Songtext (das Ergebnis «Briefing»: kopieren, anpassen und ins Feld setzen, um damit zu planen). Der Songtext ist optional: Mit ihm sind die Zeilenzeiten genauer, ohne ihn werden die Wörter aus dem Audio erkannt. Zeilen, die ein Chor singt, markierst du mit [Chor] darüber oder «Chor:» davor (sonst hört «Chor erkennen» in «Songtext-Zeiten» sie heraus): Sie bekommen keinen Lippensync. Schritt 1 macht nur das Briefing, das Board (der Plan des Films mit der Grafik jeder Zeile und der Schätzung), das Figurenblatt und ein Bild pro Einheit, für unter 1 US-Dollar pro Minute Song: Sieh sie dir an und ändere die Idee oder die Figur, wenn sie nicht stimmen. Schritt 2 («Freigeben und fertigstellen» in der App-Ansicht) macht den Lippensync, die Clips, die Parallaxe allfälliger Standbilder, den Schnitt und das HUD. In der Node-Ansicht führst du zuerst die Ausgabe-Nodes «Briefing», «Board», «Figurenblatt», «Gesangsbilder», «Handlungsbilder» und «Standbilder» aus, siehst dir die Ergebnisse an und führst dann alles aus. Ein Song bis etwa 3 Minuten passt zu den Standardeinstellungen (50 Einheiten); für einen längeren erhöhst du die Clip-Länge im Plan.",
       "note.t2": "Was zusammenpassen muss: Die Clip-Länge des Plans (5 s) ist auch die Dauer der Handlungsclips und der Parallaxe-Clips; die Bilder sind 16:9 (das Figurenblatt 3:4); der Schnitt ist 1080p mit 24 Bildern pro Sekunde, harten Schnitten und ohne Untertitel, weil das HUD die Wörter selbst zeichnet (die Karaoke-Zeile schaltest du im Formular ein). Alle Bild-Nodes nutzen Nano Banana 2.1. Die Prompts des Plans enthalten den Identitätstext der Figur schon; die drei Text-Nodes vor den Bild-Nodes sagen dem Bildmodell nur, dass das angehängte Bild das Figurenblatt ist und was es davon übernehmen soll. «Stil» legt den Look des Plans und, über «auto» im Node «Musikvideo-HUD zeichnen», des Renders fest. Regeln für die Figur Claudia (Claudia by anabology, claudia.gallery): Sage, dass der Film mit KI gemacht ist (die Endkarte tut es, lass sie an), nenne sie im Credit, lass sie erwachsen und mache nichts Explizites. Sie ist Fan-Arbeit über Claude und hat keine Verbindung zu Anthropic.",
       "app.title": "Musikvideo im HUD-Stil (eigener Song)",
-      "app.description": "Lade deinen Song hoch, schreibe die Idee und erhalte ein Musikvideo im HUD-Stil: eine fotorealistische KI-Sängerin mit Lippensync, Schnitte im Takt und eine Grafik für jede Textzeile. Zuerst gibst du das Board, das Figurenblatt und die Bilder frei (Schritt 1), dann entsteht der Rest. Vor jedem Start siehst du die bezahlten Schritte und ihre Schätzung.",
+      "app.description": "Lade deinen Song hoch, schreibe die Idee (oder lass sie leer: Dann entsteht das Briefing aus dem Songtext) und erhalte ein Musikvideo im HUD-Stil: eine fotorealistische KI-Sängerin mit Lippensync, Schnitte im Takt und eine Grafik für jede Textzeile. Zuerst gibst du das Briefing, das Board, das Figurenblatt und die Bilder frei (Schritt 1), dann entsteht der Rest. Vor jedem Start siehst du die bezahlten Schritte und ihre Schätzung.",
       "app.input.n1.asset": "Song",
-      "app.input.n4.brief": "Idee für das Video (Geschichte, Stimmung, Ort)",
+      "app.input.n4.brief": "Idee für das Video (leer lassen: aus dem Songtext)",
       "app.input.n4.figure": "Figur (optional, Standard: Claudia)",
       "app.input.n4.theme": "Stil",
-      "app.input.n3.lyrics": "Songtext (optional)",
+      "app.input.n3.lyrics": "Songtext (optional; Chor mit [Chor] markieren)",
       "app.input.n17.karaoke": "Untertitel (Karaoke-Zeile)",
       "app.input.n17.effects": "Effekte",
       "app.input.n4.hud_language": "Sprache der Grafiken und der KI-Kennzeichnung",
       "app.output.n18": "Musikvideo",
       "app.output.n19": "Kontaktbogen",
+      "app.output.n30": "Briefing",
       "app.output.n20": "Board",
       "app.output.n21": "Figurenblatt",
       "app.output.n22": "Gesangsbilder",
@@ -870,15 +899,17 @@
       "app.output.n24": "Standbilder",
       "param.n18.label": "Musikvideo",
       "param.n19.label": "Kontaktbogen",
+      "param.n30.label": "Briefing",
       "param.n20.label": "Board",
       "param.n21.label": "Figurenblatt",
       "param.n22.label": "Gesangsbilder",
       "param.n23.label": "Handlungsbilder",
-      "param.n24.label": "Standbilder"
+      "param.n24.label": "Standbilder",
+      "param.n4.brief_language": "de"
     },
     "es": {
       "name": "Videoclip en estilo HUD (tu propia canción)",
-      "description": "Convierte tu propia canción en un videoclip en estilo HUD: una cantante de IA fotorrealista (por defecto Claudia), tramos cantados con sincronización labial, cortes secos al ritmo y una capa de gráficos que explica cada línea de la letra, con el aspecto HUD Blue o Kuble (la línea de karaoke está desactivada por defecto). Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje (por defecto Claude Opus 5.5) planifica el vídeo, Nano Banana 2.1 crea una hoja del personaje y una imagen por unidad, H3 Max en fal.ai crea la sincronización labial y un clip para cada una de las demás unidades (turbo, 768P, 5 s; si bajas esa proporción en el plan, algunas unidades son imágenes fijas con efecto de paralaje), ffmpeg corta el vídeo base y un nodo de render dibuja el HUD. Unos 5,5 dólares por minuto de canción según el planificador (unos 8,5 para 90 segundos, unos 11,5 para dos minutos; los clips y la sincronización labial son las partes más caras). Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 1 crea el tablero (el plan con el gráfico de cada línea y la estimación de todo el vídeo), la hoja del personaje y las imágenes por menos de 1 dólar por minuto de canción; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro. La tarjeta final indica que el vídeo está generado con IA y da el crédito de la figura.",
+      "description": "Convierte tu propia canción en un videoclip en estilo HUD: una cantante de IA fotorrealista (por defecto Claudia), tramos cantados con sincronización labial, cortes secos al ritmo y una capa de gráficos que explica cada línea de la letra, con el aspecto HUD Blue o Kuble (la línea de karaoke está desactivada por defecto). Se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje (por defecto Claude Opus 5.5) planifica el vídeo, Nano Banana 2.1 crea una hoja del personaje y una imagen por unidad, H3 Max en fal.ai crea la sincronización labial y un clip para cada una de las demás unidades (turbo, 768P, 5 s; si bajas esa proporción en el plan, algunas unidades son imágenes fijas con efecto de paralaje), ffmpeg corta el vídeo base y un nodo de render dibuja el HUD. Si dejas la idea vacía, el modelo de lenguaje escribe antes un brief a partir de la letra, que ves y apruebas con el tablero; las líneas que canta un coro no tienen sincronización labial (márcalas en la letra o Gemini las detecta). Unos 5,5 dólares por minuto de canción según el planificador (unos 8,5 para 90 segundos, unos 11,5 para dos minutos; los clips y la sincronización labial son las partes más caras). Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 1 crea el tablero (el plan con el gráfico de cada línea y la estimación de todo el vídeo), la hoja del personaje y las imágenes por menos de 1 dólar por minuto de canción; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro. La tarjeta final indica que el vídeo está generado con IA y da el crédito de la figura.",
       "node.n1": "Canción",
       "node.n5": "Hoja del personaje",
       "node.n6": "Prompts de canto con la hoja",
@@ -892,20 +923,21 @@
       "node.n14": "Mapas de profundidad (paralaje)",
       "node.n15": "Clips de imágenes fijas (paralaje)",
       "node.n16": "Montaje base (sin subtítulos)",
-      "note.t1": "Sube la canción (mp3, wav o m4a) y escribe la idea. La letra es opcional: con ella los tiempos de las líneas son más exactos; sin ella, las palabras se reconocen a partir del audio. El paso 1 crea solo el tablero (el plan del vídeo con el gráfico de cada línea y la estimación), la hoja del personaje y una imagen por unidad, por menos de 1 dólar por minuto de canción: míralos y cambia la idea o la figura si no son correctas. El paso 2 («Aprobar y terminar» en la vista de app) crea la sincronización labial, los clips, el paralaje de las imágenes fijas que haya, el montaje y el HUD. En la vista de nodos ejecuta primero los nodos de salida Tablero, Hoja del personaje, Imágenes de canto, Imágenes de la historia e Imágenes fijas, mira los resultados y ejecuta después todo. Una canción de hasta unos 3 minutos encaja con los ajustes predefinidos (50 unidades); para una más larga sube la duración del clip en el plan.",
+      "note.t1": "Sube la canción (mp3, wav o m4a) y escribe la idea, o déjala vacía: el planificador escribe entonces antes un brief a partir de la letra (el resultado «Brief»: cópialo, cámbialo y ponlo en el campo para planificar con él). La letra es opcional: con ella los tiempos de las líneas son más exactos; sin ella, las palabras se reconocen a partir del audio. Las líneas que canta un coro se marcan con [Coros] encima o «Coros:» delante (si no, «Detectar coro» en «Tiempos de la letra» las detecta): no tienen sincronización labial. El paso 1 crea solo el brief, el tablero (el plan del vídeo con el gráfico de cada línea y la estimación), la hoja del personaje y una imagen por unidad, por menos de 1 dólar por minuto de canción: míralos y cambia la idea o la figura si no son correctas. El paso 2 («Aprobar y terminar» en la vista de app) crea la sincronización labial, los clips, el paralaje de las imágenes fijas que haya, el montaje y el HUD. En la vista de nodos ejecuta primero los nodos de salida Brief, Tablero, Hoja del personaje, Imágenes de canto, Imágenes de la historia e Imágenes fijas, mira los resultados y ejecuta después todo. Una canción de hasta unos 3 minutos encaja con los ajustes predefinidos (50 unidades); para una más larga sube la duración del clip en el plan.",
       "note.t2": "Lo que tiene que coincidir: la duración de clip del plan (5 s) es también la duración de los clips de la historia y de los clips de paralaje; las imágenes son 16:9 (la hoja del personaje 3:4); el montaje es 1080p a 24 fotogramas por segundo, con cortes secos y sin subtítulos, porque el HUD dibuja las palabras él mismo (la línea de karaoke se activa en el formulario). Todos los nodos de imagen usan Nano Banana 2.1. Los prompts del plan ya contienen el texto de identidad de la figura, así que los tres nodos de texto delante de los nodos de imagen solo le dicen al modelo de imagen que la imagen adjunta es la hoja del personaje y qué debe tomar de ella. «Estilo» fija el aspecto del plan y, mediante «auto» en el nodo «Dibujar HUD del videoclip», el del render. Reglas para la figura Claudia (Claudia by anabology, claudia.gallery): indica que el vídeo está hecho con IA (la tarjeta final lo hace: déjala activada), da su crédito, mantenla adulta y no hagas nada explícito. Es un trabajo de fans sobre Claude y no tiene ninguna relación con Anthropic.",
       "app.title": "Videoclip en estilo HUD (tu propia canción)",
-      "app.description": "Sube tu canción, escribe la idea y recibe un videoclip en estilo HUD: una cantante de IA fotorrealista con sincronización labial, cortes al ritmo y un gráfico para cada línea de la letra. Primero apruebas el tablero, la hoja del personaje y las imágenes (paso 1), después se crea el resto. Antes de cada inicio ves los pasos de pago y su estimación.",
+      "app.description": "Sube tu canción, escribe la idea (o déjala vacía: el brief sale entonces de la letra) y recibe un videoclip en estilo HUD: una cantante de IA fotorrealista con sincronización labial, cortes al ritmo y un gráfico para cada línea de la letra. Primero apruebas el brief, el tablero, la hoja del personaje y las imágenes (paso 1), después se crea el resto. Antes de cada inicio ves los pasos de pago y su estimación.",
       "app.input.n1.asset": "Canción",
-      "app.input.n4.brief": "Idea para el vídeo (historia, ambiente, lugar)",
+      "app.input.n4.brief": "Idea para el vídeo (déjala vacía: a partir de la letra)",
       "app.input.n4.figure": "Figura (opcional, por defecto: Claudia)",
       "app.input.n4.theme": "Estilo",
-      "app.input.n3.lyrics": "Letra de la canción (opcional)",
+      "app.input.n3.lyrics": "Letra de la canción (opcional; marca los coros con [Coros])",
       "app.input.n17.karaoke": "Subtítulos (línea de karaoke)",
       "app.input.n17.effects": "Efectos",
       "app.input.n4.hud_language": "Idioma de los gráficos y de la indicación de IA",
       "app.output.n18": "Videoclip",
       "app.output.n19": "Hoja de contactos",
+      "app.output.n30": "Brief",
       "app.output.n20": "Tablero",
       "app.output.n21": "Hoja del personaje",
       "app.output.n22": "Imágenes de canto",
@@ -913,11 +945,13 @@
       "app.output.n24": "Imágenes fijas",
       "param.n18.label": "Videoclip",
       "param.n19.label": "Hoja de contactos",
+      "param.n30.label": "Brief",
       "param.n20.label": "Tablero",
       "param.n21.label": "Hoja del personaje",
       "param.n22.label": "Imágenes de canto",
       "param.n23.label": "Imágenes de la historia",
-      "param.n24.label": "Imágenes fijas"
+      "param.n24.label": "Imágenes fijas",
+      "param.n4.brief_language": "es"
     }
   }
 }
