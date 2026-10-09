@@ -460,6 +460,9 @@ function testPostArgs() {
   }
   for (const g of [film, kubleFilm]) {
     const built = post.buildPostArgs({ ...files, graphics: g, params: { grain: 0.35, glitch: 0.6, effects: 'strong' }, endcardSeconds: 3 });
+    // the film is in one format before it is cut into pieces (HUD Blue: YUV, Kuble: planar RGB), so only the frames of a window are converted
+    // (without it ffmpeg 6.1 takes the RGB of rgbashift in a window for the whole film and the colours move)
+    assert.match(built.filter, g === kubleFilm ? /,format=gbrp\[rgb\];/ : /^\[0:v\]fps=24,scale=1920:1080:flags=bicubic,setsar=1,setpts=PTS-STARTPTS,format=yuv420p\[vin\];\[vin\]split=/);
     const windows = built.windows;
     const plan = effects.planEffects(g, { level: 'strong' });
     assert.equal(windows.length, plan.glitch.length);
