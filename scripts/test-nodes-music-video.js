@@ -701,7 +701,13 @@ async function run(iso) {
       geminiRequests.length = 0;
       geminiAnswer = { status: 403, body: { error: { message: 'Permission denied', status: 'PERMISSION_DENIED' } } };
       const refusedByGoogle = await call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'auto' });
-      assert.deepEqual([geminiRequests.length, refusedByGoogle.timing.voices, refusedByGoogle.voicesUsd, journal.length], [1, { source: 'none', reason: 'failed' }, undefined, 1]);
+      assert.deepEqual([geminiRequests.length, refusedByGoogle.timing.voices, refusedByGoogle.voicesUsd, journal.length], [1, { source: 'none', reason: 'key' }, undefined, 1]);
+      // the prepaid credit of the key is used up (HTTP 402): said as such, nothing is paid
+      resetProviders();
+      geminiRequests.length = 0;
+      geminiAnswer = { status: 402, body: { error: { message: 'Your prepayment credits are depleted.', status: 'RESOURCE_EXHAUSTED' } } };
+      const noCredit = await call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'auto' });
+      assert.deepEqual([geminiRequests.length, noCredit.timing.voices, noCredit.voicesUsd, journal.length], [1, { source: 'none', reason: 'no_credit' }, undefined, 1]);
 
       // the node: the price of both, the log names the lines of the choir
       resetProviders();

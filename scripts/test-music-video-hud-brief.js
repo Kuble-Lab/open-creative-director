@@ -286,6 +286,10 @@ async function testChoirPrompts() {
   assert.match(noKey, /^CHOIR {6}no detection of a choir \(GEMINI_API_KEY is not set\): the figure may sing every line; mark the lines of a choir in the lyrics/);
   const [failed] = await boardOf({ ...song.timing, voices: { source: 'none', reason: 'failed' } });
   assert.match(failed, /\(Gemini gave no usable answer\)/);
+  const [noCredit] = await boardOf({ ...song.timing, voices: { source: 'none', reason: 'no_credit' } });
+  assert.match(noCredit, /\(the prepaid credit of the Gemini key is used up\)/);
+  const [refused] = await boardOf({ ...song.timing, voices: { source: 'none', reason: 'key' } });
+  assert.match(refused, /\(Google refused the Gemini key\)/);
 }
 
 /* ---------- the brief from the song ---------- */
