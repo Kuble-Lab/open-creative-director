@@ -82,14 +82,17 @@ async function testToolCall() {
   try {
     // unchanged: the call to the dispatcher and the job of a tool call without fps
     const plain = await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Ohne Bildrate' });
-    assert.equal(calls[0].args.length, 4, 'the dispatcher gets the same four arguments as before');
+    // the four arguments of before, no frame rate, and the owner with the label (WP46: own computers)
+    assert.equal(calls[0].args.length, 6);
+    assert.equal(calls[0].args[4], undefined, 'without fps the dispatcher gets no frame rate');
+    assert.deepEqual(calls[0].args[5], { owner: 'test', label: 'Ohne Bildrate' });
     assert.equal(calls[0].resolution, 'landscape');
     assert.equal(Object.prototype.hasOwnProperty.call(plain.job, 'fps'), false, 'the job has no fps');
     assert.match(plain.toolResult, /gestartet/);
 
     // new: fps goes to the dispatcher and into the job
     const rated = await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Mit Bildrate', fps: 24 });
-    assert.equal(calls[1].args.length, 5);
+    assert.equal(calls[1].args.length, 6);
     assert.equal(calls[1].args[4], 24);
     assert.equal(rated.job.fps, 24);
     const asText = await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Bildrate als Text', fps: '30' });
@@ -98,8 +101,8 @@ async function testToolCall() {
     // empty values mean "not set"
     await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Leer', fps: '' });
     await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Null', fps: null });
-    assert.equal(calls[3].args.length, 4);
-    assert.equal(calls[4].args.length, 4);
+    assert.equal(calls[3].args[4], undefined);
+    assert.equal(calls[4].args[4], undefined);
 
     // refused: no job is made
     const made = calls.length;

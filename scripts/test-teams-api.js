@@ -689,6 +689,20 @@ async function testRulesTable(ctx) {
       assert.equal(response.body.feature, 'mcp');
     }
   }
+  // own computers as render nodes (WP46): participants and guests connect computers of their own and see only those
+  for (const email of [P1, GUEST]) {
+    const mine = await call(email, 'GET', '/api/render-agents');
+    assert.equal(mine.status, 200, `render agents as ${email}`);
+    assert.equal(mine.body.agents.length, 0);
+    assert.equal(mine.body.canShareAll, false, 'for everybody: admins only');
+    const code = await call(email, 'POST', '/api/render-agents/pairing-code', {});
+    assert.ok([201, 503].includes(code.status), `pairing code as ${email}: ${code.status}`); // 503: no render-node/ in the copy
+    for (const method of ['PATCH', 'DELETE']) {
+      const foreign = await call(email, method, '/api/render-agents/ra-aaaaaaaaaaaa', method === 'PATCH' ? { name: 'X' } : undefined);
+      assert.equal(foreign.status, 404, `${method} a computer that is not theirs as ${email}`);
+      assert.equal(foreign.body.code, 'AGENT_NOT_FOUND');
+    }
+  }
   const contextPost = await call(P1, 'POST', `/api/sessions/${ctx.chat.id}/context`, { brainId: 'x' });
   assert.equal(contextPost.status, 403);
   assert.equal(contextPost.body.code, 'FORBIDDEN_FOR_ROLE');

@@ -286,6 +286,11 @@
               <button id="renderNodeAdd" class="branding-manager-action" type="submit" data-i18n="renderNodes.addButton">Hinzufügen</button>
             </form>
           </section>
+          <section class="settings-render-agents" aria-labelledby="renderAgentsAdminTitle">
+            <h3 id="renderAgentsAdminTitle" class="settings-section-title" data-i18n="agents.admin.title">Rechner der Personen</h3>
+            <p class="settings-hint" data-i18n="agents.admin.hint">Eigene Rechner, die Personen verbunden haben. Sie rendern die Aufträge ihrer Besitzer (und auf Wunsch ihrer Teams). Entfernen sperrt den Rechner sofort.</p>
+            <div id="renderAgentsAdminList" class="render-nodes-list"></div>
+          </section>
           </div>
           <div id="settingsFeedback" class="settings-feedback hidden" aria-live="polite"></div>
         </div>
@@ -514,6 +519,16 @@
       </div>
     </div>
 
+    <div id="renderAgentsModal" class="modal hidden">
+      <div class="modal-panel mcp-panel" role="dialog" aria-labelledby="renderAgentsTitle">
+        <div class="modal-head">
+          <h2 id="renderAgentsTitle" data-i18n="agents.title">Meine Rechner</h2>
+          <button id="renderAgentsClose" class="modal-close" type="button" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div id="renderAgentsBody" class="modal-body mcp-body"></div>
+      </div>
+    </div>
+
     <div id="nodeApp" class="nv-app hidden"></div>
 
     <div id="lightbox" class="lightbox hidden">
@@ -523,6 +538,7 @@
     <script src="i18n.js"></script>
     <script src="team-groups.js"></script>
     <script src="mcp-ui.js"></script>
+    <script src="render-agents-ui.js"></script>
     <script src="email-list.js"></script>
     <script src="teams-ui.js"></script>
     <script src="access-client.js"></script>

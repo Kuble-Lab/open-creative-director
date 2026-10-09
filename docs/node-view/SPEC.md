@@ -1055,3 +1055,50 @@ Tests: `node scripts/test-nodes-templates.js`, `node scripts/test-nodes-app.js`,
 6. Deleting a workflow deletes its generated assets (backing session). Acceptable, or archive instead? — **Decided (2026-09-29): acceptable**; deleting removes the backing session including all assets, after an in-app confirmation.
 7. Canvas control default: marquee on left-drag (Figma) vs. pan on left-drag (Weavy)? Spec uses marquee; a setting could switch. — **Decided (2026-09-29): marquee on left-drag**; the hand tool (`H`) / select tool (`V`) toggle serves as the switch, Space, middle mouse and trackpad scroll pan. No separate setting.
 8. Priority of phase 2: Director `run_workflow` tool vs. mask painter vs. Higgsfield lip-sync/voice nodes. — **Decided (2026-09-29): Higgsfield lip-sync / voice / motion nodes first.** Built as phase 2c (experimental nodes `hf.dubbing`, `hf.voice_change`, `hf.motion_control`, `hf.speech`, an audio input for `video.higgsfield`, the `media_upload` path and the template `dub-clip`; see IMPLEMENTATION-NOTES §2.6). The Director `run_workflow` tool and the mask painter follow later.
+
+## 22. Own computers as render nodes (WP46)
+
+A person connects their own computer (macOS, Windows, Linux) as a render node. The computer connects to the app (pull, HTTPS, long poll); the app never connects to it. Code: `lib/render-agents.js` (store), `lib/render-queue.js` (queue, leases, distribution), `lib/render-agent-routes.js` (HTTP), `render-node/agent.js` (agent), `render-node/setup.js`, `install.sh`, `install.ps1` (installation), `public/render-agents-ui.js` (dialog «Meine Rechner» and admin list).
+
+### 22.1 Paths of the computers (no login; the token or a code is the login)
+
+Mounted before the login middleware and the guard of unconfirmed logins (like `/mcp`). Every answer `Cache-Control: no-store`; JSON bodies at most 64 KB; anything else under the prefix answers `404 NOT_FOUND`.
+
+| Method and path | Auth | Body → answer |
+| --- | --- | --- |
+| `GET /api/render-agent/install.sh` | none | the bash installer (static) |
+| `GET /api/render-agent/install.ps1` | none | the PowerShell installer (static) |
+| `GET /api/render-agent/package` | header `X-Render-Agent-Code` (checked, not used up) or `Authorization: Bearer <token>` | `setup.js` with the manifest embedded: `{format: 1, protocol, hyperframes, files: [{path, sha256, base64}]}` (about 190 KB) |
+| `POST /api/render-agent/pair` | the code in the body | `{code, name, platform, versions}` → `201 {token, agent: {id, name, owner}, protocol, pollWaitMs}`; `426 {required}` before the code is used up |
+| `POST /api/render-agent/poll` | token | `{versions, platform, running: [lease]}` → after up to 25 s `200 {job | null, agent: {id, name}}`; `426 AGENT_OUTDATED {required}` |
+| `GET /api/render-agent/jobs/:job/assets/:file` | token + `X-Render-Lease` | the file (octet-stream, `Content-Length`) |
+| `POST /api/render-agent/jobs/:job/progress` | token + lease | `{progress: 0..1}` → `200`; `409 LEASE_LOST` (stop) |
+| `PUT /api/render-agent/jobs/:job/result` | token + lease | the MP4 as the body (`application/octet-stream`, up to 1 GiB, streamed) → `200`; `409`, `413`, `415`, `422` |
+| `POST /api/render-agent/jobs/:job/fail` | token + lease | `{error}` or `{released: true}` → `200` |
+
+A job (`job` of the poll): `{jobId, lease, html, quality, resolution?, fps?, assets: [{filename, size}], label, own, backup, heartbeatMs, deadlineAt, maxResultBytes}`. `label` only for a job of the computer's owner. A job id or lease that is not the computer's answers `404`; a lease the computer held once answers `409 LEASE_LOST`. The poll body `running` lists the leases the agent still renders; every other lease of the computer is released (it asks for work, so it does not render it any more).
+
+Token: `ocra_` + 43 characters (32 random bytes, base64url). Stored only as SHA-256 hex; checked with `timingSafeEqual` against every stored hash (no early end). 30 wrong tokens per IP address and 10 minutes, then `429` with `Retry-After`. The address is `X-Real-IP` (or the last `X-Forwarded-For` entry) only when the request comes from a loopback proxy.
+
+Pairing code: 8 characters of `23456789ABCDEFGHJKMNPQRSTUVWXYZ` shown as `XXXX-XXXX`, 10 minutes, once, bound to the person who made it; a new code ends the open one. 12 uses (package and pairing attempts) per code, 10 wrong codes per IP address and 10 minutes, 10 codes per person and 10 minutes, 10 computers per person.
+
+Versions: protocol `1` and the HyperFrames version pinned in `render-node/agent/package.json` (`0.8.139`), else `426`. The agent reports `{protocol, agent, hyperframes, node, ffmpeg, ffmpegSource}`.
+
+### 22.2 Paths of the people (with login)
+
+`GET /api/render-agents` → `{agents, canShareTeams, canShareAll, server, packageAvailable, required, limits}` (the caller's computers; in the local mode all). `POST /api/render-agents/pairing-code` → `201 {code, expiresAt, ttlSeconds, server, commands: {bash, powershell}}`. `PATCH /api/render-agents/:id` `{name?, shareTeams?, shareAll?}` (the owner only, an admin included; `shareAll` only an admin). `DELETE /api/render-agents/:id` (owner or admin; the token stops at once, running jobs go back into the queue). `GET /api/rendernodes` (admins) carries `agents` with owner. `GET /api/rendernode/status` says `ownComputer: true` when a computer of the caller (or one that may render for them) is online. No answer except the one of the pairing ever contains a token or its hash.
+
+### 22.3 Distribution
+
+`rendernode.submit(…, {owner, label})` puts a job into the queue when a computer that may render for the owner is online (`queue.acceptsOwner`), else it takes the path of before WP46 unchanged. May a computer render a job (`defaultMayServe`)? Rank 0: the owner's own computer; rank 1: `shareTeams` and the owner of the computer and of the job share an active team; rank 2: `shareAll` while the owner of the computer is an admin (or in the local mode); else not at all. Order: waiting computers take queued jobs by rank, the longest waiting first; then free render nodes (online, not running, empty queue, no own attempt, no cooldown of 30 s after a failure) take what is left, in the order of the queue, through the same `sendJob` as a direct job. Work stealing when nothing is queued: a second attempt for a job that a computer has rendered for at least 60 s and that needs at least 30 s more after its progress; the first result wins, the other attempt gets `409 LEASE_LOST` (a render node attempt is left to finish). The job id (`rq-…`) and `renderNodeId: 'render-queue'` stay the same; `nodeName` says where it renders.
+
+Leases: heartbeat every 10 s; no sign of life for 60 s, or 20 minutes (plus 15 minutes while uploading), ends the attempt (`lost`) and the job goes back into the queue. Two failed renders or five tries fail the job with the last error; a queued job with no computer and no render node online for 10 minutes fails. A render node attempt is watched with its status every 5 s (lost after 3 minutes without an answer, or `404`). Finished jobs and their files are deleted after 24 hours.
+
+On disk: `data/render-agents.json` and `data/render-queue/<job>/job.json` (mode 600, written to a temporary file and renamed), `index.html`, `assets/` (hard links or copies), `result.mp4`; folders mode 700. After a restart an agent attempt keeps its lease for 60 s; a render node attempt with a remote job id is watched on, one without is dropped (the job goes back). Pairing codes live in memory and end with a restart.
+
+Limits of a job: page up to 2 MB, at most 10 files with 500 MB together, result up to 1 GiB (a file that does not start with an MP4 `ftyp` box is refused).
+
+### 22.4 The agent
+
+`node agent.js [run|pair|update|status|forget]`. One job at a time; one agent per folder (`agent.lock`). It writes the page with a Content-Security-Policy as the first element of the head (`default-src 'self' data: blob:`; `script-src` also `https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com` and `'unsafe-inline' 'unsafe-eval'`; styles, fonts, images and media also `https:`; `connect-src 'self' data: blob:`; `object-src 'none'`; `form-action 'none'`; `base-uri 'self'`), fetches the assets, renders with `defaultRenderExecutor` of `render-node/service.js` (same arguments as the service), reports progress from the output of the CLI, uploads the result as a stream (three tries on network errors and `5xx`), deletes `agent-jobs/<job>/`. Backoff after network errors 1, 2, 4, 8, 15, 30, 60 s (±20 %). Exit codes: `2` after `401` (removed), `3` after `426` (update), `1` for other problems. `caffeinate -i` on macOS while it renders. The token is never printed.
+

@@ -5628,3 +5628,68 @@ html.nv-active .mobile-menu-button {
     letter-spacing: 0;
   }
 }
+
+/* Own computers as render nodes (WP46, public/render-agents-ui.js) */
+.settings-render-agents {
+  margin-top: 18px;
+}
+
+.agents-connect,
+.agents-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.agents-code {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agents-code-label {
+  color: var(--text-muted, var(--text));
+  font-size: 13px;
+}
+
+.agents-code-value {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 26px;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.agents-command-block {
+  display: grid;
+  gap: 6px;
+}
+
+.agents-command {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.agents-card.is-offline {
+  opacity: 0.8;
+}
+
+.agents-rename {
+  margin-top: 8px;
+}
+
+.agents-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 8px;
+}
+
+.agents-toggle {
+  cursor: pointer;
+}

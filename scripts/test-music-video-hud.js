@@ -1598,7 +1598,7 @@ async function testNode(binaries) {
       // the jobs: footage as an asset, 24 fps, the quality and the format of the node
       for (const entry of submits) {
         assert.equal(entry.fps, 24, 'fps 24 goes to the render node');
-        assert.equal(entry.argumentCount, 5);
+        assert.equal(entry.argumentCount, 6, 'fps and the owner (WP46: the person of the run decides whether an own computer may render it)');
         assert.equal(entry.quality, 'draft');
         assert.equal(entry.format, 'landscape');
         assert.equal(entry.files.files.length, 1, 'one asset: the footage');
