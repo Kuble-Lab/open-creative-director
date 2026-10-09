@@ -162,13 +162,13 @@ async function main() {
     const types = (id) => byId[id].graph.nodes.map((node) => node.type);
     // the app view makes the marked outputs first and asks for the approval before the rest (SPEC §14): the motion video with
     // storyboard marks its Storyboard (n8) and its Script (n13); the two music videos in the HUD style (WP44) mark the board, the character
-    // sheet and the three lists of pictures (n20 to n24; the second also its song, n29), so the person sees the plan, the figure and the pictures
-    // before the lip sync and the clips are paid. The third one (song by Suno) has two stages: the Suno song pack (n29) in step 1, the board,
+    // sheet and the three lists of pictures (n20 to n24; the first also the brief that was used, n30 (WP48), the second its song, n29), so the person
+    // sees the plan, the figure and the pictures before the lip sync and the clips are paid. The third one (song by Suno) has two stages: the Suno song pack (n29) in step 1, the board,
     // the sheet and the pictures in step 2 (written "n20@2"). No other template asks for it
     const markedIn = (app) => app.outputs.filter((entry) => entry.approve !== undefined).map((entry) => (entry.approve === true ? entry.node : `${entry.node}@${entry.approve}`));
     const MARKED = {
       'motion-video-storyboard': ['n8', 'n13'],
-      'music-video-hud': ['n20', 'n21', 'n22', 'n23', 'n24'],
+      'music-video-hud': ['n30', 'n20', 'n21', 'n22', 'n23', 'n24'],
       'music-video-hud-elevenlabs': ['n29', 'n20', 'n21', 'n22', 'n23', 'n24'],
       'music-video-hud-suno': ['n29', 'n20@2', 'n21@2', 'n22@2', 'n23@2', 'n24@2']
     };
@@ -353,11 +353,12 @@ async function main() {
     }
     // music-video-hud (WP44): song -> beats and lyric times -> HUD plan -> character sheet -> pictures of the three kinds of units (sung, story,
     // still) with the sheet as reference -> lip sync, H3 Max turbo clips and the parallax of the stills -> cut to the beat without captions ->
-    // HUD render. The board, the sheet and the three lists of pictures are marked: they are shown for the approval before the clips are paid
+    // HUD render. The board, the sheet and the three lists of pictures are marked: they are shown for the approval before the clips are paid, and so is
+    // the brief the plan was made with (WP48, n30: the idea, or the brief the language model wrote from the lyrics when the field was left empty)
     assert.deepEqual(types('music-video-hud'), [
       'input.audio', 'audio.beats', 'audio.lyrics_timing', 'music_video.hud_plan', 'image.generate', 'text.template', 'text.template', 'text.template',
       'image.edit', 'image.edit', 'image.edit', 'fal.h3_lipsync', 'fal.h3_video', 'fal.depth_map', 'image.to_video', 'music_video.edit', 'music_video.hud_render',
-      'output.result', 'output.result', 'output.result', 'output.result', 'output.result', 'output.result', 'output.result'
+      'output.result', 'output.result', 'output.result', 'output.result', 'output.result', 'output.result', 'output.result', 'output.result'
     ]);
     assert.deepEqual(byId['music-video-hud'].requires, ['openrouter', 'ffmpeg', 'elevenlabs', 'fal', 'rendernode']);
     const HUD_CHAIN_EDGES = [
@@ -371,7 +372,7 @@ async function main() {
       'n17.video>n18.inputs', 'n17.sheet>n19.inputs', 'n4.board>n20.inputs', 'n5.image>n21.inputs', 'n9.image>n22.inputs', 'n10.image>n23.inputs', 'n11.image>n24.inputs'
     ];
     const edgesOf = (id) => byId[id].graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`);
-    assert.deepEqual(edgesOf('music-video-hud'), HUD_CHAIN_EDGES);
+    assert.deepEqual(edgesOf('music-video-hud'), [...HUD_CHAIN_EDGES, 'n4.brief>n30.inputs']);
     {
       const hudDoc = byId['music-video-hud'];
       const hudNode = (id) => hudDoc.graph.nodes.find((node) => node.id === id);
@@ -402,17 +403,33 @@ async function main() {
       // the render takes the style of the plan (auto), the karaoke line is off, the beat effects strong (WP45), standard quality, with the end card
       assert.deepEqual(hudNode('n17').params, { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
       // the planner: HUD Blue, the default model, the figure Claudia (the canon text; word for word in test-music-video-hud-template.js), the idea ships empty
-      assert.deepEqual([hudNode('n4').params.theme, hudNode('n4').params.model, hudNode('n4').params.brief, hudNode('n4').params.hud_language], ['hud', '', '', 'en']);
+      // and is optional (WP48: the brief then comes from the lyrics, in the language of the interface)
+      assert.deepEqual([hudNode('n4').params.theme, hudNode('n4').params.model, hudNode('n4').params.brief, hudNode('n4').params.hud_language, hudNode('n4').params.brief_language], ['hud', '', '', 'en', 'en']);
+      assert.deepEqual(['en', 'de', 'es'].map((lang) => templates.resolveTemplate('music-video-hud', { lang }).graph.nodes.find((node) => node.id === 'n4').params.brief_language), ['en', 'de', 'es'], 'the brief in the language of the interface');
       assert.match(hudNode('n4').params.figure, /^NAME: Claudia\nFULL: a 28-year-old /);
       assert.match(hudNode('n4').params.figure, /\nSHORT: a Caucasian American woman in her late twenties /);
       assert.match(hudNode('n4').params.figure, /\nCREDIT: Claudia by anabology \(claudia\.gallery\)$/);
-      // the lyric times: optional text, the method decides (auto)
-      assert.deepEqual(hudNode('n3').params, { lyrics: '', method: 'auto' });
+      // the lyric times: optional text, the method decides (auto); who sings the lines: the marks of the text, else Gemini listens (WP48)
+      assert.deepEqual(hudNode('n3').params, { lyrics: '', method: 'auto', voices: 'auto' });
       // the form: the song, the idea, the figure, the style, the lyrics, the karaoke line, the beat effects (and the language of the graphics); the film
       // first, then the contact sheet, then the marked outputs
       assert.deepEqual(hudDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.asset', 'n4.brief', 'n4.figure', 'n4.theme', 'n3.lyrics', 'n17.karaoke', 'n17.effects', 'n4.hud_language']);
-      assert.deepEqual(hudDoc.app.outputs.map((entry) => entry.node), ['n18', 'n19', 'n20', 'n21', 'n22', 'n23', 'n24']);
+      assert.deepEqual(hudDoc.app.outputs.map((entry) => entry.node), ['n18', 'n19', 'n30', 'n20', 'n21', 'n22', 'n23', 'n24']);
+      assert.deepEqual(hudNode('n30').params, { label: 'Brief' });
       const labelOf = (lang, node, param) => templates.resolveTemplate('music-video-hud', { lang }).app.inputs.find((entry) => entry.node === node && entry.param === param).label;
+      // WP48: the idea may stay empty (the field says so), the lyrics say how a choir is marked, the brief is a result of its own
+      assert.deepEqual(['en', 'de', 'es'].map((lang) => labelOf(lang, 'n4', 'brief')), ['Idea for the video (leave empty: from the lyrics)', 'Idee für das Video (leer lassen: aus dem Songtext)', 'Idea para el vídeo (déjala vacía: a partir de la letra)']);
+      assert.deepEqual(['en', 'de', 'es'].map((lang) => labelOf(lang, 'n3', 'lyrics')), ['Song lyrics (optional; mark a choir with [Choir])', 'Songtext (optional; Chor mit [Chor] markieren)', 'Letra de la canción (opcional; marca los coros con [Coros])']);
+      assert.deepEqual(['en', 'de', 'es'].map((lang) => templates.resolveTemplate('music-video-hud', { lang }).app.outputs.find((entry) => entry.node === 'n30').label), ['Brief', 'Briefing', 'Brief']);
+      for (const lang of ['en', 'de', 'es']) {
+        const doc = templates.resolveTemplate('music-video-hud', { lang });
+        const rx = (en, de, es) => (lang === 'en' ? en : lang === 'de' ? de : es);
+        for (const text of [doc.description, doc.app.description, doc.graph.notes.find((note) => note.id === 't1').text]) {
+          assert.match(text, rx(/brief/, /Briefing/, /brief/), `${lang}: the texts name the brief`);
+          assert.equal(text.includes('ß'), false);
+        }
+        assert.match(doc.graph.notes.find((note) => note.id === 't1').text, rx(/\[Choir\]/, /\[Chor\]/, /\[Coros\]/), `${lang}: the note says how a choir is marked`);
+      }
       assert.deepEqual([labelOf('en', 'n4', 'theme'), labelOf('de', 'n4', 'theme'), labelOf('es', 'n4', 'theme')], ['Style', 'Stil', 'Estilo']);
       assert.deepEqual([labelOf('en', 'n17', 'karaoke'), labelOf('de', 'n17', 'karaoke')], ['Subtitles (karaoke line)', 'Untertitel (Karaoke-Zeile)']);
       assert.deepEqual([labelOf('en', 'n17', 'effects'), labelOf('de', 'n17', 'effects'), labelOf('es', 'n17', 'effects')], ['Effects', 'Effekte', 'Efectos']);
@@ -483,7 +500,7 @@ async function main() {
     // the template with the song by ElevenLabs); the song is uploaded between the steps. The pack is step 1, the board, the sheet and the pictures
     // step 2: the film does not depend on the pack, the person makes the song at Suno in between
     assert.deepEqual(types('music-video-hud-suno'), [
-      'input.prompt', 'input.text', 'text.template', 'llm.chat', 'output.result', ...types('music-video-hud')
+      'input.prompt', 'input.text', 'text.template', 'llm.chat', 'output.result', ...types('music-video-hud').slice(0, 24)
     ]);
     assert.deepEqual(byId['music-video-hud-suno'].requires, ['openrouter', 'ffmpeg', 'elevenlabs', 'fal', 'rendernode']);
     assert.deepEqual(edgesOf('music-video-hud-suno'), [...HUD_CHAIN_EDGES, 'n25.prompt>n27.a', 'n26.text>n27.b', 'n27.text>n28.prompt', 'n28.text>n29.inputs', 'n25.prompt>n4.brief']);
@@ -797,7 +814,7 @@ async function main() {
       assert.deepEqual(summary['suno-song-pack'].cost, { kind: 'unknown', usd: 0, credits: 0, paidNodes: 1, providers: ['openrouter'] });
       const flowOf = (id) => summary[id].flow.map((step) => step.map((entry) => `${entry.type}*${entry.count}`));
       assert.deepEqual(flowOf('music-video-hud'), [
-        ['input.audio*1'], ['audio.beats*1', 'audio.lyrics_timing*1'], ['music_video.hud_plan*1'], ['image.generate*1', 'text.template*3', 'output.result*1'], ['image.edit*3', 'output.result*1'],
+        ['input.audio*1'], ['audio.beats*1', 'audio.lyrics_timing*1'], ['music_video.hud_plan*1'], ['image.generate*1', 'text.template*3', 'output.result*2'], ['image.edit*3', 'output.result*1'],
         ['fal.h3_lipsync*1', 'fal.h3_video*1', 'fal.depth_map*1', 'output.result*3'], ['image.to_video*1'], ['music_video.edit*1'], ['music_video.hud_render*1'], ['output.result*2']
       ], 'the reading order of the film');
       assert.deepEqual(flowOf('music-video-hud-elevenlabs'), [

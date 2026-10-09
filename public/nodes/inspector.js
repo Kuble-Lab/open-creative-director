@@ -759,6 +759,8 @@
               hidden: !graphLib.canConvertMotionHtml(reg, ctx.graph, node.id)
             };
           }
+          const hint = ui.paramHint(def.type, param.id);
+          if (hint) fieldOptions.hint = hint;
           const fieldEl = ui.field(ui.paramLabel(param.id), widget.el, fieldOptions);
           // Song text of the music node: the check of the format while typing (the same module the server checks with)
           if (param.id === 'plan' && node.type === 'audio.music' && OCD.musicPlan) fieldEl.append(planCheck(widget, effective.plan, effective.model));

@@ -100,7 +100,8 @@
         "y": 360,
         "params": {
           "lyrics": "",
-          "method": "auto"
+          "method": "auto",
+          "voices": "auto"
         }
       },
       {
@@ -117,6 +118,7 @@
           "theme": "hud",
           "accent": "#3B82F6",
           "hud_language": "en",
+          "brief_language": "en",
           "cuts_per_minute": 24,
           "max_units": 50,
           "lipsync_seconds_per_minute": 22,

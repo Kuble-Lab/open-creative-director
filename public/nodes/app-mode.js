@@ -37,6 +37,15 @@
     }
   }
 
+  // The field of the form an issue of the plan is about, or null: an empty field (data.field, the parameter) of the node of the issue or of the node it
+  // names (data.node: the input node that feeds it, WP48), when the form shows that field. `fields`: [{ node: { id }, param: { id }, visible, label }].
+  function fieldOfIssue(issue, fields) {
+    const data = issue && issue.data;
+    if (!data || typeof data.field !== 'string') return null;
+    const nodeId = typeof data.node === 'string' ? data.node : issue.nodeId;
+    return (fields || []).find((field) => field.visible !== false && field.node && field.node.id === nodeId && field.param && field.param.id === data.field) || null;
+  }
+
   // Mirrors parseTextList of lib/nodes/nodes-basic.js: lines, or blocks separated by a line `---`.
   function countTextItems(text) {
     const lines = String(text || '').split(/\r?\n/);
@@ -527,7 +536,8 @@
       field.widget = widget;
       const batch = node.type === 'input.text_list' || node.type === 'input.media_list';
       const label = entry.label || (def.category === 'input' ? ui.typeLabel(def) : ui.paramLabel(param.id));
-      const fieldEl = ui.field(label, widget.el, { hint: param.kind === 'textarea' && node.type === 'input.text_list' ? T('nodes.app.listHint') : '' });
+      field.label = label;
+      const fieldEl = ui.field(label, widget.el, { hint: param.kind === 'textarea' && node.type === 'input.text_list' ? T('nodes.app.listHint') : ui.paramHint(def.type, param.id) });
       field.wrap = fieldEl;
       if (batch) {
         field.counter = el('div', { class: 'nv-batch-count' });
@@ -649,8 +659,16 @@
       else await run();
     }
 
+    // An issue about an empty field of the form (fieldOfIssue) names that field, since the person can fill it in here; any other issue has the wording
+    // of the app ("ask the author of the workflow").
     function issueMessages(issues) {
-      return (issues || []).filter((issue) => issue.level === 'error').map((issue) => ({ title: issue.nodeId ? titleOf(issue.nodeId) : '', message: ui.issueText(issue, 'app') }));
+      return (issues || [])
+        .filter((issue) => issue.level === 'error')
+        .map((issue) => {
+          const field = fieldOfIssue(issue, s ? s.fields : []);
+          if (field) return { title: '', message: T('nodes.app.fieldEmpty', { field: field.label }) };
+          return { title: issue.nodeId ? titleOf(issue.nodeId) : '', message: ui.issueText(issue, 'app') };
+        });
     }
 
     // The words of the main button of an app with approval steps (step `index` of `count` stages and the last step): the first step,
@@ -1213,5 +1231,5 @@
     return { open, close, showError, relabel, setRegistry };
   }
 
-  OCD.appMode = { createAppView, countTextItems, approvalStage, approvalTargets, approvalStages, previewRequest, stageFlow, approvalFlow };
+  OCD.appMode = { createAppView, countTextItems, approvalStage, approvalTargets, approvalStages, previewRequest, stageFlow, approvalFlow, fieldOfIssue };
 })(window);

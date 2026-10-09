@@ -5,7 +5,8 @@
 //   - the texts of the four nodes and of their messages in German, English and Spanish, and that they follow the constants
 //   - the definitions: ports, parameters and their ranges, validation (the stable codes), the price of the timing by the length
 //   - the tool lyrics_timing (lib/tools.js) with ElevenLabs replaced: align and transcribe, the cost journal, every refusal before
-//     anything is sent, the budget of participants, the key never in a message, node view only
+//     anything is sent, the budget of participants, the key never in a message, node view only; who sings the lines (WP48): the marks of
+//     a choir in the text, and Gemini (a double behind the fetch guard) for a text without marks, its price, no key, a failure
 //   - the planning node with the language model replaced: a good answer, a bad one then a good one, two bad ones (plain prompts),
 //     a partial one, share 0 (empty lists), no lyric times, abort, and the song slices (exact to the sample)
 //   - the cutting node on lavfi clips: every scene shows its own clip (by colour), the length, the sound, a clip that is too short,
@@ -183,7 +184,7 @@ function testTexts({ planLib, editLib, tools }) {
 
 /* ---------- the definitions ---------- */
 
-function testDefinitions({ registry, registryModule, tools, planLib, editLib }) {
+function testDefinitions({ registry, registryModule, tools, planLib, editLib, voiceDetect }) {
   for (const type of ['audio.beats', 'audio.lyrics_timing', 'music_video.plan', 'music_video.edit']) assert.ok(registry.get(type), `${type} is registered`);
   const ports = (list) => list.map((port) => [port.id, port.type, Boolean(port.required), Boolean(port.multiple)]);
 
@@ -203,6 +204,10 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   assert.deepEqual(ports(timing.outputs), [['timing', 'text', false, false], ['lyrics', 'text', false, false]]);
   assert.deepEqual(timing.params.find((param) => param.id === 'method').options, tools.TIMING_METHODS);
   assert.equal(timing.params.find((param) => param.id === 'method').default, 'auto');
+  // WP48: who sings the lines; off by default and then no part of the key (a timing saved before keeps its key)
+  const voicesParam = timing.params.find((param) => param.id === 'voices');
+  assert.deepEqual([voicesParam.kind, voicesParam.options, voicesParam.default, voicesParam.cacheOmitDefault], ['select', ['off', 'auto'], 'off', true]);
+  assert.deepEqual(tools.TIMING_VOICES, ['off', 'auto']);
 
   const plan = registry.get('music_video.plan');
   assert.equal(plan.paid, true);
@@ -273,6 +278,29 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib }) 
   assert.equal(estimate({ type: 'list', itemType: 'audio', items: [] }), null);
   assert.equal(estimate(undefined), null);
   assert.equal(timing.cost.estimate({}, undefined), null);
+  // WP48: the detection of a choir adds its price where it will run: "auto", a key, and lyrics without marks (marks always win)
+  const savedGemini = process.env.GEMINI_API_KEY;
+  try {
+    const song = { type: 'audio', duration: 180 };
+    const priced = (params, context = {}) => timing.cost.estimate(params, { inputs: { audio: song, ...(context.inputs || {}) }, connected: context.connected || new Set(['audio']) });
+    delete process.env.GEMINI_API_KEY;
+    assert.equal(priced({ voices: 'auto', lyrics: '' }), tools.lyricsTimingUsd(180), 'no key: no detection, no price for it');
+    process.env.GEMINI_API_KEY = 'test-only-gemini-key-0123456789';
+    near(priced({ voices: 'auto', lyrics: 'one line\nanother line' }), tools.lyricsTimingUsd(180) + voiceDetect.estimateUsd(180), 1e-6, 'auto with a key');
+    near(voiceDetect.estimateUsd(180), 0.018, 0.004, 'about 2 cents for three minutes');
+    assert.equal(priced({ voices: 'auto', lyrics: 'one line\n[Choir]\nanother line' }), tools.lyricsTimingUsd(180), 'the text marks the choir: Gemini is not asked');
+    assert.equal(priced({ voices: 'off', lyrics: '' }), tools.lyricsTimingUsd(180));
+    assert.equal(priced({ lyrics: '' }), tools.lyricsTimingUsd(180), 'off is the default');
+    // connected lyrics: what comes counts; before the node in front has run, a text without marks is assumed
+    assert.equal(priced({ voices: 'auto', lyrics: '' }, { inputs: { lyrics: { type: 'text', value: '(Claudia, Claudia)\nSail on' } }, connected: new Set(['audio', 'lyrics']) }), tools.lyricsTimingUsd(180));
+    near(priced({ voices: 'auto', lyrics: '[Choir]\nnot this one' }, { connected: new Set(['audio', 'lyrics']) }), tools.lyricsTimingUsd(180) + voiceDetect.estimateUsd(180), 1e-6);
+    // the reservation of the tool counts it too
+    near(tools.toolEstimateUsd('lyrics_timing', { duration_seconds: 180, voices: 'auto', text: 'one line' }), tools.lyricsTimingUsd(180) + voiceDetect.estimateUsd(180), 1e-6);
+    assert.equal(tools.toolEstimateUsd('lyrics_timing', { duration_seconds: 180, text: 'one line' }), tools.lyricsTimingUsd(180));
+  } finally {
+    if (savedGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = savedGemini;
+  }
   assert.equal(tools.toolEstimateUsd('lyrics_timing', { duration_seconds: 120 }), tools.lyricsTimingUsd(120));
   // the reservation of the tool itself counts a ten minute song while the length is not known, and never more than the longest song
   near(tools.lyricsTimingUsd(null), (600 / 3600) * 0.22, 1e-6);
@@ -348,7 +376,8 @@ async function run(iso) {
   const real = registryModule.registry;
 
   testTexts({ planLib, editLib, tools });
-  testDefinitions({ registry: real, registryModule, tools, planLib, editLib });
+  const voiceDetect = iso.load('lib/voice-detect');
+  testDefinitions({ registry: real, registryModule, tools, planLib, editLib, voiceDetect });
 
   const bins = ffmpegLib.binaries();
   if (!bins.available) {
@@ -601,6 +630,101 @@ async function run(iso) {
     assert.equal(journal.length, 0, 'a failed call is not booked');
     assert.equal(eleven.align.length, 1, 'the call did reach the (replaced) service');
     eleven.fail = null;
+
+    // WP48: who sings the lines. A text that marks a choir: its lines are aligned with the others and keep the mark, nobody else is asked
+    resetProviders();
+    const geminiRequests = [];
+    let geminiAnswer = null;
+    const guarded = global.fetch;
+    global.fetch = async (url, init) => {
+      if (!String(url).startsWith('https://generativelanguage.googleapis.com/')) return guarded(url, init);
+      geminiRequests.push({ url: String(url), key: init.headers['x-goog-api-key'], body: JSON.parse(init.body) });
+      const answer = typeof geminiAnswer === 'function' ? geminiAnswer() : geminiAnswer;
+      return { status: answer.status || 200, text: async () => JSON.stringify(answer.body) };
+    };
+    const savedGemini = process.env.GEMINI_API_KEY;
+    const TWO_LINES = 'one two three four\nfive six seven eight';
+    const voicesOf = (result) => result.timing.lines.map((line) => line.voice || 'figure');
+    try {
+      process.env.GEMINI_API_KEY = 'test-only-gemini-key-0123456789';
+      const marked = await call({ audio_asset_id: short.assetId, text: 'one two three four\n[Choir]\nfive six seven eight', voices: 'auto' });
+      assert.equal(eleven.align[0].text, TWO_LINES, 'the words of the choir are aligned too');
+      assert.deepEqual(voicesOf(marked), ['figure', 'choir']);
+      assert.deepEqual(marked.timing.voices, { source: 'marks', choir: 1 });
+      assert.deepEqual([geminiRequests.length, journal.length, marked.voicesUsd], [0, 1, undefined], 'only the alignment is paid');
+
+      // no marks and "auto": Gemini hears the song (small and mono) and the lines; a line of the choir gets its voice, the price goes into the journal
+      resetProviders();
+      geminiAnswer = {
+        body: {
+          candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: [{ index: 0, voice: 'both', confidence: 0.7 }, { index: 1, voice: 'choir', confidence: 0.86 }] }) }] } }],
+          usageMetadata: { promptTokenCount: 600, promptTokensDetails: [{ modality: 'AUDIO', tokenCount: 384 }, { modality: 'TEXT', tokenCount: 216 }], candidatesTokenCount: 40 }
+        }
+      };
+      const heard = await call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'auto' });
+      assert.equal(geminiRequests.length, 1);
+      assert.equal(geminiRequests[0].url, `https://generativelanguage.googleapis.com/v1beta/models/${voiceDetect.DEFAULT_MODEL}:generateContent`);
+      assert.equal(geminiRequests[0].key, 'test-only-gemini-key-0123456789');
+      const [sound, prompt] = geminiRequests[0].body.contents[0].parts;
+      assert.equal(sound.inline_data.mime_type, 'audio/aac');
+      assert.ok(Buffer.from(sound.inline_data.data, 'base64').length < (await fsp.stat(path.join(sessionDir, short.file))).size / 4, 'the song is sent small');
+      assert.match(prompt.text, /\nLINES \(index \| time \| text\)\n0 \| 4\.0-7\.1 s \| one two three four\n1 \| 8\.0-11\.1 s \| five six seven eight$/);
+      assert.deepEqual(heard.timing.lines.map((line) => line.voice), ['both', 'choir']);
+      assert.deepEqual(heard.timing.voices, { source: 'detect', model: voiceDetect.DEFAULT_MODEL, choir: 1 });
+      assert.equal(journal.length, 2);
+      assert.deepEqual([journal[1].type, journal[1].model, journal[1].user, journal[1].sessionId], ['brain', `google/${voiceDetect.DEFAULT_MODEL}`, STAFF, sessionId]);
+      near(journal[1].cost, (384 * 1 + 216 * 0.5 + 40 * 3) / 1e6, 1e-12);
+      assert.equal(heard.voicesUsd, journal[1].cost);
+      assert.equal(heard.costUsd, journal[0].cost, 'the cost of the timing stays the one of the alignment');
+      assert.equal(heard.readable, marked.readable, 'the readable lines are the same');
+
+      // off (the default): nobody is asked, the timing is the one of before
+      resetProviders();
+      const off = await call({ audio_asset_id: short.assetId, text: TWO_LINES });
+      assert.deepEqual([geminiRequests.length, off.timing.voices, voicesOf(off)], [1, undefined, ['figure', 'figure']]);
+      assert.equal(JSON.stringify(off.timing), JSON.stringify((await call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'off' })).timing));
+      assert.match((await errorOf(call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'always' }))).message, /voices muss off, auto sein/);
+
+      // an answer that cannot be used, twice: no detection, both answers are paid, the timing says why
+      resetProviders();
+      geminiRequests.length = 0;
+      geminiAnswer = { body: { candidates: [{ content: { parts: [{ text: 'Line 1 is the choir.' }] } }], usageMetadata: { promptTokenCount: 600, promptTokensDetails: [{ modality: 'AUDIO', tokenCount: 384 }], candidatesTokenCount: 10 } } };
+      const failed = await call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'auto' });
+      assert.equal(geminiRequests.length, 2, 'one more try');
+      assert.deepEqual(failed.timing.voices, { source: 'none', reason: 'failed' });
+      assert.deepEqual(voicesOf(failed), ['figure', 'figure']);
+      assert.equal(journal.length, 2);
+      near(failed.voicesUsd, 2 * (384 * 1 + 216 * 0.5 + 10 * 3) / 1e6, 1e-12);
+      assert.equal(failed.voicesNote, 'the answer is no JSON');
+      // an error of the service: nothing is paid for it
+      resetProviders();
+      geminiRequests.length = 0;
+      geminiAnswer = { status: 403, body: { error: { message: 'Permission denied', status: 'PERMISSION_DENIED' } } };
+      const refusedByGoogle = await call({ audio_asset_id: short.assetId, text: TWO_LINES, voices: 'auto' });
+      assert.deepEqual([geminiRequests.length, refusedByGoogle.timing.voices, refusedByGoogle.voicesUsd, journal.length], [1, { source: 'none', reason: 'failed' }, undefined, 1]);
+
+      // the node: the price of both, the log names the lines of the choir
+      resetProviders();
+      geminiAnswer = { body: { candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: [{ index: 0, voice: 'lead', confidence: 0.9 }, { index: 1, voice: 'choir', confidence: 0.9 }] }) }] } }] } };
+      const ctx = makeCtx();
+      const result = await exec('audio.lyrics_timing', ctx, { audio: short, lyrics: textValue(TWO_LINES) }, { voices: 'auto' });
+      const nodeTiming = JSON.parse(result.variants[0].timing.value);
+      assert.deepEqual(nodeTiming.voices, { source: 'detect', model: voiceDetect.DEFAULT_MODEL, choir: 1 });
+      near(result.cost.usd, journal[0].cost + journal[1].cost, 1e-9, 'the node costs the alignment and the detection');
+      assert.ok(ctx.logs.includes(`Gemini (${voiceDetect.DEFAULT_MODEL}) heard 1 of 2 lines sung by others (choir): 1`), ctx.logs.join(' | '));
+      // without a key: no detection, the log says why
+      delete process.env.GEMINI_API_KEY;
+      resetProviders();
+      const keyless = makeCtx();
+      const noKey = await exec('audio.lyrics_timing', keyless, { audio: short, lyrics: textValue(TWO_LINES) }, { voices: 'auto' });
+      assert.deepEqual(JSON.parse(noKey.variants[0].timing.value).voices, { source: 'none', reason: 'no_key' });
+      assert.ok(keyless.logs.some((line) => /^No detection of a choir: GEMINI_API_KEY is not set/.test(line)), keyless.logs.join(' | '));
+      assert.equal(noKey.cost.usd, journal[0].cost);
+    } finally {
+      global.fetch = guarded;
+      if (savedGemini === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = savedGemini;
+    }
 
     // the tool is for the node view only
     resetProviders();
