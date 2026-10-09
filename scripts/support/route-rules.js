@@ -53,6 +53,11 @@ const ROUTE_RULES = {
   'POST /api/users': 'admin',
   'DELETE /api/users/:email': 'admin',
   'GET /api/rendernode/status': 'open',
+  // own computers as render nodes (WP46): a person's own computers; somebody else's is 404, an admin removes any
+  'GET /api/render-agents': 'identified',
+  'POST /api/render-agents/pairing-code': 'identified',
+  'PATCH /api/render-agents/:id': 'identified',
+  'DELETE /api/render-agents/:id': 'identified',
   'GET /api/rendernodes': 'admin',
   'POST /api/rendernodes': 'admin',
   'PATCH /api/rendernodes/:id': 'admin',
@@ -195,6 +200,10 @@ const PARTICIPANT_RULES = {
   'POST /api/users': 'admin',
   'DELETE /api/users/:email': 'admin',
   'GET /api/rendernode/status': 'filtered', // totals without the names of the render nodes
+  'GET /api/render-agents': 'own', // everybody may connect a computer of their own and sees only those
+  'POST /api/render-agents/pairing-code': 'own',
+  'PATCH /api/render-agents/:id': 'own',
+  'DELETE /api/render-agents/:id': 'own',
   'GET /api/rendernodes': 'admin',
   'POST /api/rendernodes': 'admin',
   'PATCH /api/rendernodes/:id': 'admin',

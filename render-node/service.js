@@ -80,7 +80,9 @@ function renderEnv(env = process.env) {
   return { ...RENDER_ENV_DEFAULTS, ...env, HYPERFRAMES_SKIP_SKILLS: '1' };
 }
 
-function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, resolution }) {
+// The render agent (agent.js, WP46) uses this same function: `onOutput` gets the output of the CLI (for the progress) and
+// `signal` stops the render (SIGTERM, SIGKILL 5 s later). The service passes neither.
+function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, resolution, onOutput, signal }) {
   return new Promise((resolve, reject) => {
     const args = [hyperframesBin, 'render', path.join(dir, 'project'), '-o', out, '-q', quality];
     if (fps) args.push('-f', String(fps));
@@ -91,17 +93,40 @@ function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, r
       stdio: ['ignore', 'pipe', 'pipe']
     });
     let tail = '';
-    const keepTail = (chunk) => { tail = (tail + chunk.toString()).slice(-4000); };
+    const keepTail = (chunk) => {
+      tail = (tail + chunk.toString()).slice(-4000);
+      if (onOutput) {
+        try {
+          onOutput(chunk);
+        } catch (_) {
+          /* the progress is only a display */
+        }
+      }
+    };
     child.stdout.on('data', keepTail);
     child.stderr.on('data', keepTail);
     const killer = setTimeout(() => child.kill('SIGKILL'), RENDER_TIMEOUT_MS);
     killer.unref?.();
+    let stopper = null;
+    const onAbort = () => {
+      child.kill('SIGTERM');
+      stopper = setTimeout(() => child.kill('SIGKILL'), 5000);
+      stopper.unref?.();
+    };
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
     child.on('error', (error) => {
       clearTimeout(killer);
+      clearTimeout(stopper);
+      signal?.removeEventListener('abort', onAbort);
       reject(error);
     });
     child.on('close', (code) => {
       clearTimeout(killer);
+      clearTimeout(stopper);
+      signal?.removeEventListener('abort', onAbort);
       if (code === 0 && fs.existsSync(out)) return resolve();
       const detail = tail.split('\n').filter(Boolean).slice(-6).join(' | ').slice(0, 800);
       reject(new Error(`Render-Exit ${code}: ${detail}`));
@@ -475,8 +500,11 @@ if (require.main === module) start();
 
 module.exports = {
   createRenderService,
+  defaultRenderExecutor,
   renderEnv,
   RENDER_ENV_DEFAULTS,
+  RENDER_TIMEOUT_MS,
+  MAX_HTML,
   MAX_ASSETS,
   MAX_LEGACY_ASSETS_BYTES,
   MAX_UPLOAD_BYTES,

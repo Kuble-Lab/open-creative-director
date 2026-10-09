@@ -52,6 +52,7 @@ const { registerNodeRoutes } = require('./lib/nodes/routes');
 const { createRunService, installRunService } = require('./lib/nodes/run-service');
 const { createMcp } = require('./lib/mcp');
 const { registerKeyRoutes } = require('./lib/mcp/key-routes');
+const { createRenderAgentRoutes } = require('./lib/render-agent-routes');
 const nodeHiggsfieldCatalog = require('./lib/nodes/higgsfield-catalog');
 
 loadEnv();
@@ -75,6 +76,11 @@ const app = express();
 // below on purpose: the key is the login of this path and the body is read there with its own limit.
 const mcp = createMcp();
 mcp.mount(app);
+// Own computers as render nodes (WP46, lib/render-agent-routes.js): the paths of the computers under /api/render-agent/ work
+// with the token of the computer (or a pairing code) instead of the login. Mounted before the login middleware for the same
+// reason as MCP: the login must neither block nor change them, and nothing else is reachable through the prefix.
+const renderAgentRoutes = createRenderAgentRoutes({ queue: () => rendernode.queue() });
+renderAgentRoutes.mountAgentRoutes(app);
 let higgsfieldConnectTimer = null;
 let higgsfieldPollInFlight = false;
 let higgsfieldBalanceCache = null;
@@ -524,7 +530,8 @@ function jobsWithUrls(session) {
       resultAssetIds: Array.isArray(job.resultAssetIds) ? job.resultAssetIds : [],
       renderNodeId: job.renderNodeId || null,
       nodeId: job.renderNodeId || job.nodeId || null,
-      nodeName: job.nodeName || renderNodes.get(job.renderNodeId || job.nodeId)?.name || null,
+      // a job of the own computers (WP46) is rendered where the queue gave it last, until it is done
+      nodeName: job.nodeName || (job.renderNodeId === rendernode.QUEUE_NODE_ID ? rendernode.whereOf(job.jobId, job.renderNodeId) : renderNodes.get(job.renderNodeId || job.nodeId)?.name) || null,
       url: job.status === 'completed' && job.file ? store.assetUrl(session.id, job.file) : null
     };
   });
@@ -576,7 +583,9 @@ async function renderNodesAdminPayload() {
         implicit: Boolean(node.implicit),
         ...status
       };
-    }))
+    })),
+    // the paired computers of all people (WP46): shown and removable here, the token never
+    agents: renderAgentRoutes.adminList()
   };
 }
 
@@ -1151,7 +1160,9 @@ app.delete('/api/teams/:id/members/:email', async (req, res) => {
 });
 
 app.get('/api/rendernode/status', async (req, res) => {
-  const status = await renderNodeStatus();
+  const status = { ...(await renderNodeStatus()) };
+  // WP46: a computer that renders for this person makes the render tools available too
+  if (renderAgentRoutes.availableFor(req)) Object.assign(status, { enabled: true, online: true, ownComputer: true });
   // The names of the render nodes are infrastructure: participants only get the totals.
   if (isRestricted(req)) {
     const { nodes, ...totals } = status;
@@ -1159,6 +1170,9 @@ app.get('/api/rendernode/status', async (req, res) => {
   }
   res.json(status);
 });
+
+// "My computers" (WP46): pairing, the person's computers, removal. Admins remove any computer here as well.
+renderAgentRoutes.registerUserRoutes(app);
 
 app.get('/api/rendernodes', async (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
@@ -2534,6 +2548,8 @@ function startServer() {
     })
     .catch((err) => console.warn('[discovery]', err.message));
   poller.start();
+  // the queue of the own computers (WP46): leases, render nodes that took a job, old jobs
+  rendernode.queue().start();
   if (access.isActive() && access.internalDomains().length === 0) {
     console.warn(
       '[access] WARNUNG: INTERNAL_EMAIL_DOMAINS ist leer. Ohne Domainliste gilt jede Person ohne Team als intern; ' +

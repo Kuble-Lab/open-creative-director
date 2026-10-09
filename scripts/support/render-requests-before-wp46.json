@@ -1,0 +1,390 @@
+[
+ {
+  "name": "plain",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-1"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"standard\"}",
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ },
+ {
+  "name": "quality format fps",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-1"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"high\",\"resolution\":\"portrait\",\"fps\":30}",
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ },
+ {
+  "name": "streaming assets",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-1"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/uploads",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/uploads/r-upload1-0000000a/upload-001.mp4",
+    "method": "PUT",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-length": "17",
+     "content-type": "application/octet-stream"
+    },
+    "body": "stream:Z29sZGVuIGNsaXAgYnl0ZXM=",
+    "duplex": "half"
+   },
+   {
+    "url": "http://node1.test/uploads/r-upload1-0000000a/upload-002.png",
+    "method": "PUT",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-length": "18",
+     "content-type": "application/octet-stream"
+    },
+    "body": "stream:Z29sZGVuIGltYWdlIGJ5dGVz",
+    "duplex": "half"
+   },
+   {
+    "url": "http://node1.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"standard\",\"uploadId\":\"r-upload1-0000000a\",\"resolution\":\"landscape\",\"fps\":24}",
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ },
+ {
+  "name": "inline assets (older node)",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-1"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"draft\",\"assets\":{\"upload-001.mp4\":\"Z29sZGVuIGNsaXAgYnl0ZXM=\",\"upload-002.png\":\"Z29sZGVuIGltYWdlIGJ5dGVz\"},\"resolution\":\"square\"}",
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ },
+ {
+  "name": "base64 assets of a programmatic caller",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-1"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-1",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"draft\",\"assets\":{\"a.png\":\"iVBORw0KGgo=\"}}",
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node1.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-1"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ },
+ {
+  "name": "idle node first",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-2"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-2",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"standard\",\"resolution\":\"landscape\"}",
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-2"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-2"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ },
+ {
+  "name": "shortest queue",
+  "result": {
+   "jobId": "r-render1-0000000b",
+   "nodeId": "node-2"
+  },
+  "status": {
+   "jobId": "r-render1-0000000b",
+   "status": "running"
+  },
+  "file": "Z29sZGVuLW1wNA==",
+  "requests": [
+   {
+    "url": "http://node1.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/health",
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/render",
+    "method": "POST",
+    "headers": {
+     "authorization": "Bearer token-2",
+     "content-type": "application/json"
+    },
+    "body": "{\"html\":\"<!doctype html><html><head><meta charset=\\\"utf-8\\\"></head><body><div id=\\\"main-composition\\\" data-width=\\\"1920\\\" data-height=\\\"1080\\\">Golden</div></body></html>\",\"quality\":\"standard\"}",
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/jobs/r-render1-0000000b",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-2"
+    },
+    "body": null,
+    "duplex": null
+   },
+   {
+    "url": "http://node2.test/jobs/r-render1-0000000b/file",
+    "method": "GET",
+    "headers": {
+     "authorization": "Bearer token-2"
+    },
+    "body": null,
+    "duplex": null
+   }
+  ]
+ }
+]

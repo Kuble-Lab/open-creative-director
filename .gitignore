@@ -8,3 +8,6 @@ projects/
 render-node/node_modules/
 render-node/service.env
 render-node/keys/
+render-node/agent.json
+render-node/agent-jobs/
+render-node/agent.lock

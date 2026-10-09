@@ -267,6 +267,7 @@ const state = {
   pendingUserDeleteEmail: null,
   userDeleteTimer: null,
   renderNodes: [],
+  renderAgents: [],
   pendingRenderNodeDeleteId: null,
   renderNodeDeleteTimer: null,
   higgsfield: { connected: false, refreshExpiresAt: null, pending: false },
@@ -2669,6 +2670,7 @@ async function updateRenderNode(id, patch, row) {
       body: JSON.stringify(patch)
     });
     state.renderNodes = Array.isArray(data.nodes) ? data.nodes : [];
+    state.renderAgents = Array.isArray(data.agents) ? data.agents : [];
     resetRenderNodeDelete();
     renderRenderNodes();
     showSettingsFeedback(t('renderNodes.updated'));
@@ -2686,6 +2688,7 @@ async function deleteRenderNode(id, row) {
   try {
     const data = await api(`/api/rendernodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
     state.renderNodes = Array.isArray(data.nodes) ? data.nodes : [];
+    state.renderAgents = Array.isArray(data.agents) ? data.agents : [];
     resetRenderNodeDelete();
     renderRenderNodes();
     showSettingsFeedback(t('renderNodes.deleted'));
@@ -2696,7 +2699,25 @@ async function deleteRenderNode(id, row) {
   }
 }
 
+// The own computers of all people (WP46, public/render-agents-ui.js): shown and removable by admins under the render nodes.
+function renderRenderAgentsAdmin() {
+  OCRenderAgents.renderAdminList(document.getElementById('renderAgentsAdminList'), state.renderAgents, {
+    onChanged: async (message, options) => {
+      showSettingsFeedback(message, options);
+      try {
+        const data = await api('/api/rendernodes');
+        state.renderNodes = Array.isArray(data.nodes) ? data.nodes : [];
+        state.renderAgents = Array.isArray(data.agents) ? data.agents : [];
+        renderRenderNodes();
+      } catch (_) {
+        /* the list stays as it was */
+      }
+    }
+  });
+}
+
 function renderRenderNodes() {
+  renderRenderAgentsAdmin();
   el.renderNodesList.replaceChildren();
   if (state.renderNodes.length === 0) {
     const empty = document.createElement('div');
@@ -2783,6 +2804,7 @@ async function addRenderNode() {
       body: JSON.stringify(body)
     });
     state.renderNodes = Array.isArray(data.nodes) ? data.nodes : [];
+    state.renderAgents = Array.isArray(data.agents) ? data.agents : [];
     el.renderNodeForm.reset();
     resetRenderNodeDelete();
     renderRenderNodes();
@@ -2809,6 +2831,7 @@ async function loadSettingsAccess() {
     state.preferences = { askVideoModel: true, ...(settingsData.preferences || {}) };
     state.admins = Array.isArray(adminsData.admins) ? adminsData.admins : [];
     state.renderNodes = Array.isArray(renderNodesData.nodes) ? renderNodesData.nodes : [];
+    state.renderAgents = Array.isArray(renderNodesData.agents) ? renderNodesData.agents : [];
     state.higgsfield = higgsfieldData;
     state.chatgpt = chatgptData;
     state.settingsAvailable = true;
@@ -2827,6 +2850,7 @@ async function loadSettingsAccess() {
     state.settings = [];
     state.admins = [];
     state.renderNodes = [];
+    state.renderAgents = [];
     state.higgsfield = { connected: false, refreshExpiresAt: null, pending: false };
     state.chatgpt = { connected: false, plan: null, expiresAt: null, models: [] };
     state.settingsAvailable = false;
@@ -5793,7 +5817,8 @@ function renderJobStatusBar() {
     if (job.source === 'rendernode' && (job.nodeName || job.nodeId || job.renderNodeId)) {
       const node = document.createElement('span');
       node.className = 'job-status-node';
-      node.textContent = t('jobs.node', { name: job.nodeName || job.nodeId || job.renderNodeId });
+      // a job of the own computers (WP46) waits in the queue until a computer or a render node takes it
+      node.textContent = job.renderNodeId === 'render-queue' && !job.nodeName ? t('jobs.nodeWaiting') : t('jobs.node', { name: job.nodeName || job.nodeId || job.renderNodeId });
       item.appendChild(node);
     }
     el.jobStatusList.appendChild(item);
@@ -6575,6 +6600,7 @@ window.onLangChange = () => {
   if (state.usersPaste) state.usersPaste.retranslate();
   OCTeams.rerender();
   OCMcp.rerender();
+  OCRenderAgents.rerender();
   renderModelInfo();
   renderAttachments();
   renderJobStatusBar();
@@ -6696,6 +6722,7 @@ OCShell.register({
   costsText: () => state.costsAmountText
 });
 OCMcp.attach();
+OCRenderAgents.attach();
 OCTeams.attach({ openSettingsTab: (tab) => openSettingsModal(tab), settingsAvailable: () => state.settingsAvailable });
 OCAccess.onChange(() => renderBudgetBanner());
 OCShell.addSection('workspace', () => {
