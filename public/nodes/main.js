@@ -155,17 +155,32 @@
     return { enabled: false, title: '', description: '', inputs: [], outputs: [] };
   }
 
-  // workflow.app with all fields present (older documents and imports may lack some). An output keeps `approve` only when it is
-  // exactly `true` (the server does the same).
+  // workflow.app with all fields present (older documents and imports may lack some). An output keeps `approve` as `true` (step 1,
+  // also written as 1) or a whole number from 2 to 5 (a later step) and `hint` as a text of at most 300 characters; anything else is
+  // dropped (the server does the same).
   function normalizeApp(raw) {
     const app = raw && typeof raw === 'object' ? raw : {};
+    const stage = (value) => (value === true || value === 1 ? true : Number.isInteger(value) && value >= 2 && value <= 5 ? value : null);
+    const hint = (value) => (typeof value === 'string' && value.trim() ? [...value.trim()].slice(0, 300).join('') : '');
+    const output = (entry) => {
+      const approve = stage(entry.approve);
+      const text = hint(entry.hint);
+      return { node: entry.node, label: typeof entry.label === 'string' ? entry.label : '', ...(approve !== null ? { approve } : {}), ...(text ? { hint: text } : {}) };
+    };
     return {
       enabled: app.enabled === true,
       title: typeof app.title === 'string' ? app.title : '',
       description: typeof app.description === 'string' ? app.description : '',
       inputs: Array.isArray(app.inputs) ? app.inputs.filter((entry) => entry && typeof entry.node === 'string' && typeof entry.param === 'string').map((entry) => ({ node: entry.node, param: entry.param, label: typeof entry.label === 'string' ? entry.label : '' })) : [],
-      outputs: Array.isArray(app.outputs) ? app.outputs.filter((entry) => entry && typeof entry.node === 'string').map((entry) => ({ node: entry.node, label: typeof entry.label === 'string' ? entry.label : '', ...(entry.approve === true ? { approve: true } : {}) })) : []
+      outputs: Array.isArray(app.outputs) ? app.outputs.filter((entry) => entry && typeof entry.node === 'string').map(output) : []
     };
+  }
+
+  // The approval step of an output entry: 1 for `true`, 2 to 5 for a later step, 0 without a mark.
+  function approveStepOf(entry) {
+    if (!entry || entry.approve === undefined) return 0;
+    if (entry.approve === true || entry.approve === 1) return 1;
+    return Number.isInteger(entry.approve) && entry.approve >= 2 && entry.approve <= 5 ? entry.approve : 0;
   }
 
   function currentApp() {
@@ -285,12 +300,14 @@
     changeApp({ outputs: [...app.outputs, { node: nodeId, label: String(node.params.label || node.title || (def ? ui.typeLabel(def) : '')).trim() }], enabled: true });
   }
 
-  // "Show first for approval": the mark lives in the entry of the output, so it goes when the output leaves the app.
-  function setAppApprove(nodeId, on) {
+  // "Show first for approval": the mark lives in the entry of the output, so it goes when the output leaves the app. `step` is the
+  // step of the approval: 1 (or true) is stored as `true`, 2 to 5 as the number, anything else takes the mark away.
+  function setAppApprove(nodeId, step) {
+    const stage = step === true ? 1 : Number.isInteger(step) && step >= 1 && step <= 5 ? step : 0;
     const outputs = currentApp().outputs.map((entry) => {
       if (entry.node !== nodeId) return entry;
       const next = { ...entry };
-      if (on) next.approve = true;
+      if (stage) next.approve = stage === 1 ? true : stage;
       else delete next.approve;
       return next;
     });
@@ -312,13 +329,16 @@
         const app = currentApp();
         if (nodeId) {
           const output = app.outputs.find((entry) => entry.node === nodeId);
-          return `${app.enabled ? 1 : 0}:${app.inputs.filter((entry) => entry.node === nodeId).map((entry) => entry.param).join(',')}:${output ? (output.approve === true ? 'oa' : 'o') : ''}`;
+          const step = approveStepOf(output);
+          return `${app.enabled ? 1 : 0}:${app.inputs.filter((entry) => entry.node === nodeId).map((entry) => entry.param).join(',')}:${output ? (step ? `oa${step}` : 'o') : ''}`;
         }
-        return `${app.enabled ? 1 : 0}|${app.inputs.map((entry) => `${entry.node}.${entry.param}`).join(',')}|${app.outputs.map((entry) => (entry.approve === true ? `${entry.node}!` : entry.node)).join(',')}`;
+        return `${app.enabled ? 1 : 0}|${app.inputs.map((entry) => `${entry.node}.${entry.param}`).join(',')}|${app.outputs.map((entry) => (approveStepOf(entry) ? `${entry.node}!${approveStepOf(entry)}` : entry.node)).join(',')}`;
       },
       isExposed: (nodeId, paramId) => currentApp().inputs.some((entry) => entry.node === nodeId && entry.param === paramId),
       isOutput: (nodeId) => currentApp().outputs.some((entry) => entry.node === nodeId),
-      isApprove: (nodeId) => currentApp().outputs.some((entry) => entry.node === nodeId && entry.approve === true),
+      isApprove: (nodeId) => currentApp().outputs.some((entry) => entry.node === nodeId && approveStepOf(entry) > 0),
+      // the step of the approval of an output: 0 without a mark, else 1 to 5
+      approveStep: (nodeId) => approveStepOf(currentApp().outputs.find((entry) => entry.node === nodeId)),
       toggleInput: toggleAppInput,
       toggleOutput: toggleAppOutput,
       setApprove: setAppApprove,

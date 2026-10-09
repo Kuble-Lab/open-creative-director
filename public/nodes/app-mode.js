@@ -6,7 +6,8 @@
 // the SSE stream through the pure reducer of run.js, and the outputs of the app are shown as a result
 // gallery with download, viewer and "send to chat". Lists (text list, media list) make the run a batch:
 // the engine maps the flow once per item. Outputs that the builder marked "show first for approval" make the run
-// two steps (approvalFlow below). Only in-app dialogs, texts of users and LLMs via textContent.
+// go in steps, one per stage of marks and a last one for the rest (stageFlow below). Only in-app dialogs, texts of users and LLMs via
+// textContent.
 (function (global) {
   const OCD = (global.OCDNodes = global.OCDNodes || {});
   const graphLib = OCD.graph;
@@ -85,20 +86,45 @@
     return nodes.length > 0 && nodes.every((node) => node.status === 'cached');
   }
 
-  /* ---------- optional approval step ---------- */
+  /* ---------- optional approval steps ---------- */
 
-  // The builder can mark outputs of the app "show first for approval" (workflow.app.outputs[].approve, SPEC §14). The app then runs in
-  // two steps: step 1 makes only the marked outputs and what they need, the person looks at them, step 2 ("Approve and finish") makes
-  // everything; the results of step 1 come from the cache, because both steps send the same form values. The functions below are
-  // pure (no DOM, no requests): they decide which step is due and which request starts it.
+  // The builder can mark outputs of the app "show first for approval" (workflow.app.outputs[].approve, SPEC §14): `true` is step 1,
+  // a whole number from 2 to 5 a later step. The app then runs in steps: each step makes only the outputs of its stage and what they
+  // need, the person looks at them, and the next step starts with the approval; the last step ("Approve and finish") makes
+  // everything. What an earlier step made comes from the cache, because every step sends the same form values. With marks of one
+  // stage that is the two steps of before. The functions below are pure (no DOM, no requests): they decide which step is due and
+  // which request starts it.
+
+  const MAX_APPROVAL_STAGE = 5;
+
+  // The stage of a mark: 1 for `true` (and 1), 2 to 5 for a later one, 0 for anything else (no mark; the store drops it too).
+  function approvalStage(value) {
+    if (value === true || value === 1) return 1;
+    return Number.isInteger(value) && value >= 2 && value <= MAX_APPROVAL_STAGE ? value : 0;
+  }
 
   // The ids of the marked outputs that still exist in the graph, in the order of the app.
   function approvalTargets(outputs, hasNode) {
     const ids = [];
     for (const entry of Array.isArray(outputs) ? outputs : []) {
-      if (entry && entry.approve === true && typeof entry.node === 'string' && hasNode(entry.node) && !ids.includes(entry.node)) ids.push(entry.node);
+      if (entry && approvalStage(entry.approve) && typeof entry.node === 'string' && hasNode(entry.node) && !ids.includes(entry.node)) ids.push(entry.node);
     }
     return ids;
+  }
+
+  // The same outputs by stage: a list of the stages that have outputs, lowest first, each the ids of its outputs in the order of the
+  // app (an output listed twice counts once, with its first mark). Marks 1 and 3 are two stages: the steps are counted, not the marks.
+  function approvalStages(outputs, hasNode) {
+    const byStage = new Map();
+    const seen = new Set();
+    for (const entry of Array.isArray(outputs) ? outputs : []) {
+      const stage = entry ? approvalStage(entry.approve) : 0;
+      if (!stage || typeof entry.node !== 'string' || !hasNode(entry.node) || seen.has(entry.node)) continue;
+      seen.add(entry.node);
+      if (!byStage.has(stage)) byStage.set(stage, []);
+      byStage.get(stage).push(entry.node);
+    }
+    return [...byStage.keys()].sort((a, b) => a - b).map((stage) => byStage.get(stage));
   }
 
   // The request that makes exactly the marked outputs and everything before them (the engine adds the ancestors of its targets). Like
@@ -110,24 +136,50 @@
   }
 
   // Which step is due and the request that starts it, read from the plans for the current form values. Nothing is remembered, so it
-  // holds after a reload, and as soon as a field changes the first step is due again.
-  //   targets    ids of the marked outputs (approvalTargets)
-  //   preview    plan of exactly these outputs, not forced (previewRequest)
+  // holds after a reload, and a field that changes brings back the first step whose outputs it touches.
+  //   stages     the ids of the marked outputs by stage (approvalStages), every stage with at least one output
+  //   previews   per stage, the plan of exactly its outputs, not forced (previewRequest); an entry is null while it is not known
   //   all        plan of the whole flow, not forced; null while it is not known
   //   hasResult  (nodeId) => the app can show a result of the output
-  //   redo       "make step 1 again": the first step, forced, whatever is due
-  // Returns null for an app without marked outputs (one step, as before), else { step, done, request }:
-  //   step 'first'    a marked output is not up to date: the request makes the marked outputs
-  //   step 'approve'  they are up to date (cached, with a result): the request makes everything; what step 1 made is not made again
-  //   done            the rest is up to date as well: nothing is left to approve, and the request is the first step again, forced,
-  //                   so "Run again" asks for the approval once more instead of making the expensive part unseen
+  //   redo       "make step n again": the stage that stands for approval, forced
+  // Returns null for an app without marked outputs (one step, as before), else { index, total, done, request }:
+  //   total      the number of steps: one per stage, and the last one
+  //   index      the step that is due, counted from 0. Below the number of stages it is the lowest stage whose outputs are not all up
+  //              to date (cached, with a result): the request makes its outputs and what they need, not forced, so an earlier stage
+  //              comes from the cache. Equal to the number of stages, every stage is up to date and the last step ("Approve and
+  //              finish") is due: the request makes everything, and nothing made before is made again
+  //   done       the rest is up to date as well: nothing is left to approve, and the request is the first step again, forced, so
+  //              "Run again" asks for the approvals once more instead of making the expensive part unseen
+  // With `redo` the request makes the stage before the due one again, forced (the one that stands for approval; the first one while
+  // that is due itself), and `index` is that stage.
+  function stageFlow({ stages, overrides, previews = [], all = null, hasResult = () => true, redo = false }) {
+    if (!Array.isArray(stages) || !stages.length || stages.some((targets) => !Array.isArray(targets) || !targets.length)) return null;
+    const total = stages.length + 1;
+    const planOf = (index) => (Array.isArray(previews) && previews[index]) || null;
+    const current = (index) => {
+      const nodes = (planOf(index) && planOf(index).nodes) || {};
+      return stages[index].every((id) => nodes[id] && nodes[id].status === 'cached' && hasResult(id));
+    };
+    // `force` holds for the targets only: a forced stage lists every node it needs (`order` of its plan, see previewRequest)
+    const stageRequest = (index, force) => previewRequest({ targets: stages[index], overrides, force, order: planOf(index) && planOf(index).order });
+    let due = 0;
+    while (due < stages.length && current(due)) due += 1;
+    if (due === stages.length && allCached(all)) return { index: 0, total, done: true, request: stageRequest(0, true) };
+    if (redo) {
+      const index = Math.max(0, due - 1);
+      return { index, total, done: false, request: stageRequest(index, true) };
+    }
+    if (due === stages.length) return { index: due, total, done: false, request: { mode: 'all', force: false, overrides } };
+    return { index: due, total, done: false, request: stageRequest(due, false) };
+  }
+
+  // stageFlow for marks of one stage, in the words of the two steps: null without a mark, else { step, done, request } with
+  //   step 'first'    a marked output is not up to date (or done, or redo): the request makes the marked outputs
+  //   step 'approve'  they are up to date: the request makes everything
+  //   targets / preview  the marked outputs (approvalTargets) and the plan of exactly them; all, hasResult, redo as above
   function approvalFlow({ targets, overrides, preview, all = null, hasResult = () => true, redo = false }) {
-    if (!targets || !targets.length) return null;
-    const nodes = (preview && preview.nodes) || {};
-    const current = targets.every((id) => nodes[id] && nodes[id].status === 'cached' && hasResult(id));
-    const done = current && allCached(all);
-    if (current && !done && !redo) return { step: 'approve', done: false, request: { mode: 'all', force: false, overrides } };
-    return { step: 'first', done, request: previewRequest({ targets, overrides, force: redo || done, order: preview && preview.order }) };
+    const flow = stageFlow({ stages: [targets || []], overrides, previews: [preview], all, hasResult, redo });
+    return flow && { step: flow.index === 0 ? 'first' : 'approve', done: flow.done, request: flow.request };
   }
 
   function createAppView({ host, callbacks }) {
@@ -329,15 +381,25 @@
       };
     }
 
-    // The outputs that are shown first for approval (see approvalFlow); none for an app that runs in one step.
-    function approveTargets() {
-      return approvalTargets(appDef().outputs, (id) => Boolean(nodeOf(id)));
+    // The outputs that are shown first for approval, by stage (see stageFlow); none for an app that runs in one step.
+    function approveStages() {
+      return approvalStages(appDef().outputs, (id) => Boolean(nodeOf(id)));
     }
 
-    function approvalLabels() {
-      const marked = new Set(approveTargets());
-      const outputs = appDef().outputs;
-      return outputs.filter((entry) => marked.has(entry.node)).map((entry) => entry.label || titleOf(entry.node));
+    // The labels of the outputs of one stage, in the order of the app.
+    function stageLabels(stages, index) {
+      const marked = new Set(stages[index] || []);
+      return appDef().outputs.filter((entry) => marked.has(entry.node)).map((entry) => entry.label || titleOf(entry.node));
+    }
+
+    // What the person is told while a stage stands for approval: the hints of its outputs (workflow.app.outputs[].hint, for example
+    // "make the song at Suno and upload it"), one after the other; empty when they have none.
+    function stageHint(stages, index) {
+      const marked = new Set(stages[index] || []);
+      return appDef()
+        .outputs.filter((entry) => marked.has(entry.node) && typeof entry.hint === 'string' && entry.hint.trim())
+        .map((entry) => entry.hint.trim())
+        .join(' ');
     }
 
     const hasResult = (nodeId) => Boolean(outputValue(nodeId));
@@ -345,9 +407,15 @@
     // The step that is due now according to the plans of the last refresh and the results shown; null for an app that runs in one
     // step, and until its plans are there. (Only the step is read here: the request needs the form values, see startRun.)
     function currentFlow() {
-      const targets = approveTargets();
-      if (!targets.length || !s.plans) return null;
-      return approvalFlow({ targets, preview: s.plans.preview, all: s.plans.all, hasResult });
+      const stages = approveStages();
+      if (!stages.length || !s.plans) return null;
+      return stageFlow({ stages, previews: s.plans.previews, all: s.plans.all, hasResult });
+    }
+
+    // The plans that say which step is due (stageFlow): the plan of every stage, not forced, and the plan of everything, asked at once.
+    async function askPlans(id, stages, overrides) {
+      const plans = await Promise.all([...stages.map((targets) => api.plan(id, previewRequest({ targets, overrides }))), api.plan(id, { mode: 'all', force: false, overrides })]);
+      return { previews: plans.slice(0, stages.length), all: plans[stages.length] };
     }
 
     function storageKey() {
@@ -395,14 +463,14 @@
       if (!s.fields.length) fieldsBox.append(el('div', { class: 'nv-hint', text: T('nodes.app.noFields') }));
 
       const actions = el('div', { class: 'nv-appactions' });
-      // Only with outputs marked for approval: which step it is, and the way back to step 1 while step 2 is due
+      // Only with outputs marked for approval: which step it is, and the way back to the step that stands for approval
       const stepLine = el('div', { class: 'nv-appstep', role: 'status' });
       const runBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-apprun' }, icon('play', 13), el('span', { class: 'nv-apprun-label' }));
       runBtn.addEventListener('click', () => startRun());
       const cancelBtn = el('button', { type: 'button', class: 'nv-btn nv-appcancel hidden' }, icon('stop', 12), el('span', { text: T('nodes.run.cancel') }));
       cancelBtn.addEventListener('click', cancelRun);
       const hint = el('div', { class: 'nv-apphint', role: 'status' });
-      const redoBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-appredo hidden' }, icon('refresh', 13), el('span', { text: T('nodes.app.approveRedo') }));
+      const redoBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-appredo hidden' }, icon('refresh', 13), el('span', { text: T('nodes.app.approveRedo', { step: 1 }) }));
       redoBtn.addEventListener('click', () => startRun({ redo: true }));
       actions.append(stepLine, el('div', { class: 'nv-appactions-row' }, runBtn, cancelBtn), hint, redoBtn);
       formCard.append(actions);
@@ -513,12 +581,14 @@
       return overrides;
     }
 
-    // Client side checks that give better messages than the plan issues; returns the first invalid field.
-    function validateForm() {
+    // Client side checks that give better messages than the plan issues; returns the first invalid field. `needed`: the ids of the
+    // nodes the step that starts makes (an app with several stages of approval); a field of another node is not checked then (null:
+    // every field is).
+    function validateForm(needed = null) {
       let first = null;
       for (const field of s.fields) {
         field.error = null;
-        if (field.visible) {
+        if (field.visible && (!needed || needed.has(field.node.id))) {
           const value = s.values.get(field.key);
           if (field.param.kind === 'asset' && (!value || value.missing)) field.error = T('nodes.app.needAsset');
           else if (field.param.kind === 'assets' && (!Array.isArray(value) || !value.length)) field.error = T('nodes.app.needAssets');
@@ -528,6 +598,13 @@
         if (field.error && !first) first = field;
       }
       return first;
+    }
+
+    // validateForm, and the first field that is not filled in comes into view. True when the form may start.
+    function checkForm(needed = null) {
+      const bad = validateForm(needed);
+      if (bad) bad.wrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return !bad;
     }
 
     /* ---------- plan (cost hint) ---------- */
@@ -546,12 +623,12 @@
         if (!s || s.id !== id || mine !== s.planToken) return;
         try {
           const overrides = buildOverrides();
-          const targets = approveTargets();
-          if (targets.length) {
-            // outputs marked for approval: the plan of step 1 and the plan of everything (what is left to run once step 1 is done)
-            const [preview, all] = await Promise.all([api.plan(id, previewRequest({ targets, overrides })), api.plan(id, { mode: 'all', force: false, overrides })]);
+          const stages = approveStages();
+          if (stages.length) {
+            // outputs marked for approval: the plan of every stage and the plan of everything (what is left once the stages are done)
+            const plans = await askPlans(id, stages, overrides);
             if (!s || s.id !== id || mine !== s.planToken) return;
-            s.plans = { preview, all };
+            s.plans = plans;
             s.plan = null;
           } else {
             const plan = await api.plan(id, { mode: 'all', overrides });
@@ -576,28 +653,52 @@
       return (issues || []).filter((issue) => issue.level === 'error').map((issue) => ({ title: issue.nodeId ? titleOf(issue.nodeId) : '', message: ui.issueText(issue, 'app') }));
     }
 
+    // The words of the main button of an app with approval steps (step `index` of `count` stages and the last step): the first step,
+    // a later one (it approves the stage before it), the last one. With one stage they are the words of the two steps of before.
+    function stepButtonLabel(index, count) {
+      if (index >= count) return T('nodes.app.approveFinish');
+      if (index > 0) return T('nodes.app.stageNext', { step: index + 1 });
+      return count > 1 ? T('nodes.app.stageStart', { step: 1, total: count + 1 }) : T('nodes.app.approveStart');
+    }
+
+    // The line above the button of an app with approval steps: which step it is and what it makes. While a stage stands for approval
+    // and its outputs carry a hint (what to do before the next step, such as making the song and uploading it), the hint instead.
+    function stepText(flow, stages) {
+      const total = stages.length + 1;
+      const step = flow.index + 1;
+      const said = flow.index > 0 ? stageHint(stages, flow.index - 1) : '';
+      if (said) return T('nodes.app.stepHint', { step, total, hint: said });
+      if (flow.index === 0) return T('nodes.app.stepFirst', { total, outputs: stageLabels(stages, 0).join(', ') });
+      if (flow.index < stages.length) return T('nodes.app.stepNext', { step, total, previous: stageLabels(stages, flow.index - 1).join(', '), outputs: stageLabels(stages, flow.index).join(', ') });
+      return T('nodes.app.stepApprove', { step, total, outputs: stageLabels(stages, flow.index - 1).join(', ') });
+    }
+
     function renderRunButton() {
       if (!s || !s.refs) return;
       const { runBtn, cancelBtn, hint, stepLine, redoBtn } = s.refs;
       const active = s.run.active || s.starting;
-      // An app with outputs marked for approval runs in two steps (approvalFlow); flow is null for any other app. The plan shown is the
-      // one of the step that is due: what is left to run, so the hint and the costs name only that.
+      // An app with outputs marked for approval runs in steps (stageFlow); flow is null for any other app. The plan shown is the one of
+      // the step that is due: what is left to run, so the hint and the costs name only that.
+      const stages = approveStages();
       const flow = currentFlow();
-      const plan = flow ? (flow.step === 'first' && !flow.done ? s.plans.preview : s.plans.all) : s.plan;
+      const plan = flow ? (flow.index < stages.length && !flow.done ? s.plans.previews[flow.index] : s.plans.all) : s.plan;
       const rerun = !active && (flow ? flow.done : allCached(plan));
       runBtn.disabled = active;
       const working = s.run.active || (s.starting && !s.asking);
       runBtn.classList.toggle('is-working', working);
       // (until the plans are there an app with marked outputs says "Start step 1": the first step is what a click would find first)
-      const label = flow ? (flow.step === 'approve' ? 'nodes.app.approveFinish' : 'nodes.app.approveStart') : approveTargets().length ? 'nodes.app.approveStart' : 'nodes.app.run';
-      runBtn.querySelector('.nv-apprun-label').textContent = working ? T('nodes.app.running') : rerun ? T('nodes.app.runAgain') : T(label);
+      const label = stages.length ? stepButtonLabel(flow ? flow.index : 0, stages.length) : T('nodes.app.run');
+      runBtn.querySelector('.nv-apprun-label').textContent = working ? T('nodes.app.running') : rerun ? T('nodes.app.runAgain') : label;
       cancelBtn.classList.toggle('hidden', !s.run.active);
-      redoBtn.classList.toggle('hidden', active || !flow || flow.step !== 'approve');
+      // "make step n again" while stage n stands for approval
+      const redoable = !active && Boolean(flow) && !flow.done && flow.index > 0;
+      redoBtn.classList.toggle('hidden', !redoable);
+      if (redoable) redoBtn.querySelector('span').textContent = T('nodes.app.approveRedo', { step: flow.index });
       stepLine.textContent = '';
       hint.textContent = '';
       hint.className = 'nv-apphint';
       if (active) return;
-      if (flow && !flow.done) stepLine.textContent = T(flow.step === 'approve' ? 'nodes.app.stepApprove' : 'nodes.app.stepFirst', { outputs: approvalLabels().join(', ') });
+      if (flow && !flow.done) stepLine.textContent = stepText(flow, stages);
       if (s.planError) {
         const issues = issueMessages(s.planError.issues);
         hint.classList.add('is-warn');
@@ -722,16 +823,15 @@
       });
     }
 
-    // `redo`: "make step 1 again" of an app with outputs marked for approval (see approvalFlow).
+    // `redo`: "make step n again" of an app with outputs marked for approval (see stageFlow).
     async function startRun({ redo = false } = {}) {
       if (!s || s.starting || s.run.active) return;
-      const bad = validateForm();
-      if (bad) {
-        bad.wrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        return;
-      }
+      const stages = approveStages();
+      // The whole form is checked first, as always. An app with several stages of approval checks the fields of the step that starts
+      // instead, once the plans have said which step that is (below): a song that only a later step needs does not stop the first one.
+      const scoped = stages.length > 1;
+      if (!scoped && !checkForm()) return;
       const id = s.id;
-      const targets = approveTargets();
       const shown = currentFlow();
       s.starting = true;
       renderRunButton();
@@ -744,21 +844,26 @@
         let request;
         let planned = null;
         try {
-          if (targets.length) {
-            const [preview, all] = await Promise.all([api.plan(id, previewRequest({ targets, overrides })), api.plan(id, { mode: 'all', force: false, overrides })]);
+          if (stages.length) {
+            const asked = await askPlans(id, stages, overrides);
             if (!s || s.id !== id) return;
-            const flow = approvalFlow({ targets, overrides, preview, all, hasResult, redo });
-            // Step 2 makes the expensive part. If the button did not say so (a result came from another tab, a field went back to an
-            // earlier value), nothing starts: the button and the results show how things stand now, and the next click decides.
-            if (flow.step === 'approve' && !(shown && shown.step === 'approve')) {
-              s.plans = { preview, all };
+            const flow = stageFlow({ stages, overrides, previews: asked.previews, all: asked.all, hasResult, redo });
+            // A later step makes more, and the last one the expensive part. If the button did not say so (a result came from another tab,
+            // a field went back to an earlier value), nothing starts: the button and the results show how things stand now, and the next
+            // click decides. The same for "make step n again" when another stage stands for approval now.
+            const shownIndex = shown ? shown.index : 0;
+            if (redo ? flow.index !== Math.max(0, shownIndex - 1) : !flow.done && flow.index > shownIndex) {
+              s.plans = asked;
               s.plan = null;
               s.planError = null;
               return;
             }
+            // the plan of the step that starts (a stage, or everything): its nodes are the ones whose fields have to be filled in
+            const stepPlan = flow.index < stages.length ? asked.previews[flow.index] : asked.all;
+            if (scoped && !checkForm(flow.request.mode === 'all' ? null : new Set((stepPlan && stepPlan.order) || []))) return;
             request = flow.request;
-            // a request that is not forced is the one of a plan just asked (step 1, or everything); a forced one needs a plan of its own
-            if (!request.force) planned = flow.step === 'approve' ? all : preview;
+            // a request that is not forced is the one of a plan just asked (a stage, or everything); a forced one needs a plan of its own
+            if (!request.force) planned = stepPlan;
           } else {
             const force = allCached(await api.plan(id, { mode: 'all', force: false, overrides }));
             if (!s || s.id !== id) return;
@@ -914,6 +1019,17 @@
 
     /* ---------- status ---------- */
 
+    // The step a partial run made, counted from 1: the highest stage whose outputs were all among its targets (a forced stage lists
+    // what it needs as well); 1 when none was (a part started in the node view).
+    function finishedStep(stages, targets) {
+      const made = new Set(Array.isArray(targets) ? targets : []);
+      let step = 1;
+      stages.forEach((ids, index) => {
+        if (ids.every((id) => made.has(id))) step = index + 1;
+      });
+      return step;
+    }
+
     function nodeStatusRows() {
       const order = s.workflow.graph.nodes.slice().sort((a, b) => a.x - b.x || a.y - b.y);
       const rows = [];
@@ -948,9 +1064,10 @@
         if (current.length) box.append(el('div', { class: 'nv-appstatus-now', text: current.join(' · ') }));
       } else {
         const failed = Object.entries(run.nodes).filter(([, info]) => info.status === 'error');
-        // a run of the marked outputs alone is only the first of two steps
-        const firstStep = approveTargets().length > 0 && Boolean(run.mode) && run.mode !== 'all';
-        const text = run.status === 'completed' ? T(firstStep ? 'nodes.app.statusFirstDone' : 'nodes.app.statusDone') : run.status === 'cancelled' ? T('nodes.run.result.cancelled') : run.status === 'interrupted' ? T('nodes.run.result.interrupted') : run.status === 'failed' ? T('nodes.app.statusFailed') : T('nodes.run.result.finished');
+        // a run of the marked outputs of one stage alone is only one of the steps: it says which
+        const stages = approveStages();
+        const stepDone = stages.length > 0 && Boolean(run.mode) && run.mode !== 'all' ? finishedStep(stages, run.targets) : 0;
+        const text = run.status === 'completed' ? (stepDone ? T('nodes.app.statusStepDone', { step: stepDone }) : T('nodes.app.statusDone')) : run.status === 'cancelled' ? T('nodes.run.result.cancelled') : run.status === 'interrupted' ? T('nodes.run.result.interrupted') : run.status === 'failed' ? T('nodes.app.statusFailed') : T('nodes.run.result.finished');
         head.append(el('span', { class: 'nv-appstatus-text', text }));
         if (run.startedAt && run.finishedAt) head.append(el('span', { class: 'nv-status-time', text: runLib.formatDuration(run.finishedAt - run.startedAt) }));
         const cost = costText(run.cost);
@@ -1036,7 +1153,10 @@
       resultsHead.textContent = '';
       resultsHead.append(el('h2', { class: 'nv-appresults-title', text: T('nodes.app.results') }));
       let any = false;
-      const marked = new Set(approveTargets());
+      // with outputs marked for approval, the step each output comes in: its stage, the last step for an output without a mark
+      const stages = approveStages();
+      const stepOf = new Map();
+      stages.forEach((ids, index) => ids.forEach((id) => stepOf.set(id, index + 1)));
       for (const entry of app.outputs) {
         const node = nodeOf(entry.node);
         if (!node) continue;
@@ -1045,9 +1165,10 @@
         const head = el('header', { class: 'nv-appout-head' });
         head.append(el('h3', { class: 'nv-appout-title', text: entry.label || titleOf(entry.node) }));
         if (!found) {
-          // with outputs marked for approval, an unmarked output is made in step 2: the run of step 1 does not include it
-          const later = marked.size > 0 && !marked.has(entry.node) && !(s.run.nodes && s.run.nodes[entry.node]);
-          card.append(head, el('div', { class: 'nv-appout-empty' }, icon('image', 22), el('span', { text: later ? T('nodes.app.comesInStep2') : s.run.active ? T('nodes.app.waitingResult') : T('nodes.app.noResultYet') })));
+          // an output of a later step is made after an approval: the run of an earlier step does not include it
+          const step = stages.length ? stepOf.get(entry.node) || stages.length + 1 : 0;
+          const later = step > 1 && !(s.run.nodes && s.run.nodes[entry.node]);
+          card.append(head, el('div', { class: 'nv-appout-empty' }, icon('image', 22), el('span', { text: later ? T('nodes.app.comesInStep', { step }) : s.run.active ? T('nodes.app.waitingResult') : T('nodes.app.noResultYet') })));
           outputsBox.append(card);
           continue;
         }
@@ -1092,5 +1213,5 @@
     return { open, close, showError, relabel, setRegistry };
   }
 
-  OCD.appMode = { createAppView, countTextItems, approvalTargets, previewRequest, approvalFlow };
+  OCD.appMode = { createAppView, countTextItems, approvalStage, approvalTargets, approvalStages, previewRequest, stageFlow, approvalFlow };
 })(window);

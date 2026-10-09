@@ -5290,6 +5290,13 @@ button.nv-scene-preview:focus-visible {
   flex: none;
 }
 
+/* the step of an approval (off, 1 to 5): a short list in the place of the switch */
+.nv-app-switch .nv-app-step {
+  flex: none;
+  width: auto;
+  min-width: 64px;
+}
+
 .nv-app-meta {
   margin: 14px 0 4px;
 }

@@ -1,9 +1,9 @@
 'use strict';
 
-// The three starter workflows of the music video in the HUD style (WP44, part 3): "Music video in the HUD style (your song)"
-// (music-video-hud), "Music video in the HUD style (song by ElevenLabs)" (music-video-hud-elevenlabs) and "Suno song pack" (suno-song-pack).
-// The shape of the files (node types, edges, `requires`, the texts in three languages, the order and the prices of the gallery) is checked in
-// test-nodes-templates.js; this test runs them. What is covered:
+// The starter workflows of the music video in the HUD style (WP44, part 3): "Music video in the HUD style (your song)" (music-video-hud),
+// "Music video in the HUD style (song by ElevenLabs)" (music-video-hud-elevenlabs), "Music video in the HUD style (song by Suno)"
+// (music-video-hud-suno) and "Suno song pack" (suno-song-pack). The shape of the files (node types, edges, `requires`, the texts in three
+// languages, the order and the prices of the gallery) is checked in test-nodes-templates.js; this test runs them. What is covered:
 //   - the two texts that must not drift: the figure Claudia (the default of the field "Figure") and the system prompt of the Suno song
 //     pack are the canon texts word for word; the prices in the descriptions are what the price tables of the planner say (a song of 60, 90
 //     and 120 seconds; step 1 stays under 1 USD a minute of song), and the music of the second template costs what it says
@@ -16,14 +16,22 @@
 //   - the second template: the song comes from the idea (plan, then music), the song text goes to the analysis and to the lyric times, the
 //     idea goes to the planner, step 1 holds the song and again nothing expensive
 //   - the Suno song pack: the system prompt reaches the model word for word, the idea and the singer are in the request
+//   - the template with the song by Suno, in the three steps of the app view (the decision of public/nodes/app-mode.js on the plans of the
+//     real engine): step 1 makes only the pack and needs no song; step 2 is invalid without the song and valid with it, the pack stays in the
+//     cache after the upload, the idea reaches the planner, the pack does not reach the lyric times; step 3 ("Approve and finish") makes the
+//     rest without making or paying anything of the steps before again (the still clips, the cut and the render only take note there: the
+//     first template renders the same part of the graph for real). Its texts: the pack and the figure are the canon texts, the prices are
+//     the ones of the template with your own song, word for word
 // A private copy of the app runs in a temp directory (own data folders). The providers are replaced and a fetch guard refuses everything
 // except localhost: nothing is paid and nothing leaves the machine. The parts that need ffmpeg are skipped when it is missing.
 
 const assert = require('assert/strict');
 const { execFile } = require('child_process');
+const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const { promisify } = require('util');
+const vm = require('vm');
 
 const { createIsolatedApp } = require('./support/isolated-app');
 const { toneWav } = require('./support/explainer-media');
@@ -67,6 +75,21 @@ Rules for the lyrics:
 - No real people, brands or song quotes.`;
 
 const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
+
+// The decision of the app view (which step is due, which request starts it): the pure functions of public/nodes/app-mode.js, run in a vm
+// like in test-nodes-app.js. What they return is cloned to plain data (the vm has its own prototypes).
+function loadStageLogic() {
+  const ui = { el: () => ({}), icon: () => ({}), T: (key) => key };
+  const window = { OCDNodes: { graph: {}, ui, api: {}, run: {} } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'nodes', 'app-mode.js'), 'utf8'), { window, localStorage: undefined, console });
+  const raw = window.OCDNodes.appMode;
+  const plain = (value) => (value === undefined ? value : JSON.parse(JSON.stringify(value)));
+  return {
+    approvalStages: (...args) => plain(raw.approvalStages(...args)),
+    previewRequest: (...args) => plain(raw.previewRequest(...args)),
+    stageFlow: (...args) => plain(raw.stageFlow(...args))
+  };
+}
 
 const restorers = [];
 function patch(target, key, value) {
@@ -247,6 +270,37 @@ async function run(iso) {
         assert.match(text, rx(/Nano Banana 2\.1/, /Nano Banana 2\.1/, /Nano Banana 2\.1/));
       }
       assert.match(resolved('suno-song-pack', lang).description, rx(/confirm/, /Bestätigung/, /confirmes/), `${lang}: C charges nothing before the confirmation`);
+    }
+
+    // the template with the song by Suno: the figure and the pack are the canon texts (the pack of the Suno song pack, singer included); the
+    // description names the price of the pack and takes the prices of the film from the template with your own song word for word (its step 1 is
+    // step 2 here)
+    for (const lang of ['en', 'de', 'es']) {
+      const doc = resolved('music-video-hud-suno', lang);
+      assert.equal(nodeOf(doc, 'n4').params.figure, CLAUDIA, `${lang}: the figure`);
+      assert.equal(nodeOf(doc, 'n28').params.system, SUNO_SYSTEM, `${lang}: the system prompt of the pack`);
+      assert.equal(nodeOf(doc, 'n28').params.model, 'anthropic/claude-opus-5.5');
+      assert.equal(nodeOf(doc, 'n26').params.text, nodeOf(suno, 'n2').params.text, `${lang}: the singer of the pack`);
+      assert.equal(nodeOf(doc, 'n27').params.template, nodeOf(suno, 'n3').params.template, `${lang}: the request of the pack`);
+      const own = resolved('music-video-hud', lang).description;
+      const text = doc.description;
+      const rx = (en, de, es) => (lang === 'en' ? en : lang === 'de' ? de : es);
+      const sentence = (pattern) => {
+        const found = pattern.exec(own);
+        assert.ok(found, `${lang}: the template with your own song has ${pattern}`);
+        return found[0];
+      };
+      const kept = [
+        sentence(rx(/About 3\.5 US dollars per minute of song according to the planner \([^)]*\)\./, /Rund 3\.5 US-Dollar pro Minute Song laut Planer \([^)]*\)\./, /Unos 3,5 dólares por minuto de canción según el planificador \([^)]*\)\./)),
+        sentence(rx(/Before each start [^.]*confirm\./, /Vor jedem Start [^.]*berechnet\./, /Antes de cada inicio [^.]*confirmes\./)),
+        sentence(rx(/The end card [^.]*figure\./, /Die Endkarte [^.]*Credit\./, /La tarjeta final [^.]*figura\./)),
+        sentence(rx(/Step 1 makes the board[^;]*; you approve them before step 2 makes the expensive rest\./, /Schritt 1 macht das Board[^;]*; du gibst sie frei, bevor Schritt 2 den teuren Rest macht\./, /El paso 1 crea el tablero[^;]*; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro\./)).replace(/(Step|step|Schritt|paso) ([12])\b/g, (_match, word, number) => `${word} ${Number(number) + 1}`)
+      ];
+      for (const part of kept) assert.ok(text.includes(part), `${lang}: the description says word for word: ${part}`);
+      assert.match(text, rx(/3 US cents/, /3 US-Cent/, /3 centavos/), `${lang}: the price of the pack`);
+      for (const block of ['TITLE', 'STYLE', 'EXCLUDE', 'LYRICS']) assert.match(text, new RegExp(block), `${lang}: the description names ${block}`);
+      assert.match(text, /Nano Banana 2\.1/);
+      assert.match(text, rx(/your song/, /eigener Song/, /tu propia canción/), `${lang}: it names the template it takes the film from`);
     }
   }
 
@@ -719,6 +773,136 @@ async function run(iso) {
     assert.deepEqual([pack.type, more.length], ['text', 0]);
     assert.equal(pack.value, SUNO_PACK, 'the answer is the output');
     for (const block of ['TITLE', 'STYLE', 'EXCLUDE', 'LYRICS']) assert.match(pack.value, new RegExp(`^${block}$`, 'm'));
+  }
+
+  /* ---------- "Music video in the HUD style (song by Suno)": the three steps of the app view ---------- */
+
+  {
+    const IDEA = 'A song about a light that stays on, for the Suno test.';
+    const stageLogic = loadStageLogic();
+    const workflow = await startWorkflow('music-video-hud-suno', async ({ set }) => {
+      set('n25', { prompt: IDEA });
+    });
+    const owner = workflow.sessionId;
+    const stages = stageLogic.approvalStages(workflow.app.outputs, (nodeId) => workflow.graph.nodes.some((node) => node.id === nodeId));
+    assert.deepEqual(stages, [['n29'], ['n20', 'n21', 'n22', 'n23', 'n24']], 'the pack is step 1, the board, the sheet and the pictures step 2');
+    // what the app view does before a click: the plan of every stage and of everything for the values of the form, then the decision
+    const decide = async (overrides) => {
+      const results = await flowStore.readResults(workflow.id);
+      const hasResult = (nodeId) => Boolean(results.nodes[nodeId] && results.nodes[nodeId].selected);
+      const previews = [];
+      for (const targets of stages) previews.push(await engine.plan(workflow.id, { ...stageLogic.previewRequest({ targets, overrides }), user: STAFF }));
+      const all = await engine.plan(workflow.id, { mode: 'all', force: false, overrides, user: STAFF });
+      return { previews, all, flow: stageLogic.stageFlow({ stages, overrides, previews, all, hasResult }) };
+    };
+    const statuses = (record) => Object.fromEntries(Object.entries(record.nodes).map(([nodeId, entry]) => [nodeId, entry.status]));
+    const errorsOf = (plan) => plan.issues.filter((issue) => issue.level === 'error').map((issue) => [issue.nodeId, issue.code]);
+    // the form: the song field is empty until the person made the song at Suno
+    const noSong = { n1: { asset: null } };
+
+    // 1. step 1 of 3: only the pack; it needs no song (the board does)
+    clearSeen();
+    let state = await decide(noSong);
+    assert.deepEqual([state.flow.index, state.flow.total, state.flow.done], [0, 3, false]);
+    assert.deepEqual(state.flow.request, { mode: 'node', nodeIds: ['n29'], force: false, overrides: noSong });
+    assert.equal(state.previews[0].valid, true, 'step 1 runs without the song');
+    assert.deepEqual([...state.previews[0].order].sort(), ['n25', 'n26', 'n27', 'n28', 'n29'], 'the idea, the singer, the request, the language model and the pack');
+    assert.deepEqual(errorsOf(state.previews[1]), [['n1', 'no_asset']], 'step 2 needs the song');
+    const first = await finish(workflow, state.flow.request);
+    assert.deepEqual(statuses(first), { n25: 'done', n26: 'done', n27: 'done', n28: 'done', n29: 'done' });
+    assert.equal(llmCalls.length, 1, 'one answer of the language model');
+    assert.equal(llmCalls[0].system, SUNO_SYSTEM, 'the system prompt of the pack, word for word');
+    assert.equal(llmCalls[0].model, 'anthropic/claude-opus-5.5');
+    assert.match(llmCalls[0].prompt, new RegExp(`^IDEA\\n${IDEA.replace(/[.]/g, '\\.')}\\n\\nSINGER \\(voice and persona\\)\\nClaudia, an adult AI pop singer`), 'the idea and the singer');
+    const [packValue, ...morePacks] = await shown(workflow, 'n29');
+    assert.deepEqual([packValue.type, packValue.value, morePacks.length], ['text', SUNO_PACK, 0], 'the pack is the result of step 1');
+    assert.deepEqual([seen.timing.length, seen.beats.length, seen.sheet.length, seen.lipsync.length, seen.video.length, seen.edit.length, submits.length], [0, 0, 0, 0, 0, 0, 0], 'nothing of the film ran');
+
+    // 2. step 2 is due; without the song its request is invalid: the app view names the field, the engine refuses it, nothing runs
+    state = await decide(noSong);
+    assert.deepEqual([state.flow.index, state.flow.request], [1, { mode: 'selection', nodeIds: ['n20', 'n21', 'n22', 'n23', 'n24'], force: false, overrides: noSong }]);
+    assert.equal(state.previews[1].valid, false);
+    assert.deepEqual(errorsOf(state.previews[1]), [['n1', 'no_asset']]);
+    assert.ok(state.previews[1].order.includes('n1'), 'the plan of step 2 holds the node of the song field: the app view checks that field');
+    await assert.rejects(engine.start(workflow.id, { ...state.flow.request, user: STAFF }), (error) => Array.isArray(error.issues) && error.issues.some((issue) => issue.code === 'no_asset'));
+    assert.equal(seen.timing.length, 0);
+
+    // 3. the song from Suno is uploaded: the pack stays in the cache, step 2 is valid now
+    const upload = await seedAsset(toneWav(SONG.seconds + 2, 330), '.wav', owner);
+    const withSong = { n1: { asset: refOf(upload, owner) } };
+    state = await decide(withSong);
+    assert.deepEqual([state.previews[0].nodes.n28.status, state.previews[0].nodes.n29.status], ['cached', 'cached'], 'the pack stays in the cache after the upload');
+    assert.deepEqual([state.flow.index, state.previews[1].valid], [1, true]);
+    assert.ok(state.previews[1].order.includes('n25') && !state.previews[1].order.includes('n28'), 'the idea goes into the film, the pack does not');
+    clearSeen();
+    const second = await finish(workflow, state.flow.request);
+    assert.equal(second.nodes.n28, undefined, 'the pack is not part of step 2');
+    assert.equal(llmCalls.length, 1, 'one request: the planner, not the pack again');
+    assert.notEqual(llmCalls[0].system, SUNO_SYSTEM);
+    assert.match(llmCalls[0].prompt, new RegExp(IDEA.replace(/[.]/g, '\\.')), 'the idea reaches the planner');
+    assert.equal(seen.timing.length, 1);
+    assert.ok([null, ''].includes(seen.timing[0].lyrics), 'the pack does not go to the lyric times (Suno may change words)');
+    assert.equal(seen.sheet.length, 1);
+    assert.equal(seen.image.n9.length + seen.image.n10.length + seen.image.n11.length, STATS.sung + STATS.story + STATS.still);
+    assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, seen.edit.length, seen.render.length, submits.length], [0, 0, 0, 0, 0, 0], 'step 2 stops before the expensive part');
+    assert.match((await shown(workflow, 'n20'))[0].value, /^TREATMENT\n/, 'the board');
+
+    // 4. step 3 ("Approve and finish"): the rest. The plan counts only what is left: the pack and the planner are not paid again
+    state = await decide(withSong);
+    assert.deepEqual([state.flow.index, state.flow.request], [2, { mode: 'all', force: false, overrides: withSong }]);
+    for (const nodeId of ['n28', 'n4', 'n5', 'n9', 'n10', 'n11']) assert.equal(state.all.nodes[nodeId].status, 'cached', `${nodeId} comes from the cache`);
+    for (const nodeId of ['n28', 'n4']) {
+      assert.deepEqual([state.all.nodes[nodeId].paid, state.all.nodes[nodeId].estimate], [true, null], `${nodeId} is paid, but not counted in the estimate of step 3`);
+    }
+    assert.equal(state.all.totals.paidNodes, Object.values(state.all.nodes).filter((entry) => entry.paid && entry.status !== 'cached').length);
+    clearSeen();
+    // The still clips, the cut and the render ran for real with template 1 above, on the same part of the graph (test-nodes-templates.js
+    // holds it equal). Here they only take note and hand on a short clip, so the second film costs no ffmpeg time at 1080p; the rest of
+    // their definition (ports, checks, price) stays, and so do the plan and the cache.
+    const realDefs = ['image.to_video', 'music_video.edit', 'music_video.hud_render'].map((type) => registry.get(type));
+    const standIn = (def, note = () => {}) => {
+      registry.unregister(def.type);
+      registry.register({
+        ...def,
+        execute: async (ctx, inputs, params) => {
+          note(inputs, params);
+          const file = await scratchFile(ctx, 'clip.mp4');
+          await fsp.copyFile(await colourClip('336699', 1), file);
+          const variant = { video: await keepFile(ctx, file, { kind: 'video', ext: '.mp4', prompt: def.type, cost: 0, duration: 1 }) };
+          if (def.outputs.some((port) => port.id === 'sheet')) variant.sheet = await pictureOf(ctx, 'sheet.png', { colour: 'gray', size: '64x36', prompt: 'contact sheet' });
+          return { variants: [variant] };
+        }
+      });
+    };
+    const [stillDef, cutDef, renderDef] = realDefs;
+    standIn(stillDef);
+    standIn(cutDef, (inputs, params) => seen.edit.push({ params: { ...params }, connected: Object.keys(inputs).sort(), story: lengthOf(inputs.story), performance: lengthOf(inputs.performance), stills: lengthOf(inputs.still_clips) }));
+    standIn(renderDef, (inputs, params) => seen.render.push({ params: { ...params }, graphics: inputs.graphics.value }));
+    let third;
+    try {
+      third = await finish(workflow, state.flow.request);
+    } finally {
+      for (const def of realDefs) {
+        registry.unregister(def.type);
+        registry.register(def);
+      }
+    }
+    for (const nodeId of ['n25', 'n26', 'n27', 'n28', 'n29', 'n4', 'n5', 'n9', 'n10', 'n11', 'n20']) assert.equal(third.nodes[nodeId].status, 'cached', `${nodeId} is not made again`);
+    assert.equal(llmCalls.length, 0, 'no second answer for the pack or the plan');
+    assert.deepEqual([seen.sheet.length, seen.image.n9.length + seen.image.n10.length + seen.image.n11.length], [0, 0], 'no picture is made again');
+    assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, seen.edit.length, seen.render.length], [STATS.sung, STATS.story, STATS.still, 1, 1], 'the expensive part');
+    assert.deepEqual([seen.edit[0].connected, seen.edit[0].performance, seen.edit[0].story, seen.edit[0].stills], [['performance', 'shots', 'song', 'still_clips', 'story'], STATS.sung, STATS.story, STATS.still], 'the cut gets a clip for every unit');
+    assert.equal(seen.render[0].graphics, (await outputOf(workflow, 'n4', 'graphics')).value, 'the render draws the plan of step 2');
+    const [film] = await shown(workflow, 'n18');
+    assert.equal(film.type, 'video', 'the music video');
+    assert.deepEqual((await shown(workflow, 'n19')).map((item) => item.type), ['image'], 'the contact sheet');
+
+    // 5. everything is up to date: "Run again" begins at step 1, forced (a new pack); a new song brings step 2 back, the pack stays
+    state = await decide(withSong);
+    assert.deepEqual([state.flow.index, state.flow.done, state.flow.request.force, [...state.flow.request.nodeIds].sort()], [0, true, true, ['n25', 'n26', 'n27', 'n28', 'n29']]);
+    const take2 = await seedAsset(toneWav(SONG.seconds + 2, 440), '.wav', owner);
+    state = await decide({ n1: { asset: refOf(take2, owner) } });
+    assert.deepEqual([state.flow.index, state.previews[0].nodes.n29.status], [1, 'cached'], 'another song: step 2 again, not step 1');
   }
 }
 

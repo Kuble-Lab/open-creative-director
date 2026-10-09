@@ -1060,18 +1060,28 @@
     ['nodes.app.waitingResult', 'Das Ergebnis erscheint hier, sobald der Lauf fertig ist.', 'The result appears here once the run is finished.', 'El resultado aparece aquí cuando termine la ejecución.'],
     ['nodes.app.noResultYet', 'Noch kein Ergebnis. Starte die App.', 'No result yet. Run the app.', 'Aún no hay resultado. Ejecuta la app.'],
     ['nodes.app.resultFrom', 'Letztes Ergebnis: {info}', 'Latest result: {info}', 'Último resultado: {info}'],
-    /* optional approval step: outputs marked "show first" are made in step 1, "approve and finish" makes the rest */
+    /* optional approval steps: outputs marked "show first" are made in the step of their stage (step 1, or 2 to 5), every later step
+       starts with the approval of the one before, "approve and finish" makes the rest. With marks of one stage these are the two steps
+       of before, word for word ({step} and {total} then give the same text). */
     ['nodes.app.approveToggle', 'Zuerst zur Freigabe zeigen (Schritt 1)', 'Show first for approval (step 1)', 'Mostrar primero para aprobar (paso 1)'],
     ['nodes.app.approveHint', 'Die App erzeugt zuerst nur die so markierten Ausgaben (mit allem, was sie dafür braucht) und zeigt sie. Danach gibt die Person frei, und der Rest läuft.', 'The app first makes only the outputs marked like this (with everything they need) and shows them. Then the person approves and the rest runs.', 'La app genera primero solo las salidas marcadas así (con todo lo que necesitan) y las muestra. Después la persona aprueba y se ejecuta el resto.'],
     ['nodes.app.approveBadge', 'Zur Freigabe', 'For approval', 'Para aprobar'],
+    ['nodes.app.approveBadgeStep', 'Zur Freigabe in Schritt {step}', 'For approval in step {step}', 'Para aprobar en el paso {step}'],
+    ['nodes.app.approveStep', 'Freigabe in Schritt', 'Approval in step', 'Aprobación en el paso'],
+    ['nodes.app.approveStepOff', 'aus', 'off', 'no'],
+    ['nodes.app.approveStepHint', 'Ausgaben mit derselben Nummer kommen im selben Schritt. Die App macht die Schritte der Reihe nach und fragt vor jedem weiteren nach deiner Freigabe.', 'Outputs with the same number come in the same step. The app makes the steps in turn and asks for your approval before each further one.', 'Las salidas con el mismo número llegan en el mismo paso. La app hace los pasos por orden y pide tu aprobación antes de cada uno de los siguientes.'],
     ['nodes.app.approveStart', 'Schritt 1 starten', 'Start step 1', 'Iniciar paso 1'],
     ['nodes.app.approveFinish', 'Freigeben und fertigstellen', 'Approve and finish', 'Aprobar y terminar'],
-    ['nodes.app.approveRedo', 'Schritt 1 neu erzeugen', 'Make step 1 again', 'Volver a generar el paso 1'],
-    ['nodes.app.stepFirst', 'Schritt 1 von 2: Zuerst entsteht nur: {outputs}. Danach gibst du frei.', 'Step 1 of 2: first only this is made: {outputs}. Then you approve.', 'Paso 1 de 2: primero solo se genera: {outputs}. Después apruebas.'],
-    ['nodes.app.stepApprove', 'Schritt 2 von 2: Prüfe {outputs}. «Freigeben und fertigstellen» erzeugt den Rest.', 'Step 2 of 2: check {outputs}. “Approve and finish” makes the rest.', 'Paso 2 de 2: revisa {outputs}. «Aprobar y terminar» genera el resto.'],
-    ['nodes.app.comesInStep2', 'Kommt in Schritt 2, nach deiner Freigabe.', 'Comes in step 2, after your approval.', 'Llega en el paso 2, tras tu aprobación.'],
+    ['nodes.app.approveRedo', 'Schritt {step} neu erzeugen', 'Make step {step} again', 'Volver a generar el paso {step}'],
+    ['nodes.app.stageStart', 'Schritt {step} von {total} starten', 'Start step {step} of {total}', 'Iniciar paso {step} de {total}'],
+    ['nodes.app.stageNext', 'Freigeben und weiter mit Schritt {step}', 'Approve and go on with step {step}', 'Aprobar y seguir con el paso {step}'],
+    ['nodes.app.stepFirst', 'Schritt 1 von {total}: Zuerst entsteht nur: {outputs}. Danach gibst du frei.', 'Step 1 of {total}: first only this is made: {outputs}. Then you approve.', 'Paso 1 de {total}: primero solo se genera: {outputs}. Después apruebas.'],
+    ['nodes.app.stepNext', 'Schritt {step} von {total}: Prüfe {previous}. «Freigeben und weiter mit Schritt {step}» erzeugt: {outputs}.', 'Step {step} of {total}: check {previous}. “Approve and go on with step {step}” makes: {outputs}.', 'Paso {step} de {total}: revisa {previous}. «Aprobar y seguir con el paso {step}» genera: {outputs}.'],
+    ['nodes.app.stepApprove', 'Schritt {step} von {total}: Prüfe {outputs}. «Freigeben und fertigstellen» erzeugt den Rest.', 'Step {step} of {total}: check {outputs}. “Approve and finish” makes the rest.', 'Paso {step} de {total}: revisa {outputs}. «Aprobar y terminar» genera el resto.'],
+    ['nodes.app.stepHint', 'Schritt {step} von {total}: {hint}', 'Step {step} of {total}: {hint}', 'Paso {step} de {total}: {hint}'],
+    ['nodes.app.comesInStep', 'Kommt in Schritt {step}, nach deiner Freigabe.', 'Comes in step {step}, after your approval.', 'Llega en el paso {step}, tras tu aprobación.'],
     ['nodes.app.upToDateSteps', 'Alles ist aktuell. «Erneut starten» beginnt wieder bei Schritt 1.', 'Everything is up to date. “Run again” starts at step 1 again.', 'Todo está al día. «Ejecutar de nuevo» vuelve a empezar en el paso 1.'],
-    ['nodes.app.statusFirstDone', 'Schritt 1 fertig', 'Step 1 done', 'Paso 1 listo'],
+    ['nodes.app.statusStepDone', 'Schritt {step} fertig', 'Step {step} done', 'Paso {step} listo'],
 
     /* port hover help: tooltip chrome and facts (nodes.porttip.*), then the descriptions (nodes.portdesc.*).
        Lookup for a port, first hit wins: nodes.portdesc.<nodeType>.<portId>.<in|out>, nodes.portdesc.<nodeType>.<portId>,
