@@ -350,6 +350,19 @@ function testGrid() {
   assert.deepEqual(g6.shortened, { from: 90, to: g6.duration });
   assert.match(g6.notes.join(' '), /the film is shortened to \d+ s/);
   assert.ok(g6.picks <= 12);
+
+  // beats that repeat or lie too close (a spacing of 0) once hung the server, the estimate included: duplicates go, the pace falls back to the BPM
+  for (const [label, analysis, spacing] of [
+    ['the same beat four times', { bpm: 120, duration: 62, beats: [1, 1, 1, 1, 2], downbeats: [1] }, 0.5],
+    ['beats 1 ms apart', { bpm: 0, duration: 62, beats: [0, 0.001, 0.002, 0.003, 0.004, 0.005], downbeats: [0] }, 60 / styles.derive(styleFixture).bpm],
+    ['a BPM of a million', { bpm: 1e6, duration: 62, beats: [], downbeats: [] }, 60 / styles.derive(styleFixture).bpm]
+  ]) {
+    const grid = plan.planGrid({ analysis: JSON.stringify(analysis), style: styleFixture, material, musicSeconds: 62, options: AI_OPTIONS });
+    assert.ok(grid.beats.length < 200, `${label}: ${grid.beats.length} beats`);
+    const gaps = grid.beats.slice(1).map((beat, index) => beat - grid.beats[index]);
+    assert.ok(gaps.slice(-10).every((gap) => Math.abs(gap - spacing) < 0.002), `${label}: the pace ${gaps.slice(-3).join(', ')}`);
+    assert.equal(grid.acts[5].end, grid.duration, label);
+  }
 }
 
 /* ---------- the prompt ---------- */
