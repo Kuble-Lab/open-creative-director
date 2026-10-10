@@ -352,6 +352,23 @@ async function testChunks() {
   assert.throws(() => nodes.readGraphics('{"version":'), (err) => err.code === 'EVENTRENDER_GRAPHICS_INVALID');
   assert.equal(nodes.readFormat(' 9:16 '), '9:16');
   assert.throws(() => nodes.readFormat('4:3', 'EVENTCUT_FAILED'), (err) => err.code === 'EVENTCUT_FAILED');
+  // every fault of the render has its code: a wrong format, a cut without picture or too short, music without sound
+  const fakeCtx = { log: () => {}, sessionId: 'test', signal: null };
+  const text = (value) => ({ type: 'text', value });
+  await assert.rejects(
+    render.execute(fakeCtx, { graphics: text(JSON.stringify(graphics)), format: text('4:3') }, { quality: 'draft' }),
+    (err) => err.code === 'EVENTRENDER_GRAPHICS_INVALID' && /format: "4:3"/.test(err.data.problems)
+  );
+  const film = { video: { width: 1920, height: 1080 }, audio: null, duration: 60 };
+  const song = { video: null, audio: { codec: 'aac' }, duration: 62 };
+  assert.doesNotThrow(() => nodes.checkRenderInputs({ video: film, music: song, graphics }));
+  for (const [label, video, music, problem] of [
+    ['a cut without picture', { ...film, video: null }, song, /video: the file has no picture/],
+    ['a cut too short', { ...film, duration: 41.2 }, song, /video: 41\.2 s, the plan needs 60 s/],
+    ['music without sound', film, { ...song, audio: null }, /music: the file has no sound/]
+  ]) {
+    assert.throws(() => nodes.checkRenderInputs({ video, music, graphics }), (err) => err.code === 'EVENTRENDER_VERIFY_FAILED' && problem.test(err.data.problems), label);
+  }
 }
 
 async function main() {
