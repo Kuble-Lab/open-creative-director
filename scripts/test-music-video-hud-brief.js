@@ -88,12 +88,30 @@ const wordsOf = (line) => ({ start: Math.min(...line.words.map((word) => word.st
 
 /* ---------- golden: a run with a given idea is the one of before ---------- */
 
+// WP51 added two things to the prompt of the planner (the target of a tag); without them every text is the one of before WP48, byte for byte (the texts
+// hold them as they are and, inside the JSON of the requests, escaped). scripts/test-music-video-hud-targets.js checks the additions themselves.
+const WP51_ADDED = [
+  '\n- A tag draws a line to the place on the figure its words name: give every tag a "target" (face, eyes, mouth, hair, hands, outfit, object or none), e.g. "LIP GLOSS ON" → mouth, "EYELINER 2 MM" → eyes, "NEW BOB" → hair. The line finds the face, the eyes, the mouth, the hair and the clothes; hands, an object and none get no line.',
+  ', "target": "face | eyes | mouth | hair | hands | outfit | object | none"'
+];
+const withoutWp51 = (text) => WP51_ADDED.reduce((out, added) => out.split(added).join('').split(JSON.stringify(added).slice(1, -1)).join(''), String(text));
+// The estimates read the length of the prompt: with the additions (403 characters, about 134 tokens of input) the language model costs some 0.0005 USD
+// more; these four are the ones of WP51.
+const WP51_ESTIMATES = {
+  'planner.a.cost': { sha256: '0e96704c5d514804ab31b2b69df212eab4508de21ba608cea551b84c3dd637fc', length: 176 },
+  'planner.b.cost': { sha256: '86e06bb76c3174254bb0bd28e4e6a884fe98d76f994ec434e76bdacab29701b4', length: 176 },
+  'planner.c.cost': { sha256: '76d1f1af1af2f8fcbaf224a7de994d86891c611af28a06cf4623910dc8821fb7', length: 179 },
+  'node.estimate': { sha256: 'a7da4973a2945e2a9661a36f0aa867fc4e31b53831eb3e86b65c8118c6ddd55c', length: 14 }
+};
+
 async function testGolden() {
-  const now = await promptCases.fingerprints();
+  const texts = await promptCases.cases();
+  const now = Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, { sha256: promptCases.sha(withoutWp51(text)), length: withoutWp51(text).length }]));
   assert.deepEqual(Object.keys(now).sort(), Object.keys(BEFORE_WP48).sort(), 'the cases of before WP48');
   assert.equal(Object.keys(BEFORE_WP48).length, 45);
-  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], print, `${name}: the text of before WP48, byte for byte`);
-  const texts = await promptCases.cases();
+  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte`);
+  // the additions are in the prompt of every run of the planner
+  for (const name of ['a', 'b', 'c']) for (const added of WP51_ADDED) assert.ok(texts[`planner.${name}.requests`].includes(JSON.stringify(added).slice(1, -1)), `${name}: the target of a tag is asked for`);
   // the three runs with a given idea: one request each (the second run and the third ask twice for the answer, as before), never one for a brief
   assert.deepEqual(['a', 'b', 'c'].map((name) => JSON.parse(texts[`planner.${name}.requests`]).length), [1, 2, 2]);
   for (const name of ['a', 'b', 'c']) {
