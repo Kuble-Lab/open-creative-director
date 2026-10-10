@@ -108,6 +108,7 @@ function testConstants() {
     'EVENTPLAN_NO_MATERIAL',
     'EVENTPLAN_TOO_MUCH_MATERIAL',
     'EVENTRENDER_CHUNK_FAILED',
+    'EVENTRENDER_GRAPHICS_INVALID',
     'EVENTRENDER_NO_NODE',
     'EVENTRENDER_VERIFY_FAILED',
     'EVENTSTYLE_BAD_VALUE'
@@ -454,6 +455,10 @@ const BROKEN = [
   ['shots: an unknown kind', 'checkShots', shots, (s) => (s.shots[3].kind = 'still'), /^shots\[3\]\.kind "still" is not one of video, photo, photo_ai, photo_parallax, soundbite$/],
   ['shots: an anchor outside 0..1', 'checkShots', shots, (s) => (s.shots[0].anchor.x = 1.2), /^shots\[0\]\.anchor\.x is 1\.2, outside 0\.\.1$/],
   ['shots: a missing anchor', 'checkShots', shots, (s) => delete s.shots[0].anchor, /^shots\[0\]\.anchor is missing$/],
+  ['shots: a face that is not true or false', 'checkShots', shots, (s) => (s.shots[0].anchor.face = 'yes'), /^shots\[0\]\.anchor\.face must be true or false, got string$/],
+  ['shots: a zoom above 2', 'checkShots', shots, (s) => (s.shots[10].zoom = 2.5), /^shots\[10\]\.zoom is 2\.5, outside 1\.\.2$/],
+  ['shots: a zoom below 1', 'checkShots', shots, (s) => (s.shots[0].zoom = 0.8), /^shots\[0\]\.zoom is 0\.8, outside 1\.\.2$/],
+  ['shots: a zoom on a soundbite', 'checkShots', shots, (s) => (s.shots[8].zoom = 1.5), /^shots\[8\]\.zoom belongs to a video or a photo, not to soundbite$/],
   ['shots: a drift that is too wide', 'checkShots', shots, (s) => (s.shots[0].anchor.drift = [0.1, 0]), /^shots\[0\]\.anchor\.drift\[0\] is 0\.1, outside -0\.05\.\.0\.05$/],
   ['shots: a shot after the end', 'checkShots', shots, (s) => (s.shots[24].end = 61), /^shots\[24\]\.end is 61, after the end of the film \(60\)$/],
   ['shots: the last shot ends early', 'checkShots', shots, (s) => (s.shots[24].end = 59), /^shots\[24\]\.end is 59, the last shot ends with the film \(60\)$/],
@@ -578,6 +583,10 @@ function testAccepted() {
   accept('a dissolve', 'checkShots', shots, (s) => (s.shots[4].transition = 'dissolve'));
   accept('a parallax clip with an anchor', 'checkShots', shots, (s) => (s.shots[3].anchor = { x: 0.5, y: 0.4 }));
   accept('a shot of one frame', 'checkShots', shots, (s) => (s.shots[0].end = s.shots[1].start = 1 / 24));
+  // D18: a photo shown a second time as a detail (zoom, another anchor, a crop), a clip zoomed in, a shot without a face
+  accept('a detail of a photo', 'checkShots', shots, (s) => Object.assign(s.shots[10], { zoom: 1.5, fit: 'crop', anchor: { x: 0.37, y: 0.42, face: false } }));
+  accept('a clip zoomed in', 'checkShots', shots, (s) => (s.shots[0].zoom = 2));
+  accept('a parallax clip without a face', 'checkShots', shots, (s) => (s.shots[3].anchor = { x: 0.5, y: 0.4, face: false }));
   accept('a film cut short by its music', 'checkShots', shots, (s) => {
     s.duration = 57.074;
     s.shots.pop();

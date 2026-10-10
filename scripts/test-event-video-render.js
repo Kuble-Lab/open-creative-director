@@ -63,16 +63,24 @@ function testPages() {
     assert.match(pages[0].html, /font-family:'Montserrat'/);
   }
   assert.throws(() => composition.buildChunkPage({ graphics, format: '16:9', chunk: chunks[0], clipFile: '../x.mp4' }), /plain file name/);
-  // the stand-ins of the families whose files are not in lib/fonts (DM Sans, Space Grotesk: Inter Tight; Playfair Display: Instrument Serif italic)
+  // DM Sans, Space Grotesk and Playfair Display (WP53 package D) are in lib/fonts: each family is drawn in its own face, none needs its stand-in
   const styled = structuredClone(graphics);
   styled.look.type = { title: 'Playfair Display:600:italic', body: 'DM Sans:400' };
   for (const family of ['DM Sans', 'Space Grotesk', 'Playfair Display']) {
-    const drawn = metrics.drawnFamily(family);
-    assert.ok(fs.existsSync(path.join(metrics.FONT_DIR, metrics.EVENT_FAMILIES[drawn].file)), `${family} is drawn as ${drawn}, whose file is there`);
+    assert.equal(metrics.drawnFamily(family), family);
+    assert.ok(fs.existsSync(path.join(metrics.FONT_DIR, metrics.EVENT_FAMILIES[family].file)), `${family}: the file is there`);
   }
-  assert.deepEqual(composition.faceOf('Playfair Display:600:italic'), { family: metrics.drawnFamily('Playfair Display'), weight: metrics.drawnFamily('Playfair Display') === 'Instrument Serif' ? 400 : 600, italic: true, asked: 'Playfair Display' });
+  assert.deepEqual(composition.faceOf('Playfair Display:600:italic'), { family: 'Playfair Display', weight: 600, italic: true, asked: 'Playfair Display' });
+  assert.deepEqual(composition.faceOf('Space Grotesk:700'), { family: 'Space Grotesk', weight: 700, italic: false, asked: 'Space Grotesk' });
+  // the widths are read at the weight, DM Sans also at the optical size the browser takes (the size in px, 9 to 40): a title is narrower than a caption
+  const word = 'Innovation Day 2026';
+  assert.ok(metrics.familyWidth('Playfair Display:700:italic', word, 100) > metrics.familyWidth('Playfair Display:400:italic', word, 100));
+  assert.ok(metrics.familyWidth('DM Sans:700', word, 80) / 80 < (metrics.familyWidth('DM Sans:700', word, 12) / 12) * 0.95, 'DM Sans at opsz 40 is narrower than at 12');
+  assert.equal(metrics.familyWidth('DM Sans:700', word, 60), (metrics.familyWidth('DM Sans:700', word, 120) / 120) * 60, 'above 40 px the optical size stays at 40');
   const styledPage = composition.buildChunkPage({ graphics: styled, format: '9:16', chunk: chunks[0] });
   assert.ok(Buffer.byteLength(styledPage) < 2 * 1024 * 1024);
+  assert.match(styledPage, /@font-face\{font-family:'Playfair Display';src:url\(data:font\/ttf;base64,[^)]+\) format\('truetype'\);font-weight:400 900;font-style:italic\}/);
+  assert.match(styledPage, /@font-face\{font-family:'DM Sans';src:url\(data:font\/ttf;base64,[^)]+\) format\('truetype'\);font-weight:100 1000;font-style:normal\}/);
 }
 
 /* ---------- the layout ---------- */
@@ -340,7 +348,8 @@ async function testChunks() {
   assert.throws(() => nodes.readShots('{'), (err) => err.code === 'EVENTCUT_FAILED');
   assert.throws(() => nodes.readShots('{"version":1}'), (err) => err.code === 'EVENTCUT_FAILED' && /shots:/.test(err.message));
   assert.equal(nodes.readGraphics(JSON.stringify(graphics)).duration, 60);
-  assert.throws(() => nodes.readGraphics('[]'), /graphics:/);
+  assert.throws(() => nodes.readGraphics('[]'), (err) => err.code === 'EVENTRENDER_GRAPHICS_INVALID' && /graphics:/.test(err.message));
+  assert.throws(() => nodes.readGraphics('{"version":'), (err) => err.code === 'EVENTRENDER_GRAPHICS_INVALID');
   assert.equal(nodes.readFormat(' 9:16 '), '9:16');
   assert.throws(() => nodes.readFormat('4:3', 'EVENTCUT_FAILED'), (err) => err.code === 'EVENTCUT_FAILED');
 }

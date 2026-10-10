@@ -443,6 +443,13 @@ async function testRun() {
     assert.deepEqual([pair.source, pair.act], [3, 'programme']);
     // no fit without a reason (D17: the cut decides), no format in the plan
     result.shots.shots.forEach((shot, index) => assert.equal(shot.fit, result.sources[index].detail ? 'crop' : undefined, shot.id));
+    // D18: the anchor says whether a face holds it (from the faces of the analysis); a soundbite without a face in the analysis says nothing (its speaker)
+    for (const shot of result.shots.shots) {
+      if (!shot.anchor) continue;
+      if (shot.kind === 'soundbite') assert.ok(shot.anchor.face === undefined || shot.anchor.face === true, shot.id);
+      else assert.equal(typeof shot.anchor.face, 'boolean', shot.id);
+    }
+    assert.ok(result.shots.shots.some((shot) => shot.anchor && shot.anchor.face === true), 'the faces of the analysis reach the cut');
     assert.ok(!/format|landscape|portrait|1920|1080/.test(JSON.stringify(result.shots)));
     // the look of the page from the style, the accent white without a branding
     assert.deepEqual(result.graphics.look, { type: { title: 'Montserrat:700', body: 'Inter Tight:500' }, accent: '#FFFFFF', tint: -0.015, glow: 0, title_seconds: 0.97, ease: 'power3.out', grain: 0.1, contrast: 0.55 });
@@ -585,12 +592,14 @@ async function testPhotosOnly() {
       if (shot.fit !== undefined) assert.equal(shot.fit, 'crop');
       if (source.detail) {
         assert.equal(shot.fit, 'crop', `${label}: a detail is a crop`);
+        if (shot.kind === 'photo') assert.equal(shot.zoom, plan.DETAIL_ZOOM, `${label}: a detail starts zoomed in (D18)`);
         const first = seen.get(source.index);
         assert.ok(first, `${label}: the detail of p${source.index} comes after the photo`);
         assert.ok(Math.abs(first.anchor.x - shot.anchor.x) >= 0.15 || Math.abs(first.anchor.y - shot.anchor.y) >= 0.09, `${label}: the detail of p${source.index} shows another part`);
         if (first.motion) assert.notEqual(first.motion.type, shot.motion.type);
       } else {
         assert.ok(!seen.has(source.index), `${label}: p${source.index} twice without being a detail`);
+        assert.equal(shot.zoom, undefined, `${label}: only a detail has a zoom`);
         seen.set(source.index, shot);
       }
     });

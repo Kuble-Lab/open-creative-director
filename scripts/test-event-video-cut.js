@@ -47,7 +47,7 @@ function testReframe() {
   assert.equal(reframe.chooseFit(plain, 4032, 3024, '1:1').fit, 'crop');
   assert.equal(reframe.chooseFit(plain, 5712, 4284, '16:9').fit, 'crop');
   assert.equal(reframe.chooseFit({ ...plain, anchor: { x: 0.5, y: 0.4, face: true } }, 1920, 1080, '9:16').fit, 'crop', 'a face holds the anchor');
-  assert.equal(reframe.chooseFit({ ...plain, faces: 2 }, 1920, 1080, '9:16').fit, 'crop');
+  assert.equal(reframe.chooseFit({ ...plain, faces: 2 }, 1920, 1080, '9:16').fit, 'blur', 'only anchor.face (D18) says that there is a face');
   assert.equal(reframe.chooseFit({ kind: 'soundbite', anchor: { x: 0.4, y: 0.4 } }, 1920, 1080, '9:16').fit, 'crop', 'a soundbite has its speaker');
   assert.equal(reframe.chooseFit({ kind: 'soundbite', anchor: { x: 0.4, y: 0.4, face: false } }, 1920, 1080, '9:16').fit, 'blur');
   assert.equal(reframe.chooseFit({ ...plain, fit: 'crop' }, 3024, 4032, '16:9').fit, 'crop', 'the plan wins');
@@ -74,6 +74,17 @@ function testReframe() {
   );
   assert.equal(reframe.anchorOf({}).x, 0.5, 'photo_parallax may have no anchor: the centre');
   assert.match(reframe.cropFrame({ format: '9:16', anchor, frames: 48 }), /,scale=1080:1920:flags=lanczos$/);
+  // D18: the start zoom of a detail makes the window smaller (clips and photos only, held to 1..2)
+  assert.equal(
+    reframe.cropFilter({ format: '16:9', anchor, frames: 48, zoom: 1.5 }),
+    "crop=w='trunc(min(iw,ih*1.7778)/1.5/2)*2':h='trunc(min(ih,iw/1.7778)/1.5/2)*2':x='clip(0.42*iw-ow/2,0,iw-ow)':y='clip(0.38*ih-oh/2,0,ih-oh)'"
+  );
+  assert.deepEqual([{ kind: 'photo', zoom: 1.5 }, { kind: 'video', zoom: 3 }, { kind: 'soundbite', zoom: 1.5 }, { kind: 'photo' }].map(reframe.zoomOf), [1.5, 2, 1, 1]);
+  const still = { width: 3840, height: 2160 };
+  const detail = reframe.photoFilters({ shot: { kind: 'photo', zoom: 1.5, motion: { type: 'zoom_out', rate: 0.08 }, anchor: { x: 0.3, y: 0.4 } }, still, format: '16:9', fit: 'crop', tag: 3 });
+  assert.match(detail.frame({ frames: 48 }), /^zoompan=z='1\.5\*\(1\.16-0\.16\*on\/47\)'/, 'the move of a detail starts from its zoom');
+  const whole = reframe.photoFilters({ shot: { kind: 'photo', motion: { type: 'zoom_out', rate: 0.08 }, anchor: { x: 0.3, y: 0.4 } }, still, format: '16:9', fit: 'crop', tag: 3 });
+  assert.match(whole.frame({ frames: 48 }), /^zoompan=z='1\.16-0\.16\*on\/47'/, 'without a zoom the expression of before');
 
   // the blurred copy: YUV filters only (no RGB filter that ffmpeg 6.1 shifts behind a split), a quarter of the size, the picture over it
   const blur = reframe.blurFrame({ format: '16:9', tag: 7 });
