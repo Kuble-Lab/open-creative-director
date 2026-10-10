@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "fps": 24,
+  "duration": 60,
+  "look": {"contrast":0.55,"saturation":0.6},
+  "shots": [
+    {"id":"s1","act":"hook","start":0,"end":2.16,"kind":"video","source":1,"from":4.82,"speed":1,"anchor":{"x":0.5,"y":0.48,"drift":[-0.02,0]},"transition":"cut","exposure":0.005},
+    {"id":"s2","act":"hook","start":2.16,"end":4.192,"kind":"photo_ai","clip":0,"anchor":{"x":0.5,"y":0.3},"transition":"cut","exposure":0},
+    {"id":"s3","act":"hook","start":4.192,"end":6.224,"kind":"video","source":0,"from":14.58,"speed":1,"anchor":{"x":0.48,"y":0.31,"drift":[0,0]},"transition":"cut","exposure":0.015},
+    {"id":"s4","act":"arrival","start":6.224,"end":8.257,"kind":"photo_parallax","clip":0,"transition":"cut","exposure":0},
+    {"id":"s5","act":"arrival","start":8.257,"end":10.289,"kind":"video","source":2,"from":6.28,"speed":1,"anchor":{"x":0.46,"y":0.34,"drift":[0,0]},"transition":"cut","exposure":-0.05},
+    {"id":"s6","act":"arrival","start":10.289,"end":12.328,"kind":"photo","source":3,"motion":{"type":"zoom_in","rate":0.084},"anchor":{"x":0.5,"y":0.45},"transition":"cut","exposure":-0.08},
+    {"id":"s7","act":"arrival","start":12.328,"end":14.362,"kind":"video","source":2,"from":20.23,"speed":1,"anchor":{"x":0.53,"y":0.29,"drift":[0,0]},"transition":"cut","exposure":-0.03},
+    {"id":"s8","act":"programme","start":14.362,"end":16.395,"kind":"video","source":0,"from":33,"speed":1,"anchor":{"x":0.44,"y":0.37,"drift":[0,0]},"transition":"cut","exposure":-0.005},
+    {"id":"s9","act":"programme","start":16.395,"end":22.905,"kind":"soundbite","source":0,"from":39.5,"to":46.01,"anchor":{"x":0.44,"y":0.37,"drift":[0,0]},"transition":"cut","exposure":-0.005},
+    {"id":"s10","act":"programme","start":22.905,"end":24.532,"kind":"video","source":3,"from":7.39,"speed":1,"anchor":{"x":0.52,"y":0.4,"drift":[0,0]},"transition":"cut","exposure":-0.02},
+    {"id":"s11","act":"programme","start":24.532,"end":26.565,"kind":"photo","source":4,"motion":{"type":"pan_right","rate":0.084},"anchor":{"x":0.62,"y":0.32},"transition":"cut","exposure":-0.04},
+    {"id":"s12","act":"programme","start":26.565,"end":28.597,"kind":"video","source":3,"from":22.68,"speed":1,"anchor":{"x":0.47,"y":0.38,"drift":[0,0]},"transition":"cut","exposure":-0.025},
+    {"id":"s13","act":"programme","start":28.597,"end":30.629,"kind":"video","source":3,"from":38.48,"speed":1,"anchor":{"x":0.55,"y":0.36,"drift":[0,0]},"transition":"match","exposure":-0.01},
+    {"id":"s14","act":"people","start":30.629,"end":32.662,"kind":"video","source":5,"from":6.59,"speed":0.5,"anchor":{"x":0.45,"y":0.35,"drift":[0,0]},"transition":"cut","exposure":-0.035},
+    {"id":"s15","act":"people","start":32.662,"end":37.202,"kind":"soundbite","source":4,"from":7.17,"to":11.71,"anchor":{"x":0.58,"y":0.34,"drift":[0,0]},"transition":"cut","exposure":0},
+    {"id":"s16","act":"people","start":37.202,"end":38.767,"kind":"video","source":5,"from":20.87,"speed":1,"anchor":{"x":0.51,"y":0.39,"drift":[0,0]},"transition":"cut","exposure":-0.025},
+    {"id":"s17","act":"people","start":38.767,"end":40.799,"kind":"video","source":5,"from":35.83,"speed":1,"anchor":{"x":0.43,"y":0.41,"drift":[-0.02,0]},"transition":"cut","exposure":-0.015},
+    {"id":"s18","act":"people","start":40.799,"end":42.831,"kind":"video","source":4,"from":14,"speed":1,"anchor":{"x":0.58,"y":0.34,"drift":[0,0]},"transition":"cut","exposure":0},
+    {"id":"s19","act":"peak","start":42.831,"end":44.866,"kind":"video","source":6,"from":6.88,"speed":1,"anchor":{"x":0.5,"y":0.33,"drift":[0,0]},"transition":"cut","exposure":0.055,"hdr":true},
+    {"id":"s20","act":"peak","start":44.866,"end":46.905,"kind":"photo_ai","clip":1,"anchor":{"x":0.5,"y":0.46},"transition":"cut","exposure":0},
+    {"id":"s21","act":"peak","start":46.905,"end":48.938,"kind":"video","source":6,"from":22.63,"speed":1,"anchor":{"x":0.48,"y":0.45,"drift":[0,0]},"transition":"cut","exposure":0.04,"hdr":true},
+    {"id":"s22","act":"peak","start":48.938,"end":50.969,"kind":"video","source":1,"from":16.18,"speed":1,"anchor":{"x":0.41,"y":0.42,"drift":[0,0]},"transition":"cut","exposure":-0.01},
+    {"id":"s23","act":"peak","start":50.969,"end":53.001,"kind":"video","source":6,"from":52.58,"speed":1,"anchor":{"x":0.5,"y":0.5,"drift":[0,0]},"transition":"cut","exposure":0.045,"hdr":true},
+    {"id":"s24","act":"close","start":53.001,"end":57.074,"kind":"photo_parallax","clip":1,"transition":"cut","exposure":0},
+    {"id":"s25","act":"close","start":57.074,"end":60,"kind":"video","source":2,"from":33.14,"speed":1,"anchor":{"x":0.5,"y":0.4,"drift":[0,0]},"transition":"cut","exposure":0.045}
+  ]
+}

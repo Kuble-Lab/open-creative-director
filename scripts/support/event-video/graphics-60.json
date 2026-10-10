@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "fps": 24,
+  "duration": 60,
+  "cuts": [0,2.16,4.192,6.224,8.257,10.289,12.328,14.362,16.395,22.905,24.532,26.565,28.597,30.629,32.662,37.202,38.767,40.799,42.831,44.866,46.905,48.938,50.969,53.001,57.074],
+  "endFrame": 1440,
+  "acts": [
+    {"act":"hook","start":0,"end":6.224},
+    {"act":"arrival","start":6.224,"end":14.362},
+    {"act":"programme","start":14.362,"end":30.629},
+    {"act":"people","start":30.629,"end":42.831},
+    {"act":"peak","start":42.831,"end":53.001},
+    {"act":"close","start":53.001,"end":60}
+  ],
+  "transitions": [{"at":14.362,"type":"dip","frames":6},{"at":53.001,"type":"dip","frames":8}],
+  "title": {"text":"Innovation Day 2026","sub":"Zürich, 12. März 2026","start":1.5,"end":5.2,"anim":"words_up"},
+  "lower_thirds": [{"name":"Anna Muster","role":"CEO","label":null,"start":16.695,"end":21.195},{"name":"Luca Beispiel","role":"Leiter Forschung","label":null,"start":32.962,"end":36.562}],
+  "intertitles": [{"text":"320 Gäste","start":8.457,"end":10.189},{"text":"12 Workshops","start":24.732,"end":26.465}],
+  "soundbites": [
+    {
+      "start": 16.395,
+      "end": 22.905,
+      "words": [
+        {"w":"Willkommen","s":0.15,"e":0.7},
+        {"w":"zum","s":0.74,"e":0.98},
+        {"w":"Innovation","s":1.02,"e":1.57},
+        {"w":"Day","s":1.61,"e":1.85},
+        {"w":"2026.","s":1.89,"e":2.21},
+        {"w":"Heute","s":2.56,"e":2.88},
+        {"w":"zeigen","s":2.92,"e":3.29},
+        {"w":"wir,","s":3.33,"e":3.61},
+        {"w":"woran","s":3.65,"e":3.97},
+        {"w":"wir","s":4.01,"e":4.25},
+        {"w":"ein","s":4.29,"e":4.53},
+        {"w":"ganzes","s":4.57,"e":4.94},
+        {"w":"Jahr","s":4.98,"e":5.26},
+        {"w":"gearbeitet","s":5.3,"e":5.85},
+        {"w":"haben.","s":5.89,"e":6.26}
+      ]
+    },
+    {
+      "start": 32.662,
+      "end": 37.202,
+      "words": [
+        {"w":"Das","s":0.15,"e":0.39},
+        {"w":"merkt","s":0.43,"e":0.75},
+        {"w":"man","s":0.79,"e":1.03},
+        {"w":"in","s":1.07,"e":1.26},
+        {"w":"jedem","s":1.3,"e":1.62},
+        {"w":"Detail.","s":1.66,"e":2.08},
+        {"w":"Und","s":2.43,"e":2.67},
+        {"w":"das","s":2.71,"e":2.95},
+        {"w":"ist","s":2.99,"e":3.23},
+        {"w":"erst","s":3.27,"e":3.55},
+        {"w":"der","s":3.59,"e":3.83},
+        {"w":"Anfang.","s":3.87,"e":4.29}
+      ]
+    }
+  ],
+  "voiceover": [{"index":0,"start":6.624},{"index":1,"start":53.401}],
+  "endcard": {"line":"Danke. Bis 2027.","sub":null,"url":"innovation-day.example","seconds":3,"logo":true},
+  "look": {"type":{"title":"Montserrat:700","body":"Inter Tight:500"},"accent":"#3B6CFF","tint":-0.015,"glow":0,"title_seconds":0.97,"ease":"power3.out","grain":0.1,"contrast":0.55},
+  "mix": {"duck_db":-12,"ramp":0.3,"nat_level":0.12,"lufs":-16}
+}
