@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Music video in the HUD style (song by ElevenLabs)",
-  "description": "The same film as “Music video in the HUD style (your song)”, but you need no song: ElevenLabs writes a song text with sections from your idea (free of credits) and makes the music from it. Then the song is analysed and a language model (by default Claude Opus 5.5) plans the film; the figure (by default Claudia), the lip sync, the clips and the HUD in the look HUD Blue or Kuble follow as in that template (Nano Banana 2.1 for the pictures, H3 Max on fal.ai for the clips; the karaoke line is off by default). The idea feeds the song and the film, the voice field tells ElevenLabs how the singer sounds. The song is 90 seconds by default: long enough for a complete song with verses and choruses, short enough to keep the film near 9 US dollars. The film costs about 5.5 US dollars per minute of song according to the planner (about 8.5 for 90 seconds, about 11.5 for two minutes), the music about 0.20 US dollars per minute and needs a paid ElevenLabs plan: about 9 US dollars in all with the preset length. Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 1 makes the song, the board (with the estimate for the whole film), the character sheet and the pictures for about 1 US dollar per minute of song; you approve them before step 2 makes the expensive rest. The end card says that the film is AI-generated and credits the figure.",
+  "description": "The same film as “Music video in the HUD style (your song)”, but you need no song: ElevenLabs writes a song text with sections from your idea (free of credits) and makes the music from it. Then the song is analysed and a language model (by default Claude Opus 5.5) plans the film; the figure (by default Claudia), the lip sync, the clips and the HUD in the look HUD Blue or Kuble follow as in that template (Nano Banana 2.1 for the pictures, the character sheet with three official images of Claudia from claudia.gallery as references, H3 Max on fal.ai for the clips; the karaoke line is off by default). The idea feeds the song and the film, the voice field tells ElevenLabs how the singer sounds. The song is 90 seconds by default: long enough for a complete song with verses and choruses, short enough to keep the film near 9 US dollars. The film costs about 5.5 US dollars per minute of song according to the planner (about 8.5 for 90 seconds, about 11.5 for two minutes), the music about 0.20 US dollars per minute and needs a paid ElevenLabs plan: about 9 US dollars in all with the preset length. Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 1 makes the song, the board (with the estimate for the whole film), the character sheet and the pictures for about 1 US dollar per minute of song; you approve them before step 2 makes the expensive rest. The end card says that the film is AI-generated and credits the figure.",
   "requires": [
     "openrouter",
     "ffmpeg",
@@ -119,6 +119,7 @@
           "accent": "#3B82F6",
           "hud_language": "en",
           "brief_language": "en",
+          "official_images": true,
           "cuts_per_minute": 24,
           "max_units": 50,
           "lipsync_seconds_per_minute": 22,
@@ -541,6 +542,17 @@
         },
         "to": {
           "node": "n11",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e46",
+        "from": {
+          "node": "n4",
+          "port": "sheet_refs"
+        },
+        "to": {
+          "node": "n5",
           "port": "images"
         }
       },
@@ -990,7 +1002,7 @@
   "i18n": {
     "de": {
       "name": "Musikvideo im HUD-Stil (Song von ElevenLabs)",
-      "description": "Derselbe Film wie «Musikvideo im HUD-Stil (eigener Song)», nur brauchst du keinen Song: ElevenLabs schreibt aus deiner Idee einen Songtext mit Abschnitten (ohne Credits) und macht daraus die Musik. Danach wird der Song analysiert und ein Sprachmodell (standardmässig Claude Opus 5.5) plant den Film; die Figur (standardmässig Claudia), der Lippensync, die Clips und das HUD im Look HUD Blue oder Kuble folgen wie in jener Vorlage (Nano Banana 2.1 für die Bilder, H3 Max auf fal.ai für die Clips; die Karaoke-Zeile ist standardmässig aus). Die Idee speist Song und Film, das Feld für die Stimme sagt ElevenLabs, wie die Sängerin klingt. Der Song dauert standardmässig 90 Sekunden: genug für einen vollständigen Song mit Strophen und Refrains, wenig genug, um den Film bei etwa 9 US-Dollar zu halten. Der Film kostet laut Planer rund 5.5 US-Dollar pro Minute Song (etwa 8.5 für 90 Sekunden, etwa 11.5 für zwei Minuten), die Musik etwa 0.20 US-Dollar pro Minute und braucht ein bezahltes ElevenLabs-Abo: mit der voreingestellten Länge zusammen etwa 9 US-Dollar. Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 1 macht den Song, das Board (mit der Schätzung für den ganzen Film), das Figurenblatt und die Bilder für etwa 1 US-Dollar pro Minute Song; du gibst sie frei, bevor Schritt 2 den teuren Rest macht. Die Endkarte sagt, dass der Film KI-generiert ist, und nennt die Figur im Credit.",
+      "description": "Derselbe Film wie «Musikvideo im HUD-Stil (eigener Song)», nur brauchst du keinen Song: ElevenLabs schreibt aus deiner Idee einen Songtext mit Abschnitten (ohne Credits) und macht daraus die Musik. Danach wird der Song analysiert und ein Sprachmodell (standardmässig Claude Opus 5.5) plant den Film; die Figur (standardmässig Claudia), der Lippensync, die Clips und das HUD im Look HUD Blue oder Kuble folgen wie in jener Vorlage (Nano Banana 2.1 für die Bilder, das Figurenblatt mit drei offiziellen Bildern von Claudia aus claudia.gallery als Referenz, H3 Max auf fal.ai für die Clips; die Karaoke-Zeile ist standardmässig aus). Die Idee speist Song und Film, das Feld für die Stimme sagt ElevenLabs, wie die Sängerin klingt. Der Song dauert standardmässig 90 Sekunden: genug für einen vollständigen Song mit Strophen und Refrains, wenig genug, um den Film bei etwa 9 US-Dollar zu halten. Der Film kostet laut Planer rund 5.5 US-Dollar pro Minute Song (etwa 8.5 für 90 Sekunden, etwa 11.5 für zwei Minuten), die Musik etwa 0.20 US-Dollar pro Minute und braucht ein bezahltes ElevenLabs-Abo: mit der voreingestellten Länge zusammen etwa 9 US-Dollar. Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 1 macht den Song, das Board (mit der Schätzung für den ganzen Film), das Figurenblatt und die Bilder für etwa 1 US-Dollar pro Minute Song; du gibst sie frei, bevor Schritt 2 den teuren Rest macht. Die Endkarte sagt, dass der Film KI-generiert ist, und nennt die Figur im Credit.",
       "node.n1": "Song (ElevenLabs)",
       "node.n25": "Idee für Song und Video",
       "node.n26": "Stimme und Klang des Songs",
@@ -1039,7 +1051,7 @@
     },
     "es": {
       "name": "Videoclip en estilo HUD (canción de ElevenLabs)",
-      "description": "La misma película que «Videoclip en estilo HUD (tu propia canción)», pero sin necesitar una canción: ElevenLabs escribe a partir de tu idea una letra con secciones (sin créditos) y crea la música con ella. Después se analiza la canción y un modelo de lenguaje (por defecto Claude Opus 5.5) planifica el vídeo; la figura (por defecto Claudia), la sincronización labial, los clips y el HUD con el aspecto HUD Blue o Kuble siguen como en esa plantilla (Nano Banana 2.1 para las imágenes, H3 Max en fal.ai para los clips; la línea de karaoke está desactivada por defecto). La idea alimenta la canción y el vídeo; el campo de la voz le dice a ElevenLabs cómo suena la cantante. La canción dura 90 segundos por defecto: lo bastante para una canción completa con estrofas y estribillos, y lo justo para que el vídeo quede en unos 9 dólares. El vídeo cuesta unos 5,5 dólares por minuto de canción según el planificador (unos 8,5 para 90 segundos, unos 11,5 para dos minutos), la música unos 0,20 dólares por minuto y requiere un plan de pago de ElevenLabs: unos 9 dólares en total con la duración predefinida. Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 1 crea la canción, el tablero (con la estimación de todo el vídeo), la hoja del personaje y las imágenes por unos 1 dólar por minuto de canción; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro. La tarjeta final indica que el vídeo está generado con IA y da el crédito de la figura.",
+      "description": "La misma película que «Videoclip en estilo HUD (tu propia canción)», pero sin necesitar una canción: ElevenLabs escribe a partir de tu idea una letra con secciones (sin créditos) y crea la música con ella. Después se analiza la canción y un modelo de lenguaje (por defecto Claude Opus 5.5) planifica el vídeo; la figura (por defecto Claudia), la sincronización labial, los clips y el HUD con el aspecto HUD Blue o Kuble siguen como en esa plantilla (Nano Banana 2.1 para las imágenes, la hoja del personaje con tres imágenes oficiales de Claudia de claudia.gallery como referencia, H3 Max en fal.ai para los clips; la línea de karaoke está desactivada por defecto). La idea alimenta la canción y el vídeo; el campo de la voz le dice a ElevenLabs cómo suena la cantante. La canción dura 90 segundos por defecto: lo bastante para una canción completa con estrofas y estribillos, y lo justo para que el vídeo quede en unos 9 dólares. El vídeo cuesta unos 5,5 dólares por minuto de canción según el planificador (unos 8,5 para 90 segundos, unos 11,5 para dos minutos), la música unos 0,20 dólares por minuto y requiere un plan de pago de ElevenLabs: unos 9 dólares en total con la duración predefinida. Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 1 crea la canción, el tablero (con la estimación de todo el vídeo), la hoja del personaje y las imágenes por unos 1 dólar por minuto de canción; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro. La tarjeta final indica que el vídeo está generado con IA y da el crédito de la figura.",
       "node.n1": "Canción (ElevenLabs)",
       "node.n25": "Idea para la canción y el vídeo",
       "node.n26": "Voz y sonido de la canción",

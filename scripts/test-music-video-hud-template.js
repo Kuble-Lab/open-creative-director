@@ -184,6 +184,7 @@ async function run(iso) {
   const editNodes = iso.load('lib/nodes/nodes-edit');
   const planLib = iso.load('lib/music-video-plan');
   const hudPlan = iso.load('lib/music-video-hud/plan');
+  const figuresLib = iso.load('lib/music-video-hud/figures');
   const templatesLib = iso.load('lib/nodes/templates');
   const { createRegistry } = registryModule;
   const { createEventBus } = iso.load('lib/nodes/events');
@@ -493,7 +494,8 @@ async function run(iso) {
     return { variants: [{ timing: textValue(JSON.stringify(SONG.timing)), lyrics: textValue(SONG.timing.lines.map((line) => line.text).join('\n')) }] };
   });
   double('image.generate', async (ctx, inputs, params) => {
-    seen.sheet.push({ prompt: inputs.prompt.value, model: params.model, aspect: params.aspect_ratio, count: params.count });
+    const references = inputs.images ? (inputs.images.type === 'list' ? inputs.images.items : [inputs.images]) : [];
+    seen.sheet.push({ prompt: inputs.prompt.value, model: params.model, aspect: params.aspect_ratio, count: params.count, references });
     return { variants: [{ image: await pictureOf(ctx, 'sheet.png', { colour: 'gray', size: '48x64', prompt: inputs.prompt.value }) }] };
   });
   double('image.edit', async (ctx, inputs, params) => {
@@ -608,6 +610,7 @@ async function run(iso) {
     assert.deepEqual(approveTargets(workflow), ['n30', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the brief, the board, the character sheet and the three picture lists are shown first');
     const owner = workflow.sessionId;
     const fileOf = (value) => path.join(store.sessionAssetDir(owner), value.file);
+    let officialRefs = null;
 
     // 0. before anything ran: valid, the prices are unknown (the lists come from the plan), the planner has no price yet
     {
@@ -642,7 +645,22 @@ async function run(iso) {
       assert.deepEqual((await shown(workflow, 'n30')).map((item) => [item.type, item.value]), [['text', 'A woman and a light that stays on.']]);
       // the character sheet: the sheet prompt of the planner, a portrait, Nano Banana 2.1
       assert.equal(seen.sheet.length, 1);
-      assert.deepEqual([seen.sheet[0].prompt, seen.sheet[0].model, seen.sheet[0].aspect, seen.sheet[0].count], [hudPlan.sheetPrompt(FIGURE), NANO_BANANA, '3:4', 1]);
+      assert.deepEqual([seen.sheet[0].prompt, seen.sheet[0].model, seen.sheet[0].aspect, seen.sheet[0].count], [hudPlan.sheetPrompt(FIGURE, 'claudia'), NANO_BANANA, '3:4', 1]);
+      // WP50: the official images of Claudia go with it, as assets of the workflow, byte for byte the files of the repository
+      const officialFiles = figuresLib.referenceFiles('claudia');
+      assert.equal(seen.sheet[0].references.length, officialFiles.length, 'the three official images are the references of the sheet');
+      const ledgerNow = await store.readLedger(owner);
+      for (const [index, reference] of seen.sheet[0].references.entries()) {
+        assert.equal(reference.sessionId, owner);
+        const entry = ledgerNow.find((item) => item.id === reference.assetId);
+        assert.ok(entry && entry.kind === 'image', 'an image of the workflow');
+        assert.ok(entry.prompt.includes(officialFiles[index].id) && entry.prompt.includes('Claudia by anabology'), `the asset names its source: ${entry.prompt}`);
+        assert.ok(fs.readFileSync(fileOf(reference)).equals(fs.readFileSync(officialFiles[index].path)), `${officialFiles[index].id}: the file of the repository`);
+      }
+      assert.deepEqual((await outputOf(workflow, 'n4', 'sheet_refs')).items.map((item) => item.assetId), seen.sheet[0].references.map((item) => item.assetId));
+      const [boardForSheet] = await shown(workflow, 'n20');
+      assert.match(boardForSheet.value, /^SHEET {6}the portrait sheet gets 3 official reference images of Claudia/m, 'the board says it');
+      officialRefs = seen.sheet[0].references.map((item) => item.assetId);
       // the pictures: one per unit, Nano Banana 2.1, 16:9, the sheet as the reference, the prefix says what the sheet is
       const sheetValue = (await resultOf(workflow, 'n5')).variants[0].image;
       for (const [nodeId, count] of [['n9', STATS.sung], ['n10', STATS.story], ['n11', STATS.still]]) {
@@ -685,6 +703,9 @@ async function run(iso) {
       const kuble = JSON.parse((await outputOf(workflow, 'n4', 'graphics')).value);
       assert.equal(kuble.theme, 'kuble', 'the style lands in the plan');
       assert.equal(seen.sheet.length, sheets, 'the character sheet is not made again');
+      // WP50: the plan ran again and hands the sheet the same assets of the official images (no copy of them), so the sheet keeps its key
+      assert.deepEqual((await outputOf(workflow, 'n4', 'sheet_refs')).items.map((item) => item.assetId), officialRefs);
+      assert.equal((await store.readLedger(owner)).filter((entry) => /^Official reference image of Claudia/.test(entry.prompt || '')).length, 3, 'the official images are in the workflow once');
       assert.equal(seen.image.n9.length + seen.image.n10.length + seen.image.n11.length, pictures, 'nor are the pictures: the same prompts');
       assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, submits.length], [0, 0, 0, 0]);
     }

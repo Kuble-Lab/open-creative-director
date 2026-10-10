@@ -18,6 +18,8 @@ const or = require('../lib/openrouter');
 const costs = require('../lib/costs');
 const discovery = require('../lib/discovery');
 const tools = require('../lib/tools');
+const budget = require('../lib/budget');
+const access = require('../lib/access');
 const imageModels = require('../lib/image-models');
 const { loadConfig, normaliseImageModels, DEFAULT_CONFIG } = require('../lib/config');
 const assets = require('../lib/nodes/assets');
@@ -297,7 +299,9 @@ async function main() {
       assert.deepEqual(images.limitBy, { param: 'model', capability: 'references' });
       assert.equal(images.max, 8, 'the fixed maximum stays the ceiling');
       assert.equal(images.required, true);
-      assert.ok(def('image.generate').inputs.every((port) => !port.limitBy));
+      // WP50: image.generate takes optional reference images (the sheet of the HUD music video), limited by the model like image.edit
+      const generateImages = def('image.generate').inputs.find((port) => port.id === 'images');
+      assert.deepEqual([generateImages.limitBy, generateImages.max, Boolean(generateImages.required), generateImages.multiple], [{ param: 'model', capability: 'references' }, 4, false, true]);
       const descriptor = JSON.parse(JSON.stringify(registry.publicDescriptor(def('image.edit'))));
       assert.equal(descriptor.cost.hasEstimate, true);
       assert.deepEqual(descriptor.inputs.find((port) => port.id === 'images').limitBy, { param: 'model', capability: 'references' });
@@ -385,6 +389,27 @@ async function main() {
       await run('image.generate', makeCtx({ ...CONFIG, imageModel: NANO }), { prompt: text('x') });
       assert.equal(seen[0].imageEstimateUsd, 0.134);
 
+      // A balance that covers the base price must refuse a call with three references.
+      const originalBegin = budget.begin;
+      const originalRestricted = access.isRestricted;
+      try {
+        access.isRestricted = () => true;
+        budget.begin = async (_viewer, { estimateUsd }) => {
+          assert.ok(Number.isFinite(estimateUsd), `budget estimate: ${estimateUsd}`);
+          if (estimateUsd > 0.135) throw new Error('BUDGET_INSUFFICIENT');
+          return budget.NOOP_GRANT;
+        };
+        payloads.length = 0;
+        await assert.rejects(run('image.generate', makeCtx(), { prompt: text('x'), images: list('image', [image1, image2, image3]) }, { model: NANO }), /BUDGET_INSUFFICIENT/);
+        assert.equal(payloads.length, 0, 'the budget refuses before the provider is called');
+        assert.equal(seen.at(-1).imageEstimateUsd, 0.13736);
+        await run('image.generate', makeCtx(), { prompt: text('x') }, { model: NANO });
+        assert.equal(payloads.length, 1, 'without references the same balance covers the unchanged base price');
+        assert.equal(seen.at(-1).imageEstimateUsd, 0.134);
+      } finally {
+        budget.begin = originalBegin;
+        access.isRestricted = originalRestricted;
+      }
       // the tool reserves what it is told, and nothing else
       assert.equal(tools.toolEstimateUsd('generate_image', { prompt: 'x' }, { imageEstimateUsd: 0.134 }), 0.134);
       assert.equal(tools.toolEstimateUsd('edit_image', {}, { imageEstimateUsd: 0.134 }), 0.134);
@@ -468,6 +493,60 @@ async function main() {
       assert.equal(payloads[0].model, NANO);
     }
 
+    /* ----- image.generate with reference images (WP50): the call of image.edit with the aspect ratio of the node; without them the call of before ----- */
+    {
+      baseMocks();
+      await imageModels.load();
+      const generateWith = (config, rawParams, items) => run('image.generate', makeCtx(config), { prompt: text('A portrait'), ...(items ? { images: list('image', items) } : {}) }, rawParams);
+      payloads.length = 0;
+      await generateWith(CONFIG, { model: NANO, aspect_ratio: '3:4' }, [image1, image2, image3]);
+      assert.equal(payloads.length, 1);
+      assert.deepEqual(Object.keys(payloads[0]).sort(), ['aspect_ratio', 'input_references', 'model', 'n', 'prompt']);
+      assert.deepEqual([payloads[0].model, payloads[0].prompt, payloads[0].aspect_ratio, payloads[0].input_references.length], [NANO, 'A portrait', '3:4', 3]);
+      assert.ok(payloads[0].input_references.every((item) => item.type === 'image_url' && /^data:image\/png;base64,/.test(item.image_url.url)));
+      // no images: the payload of before, without references
+      payloads.length = 0;
+      await generateWith(CONFIG, { model: NANO, aspect_ratio: '3:4' }, null);
+      assert.deepEqual(payloads[0], { model: NANO, prompt: 'A portrait', n: 1, aspect_ratio: '3:4' });
+      // the limits: of the input and of the model
+      await assert.rejects(generateWith(CONFIG, { model: UNKNOWN_REFS }, Array(5).fill(image1)), /at most 4/);
+      payloads.length = 0;
+      const refusedGenerate = await generateWith(CONFIG, { model: ONE_REF }, [image1, image2]).catch((err) => err);
+      assert.equal(refusedGenerate.code, 'TOO_MANY_REFERENCES');
+      assert.equal(payloads.length, 0);
+      assert.deepEqual(issuesOf('image.generate', { model: ONE_REF }, { images: { connected: true, count: 2 } }).map((issue) => issue.code), ['too_many_refs']);
+      assert.deepEqual(issuesOf('image.generate', { model: NANO }, { images: { connected: true, count: 3 } }), []);
+      assert.deepEqual(issuesOf('image.generate', {}, {}), []);
+      assert.match(issuesOf('image.generate', {}, { images: { connected: true, count: 5 } })[0].message, /at most 4 images/);
+      // the estimate: each reference image adds its input tokens; the count is known once the node before has run, the most the input takes until then
+      const estimateGenerate = (rawParams, context) => def('image.generate').cost.estimate(registry.normalizeParams(def('image.generate'), rawParams), context);
+      assert.equal(imageModels.referenceUsd(NANO), 0.00112);
+      assert.equal(imageModels.referenceUsd(NANO_21), 0.00084);
+      assert.equal(imageModels.referenceUsd(GPT), null);
+      assert.deepEqual(estimateGenerate({ model: NANO }, { config: CONFIG, connected: new Set(['prompt']), inputs: {} }), { usd: 0.134 }, 'nothing connected: the price of before');
+      assert.deepEqual(estimateGenerate({ model: NANO }, { config: CONFIG, connected: new Set(['images']), inputs: { images: list('image', [image1, image2, image3]) } }), { usd: 0.13736 });
+      assert.deepEqual(estimateGenerate({ model: NANO }, { config: CONFIG, connected: new Set(['images']), inputs: {} }), { usd: 0.13848 }, 'not known yet: four');
+      assert.deepEqual(estimateGenerate({ model: NANO_21 }, { config: { ...CONFIG, imageModels: [...CONFIG.imageModels, NANO_21] }, connected: new Set(['images']), inputs: { images: list('image', [image1, image2, image3]) } }), { usd: 0.03652 }, 'the sheet of the HUD: 0.034 USD and three references');
+      assert.equal(estimateGenerate({ model: GPT }, { config: CONFIG, connected: new Set(['images']), inputs: {} }), null);
+      const historical = {
+        config: CONFIG,
+        workflow: { graph: { nodes: [{ id: 'earlier', type: 'image.generate' }] } },
+        results: { nodes: { earlier: { history: [{ createdAt: '2026-10-10', params: { count: 1 }, cost: { usd: 0.034, model: NANO_21 } }] } } },
+        connected: new Set(['images']),
+        inputs: { images: list('image', [image1, image2, image3]) }
+      };
+      assert.deepEqual(estimateGenerate({ model: NANO_21 }, historical), { usd: 0.03652 }, 'a historical base price still gets the references');
+      assert.deepEqual(estimateGenerate({ model: NANO_21, count: 2 }, historical), { usd: 0.07304 }, 'the surcharge follows the variant count');
+      assert.deepEqual(estimateGenerate({ model: NANO_21 }, { ...historical, inputs: {} }), { usd: 0.03736 }, 'unknown references still use four with history');
+      assert.deepEqual(estimateGenerate({ model: NANO_21 }, { ...historical, connected: new Set() }), { usd: 0.034 }, 'unconnected history stays unchanged');
+      const withReferences = await generateWith(CONFIG, { model: NANO }, [image1, image2, image3]);
+      assert.equal(withReferences.cost.referenceCount, 3, 'the history records its reference count');
+      historical.results.nodes.earlier.history[0].cost = { usd: 0.03652, model: NANO_21, referenceCount: 3 };
+      assert.deepEqual(estimateGenerate({ model: NANO_21 }, historical), { usd: 0.03652 }, 'recorded references are not charged twice in the estimate');
+      assert.deepEqual(estimateGenerate({ model: NANO_21 }, { ...historical, inputs: { images: list('image', [image1]) } }), { usd: 0.03484 }, 'the next reference count replaces the historical one');
+
+    }
+
     /* ----- estimates per model ----- */
     {
       baseMocks();
@@ -525,6 +604,36 @@ async function main() {
       // a node of the same type elsewhere in the workflow does
       const second = { workflow: { graph: { nodes: [{ id: 'a', type: 'image.edit' }, { id: 'b', type: 'image.edit' }] } }, results: { nodes: { b: { history: [done({ model: NANO, count: 2 }, 0.3, '2026-10-02T10:00:00Z')] } } }, config: CONFIG };
       assert.ok(Math.abs(estimate('image.edit', { model: NANO }, second).usd - 0.15) < 1e-9);
+    }
+
+    /* ----- reference counts survive the engine and workflow history ----- */
+    {
+      baseMocks();
+      registry.register({
+        type: 'test.figure_refs', category: 'image', label: 'Test references', inputs: [], outputs: [{ id: 'images', type: 'image[]' }], params: [],
+        execute: async (ctx) => {
+          const images = [];
+          for (let i = 0; i < 3; i++) images.push(await assets.valueFromAsset(ctx.sessionId, (await store.saveAsset(ctx.sessionId, { kind: 'image', buffer: PNG, ext: '.png' })).id));
+          return { variants: [{ images: list('image', images) }] };
+        }
+      });
+      const { workflow } = await wfStore.createWorkflow({ name: 'Reference history', graph: {
+        nodes: [
+          { id: 'refs', type: 'test.figure_refs', typeVersion: 1, x: 0, y: 0, params: {} },
+          { id: 'sheet', type: 'image.generate', typeVersion: 1, x: 300, y: 0, params: { model: NANO, prompt: 'Portrait', count: 2 } }
+        ],
+        edges: [{ id: 'refs-sheet', from: { node: 'refs', port: 'images' }, to: { node: 'sheet', port: 'images' } }]
+      } });
+      created.push(workflow.id);
+      const engine = createEngine({ store: wfStore, registry, events: bus, getConfig: () => CONFIG });
+      const record = await engine.whenFinished(workflow.id, await engine.start(workflow.id, { mode: 'all', user: 'tester' }));
+      assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
+      const results = await wfStore.readResults(workflow.id);
+      assert.equal(results.nodes.sheet.history[0].cost.referenceCount, 3);
+      const cached = await engine.plan(workflow.id, { mode: 'all' });
+      assert.equal(cached.nodes.sheet.itemEstimate.usd, 0.08, 'the recorded two-variant cost already includes its references');
+      const next = await engine.plan(workflow.id, { mode: 'all', force: true });
+      assert.equal(next.nodes.sheet.estimate.usd, 0.08224, 'forcing the upstream node reserves four unknown references instead of the recorded three');
     }
 
     /* ----- engine: plan, run, cache and the hand-over of the configuration ----- */

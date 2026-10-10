@@ -365,6 +365,7 @@ async function main() {
       'n1.audio>n2.audio', 'n1.audio>n3.audio', 'n2.analysis>n4.analysis', 'n3.timing>n4.timing', 'n1.audio>n4.song',
       'n4.sheet_prompt>n5.prompt', 'n4.performance_prompts>n6.a', 'n4.story_prompts>n7.a', 'n4.still_prompts>n8.a',
       'n6.text>n9.prompt', 'n5.image>n9.images', 'n7.text>n10.prompt', 'n5.image>n10.images', 'n8.text>n11.prompt', 'n5.image>n11.images',
+      'n4.sheet_refs>n5.images',
       'n9.image>n12.image', 'n4.performance_audio>n12.audio', 'n10.image>n13.first_frame', 'n4.story_motion>n13.prompt',
       'n11.image>n14.image', 'n11.image>n15.image', 'n14.depth>n15.depth',
       'n1.audio>n16.song', 'n4.shots>n16.shots', 'n13.video>n16.story', 'n12.video>n16.performance', 'n15.video>n16.still_clips',
@@ -409,6 +410,9 @@ async function main() {
       assert.match(hudNode('n4').params.figure, /^NAME: Claudia\nFULL: a 28-year-old /);
       assert.match(hudNode('n4').params.figure, /\nSHORT: a Caucasian American woman in her late twenties /);
       assert.match(hudNode('n4').params.figure, /\nCREDIT: Claudia by anabology \(claudia\.gallery\)$/);
+      // WP50: the official images of Claudia go with the prompt of the character sheet (the planner hands them only for the figure Claudia)
+      assert.equal(hudNode('n4').params.official_images, true);
+      assert.deepEqual(hudDoc.graph.edges.filter((edge) => edge.to.node === 'n5').map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.port}`), ['n4.sheet_prompt>prompt', 'n4.sheet_refs>images']);
       // the lyric times: optional text, the method decides (auto); who sings the lines: the marks of the text, else Gemini listens (WP48)
       assert.deepEqual(hudNode('n3').params, { lyrics: '', method: 'auto', voices: 'auto' });
       // the form: the song, the idea, the figure, the style, the lyrics, the karaoke line, the beat effects (and the language of the graphics); the film
