@@ -426,6 +426,20 @@ async function main() {
     };
     const shaking = frames.analyzeFrames([0, 8, 0, 8, 0, 8].map(sample), { seconds: 1.2, width: 320, height: 180, rate: 5 });
     check(shaking[0].reasons.includes('shaky') && shaking[0].motion === 'handheld', 'Projection acceleration detects shake');
+    // Live answers of 2026-10-10: a subject of 169 characters and people as the number 0 failed 12 of 18 real photos; the reader repairs them.
+    const repaired = vision.readVision(JSON.stringify({
+      ...visionFixture,
+      subject: `${'A speaker at a lectern in front of a large screen, '.repeat(4)}end`,
+      people: 0,
+      text_in_image: ['x'.repeat(130), ''],
+      risk: ['eating', 'unknown', 'eating'],
+      score: 4.4
+    }));
+    check([...repaired.subject].length <= 160 && !/\s$/.test(repaired.subject), 'A long subject is cut at a word');
+    check(repaired.people === '0' && repaired.score === 4, 'A number of people and a fractional score are read');
+    check(repaired.text_in_image.length === 1 && repaired.text_in_image[0].length === 120, 'Texts in the image are cut and empty ones dropped');
+    check(JSON.stringify(repaired.risk) === '["eating"]', 'Unknown and repeated risks are dropped');
+    check(/unflattering: a clearly embarrassing moment/.test(vision.SYSTEM) && /Bottles on a shelf/.test(vision.SYSTEM), 'The prompt defines the risks');
     await testEngine(scratch, photo, failed);
     console.log(`${checks} checks passed`);
   } finally {
