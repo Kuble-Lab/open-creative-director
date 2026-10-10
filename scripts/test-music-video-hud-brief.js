@@ -517,7 +517,7 @@ function testNode() {
   const def = real.get('music_video.hud_plan');
   // the idea is optional, the brief that was used is an output, the language of a written brief a setting
   assert.deepEqual(def.inputs.find((port) => port.id === 'brief'), { id: 'brief', type: 'text', param: 'brief' });
-  assert.deepEqual(def.outputs.at(-1), { id: 'brief', type: 'text' });
+  assert.deepEqual(def.outputs.find((port) => port.id === 'brief'), { id: 'brief', type: 'text' });
   const language = def.params.find((param) => param.id === 'brief_language');
   assert.deepEqual([language.kind, language.options, language.default, language.cacheOmitDefault], ['select', ['en', 'de', 'es'], 'en', true]);
   const voices = real.get('audio.lyrics_timing').params.find((param) => param.id === 'voices');

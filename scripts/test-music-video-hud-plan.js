@@ -1157,9 +1157,11 @@ async function testDefinition() {
   assert.equal(typeof explainerNodes.fallbackBrainStamp, 'function');
   const ports = (list) => list.map((port) => [port.id, port.type, Boolean(port.required), port.param || null]);
   // the idea is optional since WP48 (an empty field: the model writes the brief from the song), and the brief that was used is an output
-  assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', false, 'brief'], ['figure', 'text', true, 'figure'], ['song', 'audio', true, null]]);
+  // WP50: pictures of the person's own figure (optional) in, the reference images of the portrait sheet out
+  assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', false, 'brief'], ['figure', 'text', true, 'figure'], ['song', 'audio', true, null], ['figure_image', 'image', false, null]]);
+  assert.equal(def.inputs.find((port) => port.id === 'figure_image').multiple, true);
   assert.deepEqual(def.outputs.map((port) => [port.id, port.type]), [
-    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text']
+    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text'], ['sheet_refs', 'image[]']
   ]);
   // the same ports as the plan of the music video, so that the template of the nodes before and after it fits
   const plain = real.get('music_video.plan');
@@ -1172,7 +1174,7 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5
+    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5
   });
   assert.deepEqual(def.params.find((param) => param.id === 'brief_language').options, ['en', 'de', 'es']);
   assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 99, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
@@ -1357,6 +1359,7 @@ async function testNode() {
   const { textValue } = require('../lib/nodes/types');
   const { toneWav } = require('./support/explainer-media');
   const def = real.get('music_video.hud_plan');
+  const hudNode = require('../lib/nodes/nodes-music-video-hud');
 
   const restorers = [];
   const patch = (target, key, value) => {
@@ -1435,8 +1438,9 @@ async function testNode() {
       assert.equal(result.variants.length, 1);
       assert.deepEqual(result.cost, { usd: LLM_USD });
       const out = result.variants[0];
-      assert.deepEqual(Object.keys(out), def.outputs.map((port) => port.id));
-      for (const port of def.outputs) assert.equal(out[port.id].type, port.type === 'text' ? 'text' : 'list', port.id);
+      // every output but the reference images of the sheet: a figure of its own and no official images (WP50)
+      assert.deepEqual(Object.keys(out), def.outputs.map((port) => port.id).filter((id) => id !== 'sheet_refs'));
+      for (const port of def.outputs.filter((item) => item.id !== 'sheet_refs')) assert.equal(out[port.id].type, port.type === 'text' ? 'text' : 'list', port.id);
       const shots = planLib.parseShots(out.shots.value);
       assert.ok(shots, 'the plan of the cut can be read');
       const stats = grid.stats;
@@ -1502,6 +1506,110 @@ async function testNode() {
       assert.equal(failed?.code, 'HUDPLAN_BRIEF_FAILED');
       assert.deepEqual(failed.costs, [LLM_USD]);
       assert.equal(calls.length, 2);
+      assert.deepEqual(await scratchLeft(), []);
+    }
+
+    /* WP50: the official images of Claudia for the portrait sheet: only with the figure Claudia and the switch on; pictures of an own figure win */
+    {
+      const figuresLib = require('../lib/music-video-hud/figures');
+      const claudiaText = require('../lib/nodes/templates/music-video-hud.json').graph.nodes.find((node) => node.id === 'n4').params.figure;
+      const claudia = hudPlan.parseFigure(claudiaText);
+      const official = figuresLib.referenceFiles('claudia');
+      const officialLedger = async () => (await store.readLedger(sessionId)).filter((entry) => /^Official reference image of Claudia by anabology/.test(entry.prompt || ''));
+      // the switch on, the figure Claudia: three images out, the prompt of the sheet says what they fix, the board and the log say it
+      reset([goodAnswer(grid, claudia)]);
+      let ctx = makeCtx();
+      let result = await exec(ctx, inputs({ figure: textValue(claudiaText) }), { official_images: true });
+      let out = result.variants[0];
+      assert.equal(out.sheet_refs.type, 'list');
+      assert.equal(out.sheet_refs.items.length, 3);
+      for (const [index, item] of out.sheet_refs.items.entries()) {
+        assert.deepEqual([item.type, item.sessionId], ['image', sessionId]);
+        assert.ok(fs.readFileSync(assets.assetFilePath(item)).equals(fs.readFileSync(official[index].path)), `${official[index].id}: the file of the repository, unchanged`);
+      }
+      assert.equal(out.sheet_prompt.value, hudPlan.sheetPrompt(claudia, 'claudia'));
+      assert.match(out.sheet_prompt.value, /^Character reference portrait for a music video, photographic film still of Claudia by anabology, an adult woman in her late twenties\. The attached images are official reference images of her\./);
+      assert.match(out.sheet_prompt.value, /Her face is exactly the face in the two photographs, the same person/);
+      // the face comes from the photographs: the words of the canon that made her gaunt (angular face, strong jawline) are not in the prompt
+      assert.doesNotMatch(out.sheet_prompt.value, /angular|jawline|cheekbones|28-year-old/);
+      assert.match(out.sheet_prompt.value, /her right side \(the viewer's left\).*star clip on her left side above the ear.*headset microphone/);
+      assert.match(out.sheet_prompt.value, /not their clothes, light, background/);
+      assert.doesNotMatch(out.sheet_prompt.value, /\byoung\b/i, 'never the word young');
+      assert.match(out.board.value, /^SHEET {6}the portrait sheet gets 3 official reference images of Claudia/m);
+      assert.ok(ctx.logs.some((line) => line === 'The portrait sheet gets 3 official reference images of Claudia by anabology (claudia.gallery) (output "sheet_refs").'), ctx.logs.join(' | '));
+      const first = out.sheet_refs.items.map((item) => item.assetId);
+      assert.equal((await officialLedger()).length, 3);
+      // the plan again (another idea): the same assets, no second copy, so the sheet behind it keeps its key
+      reset([goodAnswer(grid, claudia)]);
+      result = await exec(makeCtx(), inputs({ figure: textValue(claudiaText), brief: textValue('Another idea') }), { official_images: true });
+      assert.deepEqual(result.variants[0].sheet_refs.items.map((item) => item.assetId), first);
+      assert.equal((await officialLedger()).length, 3, 'the images are in the workflow once');
+      // a file of the workflow that is gone is copied in again
+      await fsp.rm(assets.assetFilePath(result.variants[0].sheet_refs.items[0]));
+      reset([goodAnswer(grid, claudia)]);
+      result = await exec(makeCtx(), inputs({ figure: textValue(claudiaText) }), { official_images: true });
+      assert.notEqual(result.variants[0].sheet_refs.items[0].assetId, first[0]);
+      assert.deepEqual(result.variants[0].sheet_refs.items.slice(1).map((item) => item.assetId), first.slice(1));
+      // the switch off (the default, every plan saved before WP50): no images, the prompt of before byte for byte
+      reset([goodAnswer(grid, claudia)]);
+      out = (await exec(makeCtx(), inputs({ figure: textValue(claudiaText) }))).variants[0];
+      assert.equal(out.sheet_refs, undefined);
+      assert.equal(out.sheet_prompt.value, hudPlan.sheetPrompt(claudia));
+      assert.doesNotMatch(out.board.value, /^SHEET/m);
+      // another figure with the switch on: nothing of Claudia comes along
+      reset();
+      out = (await exec(makeCtx(), inputs(), { official_images: true })).variants[0];
+      assert.equal(out.sheet_refs, undefined, 'another figure gets no image of Claudia');
+      assert.equal(out.sheet_prompt.value, hudPlan.sheetPrompt(figure));
+      assert.doesNotMatch(out.sheet_prompt.value, /Claudia/);
+      // pictures of the person's own figure: they are the references (also instead of Claudia's), the prompt says to take face, hair and accessories from them
+      const ownSaved = await store.saveAsset(sessionId, { kind: 'image', buffer: fs.readFileSync(official[0].path), ext: '.jpg', prompt: 'my own figure' });
+      const own = await assets.valueFromAsset(sessionId, ownSaved.id);
+      for (const [text, answerFigure] of [[FIGURE_TEXT, figure], [claudiaText, claudia]]) {
+        reset([goodAnswer(grid, answerFigure)]);
+        ctx = makeCtx();
+        out = (await exec(ctx, inputs({ figure: textValue(text), figure_image: { type: 'list', items: [own] } }), { official_images: true })).variants[0];
+        assert.deepEqual(out.sheet_refs.items.map((item) => item.assetId), [own.assetId]);
+        assert.equal(out.sheet_prompt.value, hudPlan.sheetPrompt(answerFigure, 'own'));
+        assert.match(out.sheet_prompt.value, /take the face, the hair and every accessory exactly from them/);
+        assert.match(out.board.value, /^SHEET {6}the portrait sheet gets 1 reference image of the figure/m);
+      }
+      // a picture of another workflow is refused before the language model is paid
+      reset();
+      const foreign = { ...own, sessionId: 'another-session' };
+      const refused = await errorOf(exec(makeCtx(), inputs({ figure_image: { type: 'list', items: [foreign] } })));
+      assert.match(refused.message, /^figure_image: asset .* belongs to another workflow$/);
+      assert.equal(calls.length, 0);
+      assert.ok(hudNode.definitions.find((def) => def.type === 'music_video.hud_plan').validate({}, { figure_image: { count: 5 } }).some((issue) => issue.port === 'figure_image'));
+      const gif = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'upload', buffer: Buffer.from('GIF89a'), ext: '.gif' })).id);
+      const pending = await store.reserveAsset(sessionId, { kind: 'image', ext: '.png' });
+      const gone = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'image', buffer: Buffer.from('gone'), ext: '.png' })).id);
+      await fsp.rm(assets.assetFilePath(gone));
+      for (const [images, message] of [
+        [Array(5).fill(own), /at most 3 images/],
+        [[gif], /PNG, JPEG or WebP/],
+        [[{ ...own, assetId: pending.id }], /not finished/],
+        [[{ ...own, assetId: 'missing' }], /does not exist/],
+        [[gone], /ENOENT/]
+      ]) {
+        reset();
+        const err = await errorOf(exec(makeCtx(), inputs({ figure_image: { type: 'list', items: images } })));
+        assert.match(err.message, message);
+        assert.equal(calls.length, 0, 'invalid references never reach the paid planner');
+      }
+      reset([goodAnswer(grid, claudia)]);
+      out = (await exec(makeCtx(), inputs({ figure: textValue(claudiaText), figure_image: { type: 'list', items: [] } }), { official_images: true })).variants[0];
+      assert.equal(out.sheet_refs.items.length, 3, 'an empty connected input falls back to official images');
+      reset();
+      out = (await exec(makeCtx(), inputs({ figure_image: { type: 'list', items: [] } }))).variants[0];
+      assert.equal(out.sheet_refs, undefined, 'empty connected input without official images stays empty');
+      // the price of the sheet on the board: one image and its three references (the estimate of the whole film)
+      const prices = hudNode.hudPrices('anthropic/claude-opus-5.5', 3);
+      near(prices.sheet, 0.034 + 3 * 0.00084, 1e-9, 'Nano Banana 2.1: 0.034 USD an image, 0.00084 USD a reference image');
+      assert.equal(hudNode.hudPrices('anthropic/claude-opus-5.5').sheet, undefined, 'without references the price of before');
+      const costWith = hudPlan.estimateCost({ grid, settings: grid.settings, prices });
+      const costWithout = hudPlan.estimateCost({ grid, settings: grid.settings, prices: hudNode.hudPrices('anthropic/claude-opus-5.5') });
+      assert.deepEqual([costWithout.parts.sheet, costWith.parts.sheet], [0.034, 0.0365]);
       assert.deepEqual(await scratchLeft(), []);
     }
 

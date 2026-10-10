@@ -298,7 +298,7 @@ function testDescriptor() {
   }
   assert.deepEqual(payload.nodeTypes.find((def) => def.type === 'video.higgsfield').inputs.find((port) => port.id === 'audio').limitBy, { param: 'model', capability: 'audio' });
   const limited = payload.nodeTypes.filter((def) => def.inputs.some((port) => port.limitBy)).map((def) => def.type).sort();
-  assert.deepEqual(limited, ['fal.image_to_3d', 'image.edit', 'image.higgsfield', 'video.generate', 'video.higgsfield'], 'the only nodes whose limit follows a model');
+  assert.deepEqual(limited, ['fal.image_to_3d', 'image.edit', 'image.generate', 'image.higgsfield', 'video.generate', 'video.higgsfield'], 'the only nodes whose limit follows a model (image.generate: its optional reference images, WP50)');
   // the help does not state 12 as if every model took that many
   const help = read('public/nodes/node-help.js');
   assert.ok(/!port\.limitBy/.test(help), 'node-help.js leaves out the fixed maximum of an input that follows the model');
