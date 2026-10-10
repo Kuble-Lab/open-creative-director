@@ -274,6 +274,15 @@ async function main() {
       await fs.writeFile(oriented, Buffer.concat([head.subarray(0, head.length - 2), cornerJpeg.subarray(2)]));
       const orientedInfo = await analyzeMedia(ctx, oriented, { kind: 'photo' });
       valid(orientedInfo);
+      // probeMedia gives the size ffmpeg decodes (it turns the frames by EXIF): image.to_video scaled a portrait phone photo out of shape before
+      const probed = await require('../lib/nodes/ffmpeg-ops').probeMedia(oriented);
+      const decoded = path.join(scratch, `decoded-${o}.png`);
+      await run(['-i', oriented, '-frames:v', '1', decoded]);
+      const decodedProbe = await require('../lib/nodes/ffmpeg-ops').probeMedia(decoded);
+      check(
+        probed.video.width === decodedProbe.video.width && probed.video.height === decodedProbe.video.height,
+        `probeMedia gives the decoded size of EXIF orientation ${o}`
+      );
       const raw = path.join(scratch, 'corners.gray');
       const sheetFile = saved[saved.length - 1].file;
       await run(['-i', sheetFile, '-vf', 'format=gray', '-frames:v', '1', '-f', 'rawvideo', raw]);
