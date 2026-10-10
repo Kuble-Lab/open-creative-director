@@ -87,6 +87,19 @@ function testBuilders(h) {
   // the displacement stays inside what displace can take (+-127 pixels) for a huge picture at full strength
   const huge = ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom: 'parallax_right', parallax_strength: 100 }), [probeOf(7680, 4320), probeOf(100, 100)], { depth: true });
   assert.match(huge.graph, /128\+120\*r\(X,Y\)/);
+  // a camera photo of 24 MP is scaled down first (it took 1.9 GB in one ffmpeg process and stopped the server): at most 2560 px, the shape
+  // kept, and a large clip is encoded with two threads and a short lookahead; a picture up to that size is cut exactly as before
+  const photo = (zoom, size) => ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom }), [probeOf(...size), probeOf(100, 100)], { depth: true });
+  const encoder = (spec) => spec.outputs[0].args.join(' ');
+  assert.match(photo('parallax_right', [5712, 4284]).graph, /^\[0:v\]scale=2560:1920:flags=lanczos,format=gbrp\[src\]/);
+  assert.match(photo('parallax_in', [4284, 5712]).graph, /^\[0:v\]scale=1920:2560:/);
+  assert.match(photo('parallax_in', [4284, 5712]).notes.join(' '), /The picture is 4284x5712: the clip is made at 1920x2560/);
+  assert.equal(encoder(photo('parallax_in', [4284, 5712])), '-threads 2 -x264-params rc-lookahead=10 -t 2');
+  assert.match(photo('in', [5712, 4284]).graph, /zoompan=.*:s=2560x1920:/);
+  assert.match(photo('none', [5712, 4284]).graph, /scale=2560:1920:flags=lanczos/);
+  assert.deepEqual(photo('parallax_right', [2048, 1536]).notes, [], 'a picture up to the limit is not touched');
+  assert.match(photo('parallax_right', [2048, 1536]).graph, /^\[0:v\]scale=2048:1536:/);
+  assert.equal(encoder(photo('parallax_right', [2048, 1152])), '-t 2', 'a clip of a generated picture keeps the encoder defaults');
   // with audio: the audio is the second input, the depth map the third
   const audioSpec = ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom: 'parallax_right' }), [probeOf(320, 180), { audio: { codec: 'aac' }, duration: 2 }, probeOf(100, 60)], { depth: true });
   assert.match(audioSpec.graph, /\[2:v\]scale=/);
