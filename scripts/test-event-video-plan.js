@@ -575,6 +575,44 @@ async function testSoundbiteRisks() {
   assert.match(model.calls[0].system, /No soundbites in this film \(no clip has speech that can be used\)/);
 }
 
+// WP53 review: the voice-over fits its act (about 14 characters a second); the planner places it by the estimated length and never lets it run past the end
+async function testVoiceover() {
+  const style30 = styles.combineStyle({ event_type: 'corporate', mood: 'fresh', length: 30 });
+  const ctx = contextOf({ style: style30, musicSeconds: 32 });
+  const arrival = plan.voiceChars(ctx.grid, 'arrival');
+  const close = plan.voiceChars(ctx.grid, 'close');
+  const closeAct = ctx.grid.acts.find((act) => act.act === 'close');
+  assert.equal(close, Math.floor((closeAct.end - closeAct.start - 0.4 - 0.3) * plan.VOICE_CHARS_PER_SECOND));
+  assert.ok(close < 63 && arrival >= 69, `${arrival} / ${close}`);
+  assert.match(plan.systemPrompt(ctx), new RegExp(`speaks about 14 characters a second: at most ${arrival} characters in arrival and ${close} in close`));
+  // the close line of the fixtures (63 characters, two sentences) is too long for 30 s: its first sentence stays
+  const read = plan.readAnswer(JSON.stringify(answerOk), ctx);
+  assert.deepEqual(read.content.voiceover.map((line) => line.text), ['Ein Tag voller Ideen: 320 Gäste kamen zum Innovation Day nach Zürich.', 'Danke an alle, die dabei waren.']);
+  assert.match(read.notes.join(' '), /voice-over 1 was shortened to the sentences that fit into \d+ characters/);
+  // one long sentence: left out, and the model hears it
+  const long = clone(answerOk);
+  long.voiceover = [{ act: 'close', text: 'Danke an alle Gäste, Referentinnen und Referenten des Innovation Day in Zürich für diesen inspirierenden Tag.' }];
+  const longRead = plan.readAnswer(JSON.stringify(long), ctx);
+  assert.deepEqual(longRead.content.voiceover, []);
+  assert.match(longRead.problems.join('\n'), /voice-over 0 has 109 characters; the act close has room for \d+ \(about 14 a second\): it was left out\./);
+  // the run: every line ends before the end of the film by its estimate, the lines of the voice and the graphics agree
+  const { result } = await run({ ask: scripted([answerOk]).ask, style: style30, musicSeconds: 32 });
+  passesContract(result, '30 s with voice');
+  assert.equal(result.voLines.length, result.graphics.voiceover.length);
+  result.graphics.voiceover.forEach((line) => {
+    const seconds = [...result.voLines[line.index]].length / plan.VOICE_CHARS_PER_SECOND;
+    assert.ok(line.start + seconds <= result.graphics.duration - 0.3 + 1e-6, `line ${line.index} at ${line.start} for ${seconds} s`);
+  });
+  // a line the graphics cannot place is left out with its voice: the list of the voice and the indices stay together
+  const content = clone(read.content);
+  const made = { shots: result.shots, notes: [], biteOrder: [], pageTransitions: [] };
+  const lines = { ...content, soundbites: [], lowerThirds: [], voiceover: [{ act: 'arrival', text: 'Kurz.' }, { act: 'close', text: 'x'.repeat(170) }, { act: 'close', text: 'Danke.' }] };
+  const graphics = plan.toGraphics(lines, made, { ...ctx, grid: { ...ctx.grid, duration: result.graphics.duration } });
+  assert.deepEqual(lines.voiceover.map((line) => line.text), ['Kurz.', 'Danke.']);
+  assert.deepEqual(graphics.voiceover.map((line) => line.index), [0, 1]);
+  assert.match(made.notes.join(' '), /voice-over 1 \(about 12\.14 s\) fits nowhere/);
+}
+
 /* ---------- the run ---------- */
 
 async function testRun() {
@@ -1131,6 +1169,7 @@ async function testNode() {
   testPrompt();
   testAnswer();
   await testSoundbiteRisks();
+  await testVoiceover();
   await testRun();
   await testPhotosOnly();
   await testScarceMaterial();

@@ -214,6 +214,23 @@ function testMix() {
   assert.match(graph, /adelay=delays=6624:all=1\[v0\]/);
   assert.match(graph, /adelay=delays=53401:all=1\[v1\]/);
   assert.match(graph, /amix=inputs=4:normalize=0:dropout_transition=0,atrim=0:60,apad=whole_dur=60\[mix\]$/);
+  // WP53 review: a line of the voice is placed by its measured length, before the end of the film and the next soundbite; one that fits nowhere is left
+  // out, never cut
+  const place = (voiceover, seconds) => mixLib.placeVoices({ ...graphics, voiceover }, seconds);
+  assert.deepEqual(place(graphics.voiceover, [2.5, 3]), { lines: graphics.voiceover, dropped: [] }, 'the lines of the fixture fit where they are');
+  assert.deepEqual(place(graphics.voiceover, [2.5, 6.5]).lines[1], { index: 1, start: 53.2 }, 'close: moved back so that it ends 0.3 s before the end');
+  assert.deepEqual(place(graphics.voiceover, [2.5, 8]), { lines: [graphics.voiceover[0]], dropped: [{ index: 1, start: 53.401, seconds: 8 }] }, 'close: 8 s fit nowhere');
+  assert.deepEqual(place(graphics.voiceover, [9.5, 3]).lines[0], { index: 0, start: 6.595 }, 'arrival: ends 0.3 s before the soundbite at 16.395');
+  assert.deepEqual(place(graphics.voiceover, [10, 3]).dropped.map((line) => line.index), [0], 'arrival: 10 s fit nowhere before the soundbite');
+  assert.deepEqual(place([{ index: 0, start: 6.624 }, { index: 1, start: 6.624 }], [2, 2]).lines, [{ index: 0, start: 6.624 }, { index: 1, start: 8.924 }], 'two lines of one act one after the other');
+  assert.deepEqual(place([{ index: 0, start: 16.5 }], [2]).lines, [{ index: 0, start: 23.205 }], 'a line inside a soundbite waits for its end');
+  assert.deepEqual(place(graphics.voiceover, []).lines, graphics.voiceover, 'without a length the lines stay');
+  const cutOff = mixLib.mixArgs(graphics, { music: 'm.wav', nat: 'n.wav', voices: [{ file: 'v0.mp3', seconds: 2.5 }, { file: 'v1.mp3', seconds: 8 }], out: 'mix.wav' });
+  assert.deepEqual(cutOff.args.filter((arg, index) => cutOff.args[index - 1] === '-i'), ['m.wav', 'n.wav', 'v0.mp3'], 'the line that does not fit is not mixed');
+  assert.deepEqual(cutOff.dropped.map((line) => line.index), [1]);
+  assert.deepEqual(cutOff.windows.map(({ start, end }) => [start, Math.round(end * 1000) / 1000]), [[6.624, 9.124], [16.395, 22.905], [32.662, 37.202]]);
+  const moved = mixLib.mixArgs(graphics, { music: 'm.wav', nat: null, voices: [{ file: 'v0.mp3', seconds: 2.5 }, { file: 'v1.mp3', seconds: 6.5 }], out: 'mix.wav' });
+  assert.match(moved.args[moved.args.indexOf('-filter_complex') + 1], /adelay=delays=53200:all=1\[v1\]/);
   // a photo-only event: music and voice
   const photoOnly = mixLib.mixArgs({ ...graphics, soundbites: [], lower_thirds: [] }, { music: 'm.wav', nat: null, voices: [{ file: 'v0.mp3', seconds: 2.5 }], out: 'mix.wav' });
   assert.equal(photoOnly.args.filter((arg) => arg === '-i').length, 2);
