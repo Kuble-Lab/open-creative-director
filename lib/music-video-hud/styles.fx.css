@@ -1,5 +1,11 @@
-/* The beat effects (WP45), only in a page with the effects on: #fx wraps the footage (#cam) and takes the zoom, the shake, the turn and the filters of
-   the effects (round the middle of the screen); #fx-light is the light of the flashes between the footage and the HUD; #fx-defs holds the SVG filters. */
+/* The beat effects (WP45, WP49), only in a page with the effects on: #fxall wraps the stage (the footage and the HUD) and takes the effects over the whole
+   picture; #fx wraps the footage (#cam) and takes the zoom, the shake, the turn and the filters of the effects (round the middle of the screen); over the
+   footage and under the HUD lie the noise (#fx-grain), the scanlines (#fx-scan) and the light of the flashes (#fx-light); #fx-snow lies over the whole
+   picture; #fx-defs holds the SVG filters. The noise texture of #fx-grain and #fx-snow comes with the page (composition.js). */
+#fxall{position:absolute;left:0;top:0;width:1920px;height:1080px}
 #fx{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:50% 50%}
 #fx-light{opacity:0;background:#fff}
+#fx-grain,#fx-snow{opacity:0;background-repeat:repeat}
+#fx-grain{mix-blend-mode:overlay}
+#fx-scan{opacity:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.55) 0 2px,rgba(0,0,0,0) 2px 4px)}
 #fx-defs{position:absolute;left:0;top:0;width:0;height:0;overflow:hidden}

@@ -488,7 +488,7 @@ async function run(iso) {
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.theme').label, 'Stil');
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').label, 'Untertitel (Karaoke-Zeile)');
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').value, undefined, 'a switch holds no value in the list');
-  assert.deepEqual(['options', 'label', 'hasValue'].map((key) => hudFilm.inputs.find((input) => input.id === 'n17.effects')[key]), [['off', 'subtle', 'strong'], 'Effekte', true]);
+  assert.deepEqual(['options', 'label', 'hasValue'].map((key) => hudFilm.inputs.find((input) => input.id === 'n17.effects')[key]), [['off', 'subtle', 'strong', 'wild'], 'Effekte', true]);
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.figure').hasValue, true, 'the figure is Claudia unless the person writes another');
   assert.deepEqual(hudFilm.outputs.map((output) => output.node), ['n18', 'n19', 'n30', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the film first, then the sheet and what is shown for the approval (the brief first)');
   assert.equal(hudFilm.outputs.find((output) => output.node === 'n30').label, 'Briefing');
