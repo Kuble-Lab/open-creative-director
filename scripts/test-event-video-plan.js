@@ -737,6 +737,117 @@ async function testPhotosOnly() {
   }
 }
 
+// A model of the test that stays within the tolerance of the grid: every act between max(1, picks - 2) and picks + 2 picks of units not used yet, in a
+// random order of a fixed seed (an act gets fewer only when the material is used up).
+function toleranceModel(seed) {
+  let state = seed;
+  const random = () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+  const answerFor = (ctx) => {
+    const used = new Set();
+    const units = ctx.material.units.slice();
+    const acts = ctx.grid.acts.map((act) => {
+      const wanted = Math.max(1, act.picks - 2, act.picks + Math.floor(random() * 5) - 2);
+      const picks = [];
+      for (const unit of units.sort(() => random() - 0.5)) {
+        if (picks.length >= wanted) break;
+        if (used.has(unit.ref) || plan.unitFault(unit, act.act, ctx.style)) continue;
+        used.add(unit.ref);
+        picks.push({ ref: unit.ref, why: 'x', slow: random() < 0.3, pair: null });
+      }
+      return { act: act.act, picks };
+    });
+    const picked = acts.flatMap((act) => act.picks.map((pick) => pick.ref)).filter((ref) => ref.startsWith('p'));
+    return { treatment: 't', acts, title: { text: 'Innovation Day 2026', sub: null, source: 'description' }, ai_photos: picked.slice(0, 6).map((ref) => ({ ref, prompt: 'slow push in' })),
+      parallax: picked.slice(0, 6), voiceover: [{ act: 'arrival', text: 'Innovation Day 2026.' }], endcard: { line: 'Danke', sub: null, url: null, source: 'generic' } };
+  };
+  return { random, answerFor };
+}
+
+async function testScarceMaterial() {
+  // the case of the review: 8 photos for 60 s, the model gives hook, arrival and programme two picks more than asked: every act keeps a shot, nothing fails
+  {
+    const style = styles.combineStyle({ event_type: 'corporate', mood: 'fresh', length: 60 });
+    const eight = Array.from({ length: 8 }, (_, index) => photo(index, { faces: 0 }));
+    const options = { photoMotion: 'code', parallax: true, voiceover: false, lowerThirds: true, soundbites: 'auto' };
+    const ctx = contextOf({ material: plan.readMaterial([], eight), style, options });
+    assert.ok(ctx.grid.details > 0);
+    let next = 0;
+    const greedy = { ...goodAnswer(ctx), acts: ctx.grid.acts.map((act) => ({ act: act.act, picks: Array.from({ length: Math.min(act.picks + 2, 8 - next) }, () => ({ ref: `p${next++}`, why: 'x' })) })) };
+    assert.deepEqual(greedy.acts.map((act) => act.picks.length).slice(3), [0, 0, 0], 'the model used every photo in the first three acts');
+    const read = plan.validateAnswer(greedy, ctx);
+    for (const act of contract.ACTS) assert.ok(read.content.acts[act].length >= 1, `${act} has a pick`);
+    assert.ok(read.replaced / read.picks <= plan.MAX_REPLACED_SHARE, `${read.replaced} of ${read.picks} replaced`);
+    assert.match(read.notes.join(' '), /moved here, the material is short/);
+    const { result } = await run({ ask: scripted([greedy]).ask, style, videos: [], photos: eight, options });
+    passesContract(result, 'eight photos');
+    assert.equal(result.plain, false);
+    for (const act of contract.ACTS) assert.ok(result.shots.shots.some((shot) => shot.act === act), `${act} has a shot`);
+  }
+  // every style, length and 5 to 10 photos, the answers within the tolerance: no plan fails
+  let runs = 0;
+  for (const eventType of contract.EVENT_TYPES) {
+    for (const mood of contract.MOODS) {
+      for (const length of [30, 60, 90]) {
+        for (let count = 5; count <= 10; count += 1) {
+          const model = toleranceModel(runs + 1);
+          const style = styles.combineStyle({ event_type: eventType, mood, length });
+          const list = Array.from({ length: count }, (_, index) => photo(index, { upright: model.random() < 0.4, faces: model.random() < 0.5 ? 1 + Math.floor(model.random() * 3) : 0, quality: 3 + Math.floor(model.random() * 3) }));
+          const options = { photoMotion: runs % 2 ? 'ai' : 'code', parallax: true, voiceover: runs % 3 === 0, lowerThirds: true, soundbites: 'auto', allowPlain: false };
+          const ctx = contextOf({ material: plan.readMaterial([], list), style, options, musicSeconds: length + 2 });
+          const label = `${eventType} x ${mood} x ${length} s, ${count} photos`;
+          let result;
+          try {
+            ({ result } = await run({ ask: scripted([() => model.answerFor(ctx)]).ask, style, videos: [], photos: list, musicSeconds: length + 2, options }));
+          } catch (err) {
+            assert.fail(`${label}: ${err.code || ''} ${err.message.slice(0, 300)}`);
+          }
+          passesContract(result, label);
+          for (const act of contract.ACTS) assert.ok(result.shots.shots.some((shot) => shot.act === act), `${label}: ${act} has a shot`);
+          runs += 1;
+        }
+      }
+    }
+  }
+  assert.equal(runs, contract.EVENT_TYPES.length * contract.MOODS.length * 3 * 6);
+  // a plan that does not pass the contract all the same: EVENTPLAN_MODEL_FAILED with its code, the plain plan with allow_plain
+  {
+    const original = contract.checkPair;
+    let calls = 0;
+    contract.checkPair = (...args) => (calls++ === 0 ? { ok: false, problems: ['shots[3].start is 9, not the end of the shot before (7)'] } : original(...args));
+    try {
+      const err = await errorOf(run({ ask: scripted([answerOk]).ask }));
+      assert.equal(err.code, 'EVENTPLAN_MODEL_FAILED');
+      assert.match(err.message, /the plan does not pass the contract: shots\[3\]\.start is 9/);
+      assert.equal(err.data.attempts, 1);
+      calls = 0;
+      const logs = [];
+      const { result } = await run({ ask: scripted([answerOk]).ask, options: { ...AI_OPTIONS, allowPlain: true }, log: (line) => logs.push(line) });
+      assert.equal(result.plain, true);
+      assert.ok(logs.some((line) => /does not pass the contract .*a plan by the score alone is made/.test(line)));
+      calls = 1;
+      contract.checkPair = () => ({ ok: false, problems: ['a gap'] });
+      const plainErr = await errorOf(run({ ask: scripted([answerOk]).ask, options: { ...AI_OPTIONS, allowPlain: true } }));
+      assert.equal(plainErr.code, 'EVENTPLAN_MODEL_FAILED');
+      assert.match(plainErr.message, /the plain plan does not pass the contract either: a gap/);
+    } finally {
+      contract.checkPair = original;
+    }
+  }
+  // fewer scenes and photos than acts: EVENTPLAN_NO_MATERIAL before anything is paid
+  {
+    const single = clone(material60.videos.find((video) => video.usable && video.scenes.length >= 1));
+    single.scenes = [{ ...single.scenes[0], i: 0, in: 0, out: Math.min(single.meta.seconds, 4) }];
+    const asked = scripted([answerOk]);
+    const err = await errorOf(run({ ask: asked.ask, videos: [single, single, single, single, single], photos: [] }));
+    assert.equal(err.code, 'EVENTPLAN_NO_MATERIAL');
+    assert.deepEqual(err.data, { usable: 5, needed: 6 });
+    assert.equal(asked.calls.length, 0);
+  }
+}
+
 async function testEveryStyle() {
   // every event type and mood at 60 s with the material of the fixtures: a plan that passes the contract
   for (const eventType of [...contract.EVENT_TYPES, 'festival']) {
@@ -988,6 +1099,7 @@ async function testNode() {
   testAnswer();
   await testRun();
   await testPhotosOnly();
+  await testScarceMaterial();
   await testEveryStyle();
   await testBoard();
   testEstimate();
