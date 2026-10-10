@@ -89,7 +89,7 @@ function planAnswer(system, prompt) {
   const units = [];
   const transcripts = [];
   for (const line of prompt.split('\n')) {
-    const scene = /^ {2}(v\d+#\d+) /.exec(line);
+    const scene = /^ {2}(v\d+#\d+) (?!looks like)/.exec(line);
     const photo = /^(p\d+) photo/.exec(line);
     const words = /^ {2}transcript \(\w+\): (.*)$/.exec(line);
     if (scene) units.push(scene[1]);
@@ -267,18 +267,21 @@ async function run(iso) {
     const saved = await store.saveAsset(owner, { kind: 'upload', buffer: await fsp.readFile(file), ext, prompt: 'seed' });
     return { assetId: saved.id, sessionId: owner };
   };
+  // Pictures with different shapes, so the analysis does not drop them as duplicates of each other (scene hash, WP53).
+  const PATTERNS = ['testsrc2', 'smptebars', 'rgbtestsrc', 'mandelbrot', 'testsrc', 'cellauto', 'pal100bars', 'yuvtestsrc', 'smptehdbars', 'life'];
+  const pattern = (index, size, rate, extra = '') => `${PATTERNS[index % PATTERNS.length]}=s=${size}:r=${rate}${extra}`;
   async function clip(index, { speaks }) {
     const file = fileIn(`clip-${index}.mp4`);
     const sound = speaks
       ? ['-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.4:d=8:r=48000', '-af', "volume=eval=frame:volume='0.05+0.95*abs(sin(2*PI*1.5*t))'"]
       : ['-f', 'lavfi', '-i', 'sine=frequency=440:duration=8:sample_rate=48000'];
-    await ff(['-f', 'lavfi', '-i', `testsrc2=s=640x360:r=25:d=8`, ...sound, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', file]);
+    await ff(['-f', 'lavfi', '-i', pattern(index, '640x360', 25, ':d=8'), ...sound, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', file]);
     return file;
   }
   async function photo(index, { upright }) {
     const file = fileIn(`photo-${index}.jpg`);
     const size = upright ? '480x640' : '640x480';
-    await ff(['-f', 'lavfi', '-i', `testsrc2=s=${size}:r=1`, '-vf', `hue=h=${index * 50}`, '-frames:v', '1', '-q:v', '3', file]);
+    await ff(['-f', 'lavfi', '-i', pattern(index + 5, size, 1), '-vf', `hue=h=${index * 50},format=yuvj420p`, '-frames:v', '1', '-q:v', '3', file]);
     return file;
   }
 

@@ -567,6 +567,12 @@ function testAccepted() {
   accept('a language of three letters', 'checkInfo', infoVideo, (info) => (info.speech.language = 'deu'));
   accept('a gap between scenes', 'checkInfo', infoVideo, (info) => (info.scenes[1].in = 32));
   accept('an unknown field', 'checkInfo', infoVideo, (info) => (info.debug = { decodeMs: 812 }));
+  accept('a scene with a hash', 'checkInfo', infoPhoto, (info) => (info.scenes[0].hash = '0123456789abcdef'));
+  for (const hash of ['ABCDEF0123456789', '0123', 'gggggggggggggggg', null, 42]) {
+    const info = clone(infoPhoto);
+    info.scenes[0].hash = hash;
+    fails(contract.checkInfo(info), /scenes\[0\]\.hash/, 'invalid scene hash');
+  }
   // style: festival is party with its alias; a style without any soundbite (party, 30 s)
   accept('festival', 'checkStyle', style, (s) => Object.assign(s, { event_type: 'party', event_alias: 'festival' }));
   accept('no soundbites', 'checkStyle', style, (s) => (s.soundbites = { count: [0, 0], seconds: [2, 3] }));

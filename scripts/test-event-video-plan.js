@@ -164,6 +164,118 @@ function testMaterial() {
 
 /* ---------- the grid ---------- */
 
+function testFactsAndHashes() {
+  const empty = plan.readMaterial();
+  const source = (text) => plan.sourcesOf(text, empty).brief;
+  for (const month of ['September', 'Sept.', 'Sep', 'sept.', 'septiembre']) {
+    assert.deepEqual(plan.unknownFacts('17.09.2030', source(`17 ${month} 2030`)), []);
+    assert.deepEqual(plan.unknownFacts(`17 ${month} 2030`, source('17.09.2030')), []);
+  }
+  for (const run of ['017.09.2030', '17/9/2030', "17'09'2030", '17’09’2030', '17:09:2030', '17-09-2030', '17,09,2030']) {
+    assert.deepEqual(plan.unknownFacts(run, source('17 September 2030')), []);
+  }
+  assert.deepEqual(plan.unknownFacts('17092030', source('17.09.2030')), []);
+  assert.ok(plan.unknownFacts('18.09.2030', source('17 September 2030')).length);
+  assert.ok(plan.unknownFacts('17 October 2030', source('17.09.2030')).length);
+  assert.ok(plan.unknownFacts('SEP', source('9'), 'de', { free: true }).length);
+  const generic = source('three 3');
+  for (const text of ['Dabeisein', 'Perspektiven', 'Entwicklung', 'Miteinander']) {
+    assert.deepEqual(plan.unknownFacts(text, generic, 'de', { free: true }), []);
+    assert.ok(plan.unknownFacts(text, generic).length);
+  }
+  for (const text of ['Nordtal', 'Elena', 'Novexa', 'Basel', 'testAIn', 'HR', '18', 'Panel2']) {
+    for (const free of [true, false]) assert.ok(plan.unknownFacts(text, generic, 'de', { free }).length, text);
+  }
+  const ctx = contextOf({ brief: `${BRIEF} 17 September 2030` });
+  const answer = clone(answerOk);
+  answer.endcard.line = 'Danke fürs Dabeisein';
+  answer.title.sub = '17.09.2030';
+  answer.intertitles = [{ act: 'programme', text: 'Entwicklung', source: 'generic' }];
+  answer.voiceover = [{ act: 'arrival', text: 'Danke fürs Dabeisein' }];
+  let checked = plan.validateAnswer(answer, ctx);
+  assert.ok(checked.ok, checked.problems.join(' | '));
+  answer.title.sub = 'Dabeisein';
+  answer.endcard.sub = 'Dabeisein';
+  checked = plan.validateAnswer(answer, ctx);
+  for (const field of ['title.sub', 'endcard.sub']) assert.ok(checked.problems.some((problem) => problem.startsWith(field)), field);
+  answer.title.text = 'Dabeisein';
+  checked = plan.validateAnswer(answer, ctx);
+  assert.ok(checked.problems.some((problem) => problem.startsWith('title.text')));
+  answer.lower_thirds[0].name = 'Dabeisein';
+  answer.lower_thirds[0].role = 'Entwicklung';
+  checked = plan.validateAnswer(answer, ctx);
+  assert.ok(checked.problems.some((problem) => problem.startsWith('lower third 0: the name')));
+  assert.ok(checked.problems.some((problem) => problem.startsWith('lower third 0 role')));
+  const input = photos(10);
+  input[0].scenes[0].hash = '0000000000000000';
+  input[1].scenes[0].hash = '000000000000003f'; // Six bits: duplicate, vision wins.
+  input[0].vision.score = 3;
+  input[1].vision.score = 5;
+  input[2].scenes[0].hash = '0000000000003fc0'; // Fourteen bits from p1: similar.
+  input[3].scenes[0].hash = 'ffffffffffffffff';
+  const material = plan.readMaterial([], input);
+  assert.equal(material.byRef.has('p0'), false);
+  assert.equal(material.photos[0].reason, 'duplicate of p1');
+  assert.ok(material.byRef.get('p1').similar.includes('p2'));
+  assert.match(plan.materialText(material).text, /p1 looks like p2/);
+  assert.equal(plan.hashDistance('0000000000000000', 'ffffffffffffffff'), 64);
+  const equal = [photo(0), photo(1), photo(2)];
+  for (const info of equal) { info.scenes[0].hash = 'aaaaaaaaaaaaaaaa'; info.vision.score = 4; }
+  equal[1].scenes[0].quality = equal[2].scenes[0].quality = 5;
+  assert.deepEqual(plan.readMaterial([], equal).units.map((unit) => unit.ref), ['p1']);
+  assert.equal(plan.readMaterial([], photos(10)).units.length, 10);
+  for (const distance of [6, 7, 14, 15]) {
+    const pair = [photo(0), photo(1)];
+    pair[0].scenes[0].hash = '0000000000000000';
+    pair[1].scenes[0].hash = ((1n << BigInt(distance)) - 1n).toString(16).padStart(16, '0');
+    const selected = plan.readMaterial([], pair);
+    assert.equal(selected.units.length, distance <= 6 ? 1 : 2);
+    if (distance > 6) assert.equal(selected.units[0].similar.length, distance <= 14 ? 1 : 0);
+  }
+  const videos = [load('info-video.json'), load('info-video.json')];
+  for (const info of videos) for (const scene of info.scenes) scene.hash = '0123456789abcdef';
+  const scenes = plan.readMaterial(videos);
+  assert.equal(scenes.units.length, 1);
+  assert.equal(scenes.duplicates.size, videos.reduce((sum, info) => sum + info.scenes.length, 0) - 1);
+}
+
+async function testSimilarShots() {
+  const input = photos(18);
+  // Unique but mutually similar: the planner must insert alternatives, including at act boundaries.
+  input[0].scenes[0].hash = '0000000000000000';
+  input[1].scenes[0].hash = '000000000000007f';
+  input[2].scenes[0].hash = '0000000000003f80';
+  const ctx = contextOf({ material: plan.readMaterial([], input), options: { soundbites: 'off' } });
+  const answer = goodAnswer(ctx);
+  const picks = answer.acts.flatMap((act) => act.picks);
+  const order = ['p0', 'p1', 'p2', ...ctx.material.units.map((unit) => unit.ref).filter((ref) => !['p0', 'p1', 'p2'].includes(ref))];
+  picks.forEach((pick, index) => { pick.ref = order[index]; });
+  const { result } = await run({ videos: [], photos: input, options: { soundbites: 'off' }, ask: scripted([answer]).ask });
+  passesContract(result, 'hash-aware photos');
+  for (let index = 1; index < result.shots.shots.length; index += 1) {
+    const before = result.shots.shots[index - 1];
+    const after = result.shots.shots[index];
+    const distance = plan.hashDistance(input[before.source].scenes[0].hash, input[after.source].scenes[0].hash);
+    assert.ok(distance > 14, `adjacent similar sources ${before.source}, ${after.source}`);
+  }
+  const duplicates = clone(input);
+  duplicates[3].scenes[0].hash = duplicates[0].scenes[0].hash;
+  duplicates[3].vision.score = 5;
+  duplicates[0].vision.score = 3;
+  const dupeCtx = contextOf({ material: plan.readMaterial([], duplicates), options: { soundbites: 'off' } });
+  const { result: dupeResult } = await run({ videos: [], photos: duplicates, options: { soundbites: 'off' }, ask: scripted([goodAnswer(dupeCtx)]).ask });
+  assert.match(dupeResult.board, /p0 \(duplicate of p3\)/);
+  assert.ok(dupeResult.shots.shots.every((shot) => shot.source !== 0));
+  const alike = photos(5);
+  alike[0].scenes[0].hash = '0000000000000000';
+  for (let index = 1; index < alike.length; index += 1) {
+    alike[index].scenes[0].hash = (127n << BigInt((index - 1) * 7)).toString(16).padStart(16, '0');
+  }
+  const alikeCtx = contextOf({ material: plan.readMaterial([], alike), options: { soundbites: 'off' } });
+  const { result: noAlternative } = await run({ videos: [], photos: alike, options: { soundbites: 'off' }, ask: scripted([goodAnswer(alikeCtx)]).ask });
+  passesContract(noAlternative, 'similar photos without an alternative');
+}
+
 function testGrid() {
   const material = plan.readMaterial(material60.videos, material60.photos);
   for (const length of [30, 60, 90]) {
@@ -383,14 +495,14 @@ function testAnswer() {
     const other = plan.readAnswer(JSON.stringify({ ...answerOk, endcard: { line: 'Kuble', source: 'generic' } }), contextOf({ style }));
     assert.equal(other.content.endcard.line, line);
   }
-  const sources = plan.sourcesOf('einstAIn x Swiss AI Weeks: Leadership im KI-Zeitalter. 23. September 2026, Zürich Seefeld. Drei Erlebnis-Stationen.', plan.readMaterial([], []));
-  assert.deepEqual(plan.unknownFacts('Leadership im KI-Zeitalter', sources.all, 'de'), []);
-  assert.deepEqual(plan.unknownFacts('3 Erlebnis-Stationen', sources.all, 'de'), [], 'a number written as a word counts');
-  assert.deepEqual(plan.unknownFacts('einstAIn 2026 in Zürich', sources.all, 'de'), []);
+  const sources = plan.sourcesOf('testAIn x Northern Science Days: Automation im Daten-Zeitalter. 17. September 2030, Basel Nordtal. Drei Labor-Stationen.', plan.readMaterial([], []));
+  assert.deepEqual(plan.unknownFacts('Automation im Daten-Zeitalter', sources.all, 'de'), []);
+  assert.deepEqual(plan.unknownFacts('3 Labor-Stationen', sources.all, 'de'), [], 'a number written as a word counts');
+  assert.deepEqual(plan.unknownFacts('testAIn 2030 in Basel', sources.all, 'de'), []);
   assert.deepEqual(plan.unknownFacts('Danke. Bis bald.', sources.all, 'de'), []);
-  assert.deepEqual(plan.unknownFacts('Thanks for a great day in Zürich', sources.all, 'en'), []);
+  assert.deepEqual(plan.unknownFacts('Thanks for a great day in Basel', sources.all, 'en'), []);
   assert.deepEqual(plan.unknownFacts('See you in Geneva', sources.all, 'en'), ['Geneva']);
-  assert.deepEqual(plan.unknownFacts('OpenAI x Swiss AI Weeks', sources.all, 'en'), ['OpenAI']);
+  assert.deepEqual(plan.unknownFacts('TestLabs x Northern Science Days', sources.all, 'en'), ['TestLabs']);
 
   // an answer cut off: the complete acts are kept, the rest is filled, the second try is told
   const text = JSON.stringify(answerOk);
@@ -856,6 +968,8 @@ async function testNode() {
 
 (async () => {
   testMaterial();
+  testFactsAndHashes();
+  await testSimilarShots();
   testGrid();
   testPrompt();
   testAnswer();

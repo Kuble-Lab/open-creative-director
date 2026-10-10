@@ -187,6 +187,17 @@ async function main() {
     }
   };
   try {
+    const rising = Buffer.from(Array.from({ length: 72 }, (_, index) => index % 9));
+    const falling = Buffer.from(rising.map((value) => 8 - value));
+    check(frames.differenceHash(rising, 9, 8) === '0000000000000000', 'Increasing neighbours produce zero bits');
+    check(frames.differenceHash(falling, 9, 8) === 'ffffffffffffffff', 'Decreasing neighbours produce all 64 bits');
+    const boxes = Buffer.alloc(18 * 16);
+    for (let y = 0; y < 16; y += 1) for (let x = 0; x < 18; x += 1) boxes[y * 18 + x] = falling[Math.floor(y / 2) * 9 + Math.floor(x / 2)];
+    check(frames.differenceHash(boxes, 18, 16) === frames.differenceHash(falling, 9, 8), 'Box means preserve the full image hash');
+    const samples = [rising, falling].map((pixels) => ({ ...frames.frameMetrics(pixels, 9, 8), hash: frames.differenceHash(pixels, 9, 8), faces: [] }));
+    samples[1].histogram = samples[0].histogram.map((_, index) => index === 31 ? 1 : 0);
+    const scenes = frames.analyzeFrames(samples, { seconds: 2, width: 9, height: 8, rate: 1 });
+    check(scenes.length === 2 && scenes[0].hash === '0000000000000000' && scenes[1].hash === 'ffffffffffffffff', 'Every scene keeps its first frame hash');
     for (const little of [true, false]) {
       const parsed = exif.parseExif(jpegExif(6, little));
       check(
@@ -206,6 +217,9 @@ async function main() {
     await run(['-f', 'lavfi', '-i', 'color=black:size=640x360', '-frames:v', '1', dark]);
     const good = await analyzeMedia(ctx, photo, { kind: 'photo' });
     valid(good);
+    check(/^[0-9a-f]{16}$/.test(good.scenes[0].hash), 'Photos have a 64-bit difference hash');
+    const repeated = await analyzeMedia(ctx, photo, { kind: 'photo' });
+    check(repeated.scenes[0].hash === good.scenes[0].hash, 'Repeated image hashes are deterministic');
     const blurry = await analyzeMedia(ctx, blur, { kind: 'photo' });
     valid(blurry);
     const dim = await analyzeMedia(ctx, dark, { kind: 'photo' });
