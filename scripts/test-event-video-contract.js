@@ -450,6 +450,7 @@ const BROKEN = [
   ['answer: acts as an object', 'checkAnswer', answer, (a) => (a.acts = { hook: [] }), /^acts must be a list, got object$/],
 
   // shots
+  ['shots: an unknown fit', 'checkShots', shots, (s) => (s.shots[5].fit = 'stretch'), /^shots\[5\].fit "stretch" is not one of crop, blur$/],
   ['shots: an unknown kind', 'checkShots', shots, (s) => (s.shots[3].kind = 'still'), /^shots\[3\]\.kind "still" is not one of video, photo, photo_ai, photo_parallax, soundbite$/],
   ['shots: an anchor outside 0..1', 'checkShots', shots, (s) => (s.shots[0].anchor.x = 1.2), /^shots\[0\]\.anchor\.x is 1\.2, outside 0\.\.1$/],
   ['shots: a missing anchor', 'checkShots', shots, (s) => delete s.shots[0].anchor, /^shots\[0\]\.anchor is missing$/],

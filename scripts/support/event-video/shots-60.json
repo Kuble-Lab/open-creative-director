@@ -9,7 +9,7 @@
     {"id":"s3","act":"hook","start":4.192,"end":6.224,"kind":"video","source":0,"from":14.58,"speed":1,"anchor":{"x":0.48,"y":0.31,"drift":[0,0]},"transition":"cut","exposure":0.015},
     {"id":"s4","act":"arrival","start":6.224,"end":8.257,"kind":"photo_parallax","clip":0,"transition":"cut","exposure":0},
     {"id":"s5","act":"arrival","start":8.257,"end":10.289,"kind":"video","source":2,"from":6.28,"speed":1,"anchor":{"x":0.46,"y":0.34,"drift":[0,0]},"transition":"cut","exposure":-0.05},
-    {"id":"s6","act":"arrival","start":10.289,"end":12.328,"kind":"photo","source":3,"motion":{"type":"zoom_in","rate":0.084},"anchor":{"x":0.5,"y":0.45},"transition":"cut","exposure":-0.08},
+    {"id":"s6","act":"arrival","start":10.289,"end":12.328,"kind":"photo","source":3,"motion":{"type":"zoom_in","rate":0.084},"anchor":{"x":0.5,"y":0.45},"transition":"cut","exposure":-0.08,"fit":"blur"},
     {"id":"s7","act":"arrival","start":12.328,"end":14.362,"kind":"video","source":2,"from":20.23,"speed":1,"anchor":{"x":0.53,"y":0.29,"drift":[0,0]},"transition":"cut","exposure":-0.03},
     {"id":"s8","act":"programme","start":14.362,"end":16.395,"kind":"video","source":0,"from":33,"speed":1,"anchor":{"x":0.44,"y":0.37,"drift":[0,0]},"transition":"cut","exposure":-0.005},
     {"id":"s9","act":"programme","start":16.395,"end":22.905,"kind":"soundbite","source":0,"from":39.5,"to":46.01,"anchor":{"x":0.44,"y":0.37,"drift":[0,0]},"transition":"cut","exposure":-0.005},
