@@ -502,7 +502,10 @@ function testAnswer() {
   // a unit without the figure: "shows" names words that are sung there, the plate has no figure, no two pictures are nearly the same
   const brollAt = brollOf(good())[0];
   const brollUnit = grid.units[brollAt];
-  only((a) => { a.units[brollAt].shows = 'purple elephants'; }, new RegExp(`^unit ${brollAt} \\(WS, (story|still), no figure\\): "shows" \\(«purple elephants»\\) is not sung here: show the image of a line sung in this unit \\(«${lineWords(brollUnit)}»\\)$`));
+  const unmatched = good();
+  unmatched.units[brollAt].shows = 'purple elephants';
+  assert.deepEqual(read(unmatched).problems, []);
+  assert.ok(read(unmatched).notes.some((note) => /has no lexical match/.test(note)));
   only((a) => { delete a.units[brollAt].shows; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): "shows" is missing: give the words of the line whose image it shows`));
   only((a) => { a.units[brollAt].shows = 'of the and'; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): "shows" \\(«of the and»\\) names no image`));
   only((a) => { a.units[brollAt].plate = `WS, [FIGURE] in ${a.units[brollAt].plate}`; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): the plate has \\[FIGURE\\] although the unit has no figure`));
@@ -894,7 +897,7 @@ async function testPlanner() {
     assert.equal(result.figure.credit, 'Mira by the test lab (example.org)');
   }
 
-  /* the layout is part of the answer: a graphic that cannot stand beside the face is told to the model, with the room and what would fit */
+  /* a small layout loss is a board and log note, with no second paid request */
   {
     const unitOfLine = (line) => grid.units.find((unit) => line.words[0].start >= unit.start - 1e-6 && line.words[0].start < unit.end - 1e-6).index;
     const entries = goodAnswer(grid, figure).units;
@@ -909,23 +912,17 @@ async function testPlanner() {
       }
     });
     const { result, model } = await plan('s72', [bad, good()]);
-    assert.equal(model.calls.length, 2, 'the layout found a graphic without room');
-    const told = model.calls[1].prompt;
-    const room = hudPlan.freeLanes({ framing: entries[at].framing, subject: 'center' }).left;
-    const sentenceText = `line ${target.index}: the chart \\(about \\d+ px wide\\) does not fit beside the face in unit ${at} \\(${entries[at].framing}, figure center: ${room} px are free\\): choose a smaller type \\((\\w+(, \\w+)*)\\), or put the figure at the left or right of the picture in unit ${at} \\("subject"\\), or make unit ${at} wider \\(MS or more\\)`;
-    const sentence = new RegExp(`^${sentenceText}$`);
-    assert.match(told, new RegExp(`- ${sentenceText}`));
-    const fits = new RegExp(sentenceText).exec(told)[1].split(', ');
-    const sizes = hudPlan.typicalSizes('hud');
-    assert.ok(fits.length >= 2 && fits.every((type) => sizes[type].w <= room / (graphicsLib.MIN_SCALE[type] || 1)), `what is suggested fits: ${fits}`);
-    checkPlanClean(result, 'after the layout told');
-    // the same answer twice: the graphic stays without room, it is listed on the board and in the problems, and the film is made all the same
+    assert.equal(model.calls.length, 1, 'a small layout loss is a note, with no second request');
+    const sentence = new RegExp(`^line ${target.index}: the chart .*does not fit beside the face`);
+    assert.ok(result.notes.some((note) => sentence.test(note)));
+    assert.ok(result.board.includes('NOTE       line '));
+    // the graphic stays without room and is listed on the board and in the notes
     const stuck = await plan('s72', [bad]);
-    assert.equal(stuck.model.calls.length, 2);
+    assert.equal(stuck.model.calls.length, 1);
     assert.equal(stuck.result.leftOut.length, 1);
     assert.deepEqual(stuck.result.leftOut[0], { id: `g${target.index}a`, line: target.index, key: 0, type: 'chart', unit: at });
-    assert.equal(stuck.result.problems.length, 1);
-    assert.match(stuck.result.problems[0], sentence);
+    assert.equal(stuck.result.problems.length, 0);
+    assert.ok(stuck.result.notes.some((note) => sentence.test(note)));
     assert.match(stuck.result.board, new RegExp(`^LEFT OUT {3}1 graphic found no place beside the face and is not drawn: chart on line ${target.index} \\(unit ${at}\\)$`, 'm'));
     assert.equal(stuck.result.plan.shots.shots.length, grid.units.length);
     assert.equal(stuck.result.plan.graphics.graphics.length, graphicsLib.prepareGraphics(stuck.result.plan.graphics, {}).graphics.devices.length + 1, 'the renderer leaves out the one that has no room');
@@ -973,7 +970,7 @@ async function testRescue() {
     assert.deepEqual(missing, { treatment: false, hud: false, endcard: true, figureShort: false, chapters: [], units: [14, 15, 16, 17, 18, 19, 20, 21], lines: grid.lines.map((line) => line.index) });
     const rest = { units: full.units.slice(13), lines: full.lines, endcard: full.endcard, treatment: 'another treatment' };
     rest.units[0] = { ...rest.units[0], plate: 'a plate written twice' };
-    const merged = hudPlan.mergeAnswers(salvaged.data, rest);
+    const merged = hudPlan.mergeAnswers(salvaged.data, rest, { grid, figure });
     assert.equal(merged.treatment, full.treatment);
     assert.deepEqual(merged.units, full.units, 'unit 13 is the kept one');
     assert.deepEqual([merged.lines, merged.endcard], [full.lines, full.endcard]);
@@ -1061,6 +1058,147 @@ async function testRescue() {
     assert.equal(result.tries[0].finish, 'broken');
     assert.match(result.board, /try 1: effort medium, limit 64,000 tokens, broke off \(invalid JSON\), 22 of 22 units and 0 of 15 lines complete/);
   }
+}
+
+// Review regressions use made-up songs only. The recorded live answer stays outside the repository.
+async function testReviewRepairs() {
+  const { grid } = gridOf('s72');
+  const figure = figureOf();
+  const full = goodAnswer(grid, figure);
+  const options = { grid, figure };
+  const damaged = structuredClone(full);
+  damaged.hud.counter_values = [];
+  damaged.units[1].plate = '';
+  damaged.units[2].index = '2';
+  delete damaged.units[3].index;
+  damaged.units[4].index = 1.5;
+  damaged.units.push({ ...damaged.units[5] }, { ...damaged.units[6], index: grid.units.length });
+  damaged.lines[0].graphics = [];
+  damaged.lines[1].index = '1';
+  damaged.lines.push({ ...damaged.lines[2] });
+  const missing = hudPlan.missingParts(damaged, grid, figure);
+  assert.equal(missing.hud, true);
+  assert.deepEqual(missing.units, [1, 2, 3, 4, 5]);
+  assert.deepEqual(missing.lines, [0, 1, 2]);
+  const merged = hudPlan.mergeAnswers(damaged, full, options);
+  assert.deepEqual(merged, full, 'valid corrections win over invalid, misindexed and duplicate kept entries');
+  const cut = cutInsideUnit(damaged, 14);
+  const rescued = await plan('s72', [{ reply: { text: cut, finishReason: 'length', usage: CUT_USAGE } }, full]);
+  assert.match(rescued.model.calls[1].prompt, /"hud"/);
+  assert.match(rescued.model.calls[1].prompt, /"units" with the units 1 to 4, 14 to 21/);
+  assert.deepEqual(rescued.result.fallbacks.units, []);
+  assert.equal(rescued.result.tries[0].units, 10, 'only valid complete units count in MODEL');
+  assert.deepEqual(rescued.result.content, (await plan('s72', [full])).result.content);
+
+  const empty = structuredClone(full);
+  empty.lines.forEach((line) => { line.graphics = []; });
+  const failed = await errorOf(plan('s72', [empty, empty]));
+  assert.equal(failed.code, 'HUDPLAN_MODEL_FAILED');
+  assert.equal(failed.data.plainLines, grid.lines.length);
+  const allowed = (await plan('s72', [empty, empty], { allowPlain: true })).result;
+  assert.equal(allowed.fallbacks.lines.length, grid.lines.length);
+  assert.ok(allowed.content.lines.every((line) => line.graphics.length));
+
+  const broll = full.units.filter((unit) => unit.with_figure === false);
+  const identity = structuredClone(full);
+  identity.units[broll[0].index].plate += `, ${figure.full}`;
+  const fixed = (await plan('s72', [identity, identity])).result;
+  const index = broll[0].index;
+  assert.ok(fixed.fallbacks.units.includes(index));
+  assert.equal(fixed.content.units[index].withFigure, false);
+  assert.ok(!fixed.content.units[index].plate.includes(figure.full));
+  const repeated = structuredClone(full);
+  repeated.units[broll[1].index].plate = repeated.units[index].plate;
+  const distinct = (await plan('s72', [repeated, repeated])).result;
+  assert.ok(distinct.fallbacks.units.includes(index));
+  assert.ok(distinct.fallbacks.units.includes(broll[1].index));
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify({ ...full, units: distinct.content.units.map((unit, index) => ({ ...unit, index, with_figure: unit.withFigure })) }), options).problems, []);
+
+  const allFigure = goodAnswer(grid, figure, { brollShare: 0 });
+  assert.equal((await errorOf(plan('s72', [allFigure, allFigure]))).code, 'HUDPLAN_MODEL_FAILED', 'picture repairs count towards the quarter threshold');
+  const balanced = (await plan('s72', [allFigure, allFigure], { allowPlain: true })).result;
+  assert.ok(balanced.fallbacks.units.length > 0);
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify({ ...full, units: balanced.content.units.map((unit, index) => ({ ...unit, index, with_figure: unit.withFigure })) }), options).problems, []);
+
+  const run = structuredClone(full);
+  for (const index of [1, 2, 3, 4]) {
+    assert.notEqual(grid.units[index].kind, 'performance');
+    Object.assign(run.units[index], { with_figure: false, framing: 'WS', shows: 'amber observatory',
+      plate: `WS, amber observatory scene ${index}, no people, no text, no letters, no logos` });
+  }
+  const distributed = (await plan('s72', [run, run], { allowPlain: true })).result;
+  assert.ok(distributed.fallbacks.units.length);
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify({ ...full, units: distributed.content.units.map((unit, index) => ({ ...unit, index, with_figure: unit.withFigure })) }), options).problems, []);
+
+  // The live pattern: cinematic images from an idea or adjacent lines, a few graphics too wide for a face.
+  const soft = structuredClone(full);
+  const idea = 'An amber harbour observatory awakens above a silver ocean';
+  soft.units[index].shows = 'amber harbour observatory';
+  const neighbour = grid.units[broll[1].index - 1];
+  soft.units[broll[1].index].shows = grid.lines[neighbour.lines[0] ?? 0].text;
+  const line = grid.lines.find((line) => {
+    const unit = grid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    return unit && ['CU', 'ECU'].includes(soft.units[unit.index].framing);
+  });
+  const unit = grid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+  soft.units[unit.index].subject = 'center';
+  soft.lines[line.index].display = null;
+  soft.lines[line.index].graphics = [{ key: 0, type: 'chart', title: 'OCEAN', values: [1, 4, 8, 12, 16], marker: 'MAX' }];
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify(soft), { ...options, brief: idea }).problems, []);
+  let calls = 0;
+  const logs = [];
+  const result = await hudPlan.runPlanner({ analysis: songOf('s72').analysis, timing: songOf('s72').timing,
+    options: MIXED, brief: idea, figureText: FIGURE_TEXT,
+    ask: async () => { calls += 1; assert.equal(calls, 1); return { text: JSON.stringify(soft), usd: 0 }; },
+    log: (message) => logs.push(message) });
+  assert.equal(calls, 1);
+  assert.ok(result.notes.some((note) => /idea or a neighbouring line/.test(note)));
+  assert.ok(result.notes.some((note) => /does not fit beside the face/.test(note)));
+  assert.match(result.board, /^NOTE /m);
+  assert.ok(logs.some((message) => /^Plan note:/.test(message)));
+
+  const longSong = songOf('long');
+  const longGrid = gridOf('long').grid;
+  const livePattern = goodAnswer(longGrid, figure);
+  livePattern.units.filter((unit) => unit.with_figure === false).slice(0, 4).forEach((unit, at) => {
+    unit.shows = ['obsidian reactor reboot', 'copper zeppelin docks', 'turquoise constellations unfold', 'amethyst prism shatters'][at];
+  });
+  let lastCloseLine = -3;
+  const closeLines = longGrid.lines.filter((line) => {
+    const unit = longGrid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    return unit && ['CU', 'ECU'].includes(livePattern.units[unit.index].framing);
+  }).filter((line) => {
+    if (line.index - lastCloseLine < 3) return false;
+    lastCloseLine = line.index;
+    return true;
+  }).slice(0, 3);
+  assert.equal(closeLines.length, 3);
+  for (const line of closeLines) {
+    const unit = longGrid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    livePattern.units[unit.index].subject = 'center';
+    livePattern.lines[line.index].display = null;
+    livePattern.lines[line.index].graphics = [0, 1].map((key) => ({ key, type: 'chart', title: 'HORIZON', values: [1, 4, 8, 16, 32], marker: 'MAX' }));
+  }
+  let patternCalls = 0;
+  const patterned = await hudPlan.runPlanner({ analysis: longSong.analysis, timing: longSong.timing,
+    options: SONGS.long.options, brief: idea, figureText: FIGURE_TEXT,
+    ask: async () => { patternCalls += 1; assert.equal(patternCalls, 1, 'the live pattern must not ask again'); return { text: JSON.stringify(livePattern), usd: 0 }; } });
+  assert.ok(patterned.leftOut.filter((device) => device.type === 'chart').length >= 5, 'a handful of six oversized charts are omitted');
+  assert.equal(patterned.notes.filter((note) => /has no lexical match/.test(note)).length, 4);
+  assert.deepEqual(patterned.problems, []);
+  assert.deepEqual(patterned.fallbacks.units, []);
+
+  const crowded = structuredClone(livePattern);
+  for (const line of longGrid.lines) {
+    const unit = longGrid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    if (!unit || !['CU', 'ECU'].includes(crowded.units[unit.index].framing)) continue;
+    crowded.units[unit.index].subject = 'center';
+    crowded.lines[line.index].graphics = [{ key: 0, type: 'chart', title: 'HORIZON', values: [1, 4, 8, 16, 32], marker: 'MAX' }];
+  }
+  const hardLayout = await plan('long', [crowded, goodAnswer(longGrid, figure)]);
+  assert.equal(hardLayout.model.calls.length, 2, 'large layout losses remain hard problems');
+  assert.match(hardLayout.model.calls[1].prompt, /does not fit beside the face/);
+
 }
 
 // A song without a sung line: no line to show, so no share of B-roll is asked for (pictures without the figure stay allowed)
@@ -1714,6 +1852,7 @@ async function main() {
   testPlain();
   await testPlanner();
   await testRescue();
+  await testReviewRepairs();
   testDenseWindows();
   testBrollWithoutLines();
   await testGraphics();
@@ -2135,7 +2274,8 @@ async function testNode() {
 
     /* the settings reach the grid: no lip sync gives no sung unit and no slice */
     {
-      reset();
+      const withoutSinging = hudPlan.planGrid(song.analysis, song.timing, { ...MIXED, lipsyncSecondsPerMinute: 0, maxUnits: 24, cutsPerMinute: 14 });
+      reset([goodAnswer(withoutSinging, figure)]);
       const ctx = makeCtx();
       const result = await exec(ctx, inputs(), { lipsync_seconds_per_minute: 0, max_units: 24, cuts_per_minute: 14 });
       const out = result.variants[0];
