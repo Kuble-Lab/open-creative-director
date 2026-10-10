@@ -171,7 +171,7 @@
       enabled: app.enabled === true,
       title: typeof app.title === 'string' ? app.title : '',
       description: typeof app.description === 'string' ? app.description : '',
-      inputs: Array.isArray(app.inputs) ? app.inputs.filter((entry) => entry && typeof entry.node === 'string' && typeof entry.param === 'string').map((entry) => ({ node: entry.node, param: entry.param, label: typeof entry.label === 'string' ? entry.label : '' })) : [],
+      inputs: Array.isArray(app.inputs) ? app.inputs.filter((entry) => entry && typeof entry.node === 'string' && typeof entry.param === 'string').map((entry) => ({ node: entry.node, param: entry.param, label: typeof entry.label === 'string' ? entry.label : '', ...(entry.optional === true ? { optional: true } : {}) })) : [],
       outputs: Array.isArray(app.outputs) ? app.outputs.filter((entry) => entry && typeof entry.node === 'string').map(output) : []
     };
   }

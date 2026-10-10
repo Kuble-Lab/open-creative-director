@@ -63,6 +63,11 @@ function testPages() {
     assert.match(pages[0].html, /font-family:'Montserrat'/);
   }
   assert.throws(() => composition.buildChunkPage({ graphics, format: '16:9', chunk: chunks[0], clipFile: '../x.mp4' }), /plain file name/);
+  // Force a page over its byte budget through a field copied into pageData.
+  const oversized = { ...graphics, look: { ...graphics.look, ease: 'x'.repeat(composition.MAX_HTML_BYTES) } };
+  assert.throws(() => composition.buildChunkPage({ graphics: oversized, format: '16:9', chunk: chunks[1] }), (error) =>
+    error.code === 'EVENTRENDER_CHUNK_FAILED' && error.data.chunk === 2 && error.data.count === chunks.length);
+
   // DM Sans, Space Grotesk and Playfair Display (WP53 package D) are in lib/fonts: each family is drawn in its own face, none needs its stand-in
   const styled = structuredClone(graphics);
   styled.look.type = { title: 'Playfair Display:600:italic', body: 'DM Sans:400' };
