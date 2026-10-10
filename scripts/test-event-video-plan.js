@@ -350,6 +350,19 @@ function testGrid() {
   assert.deepEqual(g6.shortened, { from: 90, to: g6.duration });
   assert.match(g6.notes.join(' '), /the film is shortened to \d+ s/);
   assert.ok(g6.picks <= 12);
+
+  // beats that repeat or lie too close (a spacing of 0) once hung the server, the estimate included: duplicates go, the pace falls back to the BPM
+  for (const [label, analysis, spacing] of [
+    ['the same beat four times', { bpm: 120, duration: 62, beats: [1, 1, 1, 1, 2], downbeats: [1] }, 0.5],
+    ['beats 1 ms apart', { bpm: 0, duration: 62, beats: [0, 0.001, 0.002, 0.003, 0.004, 0.005], downbeats: [0] }, 60 / styles.derive(styleFixture).bpm],
+    ['a BPM of a million', { bpm: 1e6, duration: 62, beats: [], downbeats: [] }, 60 / styles.derive(styleFixture).bpm]
+  ]) {
+    const grid = plan.planGrid({ analysis: JSON.stringify(analysis), style: styleFixture, material, musicSeconds: 62, options: AI_OPTIONS });
+    assert.ok(grid.beats.length < 200, `${label}: ${grid.beats.length} beats`);
+    const gaps = grid.beats.slice(1).map((beat, index) => beat - grid.beats[index]);
+    assert.ok(gaps.slice(-10).every((gap) => Math.abs(gap - spacing) < 0.002), `${label}: the pace ${gaps.slice(-3).join(', ')}`);
+    assert.equal(grid.acts[5].end, grid.duration, label);
+  }
 }
 
 /* ---------- the prompt ---------- */
@@ -527,6 +540,77 @@ function testAnswer() {
   const counted = plan.readAnswer(JSON.stringify(counts), ctx);
   assert.match(counted.problems.join('\n'), /the act hook has 9 picks; the grid asks for \d+ \(plus or minus 2\): the code left out the last/);
   assert.ok(counted.content.acts.close.length >= 1);
+}
+
+// WP53 review: a soundbite shows its clip, so a clip with a hard risk gives none and a soundbite over a scene below quality 3 is left out
+async function testSoundbiteRisks() {
+  const videos = clone(material60.videos);
+  videos[0].vision.risk = ['child'];
+  const material = plan.readMaterial(videos, material60.photos);
+  assert.deepEqual(material.speechVideos, [4], 'the clip with a child gives no soundbite');
+  const ctx = contextOf({ material });
+  const prompt = plan.userPrompt({ brief: BRIEF, style: ctx.style, grid: ctx.grid, material });
+  assert.match(prompt, /\n {2}no soundbites from this clip: it has the risk child\n/);
+  assert.equal(prompt.split('\n').filter((line) => line.startsWith('  transcript (')).length, 1, 'the transcript of v4 only');
+  const read = plan.readAnswer(JSON.stringify(answerOk), ctx);
+  assert.match(read.problems.join('\n'), /soundbite 0: v0 cannot give a soundbite: it has the risk child; it was left out\./);
+  assert.deepEqual(read.content.soundbites.map((bite) => bite.ref), ['v4']);
+  // a soundbite over a scene of quality 2 (the clip has a good scene as well): left out, the clip stays a speaker
+  const dim = clone(material60.videos);
+  dim[4].scenes[0].quality = 2;
+  dim[4].scenes[0].reasons = ['blurry'];
+  const dimCtx = contextOf({ material: plan.readMaterial(dim, material60.photos) });
+  assert.deepEqual(dimCtx.material.speechVideos, [0, 4]);
+  const dimRead = plan.readAnswer(JSON.stringify(answerOk), dimCtx);
+  assert.match(dimRead.problems.join('\n'), /soundbite 1: the words 10 to 21 of v4 show a picture that cannot be used: scene 0 has quality 2, below 3; it was left out\./);
+  assert.deepEqual(dimRead.content.soundbites.map((bite) => bite.ref), ['v0']);
+  // the run of the review: v0 and v4 with a child, the model gives soundbites of both all the same: no soundbite of them in the film
+  const both = clone(material60.videos);
+  for (const index of [0, 4]) both[index].vision.risk = ['child'];
+  const model = scripted([answerOk]);
+  const { result } = await run({ ask: model.ask, videos: both, options: { ...AI_OPTIONS, allowPlain: true } });
+  passesContract(result, 'clips with a child');
+  assert.equal(result.plain, false);
+  assert.deepEqual(result.shots.shots.filter((shot) => shot.kind === 'soundbite' || (shot.kind === 'video' && [0, 4].includes(shot.source))), []);
+  assert.match(model.calls[0].system, /No soundbites in this film \(no clip has speech that can be used\)/);
+}
+
+// WP53 review: the voice-over fits its act (about 14 characters a second); the planner places it by the estimated length and never lets it run past the end
+async function testVoiceover() {
+  const style30 = styles.combineStyle({ event_type: 'corporate', mood: 'fresh', length: 30 });
+  const ctx = contextOf({ style: style30, musicSeconds: 32 });
+  const arrival = plan.voiceChars(ctx.grid, 'arrival');
+  const close = plan.voiceChars(ctx.grid, 'close');
+  const closeAct = ctx.grid.acts.find((act) => act.act === 'close');
+  assert.equal(close, Math.floor((closeAct.end - closeAct.start - 0.4 - 0.3) * plan.VOICE_CHARS_PER_SECOND));
+  assert.ok(close < 63 && arrival >= 69, `${arrival} / ${close}`);
+  assert.match(plan.systemPrompt(ctx), new RegExp(`speaks about 14 characters a second: at most ${arrival} characters in arrival and ${close} in close`));
+  // the close line of the fixtures (63 characters, two sentences) is too long for 30 s: its first sentence stays
+  const read = plan.readAnswer(JSON.stringify(answerOk), ctx);
+  assert.deepEqual(read.content.voiceover.map((line) => line.text), ['Ein Tag voller Ideen: 320 Gäste kamen zum Innovation Day nach Zürich.', 'Danke an alle, die dabei waren.']);
+  assert.match(read.notes.join(' '), /voice-over 1 was shortened to the sentences that fit into \d+ characters/);
+  // one long sentence: left out, and the model hears it
+  const long = clone(answerOk);
+  long.voiceover = [{ act: 'close', text: 'Danke an alle Gäste, Referentinnen und Referenten des Innovation Day in Zürich für diesen inspirierenden Tag.' }];
+  const longRead = plan.readAnswer(JSON.stringify(long), ctx);
+  assert.deepEqual(longRead.content.voiceover, []);
+  assert.match(longRead.problems.join('\n'), /voice-over 0 has 109 characters; the act close has room for \d+ \(about 14 a second\): it was left out\./);
+  // the run: every line ends before the end of the film by its estimate, the lines of the voice and the graphics agree
+  const { result } = await run({ ask: scripted([answerOk]).ask, style: style30, musicSeconds: 32 });
+  passesContract(result, '30 s with voice');
+  assert.equal(result.voLines.length, result.graphics.voiceover.length);
+  result.graphics.voiceover.forEach((line) => {
+    const seconds = [...result.voLines[line.index]].length / plan.VOICE_CHARS_PER_SECOND;
+    assert.ok(line.start + seconds <= result.graphics.duration - 0.3 + 1e-6, `line ${line.index} at ${line.start} for ${seconds} s`);
+  });
+  // a line the graphics cannot place is left out with its voice: the list of the voice and the indices stay together
+  const content = clone(read.content);
+  const made = { shots: result.shots, notes: [], biteOrder: [], pageTransitions: [] };
+  const lines = { ...content, soundbites: [], lowerThirds: [], voiceover: [{ act: 'arrival', text: 'Kurz.' }, { act: 'close', text: 'x'.repeat(170) }, { act: 'close', text: 'Danke.' }] };
+  const graphics = plan.toGraphics(lines, made, { ...ctx, grid: { ...ctx.grid, duration: result.graphics.duration } });
+  assert.deepEqual(lines.voiceover.map((line) => line.text), ['Kurz.', 'Danke.']);
+  assert.deepEqual(graphics.voiceover.map((line) => line.index), [0, 1]);
+  assert.match(made.notes.join(' '), /voice-over 1 \(about 12\.14 s\) fits nowhere/);
 }
 
 /* ---------- the run ---------- */
@@ -721,6 +805,117 @@ async function testPhotosOnly() {
       }
     });
     assert.equal(result.parallaxPhotos.length, Math.min(5, plan.CLIPS_BY_LENGTH[length]));
+  }
+}
+
+// A model of the test that stays within the tolerance of the grid: every act between max(1, picks - 2) and picks + 2 picks of units not used yet, in a
+// random order of a fixed seed (an act gets fewer only when the material is used up).
+function toleranceModel(seed) {
+  let state = seed;
+  const random = () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+  const answerFor = (ctx) => {
+    const used = new Set();
+    const units = ctx.material.units.slice();
+    const acts = ctx.grid.acts.map((act) => {
+      const wanted = Math.max(1, act.picks - 2, act.picks + Math.floor(random() * 5) - 2);
+      const picks = [];
+      for (const unit of units.sort(() => random() - 0.5)) {
+        if (picks.length >= wanted) break;
+        if (used.has(unit.ref) || plan.unitFault(unit, act.act, ctx.style)) continue;
+        used.add(unit.ref);
+        picks.push({ ref: unit.ref, why: 'x', slow: random() < 0.3, pair: null });
+      }
+      return { act: act.act, picks };
+    });
+    const picked = acts.flatMap((act) => act.picks.map((pick) => pick.ref)).filter((ref) => ref.startsWith('p'));
+    return { treatment: 't', acts, title: { text: 'Innovation Day 2026', sub: null, source: 'description' }, ai_photos: picked.slice(0, 6).map((ref) => ({ ref, prompt: 'slow push in' })),
+      parallax: picked.slice(0, 6), voiceover: [{ act: 'arrival', text: 'Innovation Day 2026.' }], endcard: { line: 'Danke', sub: null, url: null, source: 'generic' } };
+  };
+  return { random, answerFor };
+}
+
+async function testScarceMaterial() {
+  // the case of the review: 8 photos for 60 s, the model gives hook, arrival and programme two picks more than asked: every act keeps a shot, nothing fails
+  {
+    const style = styles.combineStyle({ event_type: 'corporate', mood: 'fresh', length: 60 });
+    const eight = Array.from({ length: 8 }, (_, index) => photo(index, { faces: 0 }));
+    const options = { photoMotion: 'code', parallax: true, voiceover: false, lowerThirds: true, soundbites: 'auto' };
+    const ctx = contextOf({ material: plan.readMaterial([], eight), style, options });
+    assert.ok(ctx.grid.details > 0);
+    let next = 0;
+    const greedy = { ...goodAnswer(ctx), acts: ctx.grid.acts.map((act) => ({ act: act.act, picks: Array.from({ length: Math.min(act.picks + 2, 8 - next) }, () => ({ ref: `p${next++}`, why: 'x' })) })) };
+    assert.deepEqual(greedy.acts.map((act) => act.picks.length).slice(3), [0, 0, 0], 'the model used every photo in the first three acts');
+    const read = plan.validateAnswer(greedy, ctx);
+    for (const act of contract.ACTS) assert.ok(read.content.acts[act].length >= 1, `${act} has a pick`);
+    assert.ok(read.replaced / read.picks <= plan.MAX_REPLACED_SHARE, `${read.replaced} of ${read.picks} replaced`);
+    assert.match(read.notes.join(' '), /moved here, the material is short/);
+    const { result } = await run({ ask: scripted([greedy]).ask, style, videos: [], photos: eight, options });
+    passesContract(result, 'eight photos');
+    assert.equal(result.plain, false);
+    for (const act of contract.ACTS) assert.ok(result.shots.shots.some((shot) => shot.act === act), `${act} has a shot`);
+  }
+  // every style, length and 5 to 10 photos, the answers within the tolerance: no plan fails
+  let runs = 0;
+  for (const eventType of contract.EVENT_TYPES) {
+    for (const mood of contract.MOODS) {
+      for (const length of [30, 60, 90]) {
+        for (let count = 5; count <= 10; count += 1) {
+          const model = toleranceModel(runs + 1);
+          const style = styles.combineStyle({ event_type: eventType, mood, length });
+          const list = Array.from({ length: count }, (_, index) => photo(index, { upright: model.random() < 0.4, faces: model.random() < 0.5 ? 1 + Math.floor(model.random() * 3) : 0, quality: 3 + Math.floor(model.random() * 3) }));
+          const options = { photoMotion: runs % 2 ? 'ai' : 'code', parallax: true, voiceover: runs % 3 === 0, lowerThirds: true, soundbites: 'auto', allowPlain: false };
+          const ctx = contextOf({ material: plan.readMaterial([], list), style, options, musicSeconds: length + 2 });
+          const label = `${eventType} x ${mood} x ${length} s, ${count} photos`;
+          let result;
+          try {
+            ({ result } = await run({ ask: scripted([() => model.answerFor(ctx)]).ask, style, videos: [], photos: list, musicSeconds: length + 2, options }));
+          } catch (err) {
+            assert.fail(`${label}: ${err.code || ''} ${err.message.slice(0, 300)}`);
+          }
+          passesContract(result, label);
+          for (const act of contract.ACTS) assert.ok(result.shots.shots.some((shot) => shot.act === act), `${label}: ${act} has a shot`);
+          runs += 1;
+        }
+      }
+    }
+  }
+  assert.equal(runs, contract.EVENT_TYPES.length * contract.MOODS.length * 3 * 6);
+  // a plan that does not pass the contract all the same: EVENTPLAN_MODEL_FAILED with its code, the plain plan with allow_plain
+  {
+    const original = contract.checkPair;
+    let calls = 0;
+    contract.checkPair = (...args) => (calls++ === 0 ? { ok: false, problems: ['shots[3].start is 9, not the end of the shot before (7)'] } : original(...args));
+    try {
+      const err = await errorOf(run({ ask: scripted([answerOk]).ask }));
+      assert.equal(err.code, 'EVENTPLAN_MODEL_FAILED');
+      assert.match(err.message, /the plan does not pass the contract: shots\[3\]\.start is 9/);
+      assert.equal(err.data.attempts, 1);
+      calls = 0;
+      const logs = [];
+      const { result } = await run({ ask: scripted([answerOk]).ask, options: { ...AI_OPTIONS, allowPlain: true }, log: (line) => logs.push(line) });
+      assert.equal(result.plain, true);
+      assert.ok(logs.some((line) => /does not pass the contract .*a plan by the score alone is made/.test(line)));
+      calls = 1;
+      contract.checkPair = () => ({ ok: false, problems: ['a gap'] });
+      const plainErr = await errorOf(run({ ask: scripted([answerOk]).ask, options: { ...AI_OPTIONS, allowPlain: true } }));
+      assert.equal(plainErr.code, 'EVENTPLAN_MODEL_FAILED');
+      assert.match(plainErr.message, /the plain plan does not pass the contract either: a gap/);
+    } finally {
+      contract.checkPair = original;
+    }
+  }
+  // fewer scenes and photos than acts: EVENTPLAN_NO_MATERIAL before anything is paid
+  {
+    const single = clone(material60.videos.find((video) => video.usable && video.scenes.length >= 1));
+    single.scenes = [{ ...single.scenes[0], i: 0, in: 0, out: Math.min(single.meta.seconds, 4) }];
+    const asked = scripted([answerOk]);
+    const err = await errorOf(run({ ask: asked.ask, videos: [single, single, single, single, single], photos: [] }));
+    assert.equal(err.code, 'EVENTPLAN_NO_MATERIAL');
+    assert.deepEqual(err.data, { usable: 5, needed: 6 });
+    assert.equal(asked.calls.length, 0);
   }
 }
 
@@ -973,8 +1168,11 @@ async function testNode() {
   testGrid();
   testPrompt();
   testAnswer();
+  await testSoundbiteRisks();
+  await testVoiceover();
   await testRun();
   await testPhotosOnly();
+  await testScarceMaterial();
   await testEveryStyle();
   await testBoard();
   testEstimate();
