@@ -5,7 +5,7 @@
 // video, and renders it when HYPERFRAMES_CLI names the cli of HyperFrames. For looking at the HUD on footage without a render node, free of charge.
 //
 //   node scripts/hud-preview.js <graphics.json | demo> <footage.mp4> [--out <dir>] [--from <s>] [--to <s>] [--duration <s>] [--quality draft|standard|high]
-//                               [--theme hud|kuble] [--accent <#rrggbb>] [--karaoke on|off] [--effects off|subtle|strong|wild]
+//                               [--theme hud|kuble] [--accent <#rrggbb>] [--karaoke on|off] [--effects off|subtle|strong|wild] [--faces on|off]
 //
 //   graphics.json   the "graphics" text of music_video.hud_plan; "demo" takes the example of lib/music-video-hud/graphics.js (--duration its length)
 //   footage.mp4     the video of the whole film (the base cut of the song) that the HUD is drawn on; any video works for a look (it is cut to 24 fps, 1920x1080)
@@ -16,6 +16,8 @@
 //   --karaoke       the karaoke line with the sung words, as the parameter of the node (default off: the node draws no burnt-in lyrics unless asked to)
 //   --effects       the beat effects drawn in the page (glitch, noise, disturbances, time effects, zoom, shake, distortion, light, colour; WP45,
 //                   WP49), as the parameter of the node (off, subtle, strong, wild; default strong)
+//   --faces         where the face is under the tags (WP51, lib/music-video-hud/faces.js), measured in the footage as the node does it (default on); off
+//                   draws the tags of a film that was not measured (the place of the face guessed from the framing)
 //
 // With the environment variable HYPERFRAMES_CLI (the path of hyperframes/dist/cli.js of an installed hyperframes) every chunk is rendered to
 // <out>/chunk-<n>/out.mp4 with the settings of the render node (24 fps, no update check, no telemetry, screenshot capture). Without it only the
@@ -28,11 +30,12 @@ const { spawnSync } = require('child_process');
 const graphicsLib = require('../lib/music-video-hud/graphics');
 const chunksLib = require('../lib/music-video-hud/chunks');
 const composition = require('../lib/music-video-hud/composition');
+const facesLib = require('../lib/music-video-hud/faces');
 
 const root = path.resolve(__dirname, '..');
 
 function parseArgs(argv) {
-  const options = { quality: 'draft', out: path.resolve('hud-preview'), from: null, to: null, duration: 128.4, theme: undefined, accent: undefined, karaoke: false, effects: 'strong', positional: [] };
+  const options = { quality: 'draft', out: path.resolve('hud-preview'), from: null, to: null, duration: 128.4, theme: undefined, accent: undefined, karaoke: false, effects: 'strong', faces: true, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const next = () => argv[++i];
@@ -47,6 +50,11 @@ function parseArgs(argv) {
       const value = next();
       if (value !== 'on' && value !== 'off') throw new Error('--karaoke takes on or off');
       options.karaoke = value === 'on';
+    }
+    else if (arg === '--faces') {
+      const value = next();
+      if (value !== 'on' && value !== 'off') throw new Error('--faces takes on or off');
+      options.faces = value === 'on';
     }
     else if (arg === '--effects') {
       options.effects = next();
@@ -68,7 +76,7 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const [source, footage] = options.positional;
   if (!source || !footage) {
-    console.error('Usage: node scripts/hud-preview.js <graphics.json | demo> <footage.mp4> [--out dir] [--from s] [--to s] [--duration s] [--quality draft|standard|high] [--theme hud|kuble] [--accent #rrggbb] [--karaoke on|off] [--effects off|subtle|strong|wild]');
+    console.error('Usage: node scripts/hud-preview.js <graphics.json | demo> <footage.mp4> [--out dir] [--from s] [--to s] [--duration s] [--quality draft|standard|high] [--theme hud|kuble] [--accent #rrggbb] [--karaoke on|off] [--effects off|subtle|strong|wild] [--faces on|off]');
     process.exit(2);
   }
   const input = source === 'demo' ? graphicsLib.demoGraphics({ duration: options.duration }) : fs.readFileSync(source, 'utf8');
@@ -81,6 +89,16 @@ function main() {
   const wanted = chunks.filter((chunk) => chunk.end > from && chunk.start < to);
   console.log(`${chunks.length} chunks, ${wanted.length} of them in ${from} to ${to} s`);
   fs.mkdirSync(options.out, { recursive: true });
+  // the face under the tags, as the node measures it (the frames under the tags of the chunks that are built)
+  const frames = options.faces ? facesLib.samplesOf(graphics).filter((frame) => wanted.some((chunk) => frame >= chunk.startFrame - 24 && frame <= chunk.endFrame + 24)) : [];
+  if (frames.length) {
+    const raw = path.join(options.out, 'faces.raw');
+    const started = Date.now();
+    run('ffmpeg', facesLib.framesArgs({ inputFile: footage, outFile: raw, frames, origin: graphics.start }));
+    graphics.faces = facesLib.trackFaces(graphics, fs.readFileSync(raw), frames);
+    fs.rmSync(raw, { force: true });
+    console.log(`faces: ${frames.length} frames under the tags looked at, a face in ${graphics.faces.points.length}, ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  }
   const cli = process.env.HYPERFRAMES_CLI;
   const env = { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: '1', HYPERFRAMES_NO_AUTO_INSTALL: '1', HYPERFRAMES_NO_TELEMETRY: '1', HYPERFRAMES_SKIP_SKILLS: '1', PRODUCER_EXPERIMENTAL_FAST_CAPTURE: 'false' };
   for (const chunk of wanted) {
