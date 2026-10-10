@@ -1,0 +1,350 @@
+{
+  "brief": "Innovation Day 2026 der Muster AG am 12. März 2026 in Zürich. 320 Gäste, 12 Workshops. Anna Muster, CEO, eröffnet den Tag mit einer Keynote. Luca Beispiel, Leiter Forschung, stellt die neue Plattform vor. Danach Workshops, Networking beim Apéro und am Abend ein Konzert mit einer Live-Band. Die nächste Ausgabe findet im Frühling 2027 statt. Website: innovation-day.example",
+  "videos": [
+    {
+      "version": 1,
+      "id": "mgl2x7k0-3fa901",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":96.4,"width":3840,"height":2160,"fps":29.97,"rotation":0,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T08:04:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":31.2,"quality":4,"reasons":["ok"],"luma":0.42,"sharp":0.74,"shake":0.08,"motion":"static","faces":{"count":1,"x":0.48,"y":0.31,"size":0.04}},
+        {"i":1,"in":31.2,"out":70.5,"quality":5,"reasons":["ok"],"luma":0.46,"sharp":0.81,"shake":0.06,"motion":"static","faces":{"count":1,"x":0.44,"y":0.37,"size":0.11}},
+        {"i":2,"in":70.5,"out":96.4,"quality":4,"reasons":["ok"],"luma":0.4,"sharp":0.7,"shake":0.12,"motion":"pan_right","faces":{"count":4,"x":0.52,"y":0.55,"size":0.05}}
+      ],
+      "speech": {
+        "language": "de",
+        "words": [
+          {"w":"Guten","s":38.02,"e":38.34},
+          {"w":"Morgen","s":38.38,"e":38.75},
+          {"w":"zusammen.","s":38.79,"e":39.3},
+          {"w":"Willkommen","s":39.65,"e":40.2},
+          {"w":"zum","s":40.24,"e":40.48},
+          {"w":"Innovation","s":40.52,"e":41.07},
+          {"w":"Day","s":41.11,"e":41.35},
+          {"w":"2026.","s":41.39,"e":41.71},
+          {"w":"Heute","s":42.06,"e":42.38},
+          {"w":"zeigen","s":42.42,"e":42.79},
+          {"w":"wir,","s":42.83,"e":43.11},
+          {"w":"woran","s":43.15,"e":43.47},
+          {"w":"wir","s":43.51,"e":43.75},
+          {"w":"ein","s":43.79,"e":44.03},
+          {"w":"ganzes","s":44.07,"e":44.44},
+          {"w":"Jahr","s":44.48,"e":44.76},
+          {"w":"gearbeitet","s":44.8,"e":45.35},
+          {"w":"haben.","s":45.39,"e":45.76},
+          {"w":"Viel","s":46.11,"e":46.39},
+          {"w":"Spass","s":46.43,"e":46.75},
+          {"w":"heute!","s":46.79,"e":47.16}
+        ]
+      },
+      "vision": {
+        "subject": "keynote on stage, speaker at a lectern in front of a large screen",
+        "people": "2-5",
+        "faces_visible": true,
+        "emotion": "focused",
+        "action": "speech",
+        "framing": "wide",
+        "stage": true,
+        "text_in_image": ["Innovation Day 2026"],
+        "risk": [],
+        "fit": ["opener","speaker"],
+        "score": 5
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2x9q4-81c2d0",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":22.6,"width":1920,"height":1080,"fps":25,"rotation":0,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T08:46:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":11.8,"quality":5,"reasons":["ok"],"luma":0.44,"sharp":0.77,"shake":0.1,"motion":"pan_left","faces":{"count":9,"x":0.5,"y":0.48,"size":0.03}},
+        {"i":1,"in":11.8,"out":22.6,"quality":4,"reasons":["ok"],"luma":0.47,"sharp":0.72,"shake":0.14,"motion":"handheld","faces":{"count":3,"x":0.41,"y":0.42,"size":0.08}}
+      ],
+      "speech": null,
+      "vision": {"subject":"audience applauding in a full hall","people":"crowd","faces_visible":true,"emotion":"cheering","action":"applause","framing":"wide","stage":false,"text_in_image":[],"risk":[],"fit":["opener","crowd"],"score":5}
+    },
+    {
+      "version": 1,
+      "id": "mgl2xa11-5be7f3",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":41.3,"width":2160,"height":3840,"fps":29.97,"rotation":90,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T07:31:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":14.6,"quality":4,"reasons":["ok"],"luma":0.55,"sharp":0.69,"shake":0.18,"motion":"handheld","faces":{"count":3,"x":0.46,"y":0.34,"size":0.07}},
+        {"i":1,"in":14.6,"out":27.9,"quality":4,"reasons":["ok"],"luma":0.51,"sharp":0.76,"shake":0.09,"motion":"static","faces":{"count":2,"x":0.53,"y":0.29,"size":0.09}},
+        {"i":2,"in":27.9,"out":41.3,"quality":4,"reasons":["ok"],"luma":0.36,"sharp":0.71,"shake":0.07,"motion":"static","faces":{"count":2,"x":0.5,"y":0.4,"size":0.05}}
+      ],
+      "speech": null,
+      "vision": {
+        "subject": "guests arriving at the entrance and the registration desk",
+        "people": "2-5",
+        "faces_visible": true,
+        "emotion": "neutral",
+        "action": "walking",
+        "framing": "medium",
+        "stage": false,
+        "text_in_image": ["Innovation Day 2026","Registration"],
+        "risk": ["badge_readable"],
+        "fit": ["b_roll","closer"],
+        "score": 4
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xb73-c40e19",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":48,"width":1920,"height":1080,"fps":29.97,"rotation":0,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T10:12:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":16.4,"quality":4,"reasons":["ok"],"luma":0.49,"sharp":0.73,"shake":0.11,"motion":"static","faces":{"count":4,"x":0.52,"y":0.4,"size":0.06}},
+        {"i":1,"in":16.4,"out":31,"quality":4,"reasons":["ok"],"luma":0.5,"sharp":0.75,"shake":0.08,"motion":"static","faces":{"count":3,"x":0.47,"y":0.38,"size":0.08}},
+        {"i":2,"in":31,"out":48,"quality":5,"reasons":["ok"],"luma":0.47,"sharp":0.84,"shake":0.05,"motion":"static","faces":{"count":1,"x":0.55,"y":0.36,"size":0.16}}
+      ],
+      "speech": null,
+      "vision": {
+        "subject": "workshop table with sticky notes, people discussing",
+        "people": "2-5",
+        "faces_visible": true,
+        "emotion": "focused",
+        "action": "other",
+        "framing": "medium",
+        "stage": false,
+        "text_in_image": [],
+        "risk": [],
+        "fit": ["b_roll","detail"],
+        "score": 4
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xc28-0d6a74",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":52.8,"width":1920,"height":1080,"fps":25,"rotation":0,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T11:20:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":24.6,"quality":4,"reasons":["ok"],"luma":0.45,"sharp":0.78,"shake":0.04,"motion":"static","faces":{"count":1,"x":0.58,"y":0.34,"size":0.14}},
+        {"i":1,"in":24.6,"out":52.8,"quality":3,"reasons":["ok"],"luma":0.38,"sharp":0.66,"shake":0.09,"motion":"static","faces":{"count":1,"x":0.3,"y":0.36,"size":0.1}}
+      ],
+      "speech": {
+        "language": "de",
+        "words": [
+          {"w":"Wir","s":3.1,"e":3.34},
+          {"w":"haben","s":3.38,"e":3.7},
+          {"w":"die","s":3.74,"e":3.98},
+          {"w":"Plattform","s":4.02,"e":4.53},
+          {"w":"mit","s":4.57,"e":4.81},
+          {"w":"unseren","s":4.85,"e":5.27},
+          {"w":"Kundinnen","s":5.31,"e":5.82},
+          {"w":"und","s":5.86,"e":6.1},
+          {"w":"Kunden","s":6.14,"e":6.51},
+          {"w":"gebaut.","s":6.55,"e":6.97},
+          {"w":"Das","s":7.32,"e":7.56},
+          {"w":"merkt","s":7.6,"e":7.92},
+          {"w":"man","s":7.96,"e":8.2},
+          {"w":"in","s":8.24,"e":8.43},
+          {"w":"jedem","s":8.47,"e":8.79},
+          {"w":"Detail.","s":8.83,"e":9.25},
+          {"w":"Und","s":9.6,"e":9.84},
+          {"w":"das","s":9.88,"e":10.12},
+          {"w":"ist","s":10.16,"e":10.4},
+          {"w":"erst","s":10.44,"e":10.72},
+          {"w":"der","s":10.76,"e":11},
+          {"w":"Anfang.","s":11.04,"e":11.46}
+        ]
+      },
+      "vision": {
+        "subject": "interview with a researcher next to a demo screen",
+        "people": "1",
+        "faces_visible": true,
+        "emotion": "focused",
+        "action": "speech",
+        "framing": "medium",
+        "stage": false,
+        "text_in_image": [],
+        "risk": ["screen_readable"],
+        "fit": ["speaker"],
+        "score": 4
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xd90-77f1b5",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":44.6,"width":1920,"height":1080,"fps":59.94,"rotation":0,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T16:05:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":14.2,"quality":5,"reasons":["ok"],"luma":0.52,"sharp":0.8,"shake":0.07,"motion":"static","faces":{"count":2,"x":0.45,"y":0.35,"size":0.12}},
+        {"i":1,"in":14.2,"out":29.1,"quality":4,"reasons":["ok"],"luma":0.5,"sharp":0.74,"shake":0.1,"motion":"handheld","faces":{"count":3,"x":0.51,"y":0.39,"size":0.09}},
+        {"i":2,"in":29.1,"out":44.6,"quality":4,"reasons":["ok"],"luma":0.48,"sharp":0.72,"shake":0.12,"motion":"pan_left","faces":{"count":2,"x":0.43,"y":0.41,"size":0.1}}
+      ],
+      "speech": null,
+      "vision": {
+        "subject": "guests talking and laughing at the aperitif",
+        "people": "2-5",
+        "faces_visible": true,
+        "emotion": "laughing",
+        "action": "toast",
+        "framing": "medium",
+        "stage": false,
+        "text_in_image": [],
+        "risk": ["alcohol_close"],
+        "fit": ["b_roll","crowd"],
+        "score": 5
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xe45-a9c3e8",
+      "kind": "video",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":63.2,"width":3840,"height":2160,"fps":29.97,"rotation":0,"hdr":true,"has_audio":true,"taken_at":"2026-03-12T19:40:00Z"},
+      "scenes": [
+        {"i":0,"in":0,"out":15.8,"quality":4,"reasons":["ok"],"luma":0.34,"sharp":0.7,"shake":0.13,"motion":"static","faces":{"count":1,"x":0.5,"y":0.33,"size":0.06}},
+        {"i":1,"in":15.8,"out":31.5,"quality":4,"reasons":["ok"],"luma":0.37,"sharp":0.68,"shake":0.22,"motion":"fast","faces":{"count":5,"x":0.48,"y":0.45,"size":0.05}},
+        {"i":2,"in":31.5,"out":44,"quality":2,"reasons":["dark","shaky"],"luma":0.12,"sharp":0.41,"shake":0.58,"motion":"fast","faces":{"count":0,"x":null,"y":null,"size":null}},
+        {"i":3,"in":44,"out":63.2,"quality":4,"reasons":["ok"],"luma":0.36,"sharp":0.69,"shake":0.16,"motion":"handheld","faces":{"count":7,"x":0.5,"y":0.5,"size":0.04}}
+      ],
+      "speech": null,
+      "vision": {
+        "subject": "live band on stage, the crowd dancing and cheering",
+        "people": "crowd",
+        "faces_visible": true,
+        "emotion": "cheering",
+        "action": "dancing",
+        "framing": "wide",
+        "stage": true,
+        "text_in_image": [],
+        "risk": [],
+        "fit": ["crowd","closer"],
+        "score": 4
+      }
+    },
+    {"version":1,"id":"mgl2xf02-1e5d6c","kind":"video","usable":false,"reason":"decode_failed","meta":null,"scenes":[],"speech":null,"vision":null}
+  ],
+  "photos": [
+    {
+      "version": 1,
+      "id": "mgl2xg31-2b8e40",
+      "kind": "photo",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":0,"width":4032,"height":3024,"fps":0,"rotation":0,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T07:12:00Z"},
+      "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.58,"sharp":0.82,"shake":0,"motion":"static","faces":{"count":0,"x":null,"y":null,"size":null}}],
+      "speech": null,
+      "vision": {
+        "subject": "the venue from outside in the morning light",
+        "people": "0",
+        "faces_visible": false,
+        "emotion": "neutral",
+        "action": "detail",
+        "framing": "wide",
+        "stage": false,
+        "text_in_image": ["Innovation Day 2026"],
+        "risk": [],
+        "fit": ["opener","b_roll"],
+        "score": 4
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xg77-6c1f92",
+      "kind": "photo",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":0,"width":3024,"height":4032,"fps":0,"rotation":90,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T08:10:00Z"},
+      "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.44,"sharp":0.86,"shake":0,"motion":"static","faces":{"count":1,"x":0.5,"y":0.3,"size":0.13}}],
+      "speech": null,
+      "vision": {
+        "subject": "speaker on stage under a spotlight",
+        "people": "1",
+        "faces_visible": true,
+        "emotion": "focused",
+        "action": "speech",
+        "framing": "medium",
+        "stage": true,
+        "text_in_image": ["Innovation Day 2026"],
+        "risk": [],
+        "fit": ["opener","speaker"],
+        "score": 5
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xh04-9e3a17",
+      "kind": "photo",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":0,"width":4032,"height":3024,"fps":0,"rotation":0,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T17:30:00Z"},
+      "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.5,"sharp":0.79,"shake":0,"motion":"static","faces":{"count":42,"x":0.5,"y":0.46,"size":0.03}}],
+      "speech": null,
+      "vision": {"subject":"group photo of all guests in front of the stage","people":"crowd","faces_visible":true,"emotion":"cheering","action":"other","framing":"wide","stage":true,"text_in_image":[],"risk":[],"fit":["crowd","closer"],"score":5}
+    },
+    {
+      "version": 1,
+      "id": "mgl2xh58-d27c05",
+      "kind": "photo",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":0,"width":4032,"height":3024,"fps":0,"rotation":0,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T07:40:00Z"},
+      "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.61,"sharp":0.75,"shake":0,"motion":"static","faces":{"count":0,"x":null,"y":null,"size":null}}],
+      "speech": null,
+      "vision": {
+        "subject": "coffee cups and name badges on a table",
+        "people": "0",
+        "faces_visible": false,
+        "emotion": "neutral",
+        "action": "detail",
+        "framing": "detail",
+        "stage": false,
+        "text_in_image": [],
+        "risk": ["badge_readable"],
+        "fit": ["detail","b_roll"],
+        "score": 4
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xi12-40ab6e",
+      "kind": "photo",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":0,"width":4032,"height":3024,"fps":0,"rotation":0,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T10:35:00Z"},
+      "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.53,"sharp":0.8,"shake":0,"motion":"static","faces":{"count":2,"x":0.62,"y":0.32,"size":0.07}}],
+      "speech": null,
+      "vision": {
+        "subject": "hands placing sticky notes on a board in a workshop",
+        "people": "2-5",
+        "faces_visible": true,
+        "emotion": "focused",
+        "action": "detail",
+        "framing": "close",
+        "stage": false,
+        "text_in_image": [],
+        "risk": [],
+        "fit": ["detail","b_roll"],
+        "score": 4
+      }
+    },
+    {
+      "version": 1,
+      "id": "mgl2xi69-b5e2d8",
+      "kind": "photo",
+      "usable": true,
+      "reason": null,
+      "meta": {"seconds":0,"width":4032,"height":3024,"fps":0,"rotation":0,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T18:55:00Z"},
+      "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.31,"sharp":0.72,"shake":0,"motion":"static","faces":{"count":0,"x":null,"y":null,"size":null}}],
+      "speech": null,
+      "vision": {"subject":"the venue lit up at dusk","people":"0","faces_visible":false,"emotion":"neutral","action":"detail","framing":"wide","stage":false,"text_in_image":[],"risk":[],"fit":["closer"],"score":4}
+    },
+    {"version":1,"id":"mgl2xj26-f08c31","kind":"photo","usable":false,"reason":"heic","meta":null,"scenes":[],"speech":null,"vision":null}
+  ]
+}

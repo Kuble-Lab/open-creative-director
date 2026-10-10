@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "id": "mgl2xg77-6c1f92",
+  "kind": "photo",
+  "usable": true,
+  "reason": null,
+  "meta": {"seconds":0,"width":3024,"height":4032,"fps":0,"rotation":90,"hdr":false,"has_audio":false,"taken_at":"2026-03-12T08:10:00Z"},
+  "scenes": [{"i":0,"in":0,"out":0,"quality":4,"reasons":["ok"],"luma":0.44,"sharp":0.86,"shake":0,"motion":"static","faces":{"count":1,"x":0.5,"y":0.3,"size":0.13}}],
+  "speech": null,
+  "vision": {
+    "subject": "speaker on stage under a spotlight",
+    "people": "1",
+    "faces_visible": true,
+    "emotion": "focused",
+    "action": "speech",
+    "framing": "medium",
+    "stage": true,
+    "text_in_image": ["Innovation Day 2026"],
+    "risk": [],
+    "fit": ["opener","speaker"],
+    "score": 5
+  }
+}

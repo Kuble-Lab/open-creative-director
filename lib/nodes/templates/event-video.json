@@ -1,0 +1,963 @@
+{
+  "id": "event-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Event video (aftermovie)",
+  "description": "Turn the clips and photos of an event into a short film cut to music, in 16:9, 9:16 or 1:1: a title, lower thirds over the soundbites with subtitles, a few intertitles and an end card with your logo. Every clip and photo is analysed (quality, scenes, faces and speech; Claude Sonnet 5.5 looks at the pictures, ElevenLabs transcribes what is said), ElevenLabs makes instrumental music in the chosen style (or you upload your own), a language model (by default Claude Opus 5.5) chooses the moments and writes the texts only from your description, the code sets every cut on the beat and frames the people, ffmpeg cuts the film and a render node draws the graphics. An event of photos only works too. With the photos moved by code a film costs about 0.8 US dollars for 30 seconds, 1.0 for 60 and 1.2 for 90 seconds (20 clips with 10 minutes of footage and 20 photos; fewer cost less); animating photos with AI (H3 Max turbo) adds about 0.4, 0.8 or 1.2, the voice-over about 0.06. Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 1 (analysis, music and plan, about 0.9 for 60 seconds) shows the music, the board and the chosen shots for your approval; step 2 makes the rest. At most about 2.2 for 60 seconds with AI, a second try of the planner and the voice. Your own music saves the music, another format costs nothing more. Only show people who agreed to it, above all with the AI animation.",
+  "requires": [
+    "openrouter",
+    "ffmpeg",
+    "elevenlabs",
+    "fal",
+    "rendernode"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.media_list",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Videos",
+        "params": {
+          "kind": "video",
+          "assets": []
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.media_list",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 340,
+        "title": "Photos",
+        "params": {
+          "kind": "image",
+          "assets": []
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 600,
+        "title": "What the event was about",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "input.branding",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 860,
+        "title": "Branding (logo, colour, voice)",
+        "params": {
+          "branding": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "input.media_list",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 1120,
+        "title": "Own music (optional)",
+        "params": {
+          "kind": "audio",
+          "assets": []
+        }
+      },
+      {
+        "id": "n0",
+        "type": "event_video.style",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 1120,
+        "params": {
+          "event_type": "conference",
+          "mood": "fresh",
+          "length": "60",
+          "format": "16:9",
+          "language": "en"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "event_video.analyze",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 80,
+        "title": "Analyse the videos",
+        "params": {
+          "vision_model": "anthropic/claude-sonnet-5.5",
+          "speech": "auto"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "event_video.analyze",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 340,
+        "title": "Analyse the photos",
+        "params": {
+          "vision_model": "anthropic/claude-sonnet-5.5",
+          "speech": "auto"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "event_video.music",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 1120,
+        "params": {
+          "model": "music_v2_5"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "audio.beats",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 1120,
+        "params": {}
+      },
+      {
+        "id": "n10",
+        "type": "event_video.plan",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 600,
+        "params": {
+          "model": "",
+          "brief": "",
+          "photo_motion": "code",
+          "parallax": true,
+          "max_ai_photos": 0,
+          "voiceover": false,
+          "lower_thirds": true,
+          "soundbites": "auto",
+          "allow_plain": false
+        }
+      },
+      {
+        "id": "n11",
+        "type": "fal.h3_video",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 80,
+        "title": "AI clips of photos (H3 Max turbo)",
+        "params": {
+          "prompt": "",
+          "model": "turbo",
+          "resolution": "768P",
+          "aspect_ratio": "16:9",
+          "duration": 5,
+          "prompt_expansion": "disabled",
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n12a",
+        "type": "fal.depth_map",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 380,
+        "title": "Depth maps (parallax)",
+        "params": {
+          "enabled": true
+        }
+      },
+      {
+        "id": "n12",
+        "type": "image.to_video",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 380,
+        "title": "Parallax clips",
+        "params": {
+          "duration": 5,
+          "match_audio": false,
+          "fps": 24,
+          "zoom": "parallax_in",
+          "parallax_strength": 30
+        }
+      },
+      {
+        "id": "n13",
+        "type": "audio.tts",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 680,
+        "title": "Voice-over",
+        "params": {
+          "text": "",
+          "voice_id": "21m00Tcm4TlvDq8ikWAM",
+          "model_id": "eleven_v4"
+        }
+      },
+      {
+        "id": "n14",
+        "type": "event_video.cut",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 380,
+        "params": {
+          "quality": "standard"
+        }
+      },
+      {
+        "id": "n15",
+        "type": "event_video.render",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 600,
+        "params": {
+          "quality": "standard"
+        }
+      },
+      {
+        "id": "n20",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 4040,
+        "y": 380,
+        "params": {
+          "label": "Event video"
+        }
+      },
+      {
+        "id": "n21",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 4040,
+        "y": 600,
+        "params": {
+          "label": "Contact sheet"
+        }
+      },
+      {
+        "id": "n22",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 4040,
+        "y": 820,
+        "params": {
+          "label": "Subtitles (SRT)"
+        }
+      },
+      {
+        "id": "n23",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 1120,
+        "params": {
+          "label": "Music"
+        }
+      },
+      {
+        "id": "n24",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 1340,
+        "params": {
+          "label": "Board"
+        }
+      },
+      {
+        "id": "n25",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 1560,
+        "params": {
+          "label": "Chosen shots"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "items"
+        },
+        "to": {
+          "node": "n6",
+          "port": "media"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "items"
+        },
+        "to": {
+          "node": "n7",
+          "port": "media"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n0",
+          "port": "style"
+        },
+        "to": {
+          "node": "n8",
+          "port": "style"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n5",
+          "port": "items"
+        },
+        "to": {
+          "node": "n8",
+          "port": "own"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n8",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n9",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n3",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n10",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n0",
+          "port": "style"
+        },
+        "to": {
+          "node": "n10",
+          "port": "style"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n1",
+          "port": "items"
+        },
+        "to": {
+          "node": "n10",
+          "port": "videos"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n2",
+          "port": "items"
+        },
+        "to": {
+          "node": "n10",
+          "port": "photos"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n6",
+          "port": "info"
+        },
+        "to": {
+          "node": "n10",
+          "port": "video_info"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n7",
+          "port": "info"
+        },
+        "to": {
+          "node": "n10",
+          "port": "photo_info"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n8",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n10",
+          "port": "music"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n9",
+          "port": "analysis"
+        },
+        "to": {
+          "node": "n10",
+          "port": "music_analysis"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n4",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n10",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n10",
+          "port": "ai_prompts"
+        },
+        "to": {
+          "node": "n11",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n10",
+          "port": "ai_photos"
+        },
+        "to": {
+          "node": "n11",
+          "port": "first_frame"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n10",
+          "port": "parallax_photos"
+        },
+        "to": {
+          "node": "n12a",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n10",
+          "port": "parallax_photos"
+        },
+        "to": {
+          "node": "n12",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n12a",
+          "port": "depth"
+        },
+        "to": {
+          "node": "n12",
+          "port": "depth"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n10",
+          "port": "vo_lines"
+        },
+        "to": {
+          "node": "n13",
+          "port": "text"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n4",
+          "port": "voice"
+        },
+        "to": {
+          "node": "n13",
+          "port": "voice"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n10",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n14",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n0",
+          "port": "format"
+        },
+        "to": {
+          "node": "n14",
+          "port": "format"
+        }
+      },
+      {
+        "id": "e24",
+        "from": {
+          "node": "n1",
+          "port": "items"
+        },
+        "to": {
+          "node": "n14",
+          "port": "videos"
+        }
+      },
+      {
+        "id": "e25",
+        "from": {
+          "node": "n2",
+          "port": "items"
+        },
+        "to": {
+          "node": "n14",
+          "port": "photos"
+        }
+      },
+      {
+        "id": "e26",
+        "from": {
+          "node": "n11",
+          "port": "video"
+        },
+        "to": {
+          "node": "n14",
+          "port": "ai_clips"
+        }
+      },
+      {
+        "id": "e27",
+        "from": {
+          "node": "n12",
+          "port": "video"
+        },
+        "to": {
+          "node": "n14",
+          "port": "parallax_clips"
+        }
+      },
+      {
+        "id": "e28",
+        "from": {
+          "node": "n14",
+          "port": "video"
+        },
+        "to": {
+          "node": "n15",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e29",
+        "from": {
+          "node": "n14",
+          "port": "nat"
+        },
+        "to": {
+          "node": "n15",
+          "port": "nat"
+        }
+      },
+      {
+        "id": "e30",
+        "from": {
+          "node": "n10",
+          "port": "graphics"
+        },
+        "to": {
+          "node": "n15",
+          "port": "graphics"
+        }
+      },
+      {
+        "id": "e31",
+        "from": {
+          "node": "n0",
+          "port": "format"
+        },
+        "to": {
+          "node": "n15",
+          "port": "format"
+        }
+      },
+      {
+        "id": "e32",
+        "from": {
+          "node": "n8",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n15",
+          "port": "music"
+        }
+      },
+      {
+        "id": "e33",
+        "from": {
+          "node": "n13",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n15",
+          "port": "voice"
+        }
+      },
+      {
+        "id": "e34",
+        "from": {
+          "node": "n4",
+          "port": "logo"
+        },
+        "to": {
+          "node": "n15",
+          "port": "logo"
+        }
+      },
+      {
+        "id": "e35",
+        "from": {
+          "node": "n4",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n15",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e36",
+        "from": {
+          "node": "n15",
+          "port": "video"
+        },
+        "to": {
+          "node": "n20",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e37",
+        "from": {
+          "node": "n15",
+          "port": "sheet"
+        },
+        "to": {
+          "node": "n21",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e38",
+        "from": {
+          "node": "n15",
+          "port": "subtitles"
+        },
+        "to": {
+          "node": "n22",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e39",
+        "from": {
+          "node": "n8",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n23",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e40",
+        "from": {
+          "node": "n10",
+          "port": "board"
+        },
+        "to": {
+          "node": "n24",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e41",
+        "from": {
+          "node": "n10",
+          "port": "selection"
+        },
+        "to": {
+          "node": "n25",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 80,
+        "y": 1400,
+        "w": 400,
+        "h": 820,
+        "text": "Upload the videos (mp4, mov or m4v) and the photos (jpg, png or webp; export HEIC photos as JPEG first) of the event; an event of photos only works too, with at least 5 clips and photos together. Write in a few sentences what the event was: name, date, place, the people on stage and their roles, numbers. It is the only source of the names and figures on the screen; nothing else is invented. Choose the kind of event, the mood, the length, the format and the language of the texts. Step 1 analyses every clip and photo, makes the music (or takes your own) and plans the film: listen to the music, read the board and look at the chosen shots. Step 2 (“Approve and finish” in the app view) makes the AI clips or the depth maps of the photos, the voice-over if it is on, the cut and the graphics. In the node view run the output nodes Music, Board and Chosen shots first, then everything. Only use pictures of people who agreed to be shown, above all for the AI animation of photos."
+      },
+      {
+        "id": "t2",
+        "x": 520,
+        "y": 1400,
+        "w": 400,
+        "h": 760,
+        "text": "The pieces that have to agree: Event video style sends the style (kind, mood, length, language) to the music and the plan, and the format alone to the cut and the render, so another format makes only the cut and the render again (the analysis, the music and the plan come from the cache). The AI clips (H3 Max turbo, 768P, 5 s, prompt expansion off so that nothing is added to the photo) and the parallax clips (5 s, 24 frames per second) are 5 s long like the clips the planner expects. The music is the film plus 2 s; own music of at least 20 s is used from its start, shorter than the film it makes the film shorter. The texts on the screen come only from your description, a transcript or a text in a picture; the subtitles of the soundbites stay in the spoken language and come as an SRT file as well. Branding: the logo goes on the end card, the colour on the lower thirds, the voice speaks the voice-over."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Event video (aftermovie)",
+    "description": "Upload the videos and photos of your event, write in a few sentences what it was and get a short film cut to music, with a title, lower thirds, subtitles of the soundbites and an end card with your logo. You approve the music, the board and the chosen shots first (step 1), then the rest is made. Before each start you see the paid steps and their estimate. Show only people who agreed to it, above all when photos are animated with AI.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "assets",
+        "label": "Videos",
+        "optional": true
+      },
+      {
+        "node": "n2",
+        "param": "assets",
+        "label": "Photos",
+        "optional": true
+      },
+      {
+        "node": "n3",
+        "param": "prompt",
+        "label": "What was the event about (name, date, place, people and their roles)"
+      },
+      {
+        "node": "n0",
+        "param": "event_type",
+        "label": "Kind of event"
+      },
+      {
+        "node": "n0",
+        "param": "mood",
+        "label": "Mood"
+      },
+      {
+        "node": "n0",
+        "param": "length",
+        "label": "Length (seconds)"
+      },
+      {
+        "node": "n0",
+        "param": "format",
+        "label": "Format"
+      },
+      {
+        "node": "n10",
+        "param": "photo_motion",
+        "label": "Move the photos"
+      },
+      {
+        "node": "n10",
+        "param": "voiceover",
+        "label": "Voice-over"
+      },
+      {
+        "node": "n10",
+        "param": "lower_thirds",
+        "label": "Lower thirds"
+      },
+      {
+        "node": "n0",
+        "param": "language",
+        "label": "Language of the texts"
+      },
+      {
+        "node": "n4",
+        "param": "branding",
+        "label": "Branding (logo, colour, voice)"
+      },
+      {
+        "node": "n5",
+        "param": "assets",
+        "label": "Own music (optional)",
+        "optional": true
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n20",
+        "label": "Event video"
+      },
+      {
+        "node": "n21",
+        "label": "Contact sheet"
+      },
+      {
+        "node": "n22",
+        "label": "Subtitles (SRT)"
+      },
+      {
+        "node": "n23",
+        "label": "Music",
+        "approve": true
+      },
+      {
+        "node": "n24",
+        "label": "Board",
+        "approve": true
+      },
+      {
+        "node": "n25",
+        "label": "Chosen shots",
+        "approve": true,
+        "hint": "Check that everybody shown agreed to be in the film, above all in photos that are animated with AI. Then “Approve and finish” makes the AI clips, the cut and the graphics."
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Event-Video (Aftermovie)",
+      "description": "Mache aus den Clips und Fotos eines Events einen kurzen Film im Takt der Musik, in 16:9, 9:16 oder 1:1: ein Titel, Bauchbinden über den O-Tönen mit Untertiteln, ein paar Zwischentitel und eine Endkarte mit deinem Logo. Jeder Clip und jedes Foto wird analysiert (Qualität, Szenen, Gesichter und Sprache; Claude Sonnet 5.5 sieht sich die Bilder an, ElevenLabs schreibt mit, was gesagt wird), ElevenLabs macht Instrumentalmusik im gewählten Stil (oder du lädst eigene hoch), ein Sprachmodell (standardmässig Claude Opus 5.5) wählt die Momente und schreibt die Texte nur aus deiner Beschreibung, der Code setzt jeden Schnitt auf den Takt und rahmt die Personen, ffmpeg schneidet den Film und ein Render-Node zeichnet die Grafiken. Ein Event nur aus Fotos geht auch. Mit Fotos, die der Code bewegt, kostet ein Film etwa 0.8 US-Dollar für 30 Sekunden, 1.0 für 60 und 1.2 für 90 Sekunden (20 Clips mit 10 Minuten Material und 20 Fotos; weniger kostet weniger); Fotos mit KI zu animieren (H3 Max turbo) kostet etwa 0.4, 0.8 oder 1.2 mehr, die Sprecherstimme etwa 0.06. Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 1 (Analyse, Musik und Plan, etwa 0.9 für 60 Sekunden) zeigt dir Musik, Board und die gewählten Shots zur Freigabe; Schritt 2 macht den Rest. Höchstens etwa 2.2 für 60 Sekunden mit KI, einem zweiten Versuch des Planers und Sprecherstimme. Eigene Musik spart die Musik, ein anderes Format kostet nichts mehr. Zeige nur Personen, die einverstanden sind, besonders bei der KI-Animation.",
+      "node.n1": "Videos",
+      "node.n2": "Fotos",
+      "node.n3": "Worum es ging",
+      "node.n4": "Branding (Logo, Farbe, Stimme)",
+      "node.n5": "Eigene Musik (optional)",
+      "node.n6": "Videos analysieren",
+      "node.n7": "Fotos analysieren",
+      "node.n11": "KI-Clips der Fotos (H3 Max turbo)",
+      "node.n12a": "Tiefenkarten (Parallaxe)",
+      "node.n12": "Parallaxe-Clips",
+      "node.n13": "Sprecherstimme",
+      "note.t1": "Lade die Videos (mp4, mov oder m4v) und die Fotos (jpg, png oder webp; HEIC-Fotos zuerst als JPEG exportieren) des Events hoch; ein Event nur aus Fotos geht auch, mit mindestens 5 Clips und Fotos zusammen. Schreibe in ein paar Sätzen, was das Event war: Name, Datum, Ort, die Personen auf der Bühne mit ihrer Rolle, Zahlen. Das ist die einzige Quelle für Namen und Zahlen im Bild; sonst wird nichts erfunden. Wähle Art des Events, Stimmung, Länge, Format und Sprache der Texte. Schritt 1 analysiert jeden Clip und jedes Foto, macht die Musik (oder nimmt deine eigene) und plant den Film: Hör dir die Musik an, lies das Board und sieh dir die gewählten Shots an. Schritt 2 («Freigeben und fertigstellen» in der App-Ansicht) macht die KI-Clips oder die Tiefenkarten der Fotos, die Sprecherstimme, wenn sie an ist, den Schnitt und die Grafiken. In der Node-Ansicht führe zuerst die Ausgabe-Nodes Musik, Board und Gewählte Shots aus, dann alles. Verwende nur Bilder von Personen, die einverstanden sind, gezeigt zu werden, besonders bei der KI-Animation von Fotos.",
+      "note.t2": "Was zusammenpassen muss: «Event-Video-Stil» schickt den Stil (Art, Stimmung, Länge, Sprache) an Musik und Plan und nur das Format an Schnitt und Render; ein anderes Format macht deshalb nur Schnitt und Render neu (Analyse, Musik und Plan kommen aus dem Cache). Die KI-Clips (H3 Max turbo, 768P, 5 s, Prompt-Erweiterung aus, damit dem Foto nichts hinzugefügt wird) und die Parallaxe-Clips (5 s, 24 Bilder pro Sekunde) sind 5 s lang, wie der Planer sie erwartet. Die Musik ist der Film plus 2 s; eigene Musik ab 20 s wird von Anfang an verwendet, ist sie kürzer als der Film, wird der Film kürzer. Die Texte im Bild stammen nur aus deiner Beschreibung, einem Transkript oder einem Text im Bild; die Untertitel der O-Töne bleiben in der gesprochenen Sprache und kommen auch als SRT-Datei. Branding: Das Logo kommt auf die Endkarte, die Farbe auf die Bauchbinden, die Stimme spricht die Sprecherstimme.",
+      "app.title": "Event-Video (Aftermovie)",
+      "app.description": "Lade die Videos und Fotos deines Events hoch, schreibe in ein paar Sätzen, was es war, und erhalte einen kurzen Film im Takt der Musik, mit Titel, Bauchbinden, Untertiteln der O-Töne und einer Endkarte mit deinem Logo. Du gibst zuerst Musik, Board und die gewählten Shots frei (Schritt 1), dann wird der Rest gemacht. Vor jedem Start siehst du die bezahlten Schritte und ihre Schätzung. Zeige nur Personen, die einverstanden sind, besonders wenn Fotos mit KI animiert werden.",
+      "app.input.n1.assets": "Videos",
+      "app.input.n2.assets": "Fotos",
+      "app.input.n3.prompt": "Worum ging es (Name, Datum, Ort, Personen und ihre Rolle)",
+      "app.input.n0.event_type": "Art des Events",
+      "app.input.n0.mood": "Stimmung",
+      "app.input.n0.length": "Länge (Sekunden)",
+      "app.input.n0.format": "Format",
+      "app.input.n10.photo_motion": "Fotos bewegen",
+      "app.input.n10.voiceover": "Sprecherstimme",
+      "app.input.n0.language": "Sprache der Texte",
+      "app.input.n4.branding": "Branding (Logo, Farbe, Stimme)",
+      "app.input.n5.assets": "Eigene Musik (optional)",
+      "app.output.n20": "Event-Video",
+      "app.output.n21": "Kontaktbogen",
+      "app.output.n22": "Untertitel (SRT)",
+      "app.output.n23": "Musik",
+      "app.output.n24": "Board",
+      "app.output.n25": "Gewählte Shots",
+      "app.hint.n25": "Prüfe, ob alle gezeigten Personen einverstanden sind, im Film zu erscheinen, besonders auf Fotos, die mit KI animiert werden. Dann macht «Freigeben und fertigstellen» die KI-Clips, den Schnitt und die Grafiken.",
+      "param.n20.label": "Event-Video",
+      "param.n21.label": "Kontaktbogen",
+      "param.n22.label": "Untertitel (SRT)",
+      "param.n23.label": "Musik",
+      "param.n24.label": "Board",
+      "param.n25.label": "Gewählte Shots",
+      "param.n0.language": "de",
+      "app.input.n10.lower_thirds": "Bauchbinden"
+    },
+    "es": {
+      "name": "Vídeo de evento (aftermovie)",
+      "description": "Convierte los clips y las fotos de un evento en un vídeo corto montado al ritmo de la música, en 16:9, 9:16 o 1:1: un título, rótulos sobre las declaraciones con subtítulos, algunos intertítulos y una tarjeta final con tu logo. Se analiza cada clip y cada foto (calidad, escenas, caras y habla; Claude Sonnet 5.5 mira las imágenes, ElevenLabs transcribe lo que se dice), ElevenLabs crea música instrumental en el estilo elegido (o subes la tuya), un modelo de lenguaje (por defecto Claude Opus 5.5) elige los momentos y escribe los textos solo a partir de tu descripción, el código pone cada corte en el ritmo y encuadra a las personas, ffmpeg monta el vídeo y un nodo de render dibuja los gráficos. Un evento solo con fotos también funciona. Con las fotos movidas por código, un vídeo cuesta unos 0.8 dólares para 30 segundos, 1.0 para 60 y 1.2 para 90 segundos (20 clips con 10 minutos de material y 20 fotos; menos cuesta menos); animar fotos con IA (H3 Max turbo) añade unos 0.4, 0.8 o 1.2, la voz en off unos 0.06. Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 1 (análisis, música y plan, unos 0.9 para 60 segundos) te muestra la música, el tablero y las tomas elegidas para tu aprobación; el paso 2 hace el resto. Como máximo unos 2.2 para 60 segundos con IA, un segundo intento del planificador y voz en off. Tu propia música ahorra la música, otro formato no cuesta nada más. Muestra solo a personas que estén de acuerdo, sobre todo con la animación con IA.",
+      "node.n1": "Vídeos",
+      "node.n2": "Fotos",
+      "node.n3": "De qué trató el evento",
+      "node.n4": "Branding (logo, color, voz)",
+      "node.n5": "Música propia (opcional)",
+      "node.n6": "Analizar los vídeos",
+      "node.n7": "Analizar las fotos",
+      "node.n11": "Clips de IA de las fotos (H3 Max turbo)",
+      "node.n12a": "Mapas de profundidad (paralaje)",
+      "node.n12": "Clips de paralaje",
+      "node.n13": "Voz en off",
+      "note.t1": "Sube los vídeos (mp4, mov o m4v) y las fotos (jpg, png o webp; exporta antes las fotos HEIC como JPEG) del evento; un evento solo con fotos también funciona, con al menos 5 clips y fotos en total. Escribe en unas frases qué fue el evento: nombre, fecha, lugar, las personas en el escenario con su función, cifras. Es la única fuente de los nombres y las cifras en pantalla; no se inventa nada más. Elige el tipo de evento, el ambiente, la duración, el formato y el idioma de los textos. El paso 1 analiza cada clip y cada foto, crea la música (o usa la tuya) y planifica el vídeo: escucha la música, lee el tablero y mira las tomas elegidas. El paso 2 («Aprobar y terminar» en la vista de app) crea los clips de IA o los mapas de profundidad de las fotos, la voz en off si está activada, el montaje y los gráficos. En la vista de nodos ejecuta primero los nodos de salida Música, Tablero y Tomas elegidas, después todo. Usa solo imágenes de personas que estén de acuerdo en aparecer, sobre todo para la animación de fotos con IA.",
+      "note.t2": "Lo que tiene que coincidir: «Estilo del vídeo de evento» envía el estilo (tipo, ambiente, duración, idioma) a la música y al plan, y solo el formato al montaje y al render; por eso otro formato solo rehace el montaje y el render (el análisis, la música y el plan salen de la caché). Los clips de IA (H3 Max turbo, 768P, 5 s, ampliación del prompt desactivada para que no se añada nada a la foto) y los clips de paralaje (5 s, 24 fotogramas por segundo) duran 5 s, como los espera el planificador. La música dura el vídeo más 2 s; la música propia de al menos 20 s se usa desde el principio; si es más corta que el vídeo, el vídeo se acorta. Los textos en pantalla salen solo de tu descripción, de una transcripción o de un texto en una imagen; los subtítulos de las declaraciones quedan en el idioma hablado y también llegan como archivo SRT. Branding: el logo va en la tarjeta final, el color en los rótulos, la voz lee la voz en off.",
+      "app.title": "Vídeo de evento (aftermovie)",
+      "app.description": "Sube los vídeos y las fotos de tu evento, escribe en unas frases qué fue y recibe un vídeo corto montado al ritmo de la música, con título, rótulos, subtítulos de las declaraciones y una tarjeta final con tu logo. Primero apruebas la música, el tablero y las tomas elegidas (paso 1), después se crea el resto. Antes de cada inicio ves los pasos de pago y su estimación. Muestra solo a personas que estén de acuerdo, sobre todo cuando se animan fotos con IA.",
+      "app.input.n1.assets": "Vídeos",
+      "app.input.n2.assets": "Fotos",
+      "app.input.n3.prompt": "De qué trató el evento (nombre, fecha, lugar, personas y su función)",
+      "app.input.n0.event_type": "Tipo de evento",
+      "app.input.n0.mood": "Ambiente",
+      "app.input.n0.length": "Duración (segundos)",
+      "app.input.n0.format": "Formato",
+      "app.input.n10.photo_motion": "Mover las fotos",
+      "app.input.n10.voiceover": "Voz en off",
+      "app.input.n0.language": "Idioma de los textos",
+      "app.input.n4.branding": "Branding (logo, color, voz)",
+      "app.input.n5.assets": "Música propia (opcional)",
+      "app.output.n20": "Vídeo del evento",
+      "app.output.n21": "Hoja de contactos",
+      "app.output.n22": "Subtítulos (SRT)",
+      "app.output.n23": "Música",
+      "app.output.n24": "Tablero",
+      "app.output.n25": "Tomas elegidas",
+      "app.hint.n25": "Comprueba que todas las personas que aparecen estén de acuerdo en salir en el vídeo, sobre todo en las fotos que se animan con IA. Después «Aprobar y terminar» crea los clips de IA, el montaje y los gráficos.",
+      "param.n20.label": "Vídeo del evento",
+      "param.n21.label": "Hoja de contactos",
+      "param.n22.label": "Subtítulos (SRT)",
+      "param.n23.label": "Música",
+      "param.n24.label": "Tablero",
+      "param.n25.label": "Tomas elegidas",
+      "param.n0.language": "es",
+      "app.input.n10.lower_thirds": "Rótulos"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "treatment": "A bright, clear film of one day of ideas: from the applause of the keynote through the arrival and the workshops to the talks at the aperitif and the concert in the evening. Two short soundbites carry the story; the music builds towards the evening.",
+  "acts": [
+    {
+      "act": "hook",
+      "picks": [
+        {"ref":"v1#0","why":"the full hall applauding, the strongest moment","slow":false,"pair":null},
+        {"ref":"p1","why":"the speaker under the spotlight","slow":false,"pair":null},
+        {"ref":"v0#0","why":"wide shot of the stage","slow":false,"pair":null}
+      ]
+    },
+    {
+      "act": "arrival",
+      "picks": [
+        {"ref":"p0","why":"the venue in the morning, clear depth","slow":false,"pair":null},
+        {"ref":"v2#0","why":"guests walking in","slow":false,"pair":null},
+        {"ref":"p3","why":"coffee and badges as a detail","slow":false,"pair":null},
+        {"ref":"v2#1","why":"the registration desk","slow":false,"pair":null}
+      ]
+    },
+    {
+      "act": "programme",
+      "picks": [
+        {"ref":"v0#1","why":"the keynote, medium shot before the soundbite","slow":false,"pair":null},
+        {"ref":"v3#0","why":"the workshop table","slow":false,"pair":null},
+        {"ref":"p4","why":"hands with sticky notes","slow":false,"pair":null},
+        {"ref":"v3#1","why":"a workshop group, wide","slow":false,"pair":"v3#2"}
+      ]
+    },
+    {
+      "act": "people",
+      "picks": [
+        {"ref":"v5#0","why":"laughter at the aperitif","slow":true,"pair":null},
+        {"ref":"v5#1","why":"guests in conversation","slow":false,"pair":null},
+        {"ref":"v5#2","why":"a toast","slow":false,"pair":null},
+        {"ref":"v4#0","why":"the researcher in conversation","slow":false,"pair":null}
+      ]
+    },
+    {
+      "act": "peak",
+      "picks": [
+        {"ref":"v6#0","why":"the band on stage","slow":false,"pair":null},
+        {"ref":"p2","why":"the group photo","slow":false,"pair":null},
+        {"ref":"v6#1","why":"the crowd dancing","slow":false,"pair":null},
+        {"ref":"v1#1","why":"applause, close","slow":false,"pair":null},
+        {"ref":"v6#3","why":"the crowd cheering","slow":false,"pair":null}
+      ]
+    },
+    {"act":"close","picks":[{"ref":"p5","why":"the venue lit up at dusk","slow":false,"pair":null},{"ref":"v2#2","why":"guests leaving, a calm wide shot","slow":false,"pair":null}]}
+  ],
+  "soundbites": [{"ref":"v0","word_from":3,"word_to":17,"speaker":"Anna Muster","role":"CEO","source":"description"},{"ref":"v4","word_from":10,"word_to":21,"speaker":"Luca Beispiel","role":"Leiter Forschung","source":"description"}],
+  "title": {"text":"Innovation Day 2026","sub":"Zürich, 12. März 2026","source":"description"},
+  "lower_thirds": [{"soundbite":0,"name":"Anna Muster","role":"CEO","label":null,"source":"description"},{"soundbite":1,"name":"Luca Beispiel","role":"Leiter Forschung","label":null,"source":"description"}],
+  "intertitles": [{"act":"arrival","text":"320 Gäste","source":"description"},{"act":"programme","text":"12 Workshops","source":"description"}],
+  "ai_photos": [
+    {"ref":"p1","prompt":"Slow push-in towards the speaker, the stage light breathes softly. Camera and subtle motion only; no new people, objects or text."},
+    {"ref":"p2","prompt":"Gentle sideways drift across the group, people move slightly as if laughing. Camera and subtle motion only; no new people, objects or text."}
+  ],
+  "parallax": ["p0","p5"],
+  "voiceover": [{"act":"arrival","text":"Ein Tag voller Ideen: 320 Gäste kamen zum Innovation Day nach Zürich."},{"act":"close","text":"Danke an alle, die dabei waren. Wir sehen uns im Frühling 2027."}],
+  "endcard": {"line":"Danke. Bis 2027.","sub":null,"url":"innovation-day.example","source":"description"}
+}

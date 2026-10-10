@@ -184,7 +184,7 @@ async function main() {
       assert.ok(defaultRegistry.CATEGORIES.includes('fal'));
       assert.ok(defaultRegistry.publicRegistry().categories.includes('fal'));
       for (const type of types) assert.ok(defaultRegistry.get(type), `${type} in the default registry`);
-      assert.equal(defaultRegistry.list().length, 98, '63 + 14 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes + the captions and the sound wave + the five nodes of the explainer foundation (Document, Read documents, Research, Branding, Plan explainer video) + the three of the explainer production (voice, scene, cut) + the music video HUD render and the HUD planner of WP44 (the 63 count the video over video of WP33b)');
+      assert.equal(defaultRegistry.list().length, 104, '63 + 14 fal.ai node types + the Prompt node + the two music nodes + the video node with a model choice + the video grid + the four music video nodes + the captions and the sound wave + the five nodes of the explainer foundation (Document, Read documents, Research, Branding, Plan explainer video) + the three of the explainer production (voice, scene, cut) + the music video HUD render and the HUD planner of WP44 + the six nodes of the event video of WP53 (analyze, style, music, plan, cut, render) (the 63 count the video over video of WP33b)');
       assert.equal(defaultRegistry.list().filter((def) => def.category === 'fal').length, 14);
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });

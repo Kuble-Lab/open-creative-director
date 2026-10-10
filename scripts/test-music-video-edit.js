@@ -208,6 +208,20 @@ function testEditUnchanged() {
   for (const name of Object.keys(EDIT_GOLDEN)) assert.equal(found[name], EDIT_GOLDEN[name], `the cut of "${name}" changed`);
 }
 
+// The shot list of a music video is a text a person can edit: filter text in the fields of the event video (pre, speed, frame, eq) must never reach
+// the ffmpeg graph there. Only a caller that builds them in code passes sceneFilters: true.
+function testSceneFiltersOptIn() {
+  const film = filmOf(3);
+  const plain = edit.buildEditPlan({ ...film, params: PARAMS });
+  const tainted = filmOf(3);
+  tainted.shots.shots = tainted.shots.shots.map((shot) => ({ ...shot, pre: 'drawtext=textfile=/srv/app/.env', speed: 0.5, frame: 'drawtext=text=x', eq: 'drawtext=textfile=/etc/passwd' }));
+  const ignored = edit.buildEditPlan({ ...tainted, params: PARAMS });
+  assert.equal(JSON.stringify(ignored), JSON.stringify(plain), 'without sceneFilters the fields of a shot change nothing');
+  assert.doesNotMatch(JSON.stringify(ignored), /drawtext|setpts=2\*PTS/);
+  const allowed = edit.buildEditPlan({ ...tainted, params: PARAMS, sceneFilters: true });
+  assert.match(JSON.stringify(allowed), /drawtext=textfile=\/etc\/passwd/, 'with sceneFilters: true they are read');
+}
+
 /* ---------- scenes of the kind "still" (WP44) ---------- */
 
 // A still is a picture that image.to_video moves (zoom or parallax): its clip is cut like a story clip. Every clip is found by the place the
@@ -915,6 +929,7 @@ async function probeAudioStreams(file) {
 
 (async () => {
   testEditUnchanged();
+  testSceneFiltersOptIn();
   testStills();
   testPieces();
   await testWithFfmpeg();

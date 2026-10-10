@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "event_type": "corporate",
+  "event_alias": null,
+  "mood": "fresh",
+  "length": 60,
+  "language": "de",
+  "values": {"tempo":0.55,"density":0.5,"warmth":0.45,"contrast":0.55,"saturation":0.6,"grain":0.1,"glow":0.3,"formality":0.75,"slowmo":0.1},
+  "transitions": {"cut":6,"match":2,"dip":1},
+  "genre": "modern corporate, clean electronic pop, piano and soft synth pads, light percussion, bright, uplifting, light and airy, major key",
+  "type": {"title":"Montserrat:700","body":"Inter Tight:500"},
+  "title_anim": "words_up",
+  "energy": {"hook":0.5,"arrival":0.55,"programme":0.6,"people":0.8,"peak":0.9,"close":0.5},
+  "soundbites": {"count":[1,2],"seconds":[4,7]},
+  "nat_level": 0.12
+}

@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "id": "mgl2x7k0-3fa901",
+  "kind": "video",
+  "usable": true,
+  "reason": null,
+  "meta": {"seconds":96.4,"width":3840,"height":2160,"fps":29.97,"rotation":0,"hdr":false,"has_audio":true,"taken_at":"2026-03-12T08:04:00Z"},
+  "scenes": [
+    {"i":0,"in":0,"out":31.2,"quality":4,"reasons":["ok"],"luma":0.42,"sharp":0.74,"shake":0.08,"motion":"static","faces":{"count":1,"x":0.48,"y":0.31,"size":0.04}},
+    {"i":1,"in":31.2,"out":70.5,"quality":5,"reasons":["ok"],"luma":0.46,"sharp":0.81,"shake":0.06,"motion":"static","faces":{"count":1,"x":0.44,"y":0.37,"size":0.11}},
+    {"i":2,"in":70.5,"out":96.4,"quality":4,"reasons":["ok"],"luma":0.4,"sharp":0.7,"shake":0.12,"motion":"pan_right","faces":{"count":4,"x":0.52,"y":0.55,"size":0.05}}
+  ],
+  "speech": {
+    "language": "de",
+    "words": [
+      {"w":"Guten","s":38.02,"e":38.34},
+      {"w":"Morgen","s":38.38,"e":38.75},
+      {"w":"zusammen.","s":38.79,"e":39.3},
+      {"w":"Willkommen","s":39.65,"e":40.2},
+      {"w":"zum","s":40.24,"e":40.48},
+      {"w":"Innovation","s":40.52,"e":41.07},
+      {"w":"Day","s":41.11,"e":41.35},
+      {"w":"2026.","s":41.39,"e":41.71},
+      {"w":"Heute","s":42.06,"e":42.38},
+      {"w":"zeigen","s":42.42,"e":42.79},
+      {"w":"wir,","s":42.83,"e":43.11},
+      {"w":"woran","s":43.15,"e":43.47},
+      {"w":"wir","s":43.51,"e":43.75},
+      {"w":"ein","s":43.79,"e":44.03},
+      {"w":"ganzes","s":44.07,"e":44.44},
+      {"w":"Jahr","s":44.48,"e":44.76},
+      {"w":"gearbeitet","s":44.8,"e":45.35},
+      {"w":"haben.","s":45.39,"e":45.76},
+      {"w":"Viel","s":46.11,"e":46.39},
+      {"w":"Spass","s":46.43,"e":46.75},
+      {"w":"heute!","s":46.79,"e":47.16}
+    ]
+  },
+  "vision": {
+    "subject": "keynote on stage, speaker at a lectern in front of a large screen",
+    "people": "2-5",
+    "faces_visible": true,
+    "emotion": "focused",
+    "action": "speech",
+    "framing": "wide",
+    "stage": true,
+    "text_in_image": ["Innovation Day 2026"],
+    "risk": [],
+    "fit": ["opener","speaker"],
+    "score": 5
+  }
+}
