@@ -7,9 +7,10 @@
 //                                            sections Intro / Verse / Chorus / Outro) and the times of audio.lyrics_timing (lines with words);
 //                                            `pace` scales the gaps between the lines
 //   FIGURE_TEXT                              a figure with the lines NAME, FULL, SHORT, LOOKS, NEVER and CREDIT
-//   goodAnswer(grid, figure, { mutate, short })  the answer of a model that did everything right for the grid (plates with the identity texts, rising
-//                                            counters, graphics that the layout can place); `mutate(answer)` may change it before it is returned;
-//                                            a figure without a SHORT form gets `short` as its "figure_short"
+//   goodAnswer(grid, figure, { mutate, short, brollShare })  the answer of a model that did everything right for the grid (plates with the placeholder
+//                                            [FIGURE], WP52a, B-roll on the units the code suggests that have a line, rising counters, graphics that the
+//                                            layout can place); `mutate(answer)` may change it before it is returned; a figure without a SHORT form gets
+//                                            `short` as its "figure_short"
 //   scriptedModel(steps)                     a double for `ask` of runPlanner: every call takes the next step (a string or object is the answer, an
 //                                            Error is thrown, a function is called with the request), and the requests are kept in `calls`
 
@@ -30,6 +31,8 @@ const FIGURE_TEXT = [
 ].join('\n');
 
 const round3 = (value) => Math.round(value * 1000) / 1000;
+// required lazily: the planner is what the tests check, the fixtures only ask it which units it suggests for B-roll
+const planner = () => require('../../lib/music-video-hud/plan');
 
 // A small seeded generator, so that the same seed gives the same song.
 function random(seed) {
@@ -141,25 +144,66 @@ function device(type, number, key, line) {
   }
 }
 
+// WP52a: the units of a good answer without the figure: the ones the code suggests that have a line (the image of a line is what they show), filled up with
+// other units that have a line to the share asked for, never more than three in a row.
+function brollUnits(grid, share) {
+  const plan = planner();
+  const open = grid.units.filter((unit) => unit.kind !== 'performance' && unit.index > 0);
+  const range = plan.brollRange(open.length, share);
+  const picked = new Set([...plan.suggestBroll(grid, share)].filter((index) => grid.units[index].lines.length));
+  const run = (index) => {
+    let length = 1;
+    for (let at = index - 1; picked.has(at); at -= 1) length += 1;
+    for (let at = index + 1; picked.has(at); at += 1) length += 1;
+    return length;
+  };
+  for (const unit of open) {
+    if (picked.size >= range.wanted) break;
+    if (unit.lines.length && !picked.has(unit.index) && run(unit.index) <= 2) picked.add(unit.index);
+  }
+  return picked;
+}
+
+// fourteen different pictures without the figure (the plates of B-roll must not be nearly the same)
+const BROLL_SCENES = [
+  'an explosion of glass shards', 'a flood of blue light through a street', 'a wall of flickering screens', 'a storm of sparks over roofs', 'rows of blank mannequins',
+  'a sky taken over by screens', 'a tunnel of rushing light', 'a field of floating lanterns', 'a server hall blooming with flowers', 'a burning paper moon',
+  'a river of neon signs', 'a tower with a thousand lit windows', 'falling confetti made of receipts', 'a lighthouse beam cutting fog'
+];
+const SMALL = new Set(['the', 'and', 'of', 'i']);
+
 // The answer of a model that did everything right for `grid` (hard to get right by chance, so it is made here from the grid and the figure).
-function goodAnswer(grid, figure, { mutate = null, short = 'a woman with short copper hair and a grey wool coat' } = {}) {
+function goodAnswer(grid, figure, { mutate = null, short = 'a woman with short copper hair and a grey wool coat', brollShare = planner().DEFAULT_BROLL_SHARE } = {}) {
   const sections = grid.sections.length;
   const rising = (first) => Array.from({ length: sections }, (_item, index) => Math.round(first * 3 ** index));
+  const broll = brollUnits(grid, brollShare);
   let sung = 0;
   let other = 0;
+  let without = 0;
   const units = grid.units.map((unit) => {
+    if (broll.has(unit.index)) {
+      const words = grid.lines[unit.lines[0]].words.map((word) => word.text).filter((word) => !SMALL.has(word.toLowerCase()));
+      const scene = BROLL_SCENES[without++ % BROLL_SCENES.length];
+      return {
+        index: unit.index,
+        framing: 'WS',
+        with_figure: false,
+        shows: words.slice(0, 2).join(' ') || grid.lines[unit.lines[0]].text,
+        plate: `WS, 24 mm lens, ${scene} for the words ${words.slice(0, 3).join(' ')}, scene number ${unit.index} in the chapter ${unit.section} set, photographic film still, cinematic light, natural colour, film grain, no text, no letters, no logos`,
+        motion: unit.kind === 'story' ? `Fast push-in as ${scene} bursts toward the lens, ending on a wide frame. No text, letters or logos.` : ''
+      };
+    }
     let framing;
     if (unit.index === 0) framing = 'CU';
     else if (unit.kind === 'performance') framing = CLOSE[sung++ % CLOSE.length];
     else framing = ['MS', 'MWS', 'WS', 'MCU', 'MS'][other++ % 5];
     const close = [...CLOSE, 'MS'].includes(framing);
-    const identity = close ? figure.full : figure.short || short;
     return {
       index: unit.index,
       framing,
       with_figure: true,
       subject: ['center', 'left', 'right'][unit.index % 3],
-      plate: `${framing}, ${close ? '85 mm' : '35 mm'} lens, ${identity}, chapter ${unit.section} look, scene number ${unit.index} at the place number ${unit.index * 7}, photographic film still, cinematic light, natural colour, film grain, no text, no letters, no logos`,
+      plate: `${framing}, ${close ? '85 mm' : '35 mm'} lens, [FIGURE], chapter ${unit.section} look, scene number ${unit.index} at the place number ${unit.index * 7}, photographic film still, cinematic light, natural colour, film grain, no text, no letters, no logos`,
       motion: unit.kind === 'story' ? `Slow push-in on scene ${unit.index}, ending on a steady frame, exactly one person. No text, letters or logos.` : ''
     };
   });
@@ -230,6 +274,8 @@ function scriptedModel(steps, { usd = 0.25 } = {}) {
     const step = steps[Math.min(calls.length - 1, steps.length - 1)];
     const value = typeof step === 'function' ? step(request) : step;
     if (value instanceof Error) throw value;
+    // { reply: { text, finishReason, usage, model, usd } }: the whole answer of the call (WP52a: an answer cut off at the limit of tokens)
+    if (value && typeof value === 'object' && value.reply) return { usd, ...value.reply };
     return { text: typeof value === 'string' ? value : JSON.stringify(value), usd };
   };
   return { ask, calls };

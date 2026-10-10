@@ -1092,7 +1092,9 @@
         if (cost) head.append(el('span', { class: 'nv-appstatus-cost', text: cost }));
         box.append(head);
         for (const [nodeId, info] of failed.slice(0, 3)) {
-          box.append(el('div', { class: 'nv-notice is-error' }, icon('warning', 14), el('span', { class: 'nv-notice-text', text: `${titleOf(nodeId)}: ${info.message || T('nodes.run.failedNode')}` })));
+          // an error with a code of its own (HUDPLAN_MODEL_FAILED: what the model delivered, what it cost, what to do) in the language of the interface
+          const message = info.code && ui.hasIssueText(info.code) ? ui.issueText({ code: info.code, data: info.data, message: info.message }, 'app') : info.message || T('nodes.run.failedNode');
+          box.append(el('div', { class: 'nv-notice is-error' }, icon('warning', 14), el('span', { class: 'nv-notice-text', text: `${titleOf(nodeId)}: ${message}` })));
         }
         if (run.error && !failed.length) box.append(el('div', { class: 'nv-notice is-error' }, icon('warning', 14), el('span', { class: 'nv-notice-text', text: run.error })));
       }

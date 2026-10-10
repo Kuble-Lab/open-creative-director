@@ -58,6 +58,18 @@ const gridOf = (name, extra = {}) => {
   return { song, grid: hudPlan.planGrid(song.analysis, song.timing, { ...SONGS[name].options, ...extra }) };
 };
 const figureOf = (text = FIGURE_TEXT) => hudPlan.parseFigure(text);
+// 1, 2, 3, 7, 8 -> "1 to 3, 7, 8" (as the planner lists indexes)
+function rangesOf(list) {
+  const sorted = [...new Set(list)].sort((a, b) => a - b);
+  const out = [];
+  for (let at = 0; at < sorted.length; at += 1) {
+    let end = at;
+    while (end + 1 < sorted.length && sorted[end + 1] === sorted[end] + 1) end += 1;
+    out.push(end > at + 1 ? `${sorted[at]} to ${sorted[end]}` : sorted.slice(at, end + 1).join(', '));
+    at = end;
+  }
+  return out.join(', ');
+}
 
 // The whole planner with a script for the model.
 async function plan(name, steps, extra = {}) {
@@ -76,7 +88,9 @@ async function plan(name, steps, extra = {}) {
     ask: model.ask,
     log: (line) => logs.push(line),
     prices: extra.prices || {},
-    fatal: extra.fatal
+    fatal: extra.fatal,
+    ...(extra.allowPlain ? { allowPlain: true } : {}),
+    ...(extra.brollShare !== undefined ? { brollShare: extra.brollShare } : {})
   });
   return { result, model, logs, song };
 }
@@ -105,22 +119,32 @@ function checkGrid(grid, song, label, { rate = true } = {}) {
   const fromUnits = grid.units.flatMap((unit) => unit.cuts);
   assert.deepEqual(fromUnits, grid.cuts, `${label}: the units hold the cuts in order`);
 
-  // the places of the cuts: beats and strong hits; only the start of a sung window may lie between, in a gap of the singing
+  // the places of the cuts: beats and strong hits; only the start of a sung window may lie between, in a gap of the singing (WP52a: and the end of a window
+  // that ends in a gap between two words, WORD_WINDOWS)
+  const wordWindows = grid.warnings.includes('WORD_WINDOWS');
   grid.cuts.forEach((cut, at) => {
     if (at === 0) return;
     if (onGrid(cut.start)) return;
     const unit = grid.units[cut.unit];
-    assert.ok(unit.kind === 'performance' && Math.abs(cut.start - unit.start) <= 1e-6, `${label}: cut ${at} at ${cut.start} s is not on a beat or a strong hit`);
-    assert.ok(!insideWord(cut.start), `${label}: the window of unit ${unit.index} starts inside a word`);
+    const before = at > 0 ? grid.units[grid.cuts[at - 1].unit] : null;
+    const windowEdge = (unit.kind === 'performance' && Math.abs(cut.start - unit.start) <= 1e-6) || (wordWindows && before && before.kind === 'performance' && Math.abs(cut.start - before.end) <= 1e-6);
+    assert.ok(windowEdge, `${label}: cut ${at} at ${cut.start} s is not on a beat or a strong hit`);
+    assert.ok(!insideWord(cut.start), `${label}: the window of unit ${unit.index} starts or ends inside a word`);
   });
-  // the sung windows: 5 to 8 s, whole lines, two or three cuts that zoom in and out
+  // the sung windows: 5 to 8 s with whole lines (WP52a: in a dense song up to 10 s, from a gap between two words to a gap), two to four cuts that zoom in and out;
+  // never a cut inside a word, never a word of a choir in a window
   const sung = grid.units.filter((unit) => unit.kind === 'performance');
   for (const unit of sung) {
-    assert.ok(unit.duration >= 5.05 - 0.002 && unit.duration <= 8 + 0.002, `${label}: unit ${unit.index} is sung for ${unit.duration} s`);
-    assert.ok(unit.cuts.length >= 2 && unit.cuts.length <= 3, `${label}: the sung unit ${unit.index} has ${unit.cuts.length} cuts`);
+    assert.ok(unit.duration >= 5.05 - 0.002 && unit.duration <= (wordWindows ? hudPlan.WINDOW_MAX_LONG : 8) + 0.002, `${label}: unit ${unit.index} is sung for ${unit.duration} s`);
+    assert.ok(unit.cuts.length >= 2 && unit.cuts.length <= (unit.duration >= 9 ? 4 : 3), `${label}: the sung unit ${unit.index} has ${unit.cuts.length} cuts`);
     assert.ok(unit.cuts.every((cut) => cut.zoom === 1 || cut.zoom === 1.35), `${label}: zoom of the cuts of unit ${unit.index}`);
     assert.equal(unit.cuts[0].zoom, 1, `${label}: a window starts wide`);
     assert.ok(unit.lines.length >= 1, `${label}: a window holds lines`);
+    for (const edge of [unit.start, unit.end]) assert.ok(!insideWord(edge), `${label}: an edge of unit ${unit.index} at ${edge} s lies inside a word`);
+    for (const line of grid.lines.filter((item) => item.voice === 'choir')) {
+      assert.ok(line.words.every((word) => word.end <= unit.start + 0.002 || word.start >= unit.end - 0.002), `${label}: a word of the choir line ${line.index} is in unit ${unit.index}`);
+    }
+    if (wordWindows) continue;
     for (const index of unit.lines) {
       const line = grid.lines[index];
       assert.ok(line.words[0].start >= unit.start - 0.002 && line.words[line.words.length - 1].end <= unit.end + 0.002, `${label}: line ${index} is whole inside unit ${unit.index}`);
@@ -331,7 +355,7 @@ function testPrompts() {
   // the message to the model
   const user = hudPlan.userPrompt({ brief: 'A film about a light', style: 'analog 16 mm', figure, grid });
   assert.ok(!/\{\{|\}\}/.test(user));
-  assert.match(user, /^IDEA\nA film about a light\n\nSTYLE\nanalog 16 mm\n\nFIGURE \(identity text; use the forms verbatim\)\nNAME: Mira\nFULL: a 30-year-old woman/);
+  assert.match(user, /^IDEA\nA film about a light\n\nSTYLE\nanalog 16 mm\n\nFIGURE \(identity text; the code puts it in for \[FIGURE\]\)\nNAME: Mira\nFULL: a 30-year-old woman/);
   assert.ok(user.includes(`SHORT: ${figure.short}`) && user.includes('LOOKS: a different coat colour for every chapter'), 'the forms and the notes of the figure');
   assert.ok(!user.includes('CREDIT:'), 'the credit line is for the end card only');
   assert.match(user, /duration 72 s, about 120 BPM, lyrics language English/);
@@ -341,7 +365,14 @@ function testPrompts() {
   assert.match(user, /sections:\n0 intro 0\.0-/);
   for (const section of grid.sections) assert.match(user, new RegExp(`^${section.index} .* energy (low|medium|high)$`, 'm'));
   for (const line of grid.lines) assert.match(user, new RegExp(`^${line.index} \\| \\d+\\.\\d-\\d+\\.\\d s \\| .* \\| 0:${line.words[0].text}`, 'm'));
-  for (const unit of grid.units) assert.match(user, new RegExp(`^${unit.index} \\| ${unit.kind} \\| \\d+\\.\\d-\\d+\\.\\d s \\| lines (-|[\\d,]+) \\| cuts ${unit.cuts.length} \\| chapter ${unit.section}$`, 'm'));
+  for (const unit of grid.units) assert.match(user, new RegExp(`^${unit.index} \\| ${unit.kind} \\| \\d+\\.\\d-\\d+\\.\\d s \\| lines (-|[\\d,]+) \\| cuts ${unit.cuts.length} \\| chapter ${unit.section}( \\| drop)?$`, 'm'));
+  // WP52a: the units the code suggests for B-roll are marked, and the note above the list says what the mark means
+  const broll = hudPlan.suggestBroll(grid);
+  const marked = hudPlan.userPrompt({ brief: 'x', style: '', figure, grid, broll });
+  assert.ok(broll.size >= 4, `${broll.size} units suggested`);
+  for (const unit of grid.units) assert.equal(new RegExp(`^${unit.index} \\| .* \\| b-roll$`, 'm').test(marked), broll.has(unit.index), `unit ${unit.index}: marked as suggested`);
+  assert.match(marked, /^UNITS \(already cut on the beat by the code; one plate per unit; "b-roll": suggested for a picture without the figure\)$/m);
+  assert.ok(!/b-roll/.test(user), 'without a suggestion no mark');
   assert.ok(user.endsWith('Return the JSON object now.'));
   assert.match(hudPlan.userPrompt({ brief: 'x', style: '', figure, grid }), /STYLE\n\(none given\)/);
   assert.match(hudPlan.userPrompt({ brief: 'x', style: '', figure: figureOf('a woman with a red coat'), grid }), /FULL: a woman with a red coat\nSHORT: \(none given: write it yourself/);
@@ -451,27 +482,81 @@ function testAnswer() {
   assert.ok(read(goodAnswer(grid, figure, { mutate: (a) => { a.hud.title = 'A TITLE THAT IS MUCH TOO LONG FOR THE FRAME'; } })).content.hud.title.length <= 22, 'cut to the limit');
   only((a) => { a.chapters = a.chapters.slice(0, 2); }, /^chapters: needs one entry for each of the 6 sections \(sections 2 to 5 are missing\)$/);
   only((a) => { delete a.treatment; }, /^treatment: missing$/);
-  // the share of the figure and the hook
-  has(problemsOf((a) => { a.units.forEach((unit, at) => { if (grid.units[at].kind !== 'performance') unit.with_figure = false; }); }), /^the figure is on the screen for only \d+% of the film, at least 70% are needed: put the figure into more story and still units \(for example units [\d, ]+;/);
+  // the share of the figure, the B-roll (WP52a) and the hook
+  const open = grid.units.filter((unit) => unit.kind !== 'performance' && unit.index > 0);
+  const lineWords = (unit) => (unit.lines.length ? grid.lines[unit.lines[0]].text : '');
+  const asBroll = (entry, unit, scene) => Object.assign(entry, { with_figure: false, framing: 'WS', shows: lineWords(unit) || 'light', plate: `WS, 24 mm lens, ${scene}, photographic film still, cinematic light, natural colour, film grain, no text, no letters, no logos` });
+  const brollOf = (answer) => answer.units.filter((unit) => unit.with_figure === false).map((unit) => unit.index);
+  assert.ok(brollOf(good()).length >= hudPlan.brollRange(open.length, hudPlan.DEFAULT_BROLL_SHARE).min, 'the good answer has its B-roll');
+  // too much B-roll: every unit with a line without the figure
+  const tooMuch = problemsOf((a) => { open.filter((unit) => unit.lines.length).forEach((unit, at) => asBroll(a.units[unit.index], unit, `a picture of the words ${lineWords(unit)} number ${at}`)); });
+  has(tooMuch, new RegExp(`^\\d+ of the ${open.length} story and still units show no figure, at most \\d+: put the figure back into some of them \\(for example units [\\d, ]+\\)$`));
+  // four in a row (units 1 to 4: no sung unit between them)
+  assert.ok([1, 2, 3, 4].every((at) => grid.units[at].kind !== 'performance'));
+  has(problemsOf((a) => { for (const at of [1, 2, 3, 4]) asBroll(a.units[at], grid.units[at], ['a burning moon', 'a flood of neon', 'rows of mannequins', 'a sky of screens'][at - 1]); }), /^units 1 to \d+: \d+ units without the figure in a row, at most 3: put the figure into one of them$/);
+  // too little: every unit with the figure
+  const tooLittle = problemsOf((a) => { a.units.forEach((unit) => { if (unit.with_figure === false) Object.assign(unit, { with_figure: true, framing: 'MS', subject: 'left', plate: `MS, 35 mm lens, [FIGURE], scene ${unit.index}, photographic film still, cinematic light, natural colour, film grain, no text, no letters, no logos` }); }); });
+  assert.deepEqual(tooLittle, [`only 0 of the ${open.length} story and still units show no figure, at least ${hudPlan.brollRange(open.length, 0.35).min} are needed (about 35%, B-roll): show the image of their line without the figure in more of them (for example units ${[...hudPlan.suggestBroll(grid)].sort((x, y) => x - y).slice(0, 6).join(', ')})`]);
+  // the figure on the screen: at least 55% of the film
+  has(problemsOf((a) => { a.units.forEach((unit, at) => { if (grid.units[at].kind !== 'performance') unit.with_figure = false; }); }), /^the figure is on the screen for only \d+% of the film, at least 55% are needed: put the figure into more story and still units \(for example units [\d, ]+;/);
+  // a unit without the figure: "shows" names words that are sung there, the plate has no figure, no two pictures are nearly the same
+  const brollAt = brollOf(good())[0];
+  const brollUnit = grid.units[brollAt];
+  const unmatched = good();
+  unmatched.units[brollAt].shows = 'purple elephants';
+  assert.deepEqual(read(unmatched).problems, []);
+  assert.ok(read(unmatched).notes.some((note) => /has no lexical match/.test(note)));
+  only((a) => { delete a.units[brollAt].shows; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): "shows" is missing: give the words of the line whose image it shows`));
+  only((a) => { a.units[brollAt].shows = 'of the and'; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): "shows" \\(«of the and»\\) names no image`));
+  only((a) => { a.units[brollAt].plate = `WS, [FIGURE] in ${a.units[brollAt].plate}`; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): the plate has \\[FIGURE\\] although the unit has no figure`));
+  only((a) => { a.units[brollAt].plate = `${a.units[brollAt].plate}, ${figure.short}`; }, new RegExp(`^unit ${brollAt} \\(.*no figure\\): the plate describes the figure although the unit has none`));
+  only((a) => { a.units[brollAt].plate = `${a.units[brollAt].plate}, Mira on a balcony`; }, /the plate describes the figure although the unit has none/);
+  const [first, second] = brollOf(good());
+  only((a) => { a.units[second].plate = a.units[first].plate.replace('24 mm', '28 mm'); a.units[second].shows = a.units[second].shows; }, new RegExp(`^units ${first} and ${second}: the two pictures without the figure are nearly the same, show a different image in each$`));
+  // no B-roll asked for (broll_share 0): every unit shows the figure
+  const none = hudPlan.readAnswer(JSON.stringify(good()), { grid, figure, brollShare: 0 }).problems;
+  assert.equal(none.length, 1);
+  assert.match(none[0], new RegExp(`^units ${rangesOf(brollOf(good()))}: this film has no pictures without the figure, put her into them \\("with_figure": true\\)$`));
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify(goodAnswer(grid, figure, { brollShare: 0 })), { grid, figure, brollShare: 0 }).problems, [], 'an answer without B-roll for a film without B-roll');
   const sings = read(goodAnswer(grid, figure, { mutate: (a) => { a.units[grid.units.findIndex((unit) => unit.kind === 'performance')].with_figure = false; } }));
   assert.ok(sings.notes.some((note) => /^unit \d+ sings, so the figure is in it$/.test(note)), 'a note, not a problem');
   assert.equal(sings.content.units[grid.units.findIndex((unit) => unit.kind === 'performance')].withFigure, true);
-  only((a) => { a.units[0].framing = 'WS'; a.units[0].plate = a.units[0].plate.replace(figure.full, figure.short).replace('CU,', 'WS,'); }, /^unit 0 \(the hook\): must be a close portrait of the figure \(framing ECU, CU or MCU, "with_figure": true\), not WS$/);
+  only((a) => { a.units[0].framing = 'WS'; a.units[0].plate = a.units[0].plate.replace('CU,', 'WS,'); }, /^unit 0 \(the hook\): must be a close portrait of the figure \(framing ECU, CU or MCU, "with_figure": true\), not WS$/);
   const sungAt = grid.units.findIndex((unit) => unit.kind === 'performance');
-  has(problemsOf((a) => { a.units[sungAt].framing = 'WS'; a.units[sungAt].plate = a.units[sungAt].plate.replace(figure.full, figure.short); }), new RegExp(`^unit ${sungAt} \\(sung\\): the face and the whole mouth must be big enough to see: framing ECU, CU, MCU or MS, not WS$`));
+  has(problemsOf((a) => { a.units[sungAt].framing = 'WS'; }), new RegExp(`^unit ${sungAt} \\(sung\\): the face and the whole mouth must be big enough to see: framing ECU, CU, MCU or MS, not WS$`));
   has(problemsOf((a) => { a.units[2].framing = 'closeup'; }), /^unit 2: "framing" has to be one of ECU, CU, MCU, MS, MWS, WS, FS, EWS, OTS$/);
   // the plates
-  has(problemsOf((a) => { a.units[4].plate = a.units[3].plate; }), /^units 3 and 4: the plates are identical, write a different picture for each unit$/);
-  has(problemsOf((a) => { a.units[0].plate = a.units[0].plate.replace(figure.full, 'a person'); }), /^unit 0 \(CU, still\): the plate must contain the full identity text of the figure verbatim$/);
-  const wide = grid.units.findIndex((unit, at) => at > 0 && ['MWS', 'WS'].includes(goodAnswer(grid, figure).units[at].framing));
+  has(problemsOf((a) => { a.units[3].plate = a.units[2].plate; }), /^units 2 and 3: the plates are identical, write a different picture for each unit$/);
+  // WP52a: the identity text comes from the code: [FIGURE] becomes the full form up to MS and the short form from MWS on; a plate that holds the right form is
+  // taken as it is, one with the other form gets the right one, one without any gets it after the framing (notes, no problem)
+  const placed = read(good());
+  placed.content.units.forEach((unit, at) => {
+    if (!unit.withFigure) return assert.ok(!unit.plate.includes(figure.short) && !unit.plate.includes('[FIGURE]'), `unit ${at}: no figure`);
+    const close = ['ECU', 'CU', 'MCU', 'MS'].includes(unit.framing);
+    assert.ok(unit.plate.includes(close ? figure.full : figure.short) && !unit.plate.includes('[FIGURE]'), `unit ${at}: the ${close ? 'full' : 'short'} form`);
+    if (!close) assert.ok(!unit.plate.includes(figure.full), `unit ${at}: not the full form`);
+  });
+  const verbatim = read(goodAnswer(grid, figure, { mutate: (a) => { a.units[0].plate = a.units[0].plate.replace('[FIGURE]', figure.full); } }));
+  assert.deepEqual([verbatim.problems, verbatim.notes], [[], []], 'the full form verbatim, as before');
+  assert.equal(verbatim.content.units[0].plate, placed.content.units[0].plate);
+  const forgotten = read(goodAnswer(grid, figure, { mutate: (a) => { a.units[0].plate = a.units[0].plate.replace('[FIGURE], ', ''); } }));
+  assert.deepEqual(forgotten.problems, []);
+  assert.deepEqual(forgotten.notes, ['unit 0: "[FIGURE]" was missing: the identity text was put in after the framing']);
+  assert.ok(forgotten.content.units[0].plate.startsWith(`CU, 85 mm lens, ${figure.full.replace(/[.;:,\s]+$/, '')}, chapter 0 look`), forgotten.content.units[0].plate);
+  const wide = grid.units.findIndex((unit, at) => at > 0 && good().units[at].with_figure && ['MWS', 'WS'].includes(good().units[at].framing));
   assert.ok(wide > 0);
-  has(problemsOf((a) => { a.units[wide].plate = a.units[wide].plate.replace(figure.short, figure.full); }), new RegExp(`^unit ${wide} \\((MWS|WS), (story|still)\\): the plate must contain the short identity text of the figure verbatim$`));
+  const swapped = read(goodAnswer(grid, figure, { mutate: (a) => { a.units[wide].plate = a.units[wide].plate.replace('[FIGURE]', figure.full); } }));
+  assert.deepEqual(swapped.problems, []);
+  assert.deepEqual(swapped.notes, [`unit ${wide}: the short identity text was put in for the full one`]);
+  assert.ok(swapped.content.units[wide].plate.includes(figure.short) && !swapped.content.units[wide].plate.includes(figure.full));
+  const twice = read(goodAnswer(grid, figure, { mutate: (a) => { a.units[0].plate = a.units[0].plate.replace('[FIGURE]', '[FIGURE] beside [figure]'); } }));
+  assert.ok(twice.content.units[0].plate.includes(`${figure.full} beside the same person`), 'a second placeholder is the same person, never a second figure');
   has(problemsOf((a) => { a.units[3].plate = `${a.units[3].plate}, a young woman`; }), /^unit 3 \(.*\): the plate has the word "young"$/);
   assert.deepEqual(problemsOf((a) => { a.units[3].plate = `${a.units[3].plate}, a young woman`; }, read(good()).ok ? figureOf(`${FIGURE_TEXT.replace('a 30-year-old woman', 'a young woman')}`) : figure), [], 'a figure that is described as young may use the word');
-  has(problemsOf((a) => { a.units[3].plate = 'x'.repeat(1600); }), /^unit 3 \(.*\): the plate has 1600 characters, at most 1500$/);
+  has(problemsOf((a) => { a.units[3].plate = 'x'.repeat(1600); }), /^unit 3 \(.*\): the plate has \d+ characters with the identity text, at most 1500$/);
   has(problemsOf((a) => { a.units[3].plate = ''; }), /^unit 3 \(.*\): the plate is missing$/);
   const storyAt = grid.units.findIndex((unit) => unit.kind === 'story');
-  only((a) => { a.units[storyAt].motion = ''; }, new RegExp(`^unit ${storyAt} \\(.*story\\): the motion prompt is missing$`));
+  only((a) => { a.units[storyAt].motion = ''; }, new RegExp(`^unit ${storyAt} \\(.*story(, no figure)?\\): the motion prompt is missing$`));
   has(problemsOf((a) => { a.units[storyAt].motion = 'A young man walks. No text, letters or logos.'; }), /the motion prompt has the word "young"/);
   only((a) => { a.treatment = 'A young woman and a light.'; }, /^treatment: has the word "young"$/);
   // what the code adds: the ending that keeps text out of the picture
@@ -537,11 +622,22 @@ function testPlain() {
   assert.equal(fallbacks.chapters.length, grid.sections.length);
   assert.equal(fallbacks.hud, true);
   assert.equal(fallbacks.treatment, true);
-  // the plain plates: framing, identity text by the framing, the action, the ending that keeps text out
+  // the plain plates: framing, identity text by the framing, the action, the ending that keeps text out; WP52a: the units the code suggests for B-roll are
+  // plain pictures without the figure (wide, the image words of the line, a hard move)
   const kinds = grid.units.map((unit) => unit.kind);
+  const suggested = hudPlan.suggestBroll(grid);
+  assert.ok(suggested.size >= 4, `${suggested.size} units without the figure`);
   content.units.forEach((unit, at) => {
     assert.ok(unit.plate.length <= planLib.MAX_PROMPT_CHARS && unit.plate.endsWith('no text, no letters, no logos'), `plate ${at}`);
     assert.ok(unit.plate.startsWith(`${unit.framing}, `), `plate ${at} starts with its framing`);
+    if (suggested.has(at)) {
+      assert.deepEqual([unit.withFigure, unit.framing], [false, 'WS'], `plate ${at}: B-roll`);
+      assert.ok(unit.plate.startsWith('WS, 24 mm lens, no people, ') && !unit.plate.includes(figure.short) && !/mira/i.test(unit.plate), unit.plate);
+      const words = grid.units[at].lines.length ? grid.lines[grid.units[at].lines[0]].text.split(' ').filter((word) => word.length >= 4) : [];
+      if (words.length) assert.ok(words.some((word) => unit.plate.includes(word.toLowerCase())), `plate ${at} shows its line: ${unit.plate}`);
+      if (kinds[at] === 'story') assert.match(unit.motion, /^(Fast|Rapid) .* No text, letters or logos\.$/);
+      return;
+    }
     assert.ok(unit.plate.includes(['ECU', 'CU', 'MCU', 'MS'].includes(unit.framing) ? figure.full : figure.short), `plate ${at} holds its identity text`);
     assert.equal(unit.withFigure, true);
     assert.ok(['left', 'center', 'right'].includes(unit.subject));
@@ -551,6 +647,17 @@ function testPlain() {
   });
   assert.equal(content.units[0].framing, 'CU', 'the hook is a close portrait');
   assert.equal(new Set(content.units.map((unit) => unit.plate)).size, content.units.length, 'no plate twice');
+  // the plain plan passes the checks of B-roll (share, runs, no plate twice)
+  const checked = hudPlan.readData({ units: content.units.map((unit, index) => ({ index, framing: unit.framing, with_figure: unit.withFigure, subject: unit.subject, plate: unit.plate, motion: unit.motion, shows: unit.shows })) }, { grid, figure, brief: 'A film about a light that stays on' });
+  assert.deepEqual(checked.problems.filter((problem) => /without the figure|show no figure|on the screen|identical|nearly the same/.test(problem)), []);
+  // a metaphor of the lyrics is never a picture: no needle, vein or blood, and never the name of the figure, in a plain picture without the figure
+  const dark = JSON.parse(JSON.stringify(grid));
+  const brollLine = [...suggested].map((at) => dark.units[at]).find((unit) => unit.lines.length);
+  dark.lines[brollLine.lines[0]].text = 'Mira threads the net like a needle through a vein of blood and poison';
+  const darkPlate = hudPlan.completeContent(null, { grid: dark, figure, brief: 'x', theme: 'hud' }).content.units[brollLine.index].plate;
+  assert.ok(!/needle|vein|blood|poison|mira/i.test(darkPlate) && /threads/.test(darkPlate), darkPlate);
+  // no B-roll asked for: every plain unit shows the figure
+  assert.ok(hudPlan.completeContent(null, { grid, figure, brief: 'x', theme: 'hud', broll: new Set() }).content.units.every((unit) => unit.withFigure));
   // the plain chapters and HUD
   assert.deepEqual(content.chapters.map((chapter) => chapter.name), ['INTRO', 'VERSE I', 'CHORUS I', 'VERSE II', 'CHORUS II', 'OUTRO']);
   assert.equal(content.hud.title, 'FILM LIGHT STAYS', 'the first words of the brief that say something');
@@ -595,7 +702,8 @@ function testPlain() {
   assert.equal(mixed.fallbacks.hud, true);
   assert.equal(mixed.fallbacks.chapters.length, 0);
   assert.equal(mixed.fallbacks.treatment, false);
-  assert.equal(mixed.content.units[2].plate, half.units[2].plate, 'a unit that was answered stays');
+  assert.equal(mixed.content.units[2].plate, read.content.units[2].plate, 'a unit that was answered stays');
+  assert.ok(mixed.content.units[2].plate.includes(figure.full) || mixed.content.units[2].plate.includes(figure.short), 'with the identity text the code put in');
   assert.equal(mixed.content.chapters[3].name, half.chapters[3].name);
   assert.equal(mixed.content.treatment, half.treatment);
 }
@@ -620,11 +728,18 @@ async function testPlanner() {
     assert.equal(model.calls.length, 1);
     const request = model.calls[0];
     assert.equal(request.json, true);
-    assert.equal(request.maxTokens, 32000, 'the biggest film leaves room for thinking (see the comment at PLAN_MAX_TOKENS)');
-    assert.equal(hudPlan.PLAN_MAX_TOKENS, 32000);
-    assert.ok(!('reasoningEffort' in request), 'the first request thinks as the model likes');
+    // WP52a: room for the thinking and the whole answer (see the comment at PLAN_MAX_TOKENS), and a medium effort
+    assert.equal(request.maxTokens, 64000, 'the biggest film leaves room for thinking and text');
+    assert.equal(hudPlan.PLAN_MAX_TOKENS, 64000);
+    assert.equal(request.reasoningEffort, 'medium');
+    assert.equal(hudPlan.PLAN_REASONING_EFFORT, 'medium');
     assert.equal(request.system, hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false }));
-    assert.equal(request.prompt, hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid }));
+    assert.equal(request.prompt, hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }));
+    assert.match(request.prompt, /\| b-roll$/m, 'the suggestion of the code goes to the model');
+    assert.deepEqual(result.broll, [...hudPlan.suggestBroll(grid)].sort((a, b) => a - b));
+    assert.equal(result.plain, false);
+    assert.deepEqual(result.tries.map((record) => [record.attempt, record.finish, record.effort]), [[1, 'complete', 'medium']]);
+    assert.match(result.board, /^MODEL {6}the language model · try 1: effort medium, limit 64,000 tokens, complete, 0\.25 USD$/m);
     assert.equal(result.attempts, 1);
     assert.deepEqual(result.costs, [0.25]);
     checkPlanClean(result, 'good');
@@ -632,7 +747,7 @@ async function testPlanner() {
     assert.deepEqual(result.notes, []);
     assert.equal(result.plan.shots.shots.length, grid.units.length);
     assert.equal(result.sheetPrompt, hudPlan.sheetPrompt(figure));
-    assert.equal(result.effort, null);
+    assert.equal(result.effort, 'medium');
     // the style and the language go to the model
     const kuble = await plan('s72', [good()], { theme: 'kuble', hudLanguage: 'de' });
     assert.equal(kuble.model.calls[0].system, hudPlan.systemPrompt({ theme: 'kuble', hudLanguage: 'de', needShort: false }));
@@ -654,8 +769,8 @@ async function testPlanner() {
     assert.ok(second.prompt.includes('- units: units 10 to 21 have no entry') && second.prompt.includes('- line 0: needs 1 to 3 graphics (has 5)'));
     assert.ok(second.prompt.includes(`YOUR PREVIOUS ANSWER\n${JSON.stringify(bad)}`), 'the previous answer is in the request');
     assert.equal(second.system, model.calls[0].system, 'the same instructions');
-    assert.equal(second.maxTokens, 32000);
-    assert.ok(!('reasoningEffort' in second), 'a wrong answer is not an empty one: the same thinking');
+    assert.equal(second.maxTokens, 64000);
+    assert.equal(second.reasoningEffort, 'medium', 'a wrong answer is not an empty one: the same thinking');
     assert.equal(result.attempts, 2);
     assert.deepEqual(result.costs, [0.25, 0.25]);
     checkPlanClean(result, 'second answer');
@@ -702,7 +817,7 @@ async function testPlanner() {
   {
     const { result, model, logs } = await plan('s72', [emptyAnswer('length'), good()]);
     assert.equal(model.calls.length, 2);
-    assert.ok(!('reasoningEffort' in model.calls[0]));
+    assert.equal(model.calls[0].reasoningEffort, 'medium');
     assert.equal(model.calls[1].reasoningEffort, 'low');
     assert.equal(hudPlan.RETRY_REASONING_EFFORT, 'low');
     assert.equal(model.calls[1].prompt, model.calls[0].prompt, 'the same request: there was no answer to talk about');
@@ -711,26 +826,37 @@ async function testPlanner() {
     assert.equal(result.effort, 'low');
     checkPlanClean(result, 'after an empty answer');
     assert.match(logs[0], /^Attempt 1 of 2: the language model wrote nothing/);
-    assert.match(logs[1], /^The model thought until the limit of 32000 tokens and wrote nothing: the next try thinks less \(effort low\)\.$/);
+    assert.match(logs[1], /^The model thought until the limit of 64000 tokens and wrote nothing: the next try thinks less \(effort low\)\.$/);
+    assert.match(result.board, /^MODEL {6}the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.90 USD · try 2: effort low, limit 64,000 tokens, complete, 0\.25 USD$/m);
     const other = await plan('s72', [emptyAnswer('stop', null), good()]);
-    assert.ok(!('reasoningEffort' in other.model.calls[1]), 'an empty answer for another reason: the same thinking');
+    assert.equal(other.model.calls[1].reasoningEffort, 'medium', 'an empty answer for another reason: the same thinking');
     assert.deepEqual(other.result.costs, [0.25], 'an empty answer without a reported cost adds none');
   }
 
-  /* nothing usable twice: the film is made of plain values, and every empty answer is counted */
+  /* nothing usable twice: WP52a, the node stops (HUDPLAN_MODEL_FAILED) and the expensive nodes behind it do not run; with "Allow a plain plan" the film is made of
+     plain values as before, and every empty answer is counted */
   {
-    const { result, model, logs } = await plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7)]);
+    const failed = await errorOf(plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7)]));
+    assert.equal(failed && failed.code, 'HUDPLAN_MODEL_FAILED');
+    assert.deepEqual(failed.costs, [0.9, 0.7]);
+    assert.deepEqual(failed.data, { attempts: 2, usd: '1.60', plainUnits: grid.units.length, units: grid.units.length, plainLines: grid.lines.length, lines: grid.lines.length, tokens: 0, thinking: 0, limit: 64000, cut: false, model: '' });
+    assert.match(failed.message, /^The language model delivered no usable plan in 2 attempts \(empty answer; the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.90 USD · try 2: effort low, limit 64,000 tokens, empty, 0\.70 USD\): 22 of 22 units and 15 of 15 lines would be plain, 1\.60 USD were paid\. Run the node again, choose another model, or switch on "Allow a plain plan"/);
+    assert.equal((await errorOf(plan('s72', ['not json', 'still not json']))).code, 'HUDPLAN_MODEL_FAILED', 'two answers that are no objects');
+    const { result, model, logs } = await plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7)], { allowPlain: true });
     assert.equal(model.calls.length, 2);
+    assert.equal(result.plain, true);
     assert.deepEqual(result.costs, [0.9, 0.7]);
     assert.equal(result.attempts, 0);
     assert.equal(result.fallbacks.units.length, grid.units.length);
     assert.equal(result.fallbacks.lines.length, grid.lines.length);
     assert.equal(result.fallbacks.hud, true);
-    assert.ok(logs.some((line) => /delivered no usable answer: the plates, the graphics and the HUD values are plain ones/.test(line)));
+    assert.ok(logs.some((line) => /delivered no usable answer: the plates, the graphics and the HUD values are plain ones \(allowed by "Allow a plain plan"\)/.test(line)));
     assert.equal(result.plan.shots.shots.length, grid.units.length);
     assert.equal(result.plan.graphics.cuts.length, grid.cuts.length);
-    assert.match(result.board, /^PLAIN {6}made without the language model: 22 plates, 15 lines of graphics, the HUD values, 6 chapter names$/m);
-    const text = await plan('s72', ['not json', 'still not json']);
+    assert.match(result.board, /^PLAIN {6}made without the language model: 22 plates \(units 0 to 21\), 15 lines of graphics \(lines 0 to 14\), the HUD values, 6 chapter names, no treatment \(a plain plan, allowed by "Allow a plain plan"\)$/m);
+    // the plain plan has its B-roll too
+    assert.ok(result.content.units.some((unit) => !unit.withFigure) && result.content.units[0].withFigure);
+    const text = await plan('s72', ['not json', 'still not json'], { allowPlain: true });
     assert.equal(text.result.fallbacks.units.length, grid.units.length, 'two answers that are no objects');
     assert.equal(text.result.attempts, 2);
     assert.deepEqual(text.result.costs, [0.25, 0.25]);
@@ -742,11 +868,11 @@ async function testPlanner() {
     const first = await errorOf(plan('s72', [down]));
     assert.equal(first, down, 'the error of the first request ends the node');
     const bad = good();
-    bad.units = bad.units.slice(0, 12);
+    bad.units = bad.units.slice(0, 18);
     const { result, model, logs } = await plan('s72', [bad, down]);
     assert.equal(model.calls.length, 2);
     assert.equal(result.attempts, 1);
-    assert.deepEqual(result.fallbacks.units, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
+    assert.deepEqual(result.fallbacks.units, [18, 19, 20, 21]);
     assert.ok(logs.some((line) => /^The second request to the language model failed \(The language model is down\): the first answer is used\.$/.test(line)), logs.join(' | '));
     // the end of the run, a budget that is used up: always ends the node
     const budget = Object.assign(new Error('The budget is used up'), { name: 'BudgetError' });
@@ -771,7 +897,7 @@ async function testPlanner() {
     assert.equal(result.figure.credit, 'Mira by the test lab (example.org)');
   }
 
-  /* the layout is part of the answer: a graphic that cannot stand beside the face is told to the model, with the room and what would fit */
+  /* a small layout loss is a board and log note, with no second paid request */
   {
     const unitOfLine = (line) => grid.units.find((unit) => line.words[0].start >= unit.start - 1e-6 && line.words[0].start < unit.end - 1e-6).index;
     const entries = goodAnswer(grid, figure).units;
@@ -786,27 +912,373 @@ async function testPlanner() {
       }
     });
     const { result, model } = await plan('s72', [bad, good()]);
-    assert.equal(model.calls.length, 2, 'the layout found a graphic without room');
-    const told = model.calls[1].prompt;
-    const room = hudPlan.freeLanes({ framing: entries[at].framing, subject: 'center' }).left;
-    const sentenceText = `line ${target.index}: the chart \\(about \\d+ px wide\\) does not fit beside the face in unit ${at} \\(${entries[at].framing}, figure center: ${room} px are free\\): choose a smaller type \\((\\w+(, \\w+)*)\\), or put the figure at the left or right of the picture in unit ${at} \\("subject"\\), or make unit ${at} wider \\(MS or more\\)`;
-    const sentence = new RegExp(`^${sentenceText}$`);
-    assert.match(told, new RegExp(`- ${sentenceText}`));
-    const fits = new RegExp(sentenceText).exec(told)[1].split(', ');
-    const sizes = hudPlan.typicalSizes('hud');
-    assert.ok(fits.length >= 2 && fits.every((type) => sizes[type].w <= room / (graphicsLib.MIN_SCALE[type] || 1)), `what is suggested fits: ${fits}`);
-    checkPlanClean(result, 'after the layout told');
-    // the same answer twice: the graphic stays without room, it is listed on the board and in the problems, and the film is made all the same
+    assert.equal(model.calls.length, 1, 'a small layout loss is a note, with no second request');
+    const sentence = new RegExp(`^line ${target.index}: the chart .*does not fit beside the face`);
+    assert.ok(result.notes.some((note) => sentence.test(note)));
+    assert.ok(result.board.includes('NOTE       line '));
+    // the graphic stays without room and is listed on the board and in the notes
     const stuck = await plan('s72', [bad]);
-    assert.equal(stuck.model.calls.length, 2);
+    assert.equal(stuck.model.calls.length, 1);
     assert.equal(stuck.result.leftOut.length, 1);
     assert.deepEqual(stuck.result.leftOut[0], { id: `g${target.index}a`, line: target.index, key: 0, type: 'chart', unit: at });
-    assert.equal(stuck.result.problems.length, 1);
-    assert.match(stuck.result.problems[0], sentence);
+    assert.equal(stuck.result.problems.length, 0);
+    assert.ok(stuck.result.notes.some((note) => sentence.test(note)));
     assert.match(stuck.result.board, new RegExp(`^LEFT OUT {3}1 graphic found no place beside the face and is not drawn: chart on line ${target.index} \\(unit ${at}\\)$`, 'm'));
     assert.equal(stuck.result.plan.shots.shots.length, grid.units.length);
     assert.equal(stuck.result.plan.graphics.graphics.length, graphicsLib.prepareGraphics(stuck.result.plan.graphics, {}).graphics.devices.length + 1, 'the renderer leaves out the one that has no room');
   }
+}
+
+/* ---------- WP52a: an answer cut off at the limit of tokens, no silent plain plan, dense songs ---------- */
+
+// The JSON of a good answer, cut off inside the unit `index` (as an answer that reached the limit of tokens ends).
+function cutInsideUnit(answer, index) {
+  const text = JSON.stringify(answer, null, 2);
+  const units = text.indexOf('"units": [');
+  const at = text.indexOf(`"index": ${index},`, units);
+  assert.ok(units > 0 && at > units, `unit ${index} in the answer`);
+  return text.slice(0, at + 30);
+}
+const CUT_USAGE = { completion_tokens: 64000, completion_tokens_details: { reasoning_tokens: 41000 } };
+
+async function testRescue() {
+  const { grid } = gridOf('s72');
+  const figure = figureOf();
+  const full = goodAnswer(grid, figure);
+  const whole = JSON.stringify(full, null, 2);
+
+  /* salvageJson: the complete parts of a cut answer, and nothing more */
+  {
+    const cut = cutInsideUnit(full, 14);
+    const salvaged = hudPlan.salvageJson(cut);
+    assert.equal(salvaged.cut, true);
+    assert.deepEqual(Object.keys(salvaged.data), ['treatment', 'hud', 'chapters', 'units']);
+    assert.deepEqual(salvaged.data.units, full.units.slice(0, 14), 'the units before the cut, the unit that was cut is left out');
+    assert.deepEqual([salvaged.data.treatment, salvaged.data.hud, salvaged.data.chapters], [full.treatment, full.hud, full.chapters]);
+    // a fence around the answer (```json) and text before it change nothing
+    assert.deepEqual(hudPlan.salvageJson('```json\n' + cut), salvaged);
+    assert.deepEqual(hudPlan.salvageJson('Here is the plan:\n```json\n' + cut), salvaged);
+    // a whole answer is read whole, also in a fence
+    assert.deepEqual(hudPlan.salvageJson(whole), { data: full, cut: false });
+    assert.deepEqual(hudPlan.salvageJson('```json\n' + whole + '\n```'), { data: full, cut: false });
+    // cut inside a string of the treatment: nothing but the object without it; no object at all: nothing
+    assert.deepEqual(hudPlan.salvageJson('{"treatment": "A film about'), { data: {}, cut: true });
+    assert.deepEqual(hudPlan.salvageJson('not json'), { data: null, cut: false });
+    assert.deepEqual(hudPlan.salvageJson(''), { data: null, cut: false });
+    // what is missing, and the merge of the rest (the kept parts win)
+    const missing = hudPlan.missingParts(salvaged.data, grid, figure);
+    assert.deepEqual(missing, { treatment: false, hud: false, endcard: true, figureShort: false, chapters: [], units: [14, 15, 16, 17, 18, 19, 20, 21], lines: grid.lines.map((line) => line.index) });
+    const rest = { units: full.units.slice(13), lines: full.lines, endcard: full.endcard, treatment: 'another treatment' };
+    rest.units[0] = { ...rest.units[0], plate: 'a plate written twice' };
+    const merged = hudPlan.mergeAnswers(salvaged.data, rest, { grid, figure });
+    assert.equal(merged.treatment, full.treatment);
+    assert.deepEqual(merged.units, full.units, 'unit 13 is the kept one');
+    assert.deepEqual([merged.lines, merged.endcard], [full.lines, full.endcard]);
+  }
+
+  /* cut off at the limit: the complete parts are kept, the second try thinks less and asks only for the rest; the film is the one of a whole answer */
+  {
+    const cut = cutInsideUnit(full, 14);
+    let asked = null;
+    const steps = [
+      { reply: { text: '```json\n' + cut, finishReason: 'length', usage: CUT_USAGE, model: 'anthropic/claude-opus-5.5' } },
+      (request) => {
+        asked = request;
+        return { units: full.units.slice(14), lines: full.lines, endcard: full.endcard };
+      }
+    ];
+    const { result, model, logs } = await plan('s72', steps);
+    assert.equal(model.calls.length, 2);
+    assert.deepEqual(model.calls.map((call) => [call.maxTokens, call.reasoningEffort]), [[64000, 'medium'], [64000, 'low']], 'the second try thinks less');
+    assert.equal(asked.system, model.calls[0].system);
+    assert.match(asked.prompt, /^YOUR PREVIOUS ANSWER WAS CUT OFF AT THE LIMIT OF TOKENS\. /m);
+    assert.match(asked.prompt, /"units" with the units 14 to 21, "lines" with the lines 0 to 14, "endcard", in the schema above/);
+    assert.ok(asked.prompt.includes(JSON.stringify(hudPlan.salvageJson(cut).data)), 'the kept parts go with it');
+    assert.doesNotMatch(asked.prompt, /HAD THESE PROBLEMS/);
+    assert.ok(asked.prompt.length < model.calls[0].prompt.length + whole.length, 'the prompt holds the kept parts once');
+    assert.ok(logs.includes('The answer of the language model was cut off at the limit of 64000 tokens after 14 of 22 units and 0 of 15 lines: the complete parts are kept and the next try asks only for the rest (effort low).'), logs.join(' | '));
+    checkPlanClean(result, 'a cut answer and its rest');
+    const clean = (await plan('s72', [full])).result;
+    assert.deepEqual(result.content, clean.content, 'the same film as from one whole answer');
+    assert.deepEqual(result.plan.graphics, clean.plan.graphics);
+    assert.deepEqual(result.costs, [0.25, 0.25]);
+    assert.deepEqual(result.tries.map((record) => [record.attempt, record.rest, record.effort, record.finish, record.completion, record.reasoning, record.units, record.lines]), [
+      [1, false, 'medium', 'cut', 64000, 41000, 14, 0],
+      [2, true, 'low', 'complete', null, null, 8, 15]
+    ]);
+    assert.match(
+      result.board,
+      /^MODEL {6}anthropic\/claude-opus-5\.5 · try 1: effort medium, 64,000 of 64,000 tokens \(thinking 41,000, text 23,000\), cut off at the limit, 14 of 22 units and 0 of 15 lines complete, 0\.25 USD · try 2 \(the rest\): effort low, limit 64,000 tokens, complete, 0\.25 USD$/m
+    );
+    assert.doesNotMatch(result.board, /^PLAIN/m);
+  }
+
+  /* the rest is cut off too, a little: what is still missing is plain, and the board names exactly which plates and lines */
+  {
+    const restText = JSON.stringify({ units: full.units.slice(14), lines: full.lines, endcard: full.endcard }, null, 2);
+    const linesAt = restText.indexOf('"lines": [');
+    const cutRest = restText.slice(0, restText.indexOf('"index": 13,', linesAt) + 20);
+    const steps = [
+      { reply: { text: cutInsideUnit(full, 14), finishReason: 'length', usage: CUT_USAGE } },
+      { reply: { text: cutRest, finishReason: 'length', usage: { completion_tokens: 64000 } } }
+    ];
+    const { result } = await plan('s72', steps);
+    assert.deepEqual(result.fallbacks.units, []);
+    assert.deepEqual(result.fallbacks.lines, [13, 14]);
+    assert.equal(result.fallbacks.treatment, false);
+    assert.match(result.board, /^PLAIN {6}made without the language model: 2 lines of graphics \(lines 13, 14\)$/m);
+    assert.match(result.board, / · try 2 \(the rest\): effort low, 64,000 of 64,000 tokens, cut off at the limit, 8 of 22 units and 13 of 15 lines complete, 0\.25 USD$/m);
+  }
+
+  /* too little in the end (the second request fails after a cut answer: 8 of 22 plates would be plain): HUDPLAN_MODEL_FAILED, with "Allow a plain plan" the rest is plain */
+  {
+    const steps = [{ reply: { text: cutInsideUnit(full, 14), finishReason: 'length', usage: CUT_USAGE } }, new Error('429 too many requests')];
+    const failed = await errorOf(plan('s72', steps));
+    assert.equal(failed && failed.code, 'HUDPLAN_MODEL_FAILED');
+    assert.deepEqual(failed.data, { attempts: 2, usd: '0.25', plainUnits: 8, units: 22, plainLines: 15, lines: 15, tokens: 64000, thinking: 41000, limit: 64000, cut: true, model: '' });
+    assert.match(failed.message, /^The language model delivered no usable plan in 2 attempts \(cut off at the limit of 64,000 tokens, failed request; /);
+    const { result, logs } = await plan('s72', steps, { allowPlain: true });
+    assert.deepEqual(result.fallbacks.units, [14, 15, 16, 17, 18, 19, 20, 21]);
+    assert.match(result.board, /^PLAIN {6}made without the language model: 8 plates \(units 14 to 21\), 15 lines of graphics \(lines 0 to 14\) \(a plain plan, allowed by "Allow a plain plan"\)$/m);
+    assert.ok(logs.some((line) => /^The language model delivered too little \(8 of 22 plates and 15 of 15 lines are plain\): the rest is plain \(allowed by "Allow a plain plan"\)\.$/.test(line)), logs.join(' | '));
+    // up to a quarter plain is no failure: 5 of 22 units missing in both answers
+    const short = { ...full, units: full.units.slice(0, 17) };
+    const some = (await plan('s72', [short, short])).result;
+    assert.deepEqual(some.fallbacks.units, [17, 18, 19, 20, 21]);
+    assert.match(some.board, /^PLAIN {6}made without the language model: 5 plates \(units 17 to 21\)$/m);
+  }
+
+  /* broken off without the limit (invalid JSON in the middle): the complete parts are kept as well, with the same thinking */
+  {
+    const broken = whole.slice(0, whole.indexOf('"lines": [')) + '"lines": [ {"index": 0, oops';
+    const { result, model } = await plan('s72', [broken, { lines: full.lines, endcard: full.endcard }]);
+    assert.deepEqual(model.calls.map((call) => call.reasoningEffort), ['medium', 'medium']);
+    assert.match(model.calls[1].prompt, /"lines" with the lines 0 to 14, "endcard", in the schema above/);
+    checkPlanClean(result, 'broken off');
+    assert.equal(result.tries[0].finish, 'broken');
+    assert.match(result.board, /try 1: effort medium, limit 64,000 tokens, broke off \(invalid JSON\), 22 of 22 units and 0 of 15 lines complete/);
+  }
+}
+
+// Review regressions use made-up songs only. The recorded live answer stays outside the repository.
+async function testReviewRepairs() {
+  const { grid } = gridOf('s72');
+  const figure = figureOf();
+  const full = goodAnswer(grid, figure);
+  const options = { grid, figure };
+  const damaged = structuredClone(full);
+  damaged.hud.counter_values = [];
+  damaged.units[1].plate = '';
+  damaged.units[2].index = '2';
+  delete damaged.units[3].index;
+  damaged.units[4].index = 1.5;
+  damaged.units.push({ ...damaged.units[5] }, { ...damaged.units[6], index: grid.units.length });
+  damaged.lines[0].graphics = [];
+  damaged.lines[1].index = '1';
+  damaged.lines.push({ ...damaged.lines[2] });
+  const missing = hudPlan.missingParts(damaged, grid, figure);
+  assert.equal(missing.hud, true);
+  assert.deepEqual(missing.units, [1, 2, 3, 4, 5]);
+  assert.deepEqual(missing.lines, [0, 1, 2]);
+  const merged = hudPlan.mergeAnswers(damaged, full, options);
+  assert.deepEqual(merged, full, 'valid corrections win over invalid, misindexed and duplicate kept entries');
+  const cut = cutInsideUnit(damaged, 14);
+  const rescued = await plan('s72', [{ reply: { text: cut, finishReason: 'length', usage: CUT_USAGE } }, full]);
+  assert.match(rescued.model.calls[1].prompt, /"hud"/);
+  assert.match(rescued.model.calls[1].prompt, /"units" with the units 1 to 4, 14 to 21/);
+  assert.deepEqual(rescued.result.fallbacks.units, []);
+  assert.equal(rescued.result.tries[0].units, 10, 'only valid complete units count in MODEL');
+  assert.deepEqual(rescued.result.content, (await plan('s72', [full])).result.content);
+
+  const empty = structuredClone(full);
+  empty.lines.forEach((line) => { line.graphics = []; });
+  const failed = await errorOf(plan('s72', [empty, empty]));
+  assert.equal(failed.code, 'HUDPLAN_MODEL_FAILED');
+  assert.equal(failed.data.plainLines, grid.lines.length);
+  const allowed = (await plan('s72', [empty, empty], { allowPlain: true })).result;
+  assert.equal(allowed.fallbacks.lines.length, grid.lines.length);
+  assert.ok(allowed.content.lines.every((line) => line.graphics.length));
+
+  const broll = full.units.filter((unit) => unit.with_figure === false);
+  const identity = structuredClone(full);
+  identity.units[broll[0].index].plate += `, ${figure.full}`;
+  const fixed = (await plan('s72', [identity, identity])).result;
+  const index = broll[0].index;
+  assert.ok(fixed.fallbacks.units.includes(index));
+  assert.equal(fixed.content.units[index].withFigure, false);
+  assert.ok(!fixed.content.units[index].plate.includes(figure.full));
+  const repeated = structuredClone(full);
+  repeated.units[broll[1].index].plate = repeated.units[index].plate;
+  const distinct = (await plan('s72', [repeated, repeated])).result;
+  assert.ok(distinct.fallbacks.units.includes(index));
+  assert.ok(distinct.fallbacks.units.includes(broll[1].index));
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify({ ...full, units: distinct.content.units.map((unit, index) => ({ ...unit, index, with_figure: unit.withFigure })) }), options).problems, []);
+
+  const allFigure = goodAnswer(grid, figure, { brollShare: 0 });
+  assert.equal((await errorOf(plan('s72', [allFigure, allFigure]))).code, 'HUDPLAN_MODEL_FAILED', 'picture repairs count towards the quarter threshold');
+  const balanced = (await plan('s72', [allFigure, allFigure], { allowPlain: true })).result;
+  assert.ok(balanced.fallbacks.units.length > 0);
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify({ ...full, units: balanced.content.units.map((unit, index) => ({ ...unit, index, with_figure: unit.withFigure })) }), options).problems, []);
+
+  const run = structuredClone(full);
+  for (const index of [1, 2, 3, 4]) {
+    assert.notEqual(grid.units[index].kind, 'performance');
+    Object.assign(run.units[index], { with_figure: false, framing: 'WS', shows: 'amber observatory',
+      plate: `WS, amber observatory scene ${index}, no people, no text, no letters, no logos` });
+  }
+  const distributed = (await plan('s72', [run, run], { allowPlain: true })).result;
+  assert.ok(distributed.fallbacks.units.length);
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify({ ...full, units: distributed.content.units.map((unit, index) => ({ ...unit, index, with_figure: unit.withFigure })) }), options).problems, []);
+
+  // The live pattern: cinematic images from an idea or adjacent lines, a few graphics too wide for a face.
+  const soft = structuredClone(full);
+  const idea = 'An amber harbour observatory awakens above a silver ocean';
+  soft.units[index].shows = 'amber harbour observatory';
+  const neighbour = grid.units[broll[1].index - 1];
+  soft.units[broll[1].index].shows = grid.lines[neighbour.lines[0] ?? 0].text;
+  const line = grid.lines.find((line) => {
+    const unit = grid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    return unit && ['CU', 'ECU'].includes(soft.units[unit.index].framing);
+  });
+  const unit = grid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+  soft.units[unit.index].subject = 'center';
+  soft.lines[line.index].display = null;
+  soft.lines[line.index].graphics = [{ key: 0, type: 'chart', title: 'OCEAN', values: [1, 4, 8, 12, 16], marker: 'MAX' }];
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify(soft), { ...options, brief: idea }).problems, []);
+  let calls = 0;
+  const logs = [];
+  const result = await hudPlan.runPlanner({ analysis: songOf('s72').analysis, timing: songOf('s72').timing,
+    options: MIXED, brief: idea, figureText: FIGURE_TEXT,
+    ask: async () => { calls += 1; assert.equal(calls, 1); return { text: JSON.stringify(soft), usd: 0 }; },
+    log: (message) => logs.push(message) });
+  assert.equal(calls, 1);
+  assert.ok(result.notes.some((note) => /idea or a neighbouring line/.test(note)));
+  assert.ok(result.notes.some((note) => /does not fit beside the face/.test(note)));
+  assert.match(result.board, /^NOTE /m);
+  assert.ok(logs.some((message) => /^Plan note:/.test(message)));
+
+  const longSong = songOf('long');
+  const longGrid = gridOf('long').grid;
+  const livePattern = goodAnswer(longGrid, figure);
+  livePattern.units.filter((unit) => unit.with_figure === false).slice(0, 4).forEach((unit, at) => {
+    unit.shows = ['obsidian reactor reboot', 'copper zeppelin docks', 'turquoise constellations unfold', 'amethyst prism shatters'][at];
+  });
+  let lastCloseLine = -3;
+  const closeLines = longGrid.lines.filter((line) => {
+    const unit = longGrid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    return unit && ['CU', 'ECU'].includes(livePattern.units[unit.index].framing);
+  }).filter((line) => {
+    if (line.index - lastCloseLine < 3) return false;
+    lastCloseLine = line.index;
+    return true;
+  }).slice(0, 3);
+  assert.equal(closeLines.length, 3);
+  for (const line of closeLines) {
+    const unit = longGrid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    livePattern.units[unit.index].subject = 'center';
+    livePattern.lines[line.index].display = null;
+    livePattern.lines[line.index].graphics = [0, 1].map((key) => ({ key, type: 'chart', title: 'HORIZON', values: [1, 4, 8, 16, 32], marker: 'MAX' }));
+  }
+  let patternCalls = 0;
+  const patterned = await hudPlan.runPlanner({ analysis: longSong.analysis, timing: longSong.timing,
+    options: SONGS.long.options, brief: idea, figureText: FIGURE_TEXT,
+    ask: async () => { patternCalls += 1; assert.equal(patternCalls, 1, 'the live pattern must not ask again'); return { text: JSON.stringify(livePattern), usd: 0 }; } });
+  assert.ok(patterned.leftOut.filter((device) => device.type === 'chart').length >= 5, 'a handful of six oversized charts are omitted');
+  assert.equal(patterned.notes.filter((note) => /has no lexical match/.test(note)).length, 4);
+  assert.deepEqual(patterned.problems, []);
+  assert.deepEqual(patterned.fallbacks.units, []);
+
+  const crowded = structuredClone(livePattern);
+  for (const line of longGrid.lines) {
+    const unit = longGrid.units.find((unit) => line.words[0].start >= unit.start && line.words[0].start < unit.end);
+    if (!unit || !['CU', 'ECU'].includes(crowded.units[unit.index].framing)) continue;
+    crowded.units[unit.index].subject = 'center';
+    crowded.lines[line.index].graphics = [{ key: 0, type: 'chart', title: 'HORIZON', values: [1, 4, 8, 16, 32], marker: 'MAX' }];
+  }
+  const hardLayout = await plan('long', [crowded, goodAnswer(longGrid, figure)]);
+  assert.equal(hardLayout.model.calls.length, 2, 'large layout losses remain hard problems');
+  assert.match(hardLayout.model.calls[1].prompt, /does not fit beside the face/);
+
+}
+
+// A song without a sung line: no line to show, so no share of B-roll is asked for (pictures without the figure stay allowed)
+function testBrollWithoutLines() {
+  const song = songOf('s72');
+  const grid = hudPlan.planGrid(song.analysis, { version: 1, words: [], lines: [] }, MIXED);
+  const figure = figureOf();
+  const answer = goodAnswer(grid, figure);
+  assert.ok(answer.units.every((unit) => unit.with_figure !== false));
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify(answer), { grid, figure, brief: 'A made-up film about a light that stays on' }).problems, []);
+}
+
+// A song sung without pauses (the real song of WP52a had 5 windows in 33 s of 76 s asked): long lines with tiny gaps between them, a gap of 0.14 to 0.2 s after
+// every fourth word, a line of a choir in every chorus. The windows of whole lines do not find enough; the windows between words do.
+function denseSong() {
+  const base = makeSong({ seconds: 120, seed: 13 });
+  let seed = 29;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const vocabulary = ['silver', 'door', 'light', 'engine', 'flood', 'sky', 'again', 'clone', 'river', 'signal', 'night', 'fire', 'glass', 'begin'];
+  const lines = [];
+  const words = [];
+  for (const section of base.analysis.sections.filter((item) => /verse|chorus/i.test(item.name))) {
+    let time = section.start + 0.4;
+    let count = 0;
+    while (time < section.end - 3) {
+      const line = [];
+      for (let at = 0, size = 14 + Math.floor(rnd() * 8); at < size; at += 1) {
+        const length = 0.22 + rnd() * 0.22;
+        line.push({ text: vocabulary[Math.floor(rnd() * vocabulary.length)], start: Math.round(time * 1000) / 1000, end: Math.round((time + length) * 1000) / 1000 });
+        time += length + (at % 4 === 3 ? 0.14 + rnd() * 0.06 : 0.04);
+      }
+      if (line[line.length - 1].end > section.end - 0.3) break;
+      words.push(...line);
+      const choir = /chorus/i.test(section.name) && count === 1;
+      lines.push({ text: line.map((word) => word.text).join(' '), start: line[0].start, end: line[line.length - 1].end, ...(choir ? { voice: 'choir' } : {}) });
+      time += 0.08;
+      count += 1;
+    }
+  }
+  return { seconds: 120, analysis: base.analysis, timing: { version: 1, lines, words } };
+}
+
+function testDenseWindows() {
+  const song = denseSong();
+  assert.equal(song.timing.lines.filter((line) => line.voice === 'choir').length, 2);
+  for (const options of [{}, MIXED]) {
+    const grid = hudPlan.planGrid(song.analysis, song.timing, options);
+    const label = `dense ${JSON.stringify(options)}`;
+    const asked = (grid.settings.lipsyncSecondsPerMinute * grid.duration) / 60;
+    // before WP52a: 2 windows, 12.1 s of 44 s (27 %); now at least 80 % of what is asked
+    assert.ok(grid.stats.lipsyncSeconds >= hudPlan.WINDOW_GOAL * asked, `${label}: ${grid.stats.lipsyncSeconds} s of ${asked} s`);
+    assert.ok(grid.stats.lipsyncSeconds <= asked * 1.15, `${label}: not much more than asked`);
+    assert.ok(grid.warnings.includes('WORD_WINDOWS'), label);
+    checkGrid(grid, song, label, { rate: false });
+    const sung = grid.units.filter((unit) => unit.kind === 'performance');
+    assert.ok(sung.length >= 6, `${label}: ${sung.length} windows`);
+    // spread over the song: windows in the first, the middle and the last third, and in every chorus
+    for (const third of [0, 1, 2]) assert.ok(sung.some((unit) => unit.start >= (third * grid.duration) / 3 && unit.start < ((third + 1) * grid.duration) / 3), `${label}: third ${third}`);
+    for (const section of song.analysis.sections.filter((item) => /chorus/i.test(item.name))) {
+      assert.ok(sung.some((unit) => unit.start < section.end && unit.end > section.start), `${label}: a window in ${section.name}`);
+    }
+    // a window between two words starts and ends in a gap of at least 0.12 s (or at the end of a line), never inside a word, never on a word of the choir
+    for (const unit of sung) {
+      for (const edge of [unit.start, unit.end]) {
+        assert.ok(!song.timing.words.some((word) => word.start + 0.001 < edge && edge < word.end - 0.001), `${label}: an edge of unit ${unit.index} inside a word`);
+      }
+    }
+  }
+  // the suggested B-roll is spread over the song: every third of the units that are not sung has some, also a quiet first part
+  for (const name of ['s72', 'slow', 'fast', 'long']) {
+    const { grid } = gridOf(name, { motionShare: 1, maxUnits: 50 });
+    const open = grid.units.filter((unit) => unit.kind !== 'performance' && unit.index > 0).map((unit) => unit.index);
+    const picked = hudPlan.suggestBroll(grid);
+    for (const third of [0, 1, 2]) {
+      const part = open.slice(Math.floor((third * open.length) / 3), Math.floor(((third + 1) * open.length) / 3));
+      assert.ok(part.some((index) => picked.has(index)), `${name}: B-roll in the third ${third} of the song (${[...picked]})`);
+    }
+  }
+  // a song that reaches the goal with whole lines keeps the grid of before (no window between words)
+  for (const name of ['s60', 's72', 'slow', 'fast', 'long']) assert.ok(!gridOf(name).grid.warnings.includes('WORD_WINDOWS'), name);
 }
 
 /* ---------- the graphics for the renderer ---------- */
@@ -858,6 +1330,12 @@ async function testGraphics() {
       assert.deepEqual([cut.start, cut.end, cut.unit, cut.transition], [planned.start, planned.end, planned.unit, planned.transition]);
       assert.equal(cut.kind, grid.units[cut.unit].kind);
       assert.equal(cut.crop.scale, planned.zoom);
+      // WP52a: a cut of B-roll has no subject and no framing (its tags stand without a line, its graphics have the whole screen)
+      if (cut.subject === 'none') {
+        assert.ok(!('framing' in cut) && grid.units[cut.unit].kind !== 'performance' && cut.unit > 0, `${name}: cut ${index} without the figure`);
+        assert.deepEqual([cut.crop.x, cut.crop.y], [0.5, 0.5]);
+        return;
+      }
       assert.ok(['left', 'center', 'right'].includes(cut.subject) && graphicsLib.FRAMINGS.includes(cut.framing), `${name}: cut ${index}`);
       if (planned.zoom > 1) assert.deepEqual([cut.crop.x, cut.crop.y], [{ left: 0.27, center: 0.5, right: 0.73 }[cut.subject], 0.42], 'a punch-in goes to the figure');
       else assert.deepEqual([cut.crop.x, cut.crop.y], [0.5, 0.5]);
@@ -914,12 +1392,14 @@ async function testGraphics() {
   assert.equal(noCard.result.plan.graphics.endcard.title, 'MOTH PARADE', 'the title of the HUD');
   assert.deepEqual(noCard.result.plan.graphics.endcard.lines, ['AI-GENERATED MUSIC VIDEO · Images, clips and graphics made with AI', 'Mira by the test lab (example.org)']);
 
-  // a unit without the figure is a cut without a subject and without a framing
+  // a unit without the figure (B-roll, WP52a) is a cut without a subject and without a framing; the board marks it with what it shows
   {
     const { grid } = gridOf('s72');
-    const shortStills = grid.units.filter((unit, at) => at > 0 && unit.kind === 'still').sort((a, b) => a.duration - b.duration).slice(0, 2).map((unit) => unit.index);
-    const { result } = await plan('s72', [answerFor('s72', (a) => { for (const at of shortStills) a.units[at].with_figure = false; })]);
-    checkPlanClean(result, 'two units without the figure');
+    const answer = answerFor('s72');
+    const shortStills = answer.units.filter((unit) => unit.with_figure === false).map((unit) => unit.index);
+    assert.ok(shortStills.length >= 4, `${shortStills.length} units of B-roll`);
+    const { result } = await plan('s72', [answer]);
+    checkPlanClean(result, 'B-roll');
     for (const cut of result.plan.graphics.cuts) {
       if (shortStills.includes(cut.unit)) {
         assert.equal(cut.subject, 'none');
@@ -931,9 +1411,15 @@ async function testGraphics() {
     for (const at of shortStills) {
       assert.equal(result.plan.shots.shots[at].subject, 'none');
       assert.equal(result.plan.shots.shots[at].with_figure, false);
+      // the picture nodes send the character sheet along: the prompt of B-roll says that she does not appear
+      assert.ok(result.plan.shots.shots[at].prompt.endsWith(` ${hudPlan.NO_FIGURE_NOTE}`), result.plan.shots.shots[at].prompt);
     }
+    assert.ok(result.plan.shots.shots.filter((shot) => shot.with_figure).every((shot) => !shot.prompt.includes(hudPlan.NO_FIGURE_NOTE)));
     assert.deepEqual(graphicsLib.prepareGraphics(result.plan.graphics, {}).warnings, []);
-    assert.match(result.board, new RegExp(`^ ?${shortStills[0]} {2}\\d:\\d\\d\\.\\d–\\d:\\d\\d\\.\\d {2}STILL {2}\\w+, no figure`, 'm'));
+    assert.match(result.board, new RegExp(`^ ?${shortStills[0]} {2}\\d:\\d\\d\\.\\d–\\d:\\d\\d\\.\\d {2}(STILL|STORY) {2}WS, no figure`, 'm'));
+    assert.match(result.board, new RegExp(`^ {8}B-ROLL «${answer.units[shortStills[0]].shows}»: `, 'm'));
+    const open = grid.units.filter((unit) => unit.kind !== 'performance' && unit.index > 0).length;
+    assert.match(result.board, new RegExp(`^NUMBERS .* · B-roll ${shortStills.length} of ${open} story units \\(${Math.round((shortStills.length / open) * 100)}%\\) · lip sync [\\d.]+ s of [\\d.]+ s asked in \\d+ windows · `, 'm'));
   }
 
   // the layout loop: shorter lives of the graphics make room when the screen is crowded
@@ -986,7 +1472,8 @@ async function testShots() {
     shots.shots.forEach((shot, index) => {
       const unit = grid.units[index];
       assert.deepEqual([shot.index, shot.start, shot.end, shot.kind, shot.section], [index, unit.start, unit.end, unit.kind, unit.section]);
-      assert.equal(shot.prompt, result.content.units[index].plate);
+      const plate = result.content.units[index].plate;
+      assert.equal(shot.prompt, result.content.units[index].withFigure ? plate : `${plate.replace(/[\s.]+$/, '')}. ${hudPlan.NO_FIGURE_NOTE}`);
       assert.equal(shot.motion, result.content.units[index].motion);
       assert.equal(shot.framing, result.content.units[index].framing);
       assert.equal(shot.cuts, unit.cuts.length);
@@ -1024,12 +1511,18 @@ async function testPrice() {
       lipsync: r4(sung.reduce((sum, unit) => sum + Math.max(unit.duration, 5) * 0.1, 0)),
       clips: r4(grid.stats.story * 5 * 0.2),
       depth: r4(grid.stats.still * 0.02),
-      llm: r4((3000 * 3 + (1500 + 170 * grid.units.length + 220 * grid.lines.length) * 15) / 1e6)
+      // WP52a: the thinking (12 000 at the effort medium) and the text (1500 + 250 a unit + 260 a line)
+      llm: r4((3000 * 3 + (12000 + 1500 + 250 * grid.units.length + 260 * grid.lines.length) * 15) / 1e6)
     };
     assert.deepEqual(cost.parts, expected);
     assert.equal(cost.total, r4(Object.values(expected).reduce((sum, value) => sum + value, 0)));
     assert.deepEqual(cost.unknown, []);
-    assert.deepEqual(cost.tokens, { input: 3000, output: 1500 + 170 * grid.units.length + 220 * grid.lines.length });
+    assert.deepEqual(cost.tokens, { input: 3000, output: 12000 + 1500 + 250 * grid.units.length + 260 * grid.lines.length, text: 1500 + 250 * grid.units.length + 260 * grid.lines.length });
+    assert.deepEqual([hudPlan.PLAN_THINKING_TOKENS, { ...hudPlan.PLAN_TEXT_TOKENS }], [12000, { film: 1500, unit: 250, line: 260 }]);
+    // the biggest film fits the limit: 50 units and 60 lines, thinking included, use two thirds of PLAN_MAX_TOKENS, and the text fits into the half that the effort
+    // medium leaves (the real song of WP52a, 50 units and 32 lines: 22 320 tokens of text); a song with even more lines that is cut off keeps its complete parts
+    const biggest = hudPlan.llmTokens({ units: { length: 50 }, lines: { length: 60 } }, 0);
+    assert.ok(biggest.output < 0.7 * hudPlan.PLAN_MAX_TOKENS && biggest.text < 0.5 * hudPlan.PLAN_MAX_TOKENS, JSON.stringify(biggest));
     near(cost.perMinute, (cost.total * 60) / grid.duration, 0.0001);
     // the lip sync is billed from 5 s on: a window of 5.05 s costs 5.05 s, a shorter one would cost 5 s
     assert.ok(sung.every((unit) => unit.duration >= 5.05 - 0.002));
@@ -1066,7 +1559,7 @@ async function testPrice() {
       for (const name of ['s60', 's72', 'slow', 'fast', 'long']) {
         const { song, grid } = gridOf(name, options);
         const figure = figureOf();
-        const chars = hudPlan.systemPrompt({ theme: 'hud' }).length + hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid }).length;
+        const chars = hudPlan.systemPrompt({ theme: 'hud' }).length + hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }).length;
         const cost = hudPlan.estimateCost({ grid, settings: grid.settings, prices: real, promptChars: chars });
         assert.notEqual(cost.total, null, name);
         rows.push({ name, seconds: song.seconds, cost });
@@ -1078,13 +1571,14 @@ async function testPrice() {
     const def = require('../lib/nodes/registry').get('music_video.hud_plan');
     {
       const { rows, of, average } = priced({ motionShare: hudPlan.DEFAULTS.motionShare, maxUnits: hudPlan.DEFAULTS.maxUnits });
-      assert.ok(of('s60').total >= 5.3 && of('s60').total <= 6.1, `60 s: ${of('s60').total} USD`);
-      assert.ok(of('fast').total >= 10.6 && of('fast').total <= 12, `120 s: ${of('fast').total} USD`);
-      assert.ok(of('s60').parts.llm >= 0.1 && of('s60').parts.llm <= 0.3 && of('fast').parts.llm >= 0.2 && of('fast').parts.llm <= 0.4, 'the language model: about 0.2 and 0.3 USD');
-      assert.ok(average >= 5.2 && average <= 5.9, `${average.toFixed(2)} USD per minute of song`);
-      assert.match(def.description, /about 5\.5 USD per minute of song at the default settings/, 'the guide in the description is the one measured here');
-      assert.match(def.description, /about 11\.5 USD for two minutes/);
-      assert.match(def.description, /about 0\.2 USD for a minute of song and 0\.3 USD for two/);
+      assert.ok(of('s60').total >= 5.6 && of('s60').total <= 6.4, `60 s: ${of('s60').total} USD`);
+      assert.ok(of('fast').total >= 10.8 && of('fast').total <= 12.2, `120 s: ${of('fast').total} USD`);
+      // WP52a: the language model with its thinking (PLAN_THINKING_TOKENS) and the answer without the identity texts
+      assert.ok(of('s60').parts.llm >= 0.38 && of('s60').parts.llm <= 0.55 && of('fast').parts.llm >= 0.55 && of('fast').parts.llm <= 0.75, `the language model: about 0.45 and 0.65 USD (${of('s60').parts.llm}, ${of('fast').parts.llm})`);
+      assert.ok(average >= 5.4 && average <= 6.1, `${average.toFixed(2)} USD per minute of song`);
+      assert.match(def.description, /about 6 USD per minute of song at the default settings/, 'the guide in the description is the one measured here');
+      assert.match(def.description, /about 12 USD for two minutes/);
+      assert.match(def.description, /about 0\.45 USD for a minute of song and 0\.65 USD for two/);
       // the clips and the lip sync are the biggest parts, nothing is spent on depth maps
       for (const row of rows) {
         const { parts } = row.cost;
@@ -1093,8 +1587,8 @@ async function testPrice() {
     }
     {
       const { rows, average } = priced({});
-      assert.ok(average >= 3.3 && average <= 3.8, `${average.toFixed(2)} USD per minute of song at a share of motion of 0.3`);
-      assert.match(def.description, /about 3\.5 USD per minute at 0\.3/);
+      assert.ok(average >= 3.4 && average <= 4, `${average.toFixed(2)} USD per minute of song at a share of motion of 0.3`);
+      assert.match(def.description, /about 3\.7 USD per minute at 0\.3/);
       // there the lip sync is the biggest part
       for (const row of rows) assert.ok(row.cost.parts.lipsync > row.cost.parts.plates && row.cost.parts.lipsync > row.cost.parts.clips, `${row.name}: ${JSON.stringify(row.cost.parts)}`);
     }
@@ -1112,7 +1606,12 @@ async function testPrice() {
     assert.match(board, /^LEITMOTIF {2}MOTH PARADE · WATTS 01 → 03 → 09 → 27 → 81 → 243 · MOTHS 40 → 120 → 360 → 1,080 → 3,240 → 9,720$/m);
     assert.match(board, /^CHAPTERS {3}I DUSK \(0:00–0:07, look coat number 0, set place number 0\) · II THE LAMP \(/m);
     const stats = grid.stats;
-    assert.match(board, new RegExp(`^NUMBERS {4}${stats.cuts} cuts \\(\\d+(\\.\\d+)?/min\\) · figure 100% on screen · lip sync ${stats.lipsyncSeconds} s · ${stats.units} units \\(${stats.sung} sung, ${stats.story} story, ${stats.still} still\\) · estimate ${result.cost.total.toFixed(2)} USD$`, 'm'));
+    // WP52a: the share of the figure and of B-roll, and the seconds of lip sync against those asked for
+    const seen = grid.units.reduce((sum, unit) => (result.content.units[unit.index].withFigure ? sum + unit.duration : sum), 0);
+    const open = grid.units.filter((unit) => unit.kind !== 'performance' && unit.index > 0);
+    const broll = open.filter((unit) => !result.content.units[unit.index].withFigure).length;
+    assert.ok(broll >= 4);
+    assert.match(board, new RegExp(`^NUMBERS {4}${stats.cuts} cuts \\(\\d+(\\.\\d+)?/min\\) · figure ${Math.round((seen / grid.duration) * 100)}% on screen · B-roll ${broll} of ${open.length} story units \\(${Math.round((broll / open.length) * 100)}%\\) · lip sync ${stats.lipsyncSeconds} s of 26.4 s asked in ${stats.sung} windows · ${stats.units} units \\(${stats.sung} sung, ${stats.story} story, ${stats.still} still\\) · estimate ${result.cost.total.toFixed(2)} USD$`, 'm'));
     const parts = result.cost.parts;
     assert.match(board, new RegExp(`^ESTIMATE {3}portrait sheet ${parts.sheet.toFixed(2)} \\+ ${stats.units} plates ${parts.plates.toFixed(2)} \\+ lip sync ${parts.lipsync.toFixed(2)} \\+ ${stats.story} clips ${parts.clips.toFixed(2)} \\+ ${stats.still} depth maps ${parts.depth.toFixed(2)} \\+ language model ${parts.llm.toFixed(2)} = ${result.cost.total.toFixed(2)} USD; a second attempt of the language model adds about ${parts.llm.toFixed(2)} USD$`, 'm'));
     // a block of two lines for every unit: the times, the kind, the framing, the first words, the graphics; then the scene
@@ -1123,8 +1622,10 @@ async function testPrice() {
     assert.equal(blocks.filter((line) => / STILL /.test(line)).length, stats.still);
     const first = lines.findIndex((line) => line === blocks[0]);
     assert.match(lines[first + 1], /^ {8}the figure, chapter 0 look, scene number 0 at the place number 0$/, 'the scene, without the framing, the identity text and the endings');
-    const storyAt = grid.units.findIndex((unit) => unit.kind === 'story');
+    const storyAt = grid.units.findIndex((unit) => unit.kind === 'story' && result.content.units[unit.index].withFigure);
     assert.match(lines[lines.findIndex((line) => line === blocks[storyAt]) + 1], /\[motion: Slow push-in on scene \d+, ending on a steady frame, exactly one person\.\]$/);
+    const brollAt = grid.units.findIndex((unit) => unit.kind === 'story' && !result.content.units[unit.index].withFigure);
+    assert.match(lines[lines.findIndex((line) => line === blocks[brollAt]) + 1], /^ {8}B-ROLL «[^»]+»: .*\[motion: Fast push-in as .* bursts toward the lens, ending on a wide frame\.\]$/);
     assert.ok(blocks.every((line) => /«/.test(line) || !/SUNG/.test(line)), 'a sung unit shows its words');
     assert.ok(blocks.some((line) => /Graphics: .*(tag|counter|toggle) «/.test(line)) && blocks.some((line) => /Words: /.test(line)));
     assert.ok(!/LEFT OUT|PLAIN/.test(board), 'nothing to say about a clean plan');
@@ -1174,8 +1675,13 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5
+    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
   });
+  // WP52a: the share of B-roll and the switch for a plain plan, both added after plans were saved: at their defaults no part of the key
+  const brollParam = def.params.find((param) => param.id === 'broll_share');
+  assert.deepEqual([brollParam.kind, brollParam.min, brollParam.max, brollParam.step, brollParam.default, brollParam.cacheOmitDefault], ['slider', 0, 0.6, 0.05, hudPlan.DEFAULT_BROLL_SHARE, true]);
+  const plainParam = def.params.find((param) => param.id === 'allow_plain');
+  assert.deepEqual([plainParam.kind, plainParam.default, plainParam.cacheOmitDefault], ['boolean', false, true]);
   assert.deepEqual(def.params.find((param) => param.id === 'brief_language').options, ['en', 'de', 'es']);
   assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 99, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
     ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 50, lipsync_seconds_per_minute: 0, motion_share: 1, clip_seconds: 2
@@ -1230,11 +1736,14 @@ async function testDefinition() {
     const params = real.normalizeParams(def, {});
     const context = (extra = {}) => ({ config: {}, inputs: inputs(), connected: new Set(['analysis', 'timing', 'brief', 'figure']), ...extra });
     const estimate = def.cost.estimate(params, context());
-    assert.ok(estimate && estimate.usd > 0.1 && estimate.usd < 0.3, JSON.stringify(estimate));
+    // WP52a: with the thinking at the effort medium about 0.45 USD for a minute of song
+    assert.ok(estimate && estimate.usd > 0.35 && estimate.usd < 0.6, JSON.stringify(estimate));
     // it is the price of the model for the size of this song, not a guess from an earlier run
     const long = songOf('fast');
     const bigger = def.cost.estimate(params, context({ inputs: inputs({ analysis: { type: 'text', value: JSON.stringify(long.analysis) }, timing: { type: 'text', value: JSON.stringify(long.timing) } }) }));
-    assert.ok(bigger.usd > estimate.usd * 1.4, `${bigger.usd} for 120 s against ${estimate.usd} for 60 s`);
+    assert.ok(bigger.usd > estimate.usd * 1.25, `${bigger.usd} for 120 s against ${estimate.usd} for 60 s`);
+    // the share of B-roll is part of the prompt and so of the estimate
+    assert.notEqual(def.cost.estimate({ ...params, broll_share: 0 }, context()).usd, estimate.usd);
     // the fields of the node stand in for inputs that are not connected
     const fromFields = def.cost.estimate({ ...params, brief: 'A made-up film', figure: FIGURE_TEXT }, context({ inputs: { analysis: inputs().analysis, timing: inputs().timing }, connected: new Set(['analysis', 'timing']) }));
     assert.ok(fromFields && fromFields.usd > 0, 'brief and figure from the fields');
@@ -1282,7 +1791,8 @@ function testI18n() {
     ...[...def.inputs, ...def.outputs].map((port) => `nodes.portdesc.${port.id}`),
     ...portKeys(def),
     ...def.params.map((param) => `nodes.param.${param.id}`),
-    'nodes.issue.HUDPLAN_BRIEF_FAILED', 'nodes.issue.HUDPLAN_IDEA_EMPTY', 'nodes.issue.HUDPLAN_NO_BRIEF', 'nodes.issue.HUDPLAN_NO_FIGURE', 'nodes.issue.HUDPLAN_NO_LINES', 'nodes.issue.HUDPLAN_TOO_LONG'
+    'nodes.issue.HUDPLAN_BRIEF_FAILED', 'nodes.issue.HUDPLAN_IDEA_EMPTY', 'nodes.issue.HUDPLAN_NO_BRIEF', 'nodes.issue.HUDPLAN_NO_FIGURE', 'nodes.issue.HUDPLAN_NO_LINES', 'nodes.issue.HUDPLAN_TOO_LONG', 'nodes.issue.HUDPLAN_MODEL_FAILED',
+    'nodes.paramhint.music_video.hud_plan.broll_share', 'nodes.paramhint.music_video.hud_plan.allow_plain'
   ];
   for (const lang of ['de', 'en', 'es']) {
     for (const key of keys) {
@@ -1305,9 +1815,18 @@ function testI18n() {
   // the codes of the errors: every code the planner can throw has a text, and the figures it names are placeholders
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-music-video-hud.js'), 'utf8') + fs.readFileSync(path.join(root, 'lib', 'music-video-hud', 'plan.js'), 'utf8');
   const codes = new Set([...source.matchAll(/'(HUDPLAN_[A-Z_]+)'/g)].map((match) => match[1]));
-  assert.deepEqual([...codes].sort(), ['HUDPLAN_BRIEF_FAILED', 'HUDPLAN_IDEA_EMPTY', 'HUDPLAN_NO_BRIEF', 'HUDPLAN_NO_FIGURE', 'HUDPLAN_NO_LINES', 'HUDPLAN_TOO_LONG']);
+  assert.deepEqual([...codes].sort(), ['HUDPLAN_BRIEF_FAILED', 'HUDPLAN_IDEA_EMPTY', 'HUDPLAN_MODEL_FAILED', 'HUDPLAN_NO_BRIEF', 'HUDPLAN_NO_FIGURE', 'HUDPLAN_NO_LINES', 'HUDPLAN_TOO_LONG']);
   for (const code of codes) for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][`nodes.issue.${code}`], `${lang}: no text for ${code}`);
   for (const lang of ['de', 'en', 'es']) for (const name of ['seconds', 'units', 'clip', 'needed']) assert.ok(window.I18N[lang]['nodes.issue.HUDPLAN_TOO_LONG'].includes(`{${name}}`), `${lang}: HUDPLAN_TOO_LONG names {${name}}`);
+  // WP52a: the error of a model that delivered too little names the tries, the tokens, the cost and what is missing (every placeholder is a field of err.data)
+  const failedData = ['attempts', 'tokens', 'limit', 'thinking', 'usd', 'plainUnits', 'units', 'plainLines', 'lines'];
+  for (const lang of ['de', 'en', 'es']) {
+    const text = window.I18N[lang]['nodes.issue.HUDPLAN_MODEL_FAILED'];
+    assert.deepEqual([...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort(), failedData.slice().sort(), `${lang}: the placeholders of HUDPLAN_MODEL_FAILED`);
+  }
+  // the Design App shows a failed node with the text of its code as the editor does, not with the English message of the engine
+  const appSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'app-mode.js'), 'utf8');
+  assert.match(appSource, /info\.code && ui\.hasIssueText\(info\.code\) \? ui\.issueText\(\{ code: info\.code, data: info\.data, message: info\.message \}, 'app'\)/);
   // the data of the error are the placeholders of the text
   let err = null;
   try {
@@ -1332,6 +1851,10 @@ async function main() {
   testAnswer();
   testPlain();
   await testPlanner();
+  await testRescue();
+  await testReviewRepairs();
+  testDenseWindows();
+  testBrollWithoutLines();
   await testGraphics();
   await testShots();
   await testPrice();
@@ -1434,7 +1957,7 @@ async function testNode() {
       const ctx = makeCtx();
       const result = await exec(ctx, inputs());
       assert.equal(calls.length, 1);
-      assert.deepEqual([calls[0].model, calls[0].json, calls[0].maxTokens, calls[0].sessionId, calls[0].user], ['anthropic/claude-opus-5.5', true, 32000, sessionId, 'tester']);
+      assert.deepEqual([calls[0].model, calls[0].json, calls[0].maxTokens, calls[0].sessionId, calls[0].user], ['anthropic/claude-opus-5.5', true, 64000, sessionId, 'tester']);
       assert.equal(result.variants.length, 1);
       assert.deepEqual(result.cost, { usd: LLM_USD });
       const out = result.variants[0];
@@ -1466,8 +1989,8 @@ async function testNode() {
       assert.equal(out.brief.value, 'A made-up film about a light that stays on', 'the output "brief" is the idea that was given');
       assert.ok(!ctx.logs.some((line) => /^The brief \(output/.test(line)), 'no brief was written');
       // the price of the film on the board is the one of the table, and the log says what was made
-      assert.match(out.board.value, /^NUMBERS .* estimate 3\.45 USD$/m);
-      assert.ok(ctx.logs.some((line) => new RegExp(`^${stats.units} units \\(${stats.sung} sung, ${stats.story} story, ${stats.still} still\\), ${stats.cuts} cuts \\([\\d.]+/min\\), 60 s, \\d+ graphics for ${grid.lines.length} lines, 1 answer of the model, the film costs about 3\\.45 USD$`).test(line)), ctx.logs.join(' | '));
+      assert.match(out.board.value, /^NUMBERS .* estimate 3\.73 USD$/m);
+      assert.ok(ctx.logs.some((line) => new RegExp(`^${stats.units} units \\(${stats.sung} sung, ${stats.story} story, ${stats.still} still\\), ${stats.cuts} cuts \\([\\d.]+/min\\), 60 s, \\d+ graphics for ${grid.lines.length} lines, 1 answer of the model, the film costs about 3\\.73 USD$`).test(line)), ctx.logs.join(' | '));
       assert.ok(!ctx.logs.some((line) => /plain|corrected|no place/.test(line)), 'a clean run says nothing about repairs');
       assert.deepEqual(await scratchLeft(), [], 'no scratch folder is left');
     }
@@ -1654,11 +2177,20 @@ async function testNode() {
       assert.ok(ctx.logs.some((line) => /thinks less \(effort low\)/.test(line)));
     }
 
-    /* nothing usable: plain prompts, plain graphics, the log says how many */
+    /* nothing usable (WP52a): the node stops with HUDPLAN_MODEL_FAILED, both answers are paid, nothing comes out; with "Allow a plain plan" plain prompts and
+       plain graphics, the log says how many */
     {
       reset([emptyAnswer('length', 0.7), 'not json at all']);
+      const failed = await errorOf(exec(makeCtx(), inputs()));
+      assert.equal(failed && failed.code, 'HUDPLAN_MODEL_FAILED');
+      assert.match(failed.message, /^The language model delivered no usable plan in 2 attempts \(empty answer, no JSON object; the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.70 USD · try 2: effort low, /);
+      near(failed.costs.reduce((sum, usd) => sum + usd, 0), 0.7 + LLM_USD, 1e-9);
+      assert.equal(failed.data.attempts, 2);
+      assert.equal(failed.data.model, '', 'the stub of the model names no model (a real answer does: the line then starts with its name)');
+      // every request books its own cost in the journal and the budget (lib/nodes/llm.js), so the attempts of a failed node are not lost
+      reset([emptyAnswer('length', 0.7), 'not json at all']);
       const ctx = makeCtx();
-      const result = await exec(ctx, inputs());
+      const result = await exec(ctx, inputs(), { allow_plain: true });
       assert.equal(calls.length, 2);
       const out = result.variants[0];
       assert.equal(out.performance_prompts.items.length, grid.stats.sung, 'the film has all its units all the same');
@@ -1714,7 +2246,7 @@ async function testNode() {
       assert.deepEqual(await scratchLeft(), []);
 
       const bad = goodAnswer(grid, figure);
-      bad.units = bad.units.slice(0, 12);
+      bad.units = bad.units.slice(0, 16);
       reset([bad, new Error('429 too many requests')]);
       const ctx = makeCtx();
       const result = await exec(ctx, inputs());
@@ -1742,7 +2274,8 @@ async function testNode() {
 
     /* the settings reach the grid: no lip sync gives no sung unit and no slice */
     {
-      reset();
+      const withoutSinging = hudPlan.planGrid(song.analysis, song.timing, { ...MIXED, lipsyncSecondsPerMinute: 0, maxUnits: 24, cutsPerMinute: 14 });
+      reset([goodAnswer(withoutSinging, figure)]);
       const ctx = makeCtx();
       const result = await exec(ctx, inputs(), { lipsync_seconds_per_minute: 0, max_units: 24, cuts_per_minute: 14 });
       const out = result.variants[0];

@@ -117,6 +117,12 @@ async function main() {
     // a picture without a person (the B-roll of the HUD) gets no person from the softening
     assert.match(generate.softenImagePrompt('WS, rows of empty mannequins, glass bursting on the beat. no text.'), /\. No people, calm, non-violent\.$/);
     assert.doesNotMatch(generate.softenImagePrompt('WS, rows of empty mannequins, glass bursting on the beat. no text.'), /adult|woman/i);
+    for (const exclusion of ['the main person does not appear', 'no people', 'no person', 'without the figure', 'nobody',
+      'The main person of the character sheet does not appear in this picture.']) {
+      const softened = generate.softenImagePrompt(`WS, a wall of glowing monitors. ${exclusion}`);
+      assert.match(softened, /\. No people, calm, non-violent\.$/);
+      assert.doesNotMatch(softened, /An adult/);
+    }
     assert.doesNotMatch(generate.softenImagePrompt("Claudia in a scene that illustrates the sung line: 'Claudia, clóname again.' Keep her jacket."), /clóname|sung line/i);
     calls.length = 0;
     answer = async () => { throw blocked(); };

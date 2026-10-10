@@ -186,6 +186,14 @@ const MAIN_KEYS = {
   'music-video-hud-suno': { n25: '76709e1fddbc', n26: '9dbf42c88fe3', n27: '1c41466d9452', n28: 'a937b88011fa', n29: 'ab86cda6bc72', n1: 'c5d1c3176b52', n2: '17ec91e51dd2', n3: '27c8d79c9d73', n4: '7a7e099b114d', n5: 'c0b29418b9b4', n6: 'f05407d2bb5a', n7: 'b8c73276e2ac', n8: 'e61721a997d2', n9: 'd9adb83fa971', n10: 'adc8e1de1f85', n11: 'db0f26a4e289', n12: '3a5865e06dea', n13: '383b029ac20a', n14: 'b2b0b8a00121', n15: '925c55ffd5fa', n16: '2e3975e1de33', n17: '97985cb3f79c', n18: '71461982f79f', n19: '24a2dd15e8bf', n20: 'feb9ad26f19a', n21: '54a1d6af1077', n22: '15e48c57ea37', n23: '13391326e00e', n24: '5746092ec90f' }
 };
 
+// The keys of main at WP52a (8ace67b, after WP52b), computed with the code of main for the templates of main: WP52a (B-roll, the share, the plain plan) changes
+// none of them.
+const MAIN_KEYS_WP52 = {
+  'music-video-hud': { n1: 'c5d1c3176b52', n2: '17ec91e51dd2', n3: '27c8d79c9d73', n4: 'f25041112af2', n5: 'fdb75486c201', n6: 'f05407d2bb5a', n7: 'b8c73276e2ac', n8: 'e61721a997d2', n9: 'd9adb83fa971', n10: 'adc8e1de1f85', n11: 'db0f26a4e289', n12: '3a5865e06dea', n13: '383b029ac20a', n14: 'b2b0b8a00121', n15: '925c55ffd5fa', n16: '2e3975e1de33', n17: '97985cb3f79c', n18: '71461982f79f', n19: '24a2dd15e8bf', n20: 'feb9ad26f19a', n21: '54a1d6af1077', n22: '15e48c57ea37', n23: '13391326e00e', n24: '5746092ec90f', n30: '5ce93f92b639' },
+  'music-video-hud-elevenlabs': { n25: '76709e1fddbc', n26: '6cb2be119d7a', n27: '5907cd2506dc', n28: '30ef9ad482a7', n1: 'ff4d36062319', n29: '1c207c481e68', n2: '51cdf920a9ce', n3: '451995b05356', n4: 'b4047a69c97c', n5: 'fdb75486c201', n6: 'f05407d2bb5a', n7: 'b8c73276e2ac', n8: 'e61721a997d2', n9: 'd9adb83fa971', n10: 'adc8e1de1f85', n11: 'db0f26a4e289', n12: '3a5865e06dea', n13: '383b029ac20a', n14: 'b2b0b8a00121', n15: '925c55ffd5fa', n16: '2e3975e1de33', n17: '97985cb3f79c', n18: '71461982f79f', n19: '24a2dd15e8bf', n20: 'feb9ad26f19a', n21: '54a1d6af1077', n22: '15e48c57ea37', n23: '13391326e00e', n24: '5746092ec90f' },
+  'music-video-hud-suno': { n25: '76709e1fddbc', n26: '9dbf42c88fe3', n27: '1c41466d9452', n28: 'a937b88011fa', n29: 'ab86cda6bc72', n1: 'c5d1c3176b52', n2: '17ec91e51dd2', n3: '27c8d79c9d73', n4: 'b4047a69c97c', n5: 'fdb75486c201', n6: 'f05407d2bb5a', n7: 'b8c73276e2ac', n8: 'e61721a997d2', n9: 'd9adb83fa971', n10: 'adc8e1de1f85', n11: 'db0f26a4e289', n12: '3a5865e06dea', n13: '383b029ac20a', n14: 'b2b0b8a00121', n15: '925c55ffd5fa', n16: '2e3975e1de33', n17: '97985cb3f79c', n18: '71461982f79f', n19: '24a2dd15e8bf', n20: 'feb9ad26f19a', n21: '54a1d6af1077', n22: '15e48c57ea37', n23: '13391326e00e', n24: '5746092ec90f' }
+};
+
 function testKeys() {
   for (const id of HUD_TEMPLATES) {
     const doc = templateDoc(id);
@@ -202,6 +210,11 @@ function testKeys() {
   const saved = { figure: CLAUDIA_TEXT, theme: 'hud' };
   assert.equal(keyOf(saved), keyOf({ ...saved, official_images: false }));
   assert.notEqual(keyOf(saved), keyOf({ ...saved, official_images: true }));
+  // WP52a: every key of the templates as on main before WP52a, and the two new settings at their defaults are no part of a key; changed, they are
+  for (const id of HUD_TEMPLATES) assert.deepEqual(keysOf(templateDoc(id)), MAIN_KEYS_WP52[id], `${id}: the keys of main before WP52a`);
+  assert.equal(keyOf(saved), keyOf({ ...saved, broll_share: 0.35, allow_plain: false }));
+  assert.notEqual(keyOf(saved), keyOf({ ...saved, broll_share: 0.5 }));
+  assert.notEqual(keyOf(saved), keyOf({ ...saved, allow_plain: true }));
   const flag = def.params.find((param) => param.id === 'official_images');
   assert.deepEqual([flag.kind, flag.default, flag.cacheOmitDefault], ['boolean', false, true]);
   // the sheet with images is another key than without (without, it is the key of main: MAIN_KEYS above)
