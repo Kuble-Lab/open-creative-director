@@ -542,6 +542,39 @@ function testAnswer() {
   assert.ok(counted.content.acts.close.length >= 1);
 }
 
+// WP53 review: a soundbite shows its clip, so a clip with a hard risk gives none and a soundbite over a scene below quality 3 is left out
+async function testSoundbiteRisks() {
+  const videos = clone(material60.videos);
+  videos[0].vision.risk = ['child'];
+  const material = plan.readMaterial(videos, material60.photos);
+  assert.deepEqual(material.speechVideos, [4], 'the clip with a child gives no soundbite');
+  const ctx = contextOf({ material });
+  const prompt = plan.userPrompt({ brief: BRIEF, style: ctx.style, grid: ctx.grid, material });
+  assert.match(prompt, /\n {2}no soundbites from this clip: it has the risk child\n/);
+  assert.equal(prompt.split('\n').filter((line) => line.startsWith('  transcript (')).length, 1, 'the transcript of v4 only');
+  const read = plan.readAnswer(JSON.stringify(answerOk), ctx);
+  assert.match(read.problems.join('\n'), /soundbite 0: v0 cannot give a soundbite: it has the risk child; it was left out\./);
+  assert.deepEqual(read.content.soundbites.map((bite) => bite.ref), ['v4']);
+  // a soundbite over a scene of quality 2 (the clip has a good scene as well): left out, the clip stays a speaker
+  const dim = clone(material60.videos);
+  dim[4].scenes[0].quality = 2;
+  dim[4].scenes[0].reasons = ['blurry'];
+  const dimCtx = contextOf({ material: plan.readMaterial(dim, material60.photos) });
+  assert.deepEqual(dimCtx.material.speechVideos, [0, 4]);
+  const dimRead = plan.readAnswer(JSON.stringify(answerOk), dimCtx);
+  assert.match(dimRead.problems.join('\n'), /soundbite 1: the words 10 to 21 of v4 show a picture that cannot be used: scene 0 has quality 2, below 3; it was left out\./);
+  assert.deepEqual(dimRead.content.soundbites.map((bite) => bite.ref), ['v0']);
+  // the run of the review: v0 and v4 with a child, the model gives soundbites of both all the same: no soundbite of them in the film
+  const both = clone(material60.videos);
+  for (const index of [0, 4]) both[index].vision.risk = ['child'];
+  const model = scripted([answerOk]);
+  const { result } = await run({ ask: model.ask, videos: both, options: { ...AI_OPTIONS, allowPlain: true } });
+  passesContract(result, 'clips with a child');
+  assert.equal(result.plain, false);
+  assert.deepEqual(result.shots.shots.filter((shot) => shot.kind === 'soundbite' || (shot.kind === 'video' && [0, 4].includes(shot.source))), []);
+  assert.match(model.calls[0].system, /No soundbites in this film \(no clip has speech that can be used\)/);
+}
+
 /* ---------- the run ---------- */
 
 async function testRun() {
@@ -1097,6 +1130,7 @@ async function testNode() {
   testGrid();
   testPrompt();
   testAnswer();
+  await testSoundbiteRisks();
   await testRun();
   await testPhotosOnly();
   await testScarceMaterial();
