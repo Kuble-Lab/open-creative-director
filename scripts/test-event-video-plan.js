@@ -172,6 +172,11 @@ function testGrid() {
     assert.equal(grid.acts.length, 6);
     assert.equal(grid.acts[0].start, 0);
     assert.equal(grid.acts[5].end, grid.duration);
+    // WP53 D: the soundbites of a short film fit into 15 % of it, also where the shortest one of the style is longer (a conference: 5 to 8 s)
+    for (const eventType of ['corporate', 'conference', 'workshop', 'launch', 'party', 'celebration']) {
+      const seconds = plan.planGrid({ analysis: beats, style: styles.combineStyle({ event_type: eventType, mood: 'fresh', length }), material, musicSeconds: length + 2, options: AI_OPTIONS }).soundbites.seconds;
+      assert.ok(seconds[0] <= seconds[1] && seconds[1] <= 0.15 * length + 1e-9, `${eventType} ${length} s: soundbites of ${seconds.join(' to ')} s`);
+    }
     grid.acts.forEach((act, index) => {
       if (index) assert.equal(act.start, grid.acts[index - 1].end);
       assert.ok(act.end - act.start >= 1.5, `${length}: ${act.act} too short`);
