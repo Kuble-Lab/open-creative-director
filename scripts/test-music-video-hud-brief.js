@@ -33,6 +33,10 @@ const captionsAss = require('../lib/captions-ass');
 const { FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
 const promptCases = require('./support/hud-plan-prompt-cases');
 const BEFORE_WP48 = require('./support/hud-plan-before-wp48.json');
+// WP52a changed the texts of the planner on purpose (the system prompt with B-roll and [FIGURE], the user prompt with the marks of B-roll, the effort and the
+// limit of the requests, the board with the line MODEL, the estimate with the thinking) and with them the plans of the three runs; these are the prints of now.
+// Everything else (the timing, the grids, the briefs, the voices) stays the one of before WP48, byte for byte.
+const WP52A = require('./support/hud-plan-wp52a.json');
 
 const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
 const errorOf = async (promise) => {
@@ -109,7 +113,13 @@ async function testGolden() {
   const now = Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, { sha256: promptCases.sha(withoutWp51(text)), length: withoutWp51(text).length }]));
   assert.deepEqual(Object.keys(now).sort(), Object.keys(BEFORE_WP48).sort(), 'the cases of before WP48');
   assert.equal(Object.keys(BEFORE_WP48).length, 45);
-  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte`);
+  assert.deepEqual(Object.keys(WP52A).sort(), [
+    ...['a', 'b', 'c'].flatMap((name) => ['board', 'cost', 'graphics', 'requests', 'shots'].map((part) => `planner.${name}.${part}`)),
+    'node.estimate',
+    ...['hud', 'kuble'].flatMap((theme) => ['de', 'en', 'es'].map((lang) => `system.${theme}.${lang}`)),
+    'system.needShort', 'user.a', 'user.a.retry'
+  ].sort(), 'WP52a changes the planner, its prompts and its estimate, nothing else');
+  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], WP52A[name] || WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte (or of WP52a)`);
   // the additions are in the prompt of every run of the planner
   for (const name of ['a', 'b', 'c']) for (const added of WP51_ADDED) assert.ok(texts[`planner.${name}.requests`].includes(JSON.stringify(added).slice(1, -1)), `${name}: the target of a tag is asked for`);
   // the three runs with a given idea: one request each (the second run and the third ask twice for the answer, as before), never one for a brief
@@ -345,7 +355,7 @@ async function testBrief() {
     assert.equal(briefCall.prompt, hudPlan.briefUserPrompt({ grid, figure }));
     assert.deepEqual([briefCall.maxTokens, briefCall.json, briefCall.reasoningEffort], [hudPlan.BRIEF_MAX_TOKENS, undefined, undefined], 'plain text, its own limit');
     assert.equal(planCall.system, hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false }));
-    assert.equal(planCall.prompt, hudPlan.userPrompt({ brief: BRIEF, style: '', figure, grid }));
+    assert.equal(planCall.prompt, hudPlan.userPrompt({ brief: BRIEF, style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }));
     assert.ok(planCall.prompt.startsWith(`IDEA\n${BRIEF}\n\nSTYLE\n`), 'the brief is the IDEA of the plan');
     assert.deepEqual([result.brief, result.briefWritten], [BRIEF, true]);
     assert.deepEqual(result.briefInfo, { words: BRIEF.split(/\s+/).length, attempts: 1, usd: 0.25, usage: null, model: null });
@@ -500,7 +510,7 @@ function testEstimate() {
   const briefChars = hudPlan.briefSystemPrompt({ theme: 'hud', hudLanguage: 'en', briefLanguage: 'en' }).length + hudPlan.briefUserPrompt({ grid, figure }).length;
   const briefTokens = hudPlan.briefTokens(briefChars, chars);
   const system = hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false });
-  const planTokens = hudPlan.llmTokens(grid, hudPlan.userPrompt({ brief: '', style: '', figure, grid }).length + system.length + hudPlan.BRIEF_TYPICAL_CHARS, chars);
+  const planTokens = hudPlan.llmTokens(grid, hudPlan.userPrompt({ brief: '', style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }).length + system.length + hudPlan.BRIEF_TYPICAL_CHARS, chars);
   near(written.usd, Math.round((((planTokens.input + briefTokens.input) * inPrice + (planTokens.output + briefTokens.output) * outPrice) / 1e6) * 10000) / 10000, 1e-9);
   assert.ok(written.usd - given.usd > 0.02 && written.usd - given.usd < 0.08, `the brief adds a few cents: ${given.usd} -> ${written.usd}`);
   // an idea that comes through a connection is no call for a brief: known when it is there, unknown while the node before has not run

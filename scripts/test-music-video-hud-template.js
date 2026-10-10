@@ -6,7 +6,7 @@
 // languages, the order and the prices of the gallery) is checked in test-nodes-templates.js; this test runs them. What is covered:
 //   - the two texts that must not drift: the figure Claudia (the default of the field "Figure") and the system prompt of the Suno song
 //     pack are the canon texts word for word; the prices in the descriptions are what the price tables of the planner say (a song of 60, 90
-//     and 120 seconds; step 1 stays under 1 USD a minute of song), and the music of the second template costs what it says
+//     and 120 seconds; step 1 costs about 1 USD a minute of song), and the music of the second template costs what it says
 //   - "Music video in the HUD style (your song)" through the real engine, with the real planner, the real cut, the real parallax node and
 //     the real render node (HUD page and finishing): doubles only for what costs money or needs the network (the times of the lyrics,
 //     the analysis of the song, the images, the lip sync, the video clips, the depth maps, the language model and the render node itself).
@@ -228,14 +228,14 @@ async function run(iso) {
     }
 
     // the prices of the descriptions are the prices of the planner at the settings of the templates (every unit that is not sung is a clip, at most
-    // 50 units): 5.5 USD a minute of song, 8.5 for 90 seconds, 11.5 for two minutes; step 1 (the character sheet, one picture per unit, the planner)
-    // stays under 1 USD a minute
+    // 50 units): 6 USD a minute of song, 9 for 90 seconds, 12 for two minutes (WP52a: more lip sync and the thinking of the planner); step 1 (the
+    // character sheet, one picture per unit, the planner) about 1 USD a minute
     const prices = hudNodes.hudPrices('anthropic/claude-opus-5.5');
     const system = hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false });
     const priced = (seconds, seed) => {
       const song = makeSong({ seconds, seed });
       const grid = hudPlan.planGrid(song.analysis, song.timing, {});
-      const prompt = hudPlan.userPrompt({ brief: 'x', style: '', figure, grid });
+      const prompt = hudPlan.userPrompt({ brief: 'x', style: '', figure, grid, broll: hudPlan.suggestBroll(grid) });
       const cost = hudPlan.estimateCost({ grid, settings: grid.settings, prices, promptChars: prompt.length + system.length });
       return { seconds, cost, stepOne: cost.parts.sheet + cost.parts.plates + cost.parts.llm };
     };
@@ -243,12 +243,12 @@ async function run(iso) {
       const params = nodeOf(resolved(name, 'en'), 'n4').params;
       assert.deepEqual([params.motion_share, params.max_units], [1, 50], `${name}: every unit moves, at most 50 units (the defaults of the planner)`);
     }
-    for (const [seconds, seed, low, high] of [[60, 3, 5.3, 6.1], [90, 3, 8, 9], [90, 7, 8, 9], [120, 3, 11, 12], [120, 7, 11, 12]]) {
+    for (const [seconds, seed, low, high] of [[60, 3, 5.6, 6.4], [90, 3, 8.5, 9.3], [90, 7, 8.5, 9.3], [120, 3, 11.4, 12.4], [120, 7, 11.4, 12.4]]) {
       const { cost, stepOne } = priced(seconds, seed);
       assert.ok(cost.total >= low && cost.total <= high, `${seconds} s (seed ${seed}) cost ${cost.total}, the descriptions say between ${low} and ${high}`);
       assert.equal(cost.parts.depth, 0, `${seconds} s: no still, no depth map`);
-      near(cost.total / (seconds / 60), 5.5, 0.45, `${seconds} s: about 5.5 USD a minute`);
-      assert.ok(stepOne / (seconds / 60) < 1, `${seconds} s: step 1 costs ${stepOne / (seconds / 60)} USD a minute, under 1`);
+      near(cost.total / (seconds / 60), 6, 0.3, `${seconds} s: about 6 USD a minute`);
+      near(stepOne / (seconds / 60), 1.05, 0.2, `${seconds} s: step 1 costs about 1 USD a minute`);
     }
     // the music of the second template: 90 seconds at 0.20 USD a minute, about 9 USD in all with the film
     {
@@ -258,16 +258,16 @@ async function run(iso) {
       for (const seed of [3, 7, 11]) {
         const { cost, stepOne } = priced(90, seed);
         assert.ok(cost.total + music > 8.4 && cost.total + music < 9.4, `film and music (seed ${seed}): ${cost.total + music}, the descriptions say about 9`);
-        // step 1 of this template holds the song too: about 1 USD a minute of song
-        near((stepOne + music) / 1.5, 1, 0.15, `step 1 with the song (seed ${seed}) is about 1 USD a minute`);
+        // step 1 of this template holds the song too: about 1.2 USD a minute of song
+        near((stepOne + music) / 1.5, 1.25, 0.15, `step 1 with the song (seed ${seed}) is about 1.2 USD a minute`);
       }
     }
     for (const lang of ['en', 'de', 'es']) {
       const a = resolved('music-video-hud', lang).description;
       const b = resolved('music-video-hud-elevenlabs', lang).description;
       const rx = (en, de, es) => (lang === 'en' ? en : lang === 'de' ? de : es);
-      assert.match(a, rx(/5\.5 US dollars per minute of song/, /5\.5 US-Dollar pro Minute Song/, /5,5 dólares por minuto de canción/), `${lang}: A names the price per minute`);
-      assert.match(b, rx(/5\.5 US dollars per minute of song/, /5\.5 US-Dollar pro Minute Song/, /5,5 dólares por minuto de canción/), `${lang}: B names the price per minute`);
+      assert.match(a, rx(/6 US dollars per minute of song/, /6 US-Dollar pro Minute Song/, /6 dólares por minuto de canción/), `${lang}: A names the price per minute`);
+      assert.match(b, rx(/6 US dollars per minute of song/, /6 US-Dollar pro Minute Song/, /6 dólares por minuto de canción/), `${lang}: B names the price per minute`);
       assert.match(b, rx(/about 9 US dollars in all/, /zusammen etwa 9 US-Dollar/, /unos 9 dólares en total/), `${lang}: B names the price with the music`);
       assert.match(b, rx(/0\.20 US dollars per minute/, /0\.20 US-Dollar pro Minute/, /0,20 dólares por minuto/), `${lang}: B names the price of the music`);
       assert.match(b, rx(/90 seconds/, /90 Sekunden/, /90 segundos/), `${lang}: B names the default length`);
@@ -301,7 +301,7 @@ async function run(iso) {
         return found[0];
       };
       const kept = [
-        sentence(rx(/About 5\.5 US dollars per minute of song according to the planner \([^)]*\)\./, /Rund 5\.5 US-Dollar pro Minute Song laut Planer \([^)]*\)\./, /Unos 5,5 dólares por minuto de canción según el planificador \([^)]*\)\./)),
+        sentence(rx(/About 6 US dollars per minute of song according to the planner \([^)]*\)\./, /Rund 6 US-Dollar pro Minute Song laut Planer \([^)]*\)\./, /Unos 6 dólares por minuto de canción según el planificador \([^)]*\)\./)),
         sentence(rx(/Before each start [^.]*confirm\./, /Vor jedem Start [^.]*berechnet\./, /Antes de cada inicio [^.]*confirmes\./)),
         sentence(rx(/The end card [^.]*figure\./, /Die Endkarte [^.]*Credit\./, /La tarjeta final [^.]*figura\./)),
         sentence(rx(/Step 1 makes the board[^;]*; you approve them before step 2 makes the expensive rest\./, /Schritt 1 macht das Board[^;]*; du gibst sie frei, bevor Schritt 2 den teuren Rest macht\./, /El paso 1 crea el tablero[^;]*; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro\./)).replace(/(Step|step|Schritt|paso) ([12])\b/g, (_match, word, number) => `${word} ${Number(number) + 1}`)
@@ -663,6 +663,7 @@ async function run(iso) {
       officialRefs = seen.sheet[0].references.map((item) => item.assetId);
       // the pictures: one per unit, Nano Banana 2.1, 16:9, the sheet as the reference, the prefix says what the sheet is
       const sheetValue = (await resultOf(workflow, 'n5')).variants[0].image;
+      let brollPictures = 0;
       for (const [nodeId, count] of [['n9', STATS.sung], ['n10', STATS.story], ['n11', STATS.still]]) {
         const items = seen.image[nodeId];
         assert.equal(items.length, count, `${nodeId}: one picture per unit`);
@@ -670,9 +671,13 @@ async function run(iso) {
           assert.deepEqual([item.model, item.aspect, item.count], [NANO_BANANA, '16:9', 1], `${nodeId}: Nano Banana 2.1, 16:9, one picture`);
           assert.deepEqual(item.references, [sheetValue.assetId], `${nodeId}: the character sheet is the reference`);
           assert.ok(item.prompt.startsWith('The attached image is the character sheet of the main person.'), `${nodeId}: the prefix`);
-          assert.ok(item.prompt.includes(FIGURE.full) || item.prompt.includes(FIGURE.short), `${nodeId}: the plate names the figure itself`);
+          // WP52a: a plate of B-roll names no figure and says that she does not appear (the sheet goes with every picture)
+          const broll = item.prompt.endsWith(` ${hudPlan.NO_FIGURE_NOTE}`);
+          assert.ok(broll ? !item.prompt.includes(FIGURE.short) && !item.prompt.includes(FIGURE.name) : item.prompt.includes(FIGURE.full) || item.prompt.includes(FIGURE.short), `${nodeId}: the plate names the figure itself, or B-roll`);
+          if (broll) brollPictures += 1;
         }
       }
+      assert.ok(brollPictures >= 1 && brollPictures <= STATS.story + STATS.still - 1, `${brollPictures} pictures of B-roll`);
       // the lists of the outputs
       for (const [nodeId, count] of [['n22', STATS.sung], ['n23', STATS.story], ['n24', STATS.still]]) {
         const values = await shown(workflow, nodeId);
