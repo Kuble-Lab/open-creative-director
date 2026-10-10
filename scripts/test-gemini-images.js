@@ -274,6 +274,7 @@ async function testBlocksAndErrors() {
     assert.equal(err.code, code);
     assert.equal(err.fallback, false, `${message}: final`);
     assert.equal(err.message, message);
+    assert.equal(gemini.isSafetyBlock(err), /IMAGE_SAFETY|IMAGE_PROHIBITED_CONTENT|PROHIBITED_CONTENT|\(SAFETY\)/.test(message));
   };
   // a block: the sentence that OpenRouter handed on for Nano Banana 2.1 ("OpenRouter 400: Gemini could not generate an image (IMAGE_OTHER)")
   await final(json(200, { candidates: [{ finishReason: 'IMAGE_OTHER' }] }), 'Google: Gemini could not generate an image (IMAGE_OTHER)');
@@ -284,6 +285,14 @@ async function testBlocksAndErrors() {
   // no image and no reason
   await final(image({}, [{ text: 'I cannot\ncreate  that.' }, { text: 'hidden', thought: true }]), 'Google: Gemini answered with text instead of an image: I cannot create that.', 'GEMINI_IMAGE_NO_IMAGE');
   await final(json(200, { candidates: [] }), 'Google: Gemini returned no image.', 'GEMINI_IMAGE_NO_IMAGE');
+
+  const billedBlock = await failure(ask(json(200, {
+    candidates: [{ finishReason: 'IMAGE_SAFETY' }],
+    usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, thoughtsTokenCount: 10 }
+  })));
+  assert.equal(billedBlock.usage.cost, 0.000375, 'a refused image bills input and text, never an invented image');
+  const unbilledBlock = await failure(ask(json(200, { candidates: [{ finishReason: 'IMAGE_SAFETY' }] })));
+  assert.equal(unbilledBlock.usage, undefined);
 
   // HTTP errors: the message of Google (like "OpenRouter 429: ..."), the summary for the log, whether the call may be repeated
   const rules = [[400, false], [401, true], [402, true], [403, true], [404, true], [408, false], [413, false], [422, false], [429, true], [500, true], [503, true], [504, true]];
