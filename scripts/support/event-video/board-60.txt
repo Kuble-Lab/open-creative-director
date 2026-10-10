@@ -1,0 +1,46 @@
+TREATMENT
+A bright, clear film of one day of ideas: from the applause of the keynote through the arrival and the workshops to the talks at the aperitif and the concert in the evening. Two short soundbites carry the story; the music builds towards the evening.
+
+STYLE      corporate / fresh · 60 s · 118.04 BPM · 36 cuts/min · look contrast 0.55, saturation 0.6, warmth 0.45, grain 0.1, glow 0.3 · transitions cut 6, match 2, dip 1 · type Montserrat 700 / Inter Tight 500
+NUMBERS    material 8 videos (7 usable, 6:09 min) and 7 photos (6 usable) · 25 scenes and photos to choose from · 25 shots (17 video, 4 photo, 2 AI, 0 parallax, 2 soundbites) · 25 cuts/min
+ESTIMATE   AI clips 2 0.40 + depth maps 0 0.00 + voice 0.01 + rest (analysis 0.11, music 0.21, plan 0.35) = 1.08 USD; after the approval 0.41 USD
+MODEL      anthropic/claude-opus-5.5 · try 1: effort medium, 9,000 of 32,000 tokens (thinking 5,000, text 4,000), complete, 0 of 22 picks replaced, 0.30 USD
+NOTE       25 usable clips and photos for 24 shots: the shots are longer (photos up to about 4.5 s)
+NOTE       parallax p0 was left out: the photos are animated by AI
+NOTE       parallax p5 was left out: the photos are animated by AI
+SOUNDBITES 1 «Willkommen zum Innovation Day 2026. Heute zeigen wir, woran wir ein ganzes Jahr gearbeite…» v0 39.5-46.0 s (6.5 s) at 0:18.4 · Anna Muster, CEO
+           2 «Das merkt man in jedem Detail. Und das ist erst der Anfang.» v4 7.2-11.7 s (4.5 s) at 0:32.7 · Luca Beispiel, Leiter Forschung
+TITLES     title «Innovation Day 2026» / «Zürich, 12. März 2026» · intertitles «320 Gäste» at 0:08.5, «12 Workshops» at 0:16.6 · end card «Danke. Bis 2027.» · innovation-day.example · voice-over «Ein Tag voller Ideen: 320 Gäste kamen zum Innovation Day nach Zürich.» «Danke an alle, die dabei waren. Wir sehen uns im Frühling 2027.»
+LEFT OUT   v7 (decode_failed), p6 (heic)
+
+HOOK  0:00.0-0:06.2
+  s1  0:00.0-0:02.2  VIDEO  v1#0  the full hall applauding, the strongest moment
+  s2  0:02.2-0:04.2  AI     p1  the speaker under the spotlight
+  s3  0:04.2-0:06.2  VIDEO  v0#0  wide shot of the stage
+ARRIVAL  0:06.2-0:14.4
+  s4  0:06.2-0:08.3  PHOTO  p0 [dip]  the venue in the morning, clear depth
+  s5  0:08.3-0:10.3  VIDEO  v2#0  guests walking in
+  s6  0:10.3-0:12.3  PHOTO  p3  coffee and badges as a detail
+  s7  0:12.3-0:14.4  VIDEO  v2#1  the registration desk
+PROGRAMME  0:14.4-0:30.6
+  s8  0:14.4-0:16.4  VIDEO  v0#1 [dip]  the keynote, medium shot before the soundbite
+  s9  0:16.4-0:18.4  VIDEO  v3#0  the workshop table
+ s10  0:18.4-0:24.9  SOUND  v0
+ s11  0:24.9-0:26.6  PHOTO  p4  hands with sticky notes
+ s12  0:26.6-0:28.6  VIDEO  v3#1  a workshop group, wide
+ s13  0:28.6-0:30.6  VIDEO  v3#2 [match]
+PEOPLE  0:30.6-0:42.8
+ s14  0:30.6-0:32.7  VIDEO  v5#0 [slow 0.5x]  laughter at the aperitif
+ s15  0:32.7-0:37.2  SOUND  v4
+ s16  0:37.2-0:38.8  VIDEO  v5#1 [slow 0.5x]  guests in conversation
+ s17  0:38.8-0:40.8  VIDEO  v5#2  a toast
+ s18  0:40.8-0:42.8  VIDEO  v4#0  the researcher in conversation
+PEAK  0:42.8-0:53.0
+ s19  0:42.8-0:44.9  VIDEO  v6#0  the band on stage
+ s20  0:44.9-0:46.9  AI     p2  the group photo
+ s21  0:46.9-0:48.9  VIDEO  v6#1  the crowd dancing
+ s22  0:48.9-0:51.0  VIDEO  v1#1  applause, close
+ s23  0:51.0-0:53.0  VIDEO  v6#3  the crowd cheering
+CLOSE  0:53.0-1:00.0
+ s24  0:53.0-0:56.1  PHOTO  p5  the venue lit up at dusk
+ s25  0:56.1-1:00.0  VIDEO  v2#2  guests leaving, a calm wide shot
