@@ -69,6 +69,24 @@ function testCounter() {
   assert.equal(appMode.countTextItems(undefined), 0);
 }
 
+function testOptionalFields() {
+  const source = read('public/nodes/app-mode.js');
+  const body = source.match(/function validateForm\(needed = null\) \{[\s\S]*?\n    \}/)[0];
+  const fields = ['videos', 'photos', 'music'].map((key) => ({
+    key, visible: true, entry: { optional: true }, node: { id: key, type: 'input.media_list' }, param: { kind: 'assets' }
+  }));
+  const state = { fields, values: new Map([['photos', [{ assetId: 'photo' }]]]) };
+  const validate = new Function('s', 'T', 'updateFieldMeta', 'countTextItems', `${body}; return validateForm;`)(state, (key) => key, () => {}, () => 0);
+  assert.equal(validate(), null, 'Photos only with generated music passes the form');
+  fields.push({ key: 'required', visible: true, entry: {}, node: { id: 'required' }, param: { kind: 'assets' } });
+  assert.equal(validate().key, 'required', 'Existing required uploads stay required');
+  const graph = freeGraph();
+  const raw = { inputs: [{ node: 'n1', param: 'text', label: 'Lines', optional: true }], outputs: [] };
+  assert.equal(normalizeApp(raw, graph).inputs[0].optional, true, 'The store preserves optional fields');
+  assert.equal(extractClientNormalizeApp()(raw).inputs[0].optional, true, 'The browser preserves optional fields');
+  assert.equal(normalizeApp({ ...raw, inputs: [{ ...raw.inputs[0], optional: 'true' }] }, graph).inputs[0].optional, undefined);
+}
+
 /* ---------- app section validation ---------- */
 
 function freeGraph() {
@@ -915,6 +933,7 @@ async function main() {
   const created = { workflows: [], sessions: [] };
   try {
     testCounter();
+    testOptionalFields();
     testAppValidation();
     await testBatch(tmpDir, created);
     testApprovalField();

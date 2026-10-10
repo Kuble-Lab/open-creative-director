@@ -598,7 +598,7 @@
       let first = null;
       for (const field of s.fields) {
         field.error = null;
-        if (field.visible && (!needed || needed.has(field.node.id))) {
+        if (field.visible && field.entry.optional !== true && (!needed || needed.has(field.node.id))) {
           const value = s.values.get(field.key);
           if (field.param.kind === 'asset' && (!value || value.missing)) field.error = T('nodes.app.needAsset');
           else if (field.param.kind === 'assets' && (!Array.isArray(value) || !value.length)) field.error = T('nodes.app.needAssets');

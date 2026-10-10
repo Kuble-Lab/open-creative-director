@@ -82,8 +82,9 @@ function testGraph() {
   assert.deepEqual(LANGS.map((lang) => nodeOf(resolved(lang), 'n0').params.language), ['en', 'de', 'es']);
   // the app: the fields of spec §2 (both media lists optional, a description, the style, the motion of the photos, the voice, the branding, own music)
   assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), [
-    'n1.assets', 'n2.assets', 'n3.prompt', 'n0.event_type', 'n0.mood', 'n0.length', 'n0.format', 'n10.photo_motion', 'n10.voiceover', 'n0.language', 'n4.branding', 'n5.assets'
+    'n1.assets', 'n2.assets', 'n3.prompt', 'n0.event_type', 'n0.mood', 'n0.length', 'n0.format', 'n10.photo_motion', 'n10.voiceover', 'n10.lower_thirds', 'n0.language', 'n4.branding', 'n5.assets'
   ]);
+  assert.deepEqual(doc.app.inputs.filter((entry) => entry.optional).map((entry) => entry.node), ['n1', 'n2', 'n5']);
   assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n20', 'n21', 'n22', 'n23', 'n24', 'n25']);
 }
 
@@ -257,6 +258,47 @@ function testPhotosOnly() {
   assert.deepEqual(def.validate(params, fromNode), []);
 }
 
+/* ---------- paid work is rejected before starting ---------- */
+
+function testPreflightAndEstimate() {
+  const store = require('../lib/store');
+  const sessionId = 'event-preflight-test';
+  const dir = store.sessionAssetDir(sessionId);
+  fs.mkdirSync(dir, { recursive: true });
+  const graph = JSON.parse(JSON.stringify(resolved('en').graph));
+  nodeOf({ graph }, 'n3').params.prompt = 'Innovation Day';
+  const uploads = Array.from({ length: 5 }, (_, index) => ({ assetId: `v${index}`, sessionId }));
+  nodeOf({ graph }, 'n1').params.assets = uploads;
+  const writeDurations = (duration) => fs.writeFileSync(path.join(dir, 'ledger.json'), JSON.stringify(uploads.map((ref) => ({ id: ref.assetId, duration }))));
+  try {
+    writeDurations(360);
+    assert.equal(planOf(graph, { mode: 'all' }).valid, true, 'Exactly 30 minutes is accepted');
+    writeDurations(361);
+    for (const request of [{ mode: 'all' }, { mode: 'node', nodeIds: ['n6'] }]) {
+      const preview = planOf(graph, request);
+      assert.equal(preview.valid, false, 'Oversized uploads are invalid before paid analysis');
+      assert.ok(preview.issues.some((issue) => issue.code === 'EVENTPLAN_TOO_MUCH_MATERIAL' && issue.data.limit === 30));
+    }
+    writeDurations(360);
+    nodeOf({ graph }, 'n5').params.assets = [{ assetId: 'm1', sessionId }, { assetId: 'm2', sessionId }];
+    const issue = planOf(graph, { mode: 'all' }).issues.find((item) => item.code === 'EVENTMUSIC_TOO_MANY_FILES');
+    assert.deepEqual(issue.data, { node: 'n5', field: 'assets' }, 'Multiple music uploads name the app field');
+    nodeOf({ graph }, 'n5').params.assets.pop();
+    assert.equal(planOf(graph, { mode: 'all' }).valid, true, 'One own music upload is accepted');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const estimate = registry.get('event_video.analyze').cost.estimate;
+  const items = [{ type: 'video', duration: 60 }, { type: 'video', duration: 120 }, { type: 'image' }];
+  const mean = estimate({}, { inputs: { media: { type: 'list', items } } });
+  assert.ok(Math.abs(mean * items.length - (0.006 * 3 + 180 / 3600 * 0.22)) < 1e-10, 'Engine multiplication counts each speech duration once');
+  assert.equal(estimate({ speech: 'off' }, { inputs: { media: { type: 'list', items } } }), 0.006);
+  assert.equal(estimate({}, { inputs: { media: { type: 'video', duration: 1500 } } }), 0.006 + 1200 / 3600 * 0.22, 'Speech estimate respects the transcription limit');
+  for (const code of ['EVENTMEDIA_SPEECH_FAILED', 'EVENTPLAN_MODEL_FAILED', 'EVENTRENDER_NO_NODE', 'EVENTRENDER_CHUNK_FAILED', 'EVENTPLAN_TOO_MUCH_MATERIAL']) {
+    for (const lang of LANGS) assert.ok(I18N[lang][`nodes.issue.${code}.app`], `${code} has an app message in ${lang}`);
+  }
+}
+
 /* ---------- the cache keys of the other templates ---------- */
 
 function testOtherCacheKeys() {
@@ -276,7 +318,7 @@ function testOtherCacheKeys() {
   assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), 'b1fa95d24bed7fc4fc58116bf4721ad7c5573e5b2d7e718683fada926fc5ac9f');
 }
 
-for (const test of [testGraph, testTexts, testSteps, testCostText, testPhotosOnly, testOtherCacheKeys]) {
+for (const test of [testGraph, testTexts, testSteps, testCostText, testPhotosOnly, testPreflightAndEstimate, testOtherCacheKeys]) {
   test();
   console.log(`ok ${test.name}`);
 }

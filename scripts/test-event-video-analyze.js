@@ -356,6 +356,18 @@ async function main() {
     await speech.analyzeSpeech(ctx, steady, { seconds: 3, scratch, hasAudio: true });
     await speech.analyzeSpeech(ctx, varied, { seconds: 3, scratch, hasAudio: true, mode: 'off' });
     check(transcriptions === 1, 'Gate and off mode skip Scribe');
+    const logs = [];
+    const longCtx = { ...ctx, log: (line) => logs.push(line), eventVideo: { ...ctx.eventVideo,
+      executeTool: async (_toolCtx, _name, args) => {
+        check(args.duration_seconds === require('../lib/tools').TIMING_MAX_SECONDS, 'Long speech is bounded before Scribe');
+        const audio = saved[saved.length - 1];
+        check(audio.duration === args.duration_seconds, 'Saved speech duration matches the transcription limit');
+        return { timing: { words: [{ text: 'Hello.', start: 0.2, end: 0.8 }] }, costUsd: SPEECH_COST_USD };
+      }
+    } };
+    const longSpeech = await speech.analyzeSpeech(longCtx, varied, { seconds: 1500, scratch, hasAudio: true });
+    check(longSpeech.speech.words.length === 1 && logs.some((line) => /first 20 minutes/.test(line)), 'Long clips remain usable with a truncation log');
+
     const speechClip = path.join(scratch, 'speech.mov');
     await run(['-i', clip, '-i', varied, '-c:v', 'copy', '-c:a', 'aac', '-shortest', speechClip]);
     const speechInfo = await analyzeMedia(ctx, speechClip);

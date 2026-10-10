@@ -769,12 +769,14 @@
       {
         "node": "n1",
         "param": "assets",
-        "label": "Videos"
+        "label": "Videos",
+        "optional": true
       },
       {
         "node": "n2",
         "param": "assets",
-        "label": "Photos"
+        "label": "Photos",
+        "optional": true
       },
       {
         "node": "n3",
@@ -812,6 +814,11 @@
         "label": "Voice-over"
       },
       {
+        "node": "n10",
+        "param": "lower_thirds",
+        "label": "Lower thirds"
+      },
+      {
         "node": "n0",
         "param": "language",
         "label": "Language of the texts"
@@ -824,7 +831,8 @@
       {
         "node": "n5",
         "param": "assets",
-        "label": "Own music (optional)"
+        "label": "Own music (optional)",
+        "optional": true
       }
     ],
     "outputs": [
@@ -902,7 +910,8 @@
       "param.n23.label": "Musik",
       "param.n24.label": "Board",
       "param.n25.label": "Gewählte Shots",
-      "param.n0.language": "de"
+      "param.n0.language": "de",
+      "app.input.n10.lower_thirds": "Bauchbinden"
     },
     "es": {
       "name": "Vídeo de evento (aftermovie)",
@@ -947,7 +956,8 @@
       "param.n23.label": "Música",
       "param.n24.label": "Tablero",
       "param.n25.label": "Tomas elegidas",
-      "param.n0.language": "es"
+      "param.n0.language": "es",
+      "app.input.n10.lower_thirds": "Rótulos"
     }
   }
 }
