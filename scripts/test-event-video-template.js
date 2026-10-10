@@ -280,4 +280,4 @@ for (const test of [testGraph, testTexts, testSteps, testCostText, testPhotosOnl
   test();
   console.log(`ok ${test.name}`);
 }
-console.log('event video template: ok');
+console.log('test-event-video-template.js: ok');
