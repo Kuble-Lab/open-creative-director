@@ -27,6 +27,7 @@ const { textValue, listValue } = require('../lib/nodes/types');
 
 const EXPECTED = [
   'dub-clip',
+  'event-video',
   'explainer-script',
   'explainer-script-topic',
   'explainer-video',
@@ -75,6 +76,10 @@ function requirementsOf(type) {
   else if (type === 'explainer.voice') keys.push('elevenlabs', 'ffmpeg');
   else if (type === 'explainer.scene') keys.push('openrouter', 'rendernode', 'ffmpeg');
   else if (type === 'doc.read') keys.push('poppler');
+  // WP53: the event video (the analysis looks with a language model, the planner is one; the music is ElevenLabs; the render draws on a render node)
+  else if (type === 'event_video.analyze' || type === 'event_video.plan') keys.push('openrouter', 'ffmpeg');
+  else if (type === 'event_video.music') keys.push('elevenlabs');
+  else if (type === 'event_video.render') keys.push('rendernode');
   else if (['audio.tts', 'audio.music', 'audio.music_plan', 'audio.lyrics_timing'].includes(type)) keys.push('elevenlabs');
   else if (type.startsWith('fal.')) keys.push('fal');
   else if (type === 'video.motion_graphics') keys.push('rendernode');
@@ -170,7 +175,9 @@ async function main() {
       'motion-video-storyboard': ['n8', 'n13'],
       'music-video-hud': ['n30', 'n20', 'n21', 'n22', 'n23', 'n24'],
       'music-video-hud-elevenlabs': ['n29', 'n20', 'n21', 'n22', 'n23', 'n24'],
-      'music-video-hud-suno': ['n29', 'n20@2', 'n21@2', 'n22@2', 'n23@2', 'n24@2']
+      'music-video-hud-suno': ['n29', 'n20@2', 'n21@2', 'n22@2', 'n23@2', 'n24@2'],
+      // WP53: the event video shows the music, the board and the chosen shots before the AI clips, the depth maps, the voice, the cut and the render
+      'event-video': ['n23', 'n24', 'n25']
     };
     assert.deepEqual(Object.fromEntries(all.map((template) => [template.id, markedIn(template.app)]).filter(([, nodes]) => nodes.length)), MARKED);
     for (const lang of ['en', 'de', 'es']) {
@@ -181,7 +188,7 @@ async function main() {
     assert.ok(types('image-to-ad').includes('llm.image_describer') && types('image-to-ad').includes('audio.tts') && types('image-to-ad').includes('video.merge_audio'));
     // a new workflow starts with the default speech model (Eleven v4), like a new node
     const speechNodes = all.flatMap((template) => template.graph.nodes.filter((item) => item.type === 'audio.tts').map((item) => ({ id: template.id, params: item.params })));
-    assert.deepEqual(speechNodes.map((item) => item.id).sort(), ['image-to-ad', 'talking-portrait']);
+    assert.deepEqual(speechNodes.map((item) => item.id).sort(), ['event-video', 'image-to-ad', 'talking-portrait']);
     for (const item of speechNodes) assert.equal(item.params.model_id, 'eleven_v4', `${item.id}: the voice speaks with the default model`);
     assert.ok(types('series-shots').includes('input.text_list') && types('series-shots').includes('video.concat'));
     assert.ok(byId['series-shots'].graph.nodes.find((node) => node.type === 'input.text_list').params.text.split('\n').length === 3);
@@ -597,7 +604,7 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
       // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
       for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
@@ -613,6 +620,7 @@ async function main() {
       assert.deepEqual(noAudio.find((item) => item.id === 'music-video-hud-elevenlabs').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
       assert.deepEqual(noAudio.find((item) => item.id === 'music-video-hud-suno').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], 'the song from Suno gets its lyric times from ElevenLabs too');
       assert.equal(noAudio.find((item) => item.id === 'suno-song-pack').available, true);
+      assert.deepEqual(noAudio.find((item) => item.id === 'event-video').missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], 'WP53: the music and the voice of the event video come from ElevenLabs');
       // Higgsfield is a requirement of its own: a template with hf.* nodes is available exactly when Higgsfield is connected
       const noHiggsfield = templates.listTemplates({ lang: 'en', checks: { ...allOn, higgsfield: () => 'Higgsfield is not connected' } });
       const dub = noHiggsfield.find((item) => item.id === 'dub-clip');
@@ -626,7 +634,7 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => !['talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'explainer-video-presenter', 'video-cutout-overlay', 'replace-people-in-video'].includes(item.id)).every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['event-video', 'talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'explainer-video-presenter', 'video-cutout-overlay', 'replace-people-in-video'].includes(item.id)).every((item) => item.available));
       assert.deepEqual(noFal.find((item) => item.id === 'explainer-video-presenter').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'only the presenter needs fal.ai (the lip sync); the other two explainer videos run without it');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-stills').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes still does');
@@ -636,14 +644,14 @@ async function main() {
       assert.equal(noFal.find((item) => item.id === 'suno-song-pack').available, true);
       // the HUD is drawn on a render node: the three films are not available without one, the Suno pack is
       const noRender = templates.listTemplates({ lang: 'en', checks: { ...allOn, rendernode: () => 'No render node configured' } });
-      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno']) {
+      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'event-video']) {
         assert.deepEqual(noRender.find((item) => item.id === id).missing, [{ key: 'rendernode', reason: 'No render node configured' }], `${id}: the HUD needs a render node`);
       }
       assert.equal(noRender.find((item) => item.id === 'suno-song-pack').available, true);
       assert.equal(noRender.find((item) => item.id === 'music-video-stills').available, true, 'the older films are drawn without a render node');
       // the language model is a requirement of the films (the planner and the pictures) and of the Suno pack
       const noModel = templates.listTemplates({ lang: 'en', checks: { ...allOn, openrouter: () => 'OPENROUTER_API_KEY is not set' } });
-      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack']) assert.deepEqual(noModel.find((item) => item.id === id).missing, [{ key: 'openrouter', reason: 'OPENROUTER_API_KEY is not set' }], `${id}: needs the language model`);
+      for (const id of ['music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack', 'event-video']) assert.deepEqual(noModel.find((item) => item.id === id).missing, [{ key: 'openrouter', reason: 'OPENROUTER_API_KEY is not set' }], `${id}: needs the language model`);
       assert.equal(noFal.find((item) => item.id === 'photo-to-3d').available, false, 'photo to 3D needs only the fal.ai key');
       assert.deepEqual(noFal.find((item) => item.id === 'photo-to-3d').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(noFal.find((item) => item.id === 'video-cutout-overlay').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the segmentation runs on fal.ai (WP33b)');
@@ -776,7 +784,9 @@ async function main() {
         // the three explainer videos have one node with a price known beforehand: the background music (120 s at 0.20 USD a minute), so the
         // gallery says "from 0.40 USD"; everything else in them depends on the run (the script, the number of scenes)
         const explainerVideo = ['explainer-video', 'explainer-video-presenter', 'explainer-video-topic', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(id);
-        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' || id === 'replace-people-in-video' ? 'estimate' : explainerVideo ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
+        // the event video (WP53) is partial too: its uploads are lists, so the gallery counts each priced node once (an analysis, the music at
+        // its longest, one AI clip, one depth map: from 0.53 USD); the planner and the voice depend on the material, the description names the real prices
+        assert.equal(cost.kind, FREE.includes(id) ? 'free' : id === 'photo-to-3d' || id === 'video-cutout-overlay' || id === 'replace-people-in-video' ? 'estimate' : explainerVideo || id === 'event-video' ? 'partial' : 'unknown', `${id}: the shipped nodes have no price table`);
         // the typography videos are 90 s long, so is their music (90 s at 0.20 USD a minute); the motion video with storyboard is 45 s (0.15)
         if (explainerVideo) assert.equal(cost.usd, id.startsWith('typography-') ? 0.3 : id === 'motion-video-storyboard' ? 0.15 : 0.4, `${id}: only the music is known beforehand`);
         assert.equal(cost.paidNodes > 0, !FREE.includes(id));

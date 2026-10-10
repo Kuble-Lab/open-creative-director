@@ -517,7 +517,8 @@
         ? { ...standard, value: '', label: T('nodes.option.defaultNamed', { name: standard.label }) }
         : { value: '', label: source.state === 'loading' ? T('nodes.option.loading') : source.state === 'error' ? T('nodes.option.unavailable') : T('nodes.option.default') });
     }
-    if (current !== '' && !options.some((option) => option.value === current)) options.push({ value: current, label: current });
+    // a value that is not offered (an old one, or one of `hiddenOptions`, such as festival) stays visible with its translated name
+    if (current !== '' && !options.some((option) => option.value === current)) options.push({ value: current, label: param.options ? optionLabelOf(param, current) : current });
     return options;
   }
 
