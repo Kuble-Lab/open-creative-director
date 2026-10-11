@@ -602,7 +602,15 @@
         else initial = Array.isArray(initial) ? initial.filter((item) => item && !item.missing) : [];
       }
       if (isAssetKind(param.kind)) {
-        const hydrate = (item) => item && (s.assets.find((asset) => asset.assetId === item.assetId && (!item.sessionId || asset.sessionId === item.sessionId)) || item);
+        // the files of the workflow fill in only what a restored value lacks for its preview: a value with more fields than the
+        // last run used (the name of the upload, its date) would be another value, and the nodes after it would run again and cost
+        const hydrate = (item) => {
+          const found = item && s.assets.find((asset) => asset.assetId === item.assetId && (!item.sessionId || asset.sessionId === item.sessionId));
+          if (!found) return item;
+          const filled = { ...item };
+          for (const field of ['type', 'sessionId', 'assetId', 'file', 'url']) if (filled[field] === undefined && found[field] !== undefined) filled[field] = found[field];
+          return filled;
+        };
         initial = Array.isArray(initial) ? initial.map(hydrate) : hydrate(initial);
       }
       s.values.set(key, initial);
