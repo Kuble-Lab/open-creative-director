@@ -35,7 +35,7 @@ function recordingFetch(log, nodes) {
       renders += 1;
       return json({ jobId: `r-render${renders}-0000000b` }, 202);
     }
-    if (parsed.pathname.endsWith('/file')) return new Response(Buffer.from('golden-mp4'), { status: 200 });
+    if (parsed.pathname.endsWith('/file')) return new Response(require('./render-test-video'), { status: 200 });
     if (parsed.pathname.startsWith('/jobs/')) return json({ jobId: 'r-render1-0000000b', status: 'running' });
     return json({ error: 'unknown' }, 404);
   };

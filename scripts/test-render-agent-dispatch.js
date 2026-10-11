@@ -16,9 +16,11 @@ const { createRenderNodeClient, RenderNodeError, QUEUE_NODE_ID, defaultMayServe 
 const { createRenderQueue } = require('../lib/render-queue');
 const { createRenderAgentsStore } = require('../lib/render-agents');
 const { runCases, HTML } = require('./support/render-request-cases');
-const BEFORE = require('./support/render-requests-before-wp46.json');
+const BEFORE = require('./support/render-requests-before-wp46.json').map((entry) => ({
+  ...entry, file: require('./support/render-test-video').toString('base64')
+}));
 
-const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(64, 3)]);
+const MP4 = require('./support/render-test-video');
 const quiet = { warn() {}, log() {} };
 const plain = (value) => JSON.parse(JSON.stringify(value));
 

@@ -234,16 +234,25 @@ function normaliseServer(raw, env = process.env) {
 
 // Puts the Content-Security-Policy first into the head of the page (before anything it could load).
 function withContentSecurityPolicy(html) {
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`;
+  // the charset comes first: the policy is long and would push a charset of the page past the first 1024 bytes the browser
+  // looks at (the page is always written as UTF-8)
+  const meta = `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`;
   const text = String(html);
-  const charset = /^[\s\S]{0,2000}?<meta\s+charset=["']?[\w-]+["']?\s*\/?>/i.exec(text);
-  if (charset) return `${text.slice(0, charset.index + charset[0].length)}${meta}${text.slice(charset.index + charset[0].length)}`;
-  const head = /<head(\s[^>]*)?>/i.exec(text);
-  if (head) return `${text.slice(0, head.index + head[0].length)}${meta}${text.slice(head.index + head[0].length)}`;
-  const htmlTag = /<html(\s[^>]*)?>/i.exec(text);
-  if (htmlTag) return `${text.slice(0, htmlTag.index + htmlTag[0].length)}<head>${meta}</head>${text.slice(htmlTag.index + htmlTag[0].length)}`;
-  const doctype = /^\s*<!doctype[^>]*>/i.exec(text);
-  if (doctype) return `${doctype[0]}${meta}${text.slice(doctype[0].length)}`;
+  let offset = 0;
+  // Skip only inert leading comments, using their first HTML closing delimiter.
+  while (true) {
+    offset += /^[\t\n\f\r ]*/.exec(text.slice(offset))[0].length;
+    if (!text.startsWith('<!--', offset)) break;
+    const comment = text.slice(offset + 4);
+    const end = /^(?:>|->)|-->|--!>/.exec(comment);
+    if (!end) return `${meta}${text}`;
+    offset += 4 + end.index + end[0].length;
+  }
+  const doctype = /^<!doctype[\t\n\f\r ]+html(?:[\t\n\f\r ]+(?:public[\t\n\f\r ]+(?:"[^"]*"|'[^']*')(?:[\t\n\f\r ]+(?:"[^"]*"|'[^']*'))?|system[\t\n\f\r ]+(?:"[^"]*"|'[^']*')))?[\t\n\f\r ]*>/i.exec(text.slice(offset));
+  if (doctype) {
+    const end = offset + doctype[0].length;
+    return `${text.slice(0, end)}${meta}${text.slice(end)}`;
+  }
   return `${meta}${text}`;
 }
 
@@ -382,13 +391,15 @@ function createAgent(options = {}) {
     return `${credentials.server}${pathname}`;
   }
 
-  async function call(method, pathname, { body, headers = {}, timeoutMs = REQUEST_TIMEOUT_MS, raw = false, signal } = {}) {
+  async function call(method, pathname, { body, headers = {}, timeoutMs = REQUEST_TIMEOUT_MS, consume, signal } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     timer.unref?.();
     const onStop = () => controller.abort();
     signal?.addEventListener?.('abort', onStop, { once: true });
     try {
+      if (signal?.aborted) controller.abort();
+      controller.signal.throwIfAborted();
       const init = { method, headers: { Authorization: `Bearer ${credentials.token}`, ...headers }, signal: controller.signal };
       if (body !== undefined) {
         if (body instanceof Readable) {
@@ -400,7 +411,7 @@ function createAgent(options = {}) {
         }
       }
       const res = await fetchImpl(url(pathname), init);
-      if (raw) return res;
+      if (consume) return await consume(res, controller.signal);
       const text = res.status === 204 ? '' : await res.text();
       let data = null;
       try {
@@ -463,26 +474,27 @@ function createAgent(options = {}) {
 
   async function download(job, asset, project, signal) {
     if (!FILE_PATTERN.test(asset.filename) || asset.filename.includes('..')) throw new Error(`invalid asset name ${asset.filename}`);
-    const res = await call('GET', `/api/render-agent/jobs/${job.jobId}/assets/${encodeURIComponent(asset.filename)}`, {
+    await call('GET', `/api/render-agent/jobs/${job.jobId}/assets/${encodeURIComponent(asset.filename)}`, {
       headers: { 'X-Render-Lease': job.lease },
-      raw: true,
-      timeoutMs: 15 * 60 * 1000,
-      signal
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new AgentHttpError(String(data?.error || `HTTP ${res.status}`), res.status, data?.code, data);
-    }
-    let received = 0;
-    const limit = Math.min(MAX_ASSET_BYTES, Number(asset.size) >= 0 ? Number(asset.size) : MAX_ASSET_BYTES);
-    const limiter = new Transform({
-      transform(chunk, _encoding, callback) {
-        received += chunk.length;
-        if (received > limit) return callback(new Error(`asset ${asset.filename} is larger than announced`));
-        return callback(null, chunk);
+      timeoutMs: options.assetTimeoutMs ?? 15 * 60 * 1000,
+      signal,
+      consume: async (res, downloadSignal) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new AgentHttpError(String(data?.error || `HTTP ${res.status}`), res.status, data?.code, data);
+        }
+        let received = 0;
+        const limit = Math.min(MAX_ASSET_BYTES, Number(asset.size) >= 0 ? Number(asset.size) : MAX_ASSET_BYTES);
+        const limiter = new Transform({
+          transform(chunk, _encoding, callback) {
+            received += chunk.length;
+            if (received > limit) return callback(new Error(`asset ${asset.filename} is larger than announced`));
+            return callback(null, chunk);
+          }
+        });
+        await pipeline(Readable.fromWeb(res.body), limiter, fs.createWriteStream(path.join(project, asset.filename), { flags: 'wx' }), { signal: downloadSignal });
       }
     });
-    await pipeline(Readable.fromWeb(res.body), limiter, fs.createWriteStream(path.join(project, asset.filename), { flags: 'wx' }));
   }
 
   async function upload(job, out, signal) {

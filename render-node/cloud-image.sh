@@ -42,6 +42,22 @@ fail() {
   exit 1
 }
 
+# Validate before downloading executable code; HTTP is an explicit opt-in off loopback.
+server_protocols() {
+  local address="$1" authority
+  [[ "$address" =~ ^https?://[^/?#@]+(/[^?#]*)?$ ]] || return 1
+  authority="${address#*://}"
+  authority="${authority%%/*}"
+  if [[ "$address" == https://* ]]; then
+    printf '=https'
+  elif [[ "$authority" =~ ^(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[::1\])(:[0-9]+)?$ ]] ||
+       [[ "${RENDER_AGENT_ALLOW_HTTP:-}" =~ ^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; then
+    printf '=http,https'
+  else
+    return 1
+  fi
+}
+
 main() {
   local server="" code=""
   while [ "$#" -gt 0 ]; do
@@ -57,6 +73,13 @@ main() {
          "Uso: … | bash -s -- --server <dirección de la app> --code <código>"
   fi
   server="${server%/}"
+  local protocols
+  if ! protocols="$(server_protocols "$server")"; then
+    say "Die App muss über HTTPS erreichbar sein. HTTP nur lokal oder mit RENDER_AGENT_ALLOW_HTTP=1." \
+        "The app must use HTTPS. HTTP is allowed only on loopback or with RENDER_AGENT_ALLOW_HTTP=1." \
+        "La app debe usar HTTPS. HTTP solo está permitido en bucle local o con RENDER_AGENT_ALLOW_HTTP=1." >&2
+    exit 1
+  fi
   [ "$(id -u)" = "0" ] || fail "Bitte als root ausführen." "Please run as root." "Ejecútalo como root."
   # shellcheck disable=SC1091
   if ! { [ -r /etc/os-release ] && . /etc/os-release && [ "${ID:-}" = "ubuntu" ]; }; then
@@ -68,7 +91,7 @@ main() {
 
   # 1. the package, while the code is fresh
   local setup="/root/ocd-render-setup.js"
-  if ! curl -fsS --retry 3 -H "X-Render-Agent-Code: ${code}" -o "$setup" "${server}/api/render-agent/package"; then
+  if ! curl --proto "$protocols" --proto-redir =https -fsS --retry 3 -H "X-Render-Agent-Code: ${code}" -o "$setup" "${server}/api/render-agent/package"; then
     fail "Das Paket konnte nicht geladen werden. Ist der Code noch gültig (10 Minuten)?" \
          "The package could not be loaded. Is the code still valid (10 minutes)?" \
          "No se pudo descargar el paquete. ¿Sigue siendo válido el código (10 minutos)?"
@@ -85,7 +108,7 @@ main() {
 
   # 3. Node.js 22 from NodeSource
   if ! node -v 2>/dev/null | grep -q '^v22\.'; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x -o /root/nodesource_setup.sh
+    curl --proto =https --proto-redir =https -fsSL https://deb.nodesource.com/setup_22.x -o /root/nodesource_setup.sh
     bash /root/nodesource_setup.sh </dev/null
     apt-get install -y -q nodejs </dev/null
     rm -f /root/nodesource_setup.sh
@@ -136,9 +159,26 @@ if [ -z "$server" ] || [ -z "$code" ]; then
   echo "ocd-render: the pairing in ${FILE} is incomplete" >&2
   exit 1
 fi
+# Validate before downloading executable code; HTTP is an explicit opt-in off loopback.
+server_protocols() {
+  local address="$1" authority
+  [[ "$address" =~ ^https?://[^/?#@]+(/[^?#]*)?$ ]] || return 1
+  authority="${address#*://}"
+  authority="${authority%%/*}"
+  if [[ "$address" == https://* ]]; then
+    printf '=https'
+  elif [[ "$authority" =~ ^(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[::1\])(:[0-9]+)?$ ]] ||
+       [[ "${RENDER_AGENT_ALLOW_HTTP:-}" =~ ^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; then
+    printf '=http,https'
+  else
+    return 1
+  fi
+}
+
+protocols="$(server_protocols "$server")" || { echo "ocd-render: HTTPS required (or RENDER_AGENT_ALLOW_HTTP=1)" >&2; exit 1; }
 setup="$(mktemp --suffix=.js /tmp/ocd-render-setup.XXXXXX)"
 trap 'rm -f "$setup"' EXIT
-curl -fsS --retry 10 --retry-delay 3 --retry-all-errors -H "X-Render-Agent-Code: ${code}" -o "$setup" "${server}/api/render-agent/package"
+curl --proto "$protocols" --proto-redir =https -fsS --retry 10 --retry-delay 3 --retry-all-errors -H "X-Render-Agent-Code: ${code}" -o "$setup" "${server}/api/render-agent/package"
 chmod 644 "$setup"
 runuser -u ocdrender -- env HOME=/var/lib/ocdrender node "$setup" --server "$server" --code "$code" --dir "$DIR" --name "${name:-cloud}" --no-start </dev/null
 rm -f "$FILE"

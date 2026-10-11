@@ -28,6 +28,16 @@ if (-not $Server -or -not $Code) {
   return
 }
 $Server = $Server.TrimEnd('/')
+$address = $null
+$validAddress = [Uri]::TryCreate($Server, [UriKind]::Absolute, [ref]$address)
+$loopback = $validAddress -and ($address.Host -match '^(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[?::1\]?)$')
+$allowHttp = $env:RENDER_AGENT_ALLOW_HTTP -match '^(1|true|yes)$'
+if (-not $validAddress -or $address.UserInfo -or $address.Query -or $address.Fragment -or
+    ($address.Scheme -ne 'https' -and -not ($address.Scheme -eq 'http' -and ($loopback -or $allowHttp)))) {
+  Write-Host (Say "Die App muss über HTTPS erreichbar sein. HTTP nur lokal oder mit RENDER_AGENT_ALLOW_HTTP=1." "The app must use HTTPS. HTTP is allowed only on loopback or with RENDER_AGENT_ALLOW_HTTP=1." "La app debe usar HTTPS. HTTP solo está permitido en bucle local o con RENDER_AGENT_ALLOW_HTTP=1.")
+  return
+}
+
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host (Say "Node.js fehlt. Der Render-Agent braucht Node.js 22 oder neuer: https://nodejs.org/" "Node.js is missing. The render agent needs Node.js 22 or newer: https://nodejs.org/" "Falta Node.js. El agente de render necesita Node.js 22 o posterior: https://nodejs.org/")
@@ -46,7 +56,7 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
 
 $setup = Join-Path ([IO.Path]::GetTempPath()) ("ocd-render-agent-" + [guid]::NewGuid().ToString('N') + ".js")
 try {
-  Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Render-Agent-Code' = $Code } -Uri "$Server/api/render-agent/package" -OutFile $setup
+  Invoke-WebRequest -MaximumRedirection 0 -UseBasicParsing -Headers @{ 'X-Render-Agent-Code' = $Code } -Uri "$Server/api/render-agent/package" -OutFile $setup
 } catch {
   Write-Host (Say "Das Paket konnte nicht geladen werden. Ist der Code noch gültig (10 Minuten)? Sonst in der App einen neuen holen." "The package could not be loaded. Is the code still valid (10 minutes)? Otherwise get a new one in the app." "No se pudo descargar el paquete. ¿Sigue siendo válido el código (10 minutos)? Si no, pide uno nuevo en la app.")
   return
