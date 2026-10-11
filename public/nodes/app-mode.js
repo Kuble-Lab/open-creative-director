@@ -204,8 +204,8 @@
     return out;
   }
 
-  // The item list of switches as the node delivers it (a JSON text: { items: [{ id, label, value, on, auto, locked, mark }], unit: { usd }, base }),
-  // or null.
+  // The item list of switches as the node delivers it (a JSON text: { items: [{ id, label, value, on, auto, locked, mark, why? }], unit: { usd }, base }),
+  // or null. `why` names the reason of a locked item that is not its mark (the event video: a photo the code added to fill an act).
   function switchPayload(text) {
     let data = null;
     try {
@@ -770,7 +770,10 @@
           });
           buttons.push({ button, entry });
           cell.append(el('div', { class: 'nv-appswitch-row' }, el('span', { class: 'nv-appswitch-name', text: entry.label || '' }), button));
-          if (entry.locked) cell.append(el('div', { class: 'nv-appswitch-note', text: T('nodes.app.switchLocked', { mark: marks && entry.mark ? ui.optionLabelOf(marks, entry.mark) : '' }) }));
+          // the reason of a locked item: its own (`why`, a text of the page for it) or its mark
+          const why = entry.locked && typeof entry.why === 'string' && /^[a-z]+$/.test(entry.why) && ui.tr(`nodes.app.switchLocked.${entry.why}`, '') ? T(`nodes.app.switchLocked.${entry.why}`) : null;
+          if (why) cell.append(el('div', { class: 'nv-appswitch-note', text: why }));
+          else if (entry.locked) cell.append(el('div', { class: 'nv-appswitch-note', text: T('nodes.app.switchLocked', { mark: marks && entry.mark ? ui.optionLabelOf(marks, entry.mark) : '' }) }));
           else if (entry.mark && marks) cell.append(el('div', { class: 'nv-appswitch-note', text: ui.optionLabelOf(marks, entry.mark) }));
           grid.append(cell);
         }

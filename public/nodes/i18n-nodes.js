@@ -1096,6 +1096,7 @@
     ['nodes.app.markLabel', 'KI für {item}', 'AI for {item}', 'IA para {item}'],
     ['nodes.app.switchItem', 'Schalter für {item}', 'Switch for {item}', 'Interruptor de {item}'],
     ['nodes.app.switchLocked', 'Gesperrt: im Auftrag als «{mark}» markiert.', 'Locked: marked “{mark}” in the order.', 'Bloqueada: marcada como «{mark}» en el encargo.'],
+    ['nodes.app.switchLocked.added', 'Gesperrt: vom Code ergänzt, weil die Shots für den Akt zu kurz waren. KI-Clips gibt es nur für Fotos, die die Planung gewählt hat.', 'Locked: added by the code because the shots were too short for the act. AI clips are only for photos the planning chose.', 'Bloqueada: añadida por el código porque las tomas eran demasiado cortas para el acto. Los clips de IA son solo para fotos que eligió la planificación.'],
     ['nodes.app.switchesCount', 'Eingeschaltet: {count}', 'Switched on: {count}', 'Activados: {count}'],
     ['nodes.app.switchesSum', 'Eingeschaltet: {count} · ≈ {usd} USD', 'Switched on: {count} · ≈ {usd} USD', 'Activados: {count} · ≈ {usd} USD'],
     ['nodes.app.switchesCount.ai_choice', 'KI-Clips: {count}', 'AI clips: {count}', 'Clips de IA: {count}'],

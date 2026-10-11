@@ -10,12 +10,15 @@
 //              the lowest score), not usable (a note on the board); the rule for the number of clips
 //   switch     the switches of the approval: the plan is made again from the answer the first run keeps, without a request; the same request,
 //              whatever the switches; the prompts of the photos switched on come from that answer
+//   copies     (review) the mark of a photo the analysis took for a copy holds for the photo that is kept, "no AI" before "AI clip"
+//   added      (review) a photo the code added to fill an act has no switch that could be switched on (locked, why "added"), and the board says why
 //   main       without marks everything is as on main (34fe755): the prompts, the plans and the cache keys, byte for byte (digests computed with
 //              the code of main)
 //   format     the param kind `marks` (registry), marks and switches in the app section (server and client)
 //   widgets    the summary of the marks in the inspector, the hook of the list of files, the pure functions of the switches, the texts in de/en/es
 //   engine     the template through the real engine: step 1 with marks, then the plan and the run of the approval with switches: the planner is not
-//              asked again (a mock counts the calls), the node is free in the plan, the clips are counted right in the cost of step 2
+//              asked again (a mock counts the calls), the node is free in the plan, the clips are counted right in the cost of step 2; (review) after a
+//              forced run of the planner (a new answer for the same request) the same switches find no result made from the older answer
 
 const assert = require('assert/strict');
 const crypto = require('crypto');
@@ -316,6 +319,102 @@ async function testSwitch() {
   assert.ok(short.notes.includes('p7 is switched on but the answer has no prompt for it: it gets a gentle camera move'));
 }
 
+/* ---------- copies ---------- */
+
+async function testCopies() {
+  // p17 is a copy of p3 (livePhotos): the analysis keeps p3, p17 is never in the film
+  const material = plan.readMaterial([], livePhotos());
+  assert.deepEqual([...material.duplicates], [['p17', 'p3']]);
+  const marks = plan.photoMarks(material, { ...AI, aiMarks: { 17: 'never' } });
+  assert.deepEqual([[...marks.never], [...marks.always], marks.copies], [['p3'], [], [['p17', 'p3', 'never']]]);
+  // "no AI" before "AI clip" when the photo and its copy disagree, either way
+  const both = (aiMarks) => {
+    const found = plan.photoMarks(material, { ...AI, aiMarks });
+    return [[...found.never], [...found.always]];
+  };
+  assert.deepEqual(both({ 3: 'always', 17: 'never' }), [['p3'], []]);
+  assert.deepEqual(both({ 3: 'never', 17: 'always' }), [['p3'], []]);
+  assert.deepEqual(both({ 17: 'always' }), [[], ['p3']]);
+  assert.deepEqual(plan.photoMarks(material, { ...AI, photoMotion: 'code', aiMarks: { 17: 'never' } }).copies, [], 'no marks with the photos moved by code');
+
+  // "all chosen photos", the copy marked "no AI": the photo that is kept gets no clip, its switch is locked, the prompt and the board say so
+  const allOf = (request) => {
+    const answer = promptedAnswer(request);
+    answer.parallax = [];
+    return answer;
+  };
+  const model = scripted(allOf);
+  const never = await liveRun({ ask: model.ask, options: { ...AI, maxAiPhotos: contract.MAX_AI_PHOTOS, aiMarks: { 17: 'never' } } });
+  passesContract(never, 'copy never');
+  assert.match(model.calls[0].system, /except those marked "no AI"\. .* The person marked p3 "no AI"/);
+  assert.ok(!never.aiPhotos.includes(3) && !never.aiPhotos.includes(17), `p3 has no AI clip: ${never.aiPhotos}`);
+  assert.equal(never.aiPhotos.length, 16, 'every other photo');
+  assert.deepEqual(never.switches.find((item) => item.ref === 'p3'), { ref: 'p3', photo: 3, on: false, auto: false, mark: 'never', locked: true });
+  assert.ok(never.notes.includes('p17 is a copy of p3: its mark "no AI" holds for p3'), never.notes.join(' | '));
+  assert.match(never.board, /p17 is a copy of p3: its mark "no AI" holds for p3/);
+  // switched on in the approval: it stays without a clip
+  const switched = await liveRun({ ask: silent().ask, reuse: async () => never.kept, options: { ...AI, maxAiPhotos: contract.MAX_AI_PHOTOS, aiMarks: { 17: 'never' }, aiChoice: { 3: 'on' } } });
+  assert.deepEqual(switched.aiPhotos, never.aiPhotos);
+
+  // the copy has the better quality, the photo marked "no AI" is the one left out: the copy that is kept gets no clip either
+  const better = livePhotos();
+  better[17].scenes[0].quality = 5;
+  assert.deepEqual([...plan.readMaterial([], better).duplicates], [['p3', 'p17']]);
+  const swapped = (request) => JSON.parse(JSON.stringify(allOf(request)).replace(/"p3"/g, '"p17"'));
+  const kept = await run({ ask: scripted(swapped).ask, style: LIVE(), videos: [], photos: better, options: { ...AI, maxAiPhotos: contract.MAX_AI_PHOTOS, aiMarks: { 3: 'never' } } });
+  passesContract(kept, 'original never');
+  assert.ok(!kept.aiPhotos.includes(17) && !kept.aiPhotos.includes(3), `p17 has no AI clip: ${kept.aiPhotos}`);
+  assert.deepEqual(kept.switches.find((item) => item.ref === 'p17'), { ref: 'p17', photo: 17, on: false, auto: false, mark: 'never', locked: true });
+  assert.ok(kept.notes.includes('p3 is a copy of p17: its mark "no AI" holds for p17'), kept.notes.join(' | '));
+
+  // the copy marked "AI clip": the photo that is kept gets the clip (no longer "cannot be used")
+  const sure = await liveRun({ ask: scripted(liveAnswer).ask, options: { ...AI, maxAiPhotos: 2, aiMarks: { 17: 'always' } } });
+  passesContract(sure, 'copy always');
+  assert.ok(sure.aiPhotos.includes(3), `p3 has its clip: ${sure.aiPhotos}`);
+  assert.equal(sure.aiPhotos.length, 2);
+  assert.ok(sure.notes.includes('p17 is a copy of p3: its mark "AI clip" holds for p3'), sure.notes.join(' | '));
+  assert.ok(!sure.notes.some((note) => /p17 is marked "AI clip" but cannot be used/.test(note)));
+  // "AI clip" on the copy, "no AI" on the photo: no clip, and the board says which mark counts
+  const both2 = await liveRun({ ask: scripted(liveAnswer).ask, options: { ...AI, maxAiPhotos: 2, aiMarks: { 3: 'never', 17: 'always' } } });
+  assert.ok(!both2.aiPhotos.includes(3));
+  assert.ok(both2.notes.includes('p17 is a copy of p3: its mark "AI clip" gives way to "no AI"'), both2.notes.join(' | '));
+}
+
+/* ---------- added ---------- */
+
+async function testAdded() {
+  // party, 30 s, nine photos, two clips: the shots of the arrival are too short, the code adds p8 (as on main)
+  const party = styles.combineStyle({ event_type: 'party', mood: 'fast', length: 30 });
+  const nine = Array.from({ length: 9 }, (_, index) => photo(index, { upright: index % 3 === 0, faces: index % 2 ? 2 : 0, subject: `the ${SUBJECTS[index]}` }));
+  const answer = (request) => {
+    const acts = picksFor(request.system, Array.from({ length: 9 }, (_, index) => `p${index}`));
+    const picked = acts.flatMap((act) => act.picks.map((pick) => pick.ref));
+    return { treatment: 't', acts, title: { text: 'Innovation Day 2026', sub: null, source: 'description' }, ai_photos: picked.map((ref) => ({ ref, prompt: 'gentle drift' })), parallax: [], endcard: { line: 'Danke.', source: 'generic' } };
+  };
+  const nineRun = (extra) => run({ style: party, videos: [], photos: nine, musicSeconds: 32, ...extra });
+  const first = await nineRun({ ask: scripted(answer).ask, options: { ...AI, maxAiPhotos: 2 } });
+  passesContract(first, 'added');
+  assert.ok(first.notes.includes('arrival: the code added p8, the shots were too short for the act'), first.notes.join(' | '));
+  assert.deepEqual(first.aiPhotos, [0, 2]);
+  // p8 is in the film but cannot be switched on: the switches are applied to the picks of the answer
+  assert.deepEqual(first.switches.find((item) => item.ref === 'p8'), { ref: 'p8', photo: 8, on: false, auto: false, mark: null, locked: true, why: 'added' });
+  const picks = new Set();
+  for (const act of ACTS) for (const pick of first.content.acts[act]) if (pick.unit.kind === 'photo' && !pick.unit.detail) picks.add(pick.unit.ref);
+  for (const item of first.switches) assert.equal(item.locked, !picks.has(item.ref) || item.mark === 'never', `${item.ref}: a switch only for a pick`);
+  // switched on all the same (the node view): no clip, the same plan, and the board says why
+  const again = await nineRun({ ask: silent().ask, reuse: async () => first.kept, options: { ...AI, maxAiPhotos: 2, aiChoice: { 8: 'on' } } });
+  assert.deepEqual([again.aiPhotos, again.shots], [first.aiPhotos, first.shots]);
+  assert.ok(again.notes.includes('p8 stays without an AI clip: the plan did not pick it'), again.notes.join(' | '));
+  assert.deepEqual(again.switches.find((item) => item.ref === 'p8'), { ref: 'p8', photo: 8, on: false, auto: false, mark: null, locked: true, why: 'added' });
+  // the node passes the reason on to the app
+  const nodes = require('../lib/nodes/nodes-event-video');
+  const values = nine.map((_, index) => ({ type: 'image', assetId: `asset-${index}`, sessionId: 'session-1' }));
+  const variant = nodes.planVariant(first, values, { key: 'ans:test', selection: null });
+  const items = JSON.parse(variant.ai_switches.value).items;
+  assert.equal(items.find((item) => item.label === 'p8').why, 'added');
+  assert.ok(items.filter((item) => item.label !== 'p8').every((item) => !('why' in item)), 'only the added photo has a reason of its own');
+}
+
 /* ---------- main ---------- */
 
 // The plans of AI mode without marks: shots, graphics, board, lists and notes as with the code of main (34fe755). The digests were computed with
@@ -389,6 +488,12 @@ async function testMain() {
   const stamped = await def.cacheStamp(registry.normalizeParams(def, { photo_motion: 'ai', ai_choice: { 'asset-1': 'on' } }), ctx);
   assert.ok(stamped && 'answer' in stamped, 'with switches the stamp names the answer');
   assert.equal(stamped.answer, null, 'unknown while the length of the music is not known');
+  // which answer (review): the newest of the earlier results, named only when they keep more than one answer for the key
+  const kept = (key, id) => ({ variants: [{ ai_switches: textValue(JSON.stringify({ version: 1, answer: { key, id } })) }] });
+  assert.deepEqual(nodes.answerStamp([], 'ans:a'), {});
+  assert.deepEqual(nodes.answerStamp([kept('ans:a', 'one'), kept('ans:a', 'one'), kept('ans:b', 'other')], 'ans:a'), {}, 'one answer: the key alone');
+  assert.deepEqual(nodes.answerStamp([kept('ans:a', 'two'), kept('ans:a', 'one'), kept('ans:a', 'one')], 'ans:a'), { id: 'two' }, 'two answers: the newest');
+  assert.deepEqual(nodes.answerStamp([kept('ans:a', 'two'), kept('ans:a', 'one')], null), {});
 }
 
 /* ---------- format ---------- */
@@ -517,7 +622,7 @@ async function testWidgets() {
     const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (_, key) => vars[key]);
     assert.equal(fill(T['nodes.app.switchesSum.ai_choice'], { count: 3, usd: '0.60' }), w.sum);
     assert.equal(fill(T['nodes.app.switchesSum'], { count: 3, usd: '0.60' }), w.generic);
-    for (const key of ['nodes.app.markLabel', 'nodes.app.switchItem', 'nodes.app.switchLocked', 'nodes.app.switchesCount', 'nodes.app.switchesHint', 'nodes.app.switchesCount.ai_choice', 'nodes.option.ai_choice.on', 'nodes.option.ai_choice.off', 'nodes.param.ai_choice']) {
+    for (const key of ['nodes.app.markLabel', 'nodes.app.switchItem', 'nodes.app.switchLocked', 'nodes.app.switchLocked.added', 'nodes.app.switchesCount', 'nodes.app.switchesHint', 'nodes.app.switchesCount.ai_choice', 'nodes.option.ai_choice.on', 'nodes.option.ai_choice.off', 'nodes.param.ai_choice']) {
       assert.ok(T[key] && !T[key].includes('ß'), `${lang}: ${key}`);
     }
     assert.ok(T['nodes.app.switchLocked'].includes('{mark}') && T['nodes.app.markLabel'].includes('{item}'));
@@ -683,6 +788,8 @@ async function engineFlow(iso, patch) {
   patch(costs, 'recordCost', async (entry) => entry);
   const seen = { planner: [], clips: [], depth: 0 };
   let looked = 0;
+  // a later answer of the planner ranks the photos the other way round (a forced run: a new answer for the same request)
+  let reversed = false;
   patch(llm, 'completeText', async (options) => {
     if (options.system === vision.SYSTEM) {
       const n = looked++;
@@ -690,7 +797,9 @@ async function engineFlow(iso, patch) {
       return { text: JSON.stringify(answer), usd: 0.006 };
     }
     seen.planner.push(options);
-    return { text: JSON.stringify(planAnswer(options.system, options.prompt)), usd: 0.4, model: options.model, usage: { completion_tokens: 4000 } };
+    const answer = planAnswer(options.system, options.prompt);
+    if (reversed) answer.ai_photos.reverse();
+    return { text: JSON.stringify(answer), usd: 0.4, model: options.model, usage: { completion_tokens: 4000 } };
   });
   const originalTool = tools.executeTool;
   patch(tools, 'executeTool', async (ctx, name, args) => {
@@ -823,10 +932,33 @@ async function engineFlow(iso, patch) {
   await finish({ mode: 'selection', nodeIds: ['n11'], overrides: { n10: { ai_marks: aiMarks, ai_choice: { [free[0].id]: 'on' } } } });
   assert.equal(seen.planner.length, 1);
   assert.equal(seen.clips.length, 3, 'the clip of the plan is made, the one switched on is taken from the cache');
+
+  // (review) the planner forced to run again (the node view) asks the model once more: a new answer for the same request, shown with its board and
+  // switches. The switches of the first approval again: the result made from the first answer must not be found by its key
+  reversed = true;
+  await finish({ mode: 'selection', nodeIds: ['n10'], force: true, overrides: { n10: { ai_marks: aiMarks } } });
+  assert.equal(seen.planner.length, 2, 'a new answer');
+  const renewed = JSON.parse((await latest()).variants[0].ai_switches.value);
+  assert.equal(renewed.answer.key, switches.answer.key, 'the same request');
+  assert.notEqual(renewed.answer.id, switches.answer.id, 'another answer');
+  const replanned = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides });
+  assert.deepEqual([replanned.nodes.n10.status, replanned.nodes.n10.paid, replanned.nodes.n10.free], ['stale', false, true], 'free, but not the result of before');
+  await finish({ mode: 'selection', nodeIds: ['n11'], overrides });
+  assert.equal(seen.planner.length, 2, 'no request: the switches are applied to the answer it holds');
+  const fourth = await latest();
+  assert.equal(fourth.cost.usd, 0);
+  const applied = JSON.parse(fourth.variants[0].ai_switches.value);
+  assert.equal(applied.answer.id, renewed.answer.id, 'the switches are applied to the new answer');
+  assert.notDeepEqual(fourth.variants[0].shots, second.variants[0].shots, 'not the plan of the first answer');
+  const results = await flowStore.readResults(workflow.id);
+  assert.equal(results.nodes.n10.selected.entry, fourth.id, 'the result shown is the one of the new answer');
+  // and it stays: the plan of the same switches finds it now
+  const settled = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides });
+  assert.equal(settled.nodes.n10.status, 'cached');
 }
 
 async function main() {
-  for (const test of [testNever, testSure, testSwitch, testMain, testFormat, testWidgets, testEngine]) {
+  for (const test of [testNever, testSure, testSwitch, testCopies, testAdded, testMain, testFormat, testWidgets, testEngine]) {
     await test();
     console.log(`ok ${test.name}`);
   }
