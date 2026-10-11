@@ -374,6 +374,7 @@ async function run(iso, holder) {
     assert.ok(item.description.length > 40, `${item.name} describes itself`);
   }
   assert.equal(startList.find((item) => item.name === 'run_workflow').inputSchema.required.includes('max_usd'), true);
+  for (const name of ['create_from_template', 'run_workflow']) assert.deepEqual(startList.find((item) => item.name === name).inputSchema.properties.file_marks.additionalProperties.enum, ['never', 'always']);
   // a read key cannot start anything, although it calls the tool
   await refused(reader.secret, 'run_workflow', { workflow_id: free.id, max_usd: 0 }, /may only read/);
   await refused(reader.secret, 'upload_asset', { filename: 'a.png', data_base64: PNG.toString('base64') }, /may only read/);

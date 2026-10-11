@@ -321,6 +321,75 @@ async function testSwitch() {
 
 /* ---------- copies ---------- */
 
+async function testPlainSwitches() {
+  const first = await run({ ask: async () => ({ text: 'invalid', usd: 0 }), options: { ...AI, allowPlain: true, aiMarks: { 0: 'never', 1: 'always' } } });
+  assert.equal(first.plain, true);
+  assert.ok(first.switches.length > 0);
+  assert.ok(first.aiPhotos.includes(1), 'always applies to the score plan');
+  assert.ok(!first.aiPhotos.includes(0), 'never applies to the score plan');
+  const item = first.switches.find((item) => !item.locked && item.on);
+  assert.ok(item);
+  const second = await run({ ask: silent().ask, reuse: async () => first.kept, options: { ...AI, allowPlain: true, aiMarks: { 0: 'never', 1: 'always' }, aiChoice: { [item.photo]: 'off' } } });
+  assert.equal(second.reused, true);
+  assert.ok(!second.aiPhotos.includes(item.photo));
+  assert.equal(second.switches.find((entry) => entry.photo === item.photo).on, false);
+}
+
+async function testModelIndependentReuse() {
+  const registry = require('../lib/nodes/registry').registry;
+  const engine = require('../lib/nodes/engine');
+  const { textValue, listValue, canonicalJson, sha256Hex } = require('../lib/nodes/types');
+  const store = require('../lib/store');
+  const def = registry.get('event_video.plan');
+  const image = (kind, index) => ({ type: kind, assetId: `${kind}-${index}`, sessionId: 'test-session' });
+  const inputs = {
+    brief: textValue(material60.brief), style: textValue(JSON.stringify(styleFixture)),
+    videos: listValue('video', material60.videos.map((_, index) => image('video', index))),
+    photos: listValue('image', material60.photos.map((_, index) => image('image', index))),
+    video_info: listValue('text', material60.videos.map((value) => textValue(JSON.stringify(value)))),
+    photo_info: listValue('text', material60.photos.map((value) => textValue(JSON.stringify(value)))),
+    music_analysis: textValue(JSON.stringify(beats)), music: { type: 'audio', assetId: 'music', duration: 62 }
+  };
+  const params = registry.normalizeParams(def, { photo_motion: 'ai', ai_choice: { 'image-1': 'off' }, model: 'anthropic/claude-opus-5.5' });
+  const ctx = { sessionId: 'test-session', inputs, history: [], config: {} };
+  const firstStamp = await def.cacheStamp(params, ctx);
+  const nextParams = { ...params, model: 'anthropic/claude-sonnet-5.5' };
+  assert.deepEqual(await def.cacheStamp(nextParams, ctx), firstStamp, 'approver model is excluded');
+  for (const changed of [{ ...inputs, brief: textValue('A different event.') }, { ...inputs, photos: listValue('image', inputs.photos.items.map((item, index) => index ? item : { ...item, assetId: 'new-photo' })) }]) {
+    assert.notEqual((await def.cacheStamp(nextParams, { ...ctx, inputs: changed })).answer, firstStamp.answer, 'real inputs change the answer identity');
+  }
+  const result = await run({ ask: scripted(answerOk).ask, options: { ...AI, aiChoice: { 1: 'off' } } });
+  const answer = { key: firstStamp.answer, id: 'saved', sheet: sha256Hex(canonicalJson(result.sources)), ...result.kept };
+  const variant = { ai_switches: textValue(JSON.stringify({ version: 1, answer })), selection: { type: 'image', assetId: 'sheet' } };
+  const nodeResults = { history: [{ variants: [variant] }] };
+  const readLedger = store.readLedger;
+  store.readLedger = async () => [];
+  try {
+    const predicted = await def.cacheStampOutputs(firstStamp, { params: nextParams, ctx, nodeResults });
+    assert.equal(predicted.free, true, 'another model approves without a request');
+    assert.deepEqual(predicted.outputs.selection, variant.selection);
+    const cleared = { ...nextParams, ai_choice: {} };
+    const clearedStamp = await def.cacheStamp(cleared, { ...ctx, history: nodeResults.history });
+    assert.equal((await def.cacheStampOutputs(clearedStamp, { params: cleared, ctx, nodeResults })).free, true, 'returning all switches to auto is also free');
+    assert.deepEqual(await def.cacheStamp(cleared, { ...ctx, forced: true, history: nodeResults.history }), require('../lib/nodes/nodes-explainer').fallbackBrainStamp(cleared, ctx), 'explicit step 1 reruns ask the model');
+    const changedStamp = await def.cacheStamp({ ...nextParams, ai_marks: { 'image-0': 'never' } }, ctx);
+    assert.equal(await def.cacheStampOutputs(changedStamp, { params: nextParams, ctx, nodeResults }), null, 'changed marks have no saved answer');
+    // A pre-upgrade answer is accepted only if its historical cache key also proves that the real inputs are unchanged.
+    const request = plan.planRequest({ brief: material60.brief, style: styleFixture, videos: material60.videos, photos: material60.photos, analysis: beats, musicSeconds: 62, brand: null, options: { ...AI, maxAiPhotos: 0, allowPlain: false } });
+    const { ai_choice: _choice, model: _model, ...planning } = params;
+    assert.equal(`ans:${sha256Hex(canonicalJson({ system: request.system, prompt: request.prompt, inputs, planning }))}`, firstStamp.answer, 'adapter and fixture requests agree');
+    const legacyKey = `ans:${sha256Hex(canonicalJson({ system: request.system, prompt: request.prompt, model: params.model }))}`;
+    const oldParams = { ...params, ai_choice: {} };
+    const oldVariant = { ...variant, ai_switches: textValue(JSON.stringify({ version: 1, answer: { ...answer, key: legacyKey, model: params.model } })) };
+    const history = [{ params: oldParams, cacheKey: engine.computeCacheKey(def, oldParams, inputs), variants: [oldVariant] }];
+    const legacyStamp = await def.cacheStamp(nextParams, { ...ctx, history });
+    assert.equal(legacyStamp.legacy, legacyKey);
+    assert.equal((await def.cacheStampOutputs(legacyStamp, { params: nextParams, ctx, nodeResults: { history } })).free, true);
+    const changed = { ...inputs, photos: listValue('image', inputs.photos.items.map((item) => ({ ...item, assetId: `new-${item.assetId}` }))) };
+    assert.equal((await def.cacheStamp(nextParams, { ...ctx, history, inputs: changed })).legacy, undefined, 'legacy reuse checks file identity, not only the prompt');
+  } finally { store.readLedger = readLedger; }
+}
+
 async function testCopies() {
   // p17 is a copy of p3 (livePhotos): the analysis keeps p3, p17 is never in the film
   const material = plan.readMaterial([], livePhotos());
@@ -537,10 +606,40 @@ function testFormat() {
   assert.deepEqual(doc.app.outputs.find((entry) => entry.node === 'n25').switches, { node: 'n10', param: 'ai_choice' });
   const app = normalizeApp(doc.app, doc.graph);
   assert.deepEqual(app, doc.app, 'the template keeps them');
+  const oldApp = clone(doc.app);
+  delete oldApp.inputs.find((entry) => entry.node === 'n2').marks;
+  delete oldApp.outputs.find((entry) => entry.node === 'n25').switches;
+  assert.deepEqual(normalizeApp(oldApp, doc.graph), app, 'old event apps are upgraded');
+  assert.deepEqual(normalizeApp(normalizeApp(oldApp, doc.graph), doc.graph), app, 'upgrade is idempotent');
+  const renamed = clone(doc);
+  const names = { n2: 'photos', n10: 'planner', n25: 'chosen' };
+  renamed.graph.nodes.forEach((node) => { node.id = names[node.id] || node.id; });
+  renamed.graph.edges.forEach((edge) => { edge.from.node = names[edge.from.node] || edge.from.node; edge.to.node = names[edge.to.node] || edge.to.node; });
+  const renamedApp = clone(oldApp);
+  [...renamedApp.inputs, ...renamedApp.outputs].forEach((entry) => { entry.node = names[entry.node] || entry.node; });
+  const upgraded = normalizeApp(renamedApp, renamed.graph);
+  assert.deepEqual(upgraded.inputs.find((entry) => entry.node === 'photos').marks, { node: 'planner', param: 'ai_marks' }, 'migration follows structure rather than template ids');
+  assert.deepEqual(upgraded.outputs.find((entry) => entry.node === 'chosen').switches, { node: 'planner', param: 'ai_choice' });
+  const unrelated = clone(doc.graph);
+  unrelated.edges = unrelated.edges.filter((edge) => edge.to.port !== 'photos');
+  assert.deepEqual(normalizeApp(oldApp, unrelated), oldApp, 'both template connections are required');
+  // reading a stored workflow only adds the links: an app that the checks of today refuse stays readable as it is
+  const { readApp } = require('../lib/nodes/workflows-store');
+  assert.deepEqual(readApp(oldApp, doc.graph), app, 'a stored old event app is upgraded when it is read');
+  assert.ok(!oldApp.inputs.find((entry) => entry.node === 'n2').marks, 'reading does not change the stored object');
+  const refused = { ...clone(oldApp), outputs: [...clone(oldApp).outputs, { node: 'n10', label: 'not an output node' }] };
+  assert.throws(() => normalizeApp(refused, doc.graph), /must be an output.result node/);
+  const readBack = readApp(refused, doc.graph);
+  assert.equal(readBack.outputs.length, refused.outputs.length, 'a refused app stays readable');
+  assert.deepEqual(readBack.inputs.find((entry) => entry.node === 'n2').marks, { node: 'n10', param: 'ai_marks' });
+  assert.deepEqual(readApp(null, doc.graph).inputs, []);
+  const custom = clone(doc.app);
+  custom.inputs.find((entry) => entry.node === 'n2').marks.param = 'ai_choice';
+  assert.equal(normalizeApp(custom, doc.graph).inputs.find((entry) => entry.node === 'n2').marks.param, 'ai_choice', 'existing mappings are preserved');
   const withInput = (patch) => normalizeApp({ ...doc.app, inputs: doc.app.inputs.map((entry) => (entry.node === 'n2' ? { ...entry, ...patch } : entry)) }, doc.graph);
   assert.throws(() => withInput({ marks: { node: 'n10', param: 'max_ai_photos' } }), /is no param of marks/);
-  assert.equal(withInput({ marks: { node: 'gone', param: 'ai_marks' } }).inputs.find((entry) => entry.node === 'n2').marks, undefined);
-  assert.equal(withInput({ marks: 'n10.ai_marks' }).inputs.find((entry) => entry.node === 'n2').marks, undefined);
+  assert.deepEqual(withInput({ marks: { node: 'gone', param: 'ai_marks' } }).inputs.find((entry) => entry.node === 'n2').marks, { node: 'n10', param: 'ai_marks' });
+  assert.deepEqual(withInput({ marks: 'n10.ai_marks' }).inputs.find((entry) => entry.node === 'n2').marks, { node: 'n10', param: 'ai_marks' });
   assert.throws(() => normalizeApp({ ...doc.app, inputs: doc.app.inputs.map((entry) => (entry.node === 'n3' ? { ...entry, marks: { node: 'n10', param: 'ai_marks' } } : entry)) }, doc.graph), /marks need a list of files/);
   assert.throws(() => normalizeApp({ ...doc.app, outputs: doc.app.outputs.map((entry) => (entry.node === 'n25' ? { ...entry, switches: { node: 'n10', param: 'voiceover' } } : entry)) }, doc.graph), /is no param of marks/);
   // the planner gone from the graph: the marks and switches go, the fields stay
@@ -893,8 +992,9 @@ async function engineFlow(iso, patch) {
 
   // the approval: the clip of the plan off, two others on, p0 on (the app does not send it: the server holds the mark anyway)
   const aiChoice = { [auto[0].id]: 'off', [free[0].id]: 'on', [free[1].id]: 'on', [ids[0]]: 'on' };
-  const overrides = { n10: { ai_marks: aiMarks, ai_choice: aiChoice } };
+  const overrides = { n10: { ai_marks: aiMarks, ai_choice: aiChoice, model: 'anthropic/claude-sonnet-5.5' } };
   const without = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { n10: { ai_marks: aiMarks } } });
+  engineConfig.defaultBrain = 'anthropic/claude-sonnet-5.5';
   const planned = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides });
   assert.equal(without.nodes.n10.status, 'cached');
   assert.equal(without.nodes.n11.executions, 1);
@@ -925,6 +1025,7 @@ async function engineFlow(iso, patch) {
   assert.equal(after.answer.id, switches.answer.id, 'the same answer: the switches stay in the app');
   assert.deepEqual(after.items.filter((item) => item.on).map((item) => item.id).sort(), [free[0].id, free[1].id].sort());
   assert.ok(after.items.find((item) => item.id === ids[0]).locked);
+  engineConfig.defaultBrain = 'anthropic/claude-opus-5.5';
   // step 1 is still done: its plan without the switches finds the result of before
   const preview = await engine.plan(workflow.id, { mode: 'selection', nodeIds: STEP1, user: STAFF, overrides: { n10: { ai_marks: aiMarks } } });
   assert.equal(preview.nodes.n10.status, 'cached');
@@ -933,6 +1034,12 @@ async function engineFlow(iso, patch) {
   assert.equal(seen.planner.length, 1);
   assert.equal(seen.clips.length, 3, 'the clip of the plan is made, the one switched on is taken from the cache');
 
+  engineConfig.defaultBrain = 'anthropic/claude-sonnet-5.5';
+  const changed = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { n10: { ...overrides.n10, ai_marks: { [ids[1]]: 'never' } } } });
+  assert.notEqual(changed.nodes.n10.free, true, 'real marks changes require a paid plan even with switches');
+  const changedText = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { ...overrides, n3: { prompt: `${BRIEF} A closing celebration.` } } });
+  assert.notEqual(changedText.nodes.n10.free, true, 'changed text requires a paid plan');
+  engineConfig.defaultBrain = 'anthropic/claude-opus-5.5';
   // (review) the planner forced to run again (the node view) asks the model once more: a new answer for the same request, shown with its board and
   // switches. The switches of the first approval again: the result made from the first answer must not be found by its key
   reversed = true;
@@ -958,7 +1065,7 @@ async function engineFlow(iso, patch) {
 }
 
 async function main() {
-  for (const test of [testNever, testSure, testSwitch, testCopies, testAdded, testMain, testFormat, testWidgets, testEngine]) {
+  for (const test of [testNever, testSure, testSwitch, testPlainSwitches, testModelIndependentReuse, testCopies, testAdded, testMain, testFormat, testWidgets, testEngine]) {
     await test();
     console.log(`ok ${test.name}`);
   }
