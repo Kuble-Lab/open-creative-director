@@ -89,6 +89,7 @@ async function plan(name, steps, extra = {}) {
     log: (line) => logs.push(line),
     prices: extra.prices || {},
     fatal: extra.fatal,
+    sleep: extra.sleep === null ? undefined : extra.sleep || (async () => {}),
     ...(extra.allowPlain ? { allowPlain: true } : {}),
     ...(extra.brollShare !== undefined ? { brollShare: extra.brollShare } : {})
   });
@@ -825,27 +826,105 @@ async function testPlanner() {
     assert.equal(result.attempts, 1, 'one answer was made');
     assert.equal(result.effort, 'low');
     checkPlanClean(result, 'after an empty answer');
-    assert.match(logs[0], /^Attempt 1 of 2: the language model wrote nothing/);
-    assert.match(logs[1], /^The model thought until the limit of 64000 tokens and wrote nothing: the next try thinks less \(effort low\)\.$/);
-    assert.match(result.board, /^MODEL {6}the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.90 USD · try 2: effort low, limit 64,000 tokens, complete, 0\.25 USD$/m);
+    assert.match(logs[1], /The language model wrote nothing.*asking again\./);
+    assert.match(logs[0], /^The model thought until the limit of 64000 tokens and wrote nothing: the next try thinks less \(effort low\)\.$/);
+    assert.match(result.board, /^MODEL {6}the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.90 USD · request 2 \(empty before, again\): effort low, limit 64,000 tokens, complete, 0\.25 USD$/m);
     const other = await plan('s72', [emptyAnswer('stop', null), good()]);
     assert.equal(other.model.calls[1].reasoningEffort, 'medium', 'an empty answer for another reason: the same thinking');
     assert.deepEqual(other.result.costs, [0.25], 'an empty answer without a reported cost adds none');
   }
 
-  /* nothing usable twice: WP52a, the node stops (HUDPLAN_MODEL_FAILED) and the expensive nodes behind it do not run; with "Allow a plain plan" the film is made of
+  /* two empty answers wait once, keep the prompt and leave the correction budget intact */
+  {
+    const waits = [];
+    const first = Object.assign(emptyAnswer('length'), { completionTokens: 64000, reasoningTokens: 64000 });
+    const { result, model, logs } = await plan('s72', [first, emptyAnswer('stop', 0.7), good()], {
+      sleep: async (ms) => { waits.push([ms, 'waited']); }
+    });
+    assert.deepEqual(waits, [[20000, 'waited']]);
+    assert.equal(hudPlan.EMPTY_RETRIES, 2);
+    assert.equal(hudPlan.EMPTY_PAUSE_MS, 20000);
+    assert.equal(model.calls.length, 3);
+    assert.ok(model.calls.every((call) => call.prompt === model.calls[0].prompt));
+    assert.deepEqual(model.calls.map((call) => call.reasoningEffort), ['medium', 'low', 'low']);
+    assert.deepEqual(result.costs, [0.9, 0.7, 0.25]);
+    assert.deepEqual(result.tries.map((r) => [r.request, r.attempt, r.again, r.paused, r.finish, r.usd]), [
+      [1, 1, false, false, 'empty', 0.9],
+      [2, 1, true, false, 'empty', 0.7],
+      [3, 1, true, true, 'complete', 0.25]
+    ]);
+    assert.equal(result.tries[0].completion, 64000);
+    assert.equal(result.tries[0].reasoning, 64000);
+    assert.ok(logs.some((line) => /asking again in 20 s/.test(line)));
+    assert.match(result.board, /request 3 \(empty before, again after a pause\)/);
+    checkPlanClean(result, 'after two empty answers');
+
+    const corrected = await plan('s72', [emptyAnswer('stop'), emptyAnswer('stop'), 'not json', emptyAnswer('stop'), emptyAnswer('stop'), good()], {
+      sleep: async (ms) => { waits.push([ms, 'waited']); }
+    });
+    assert.equal(corrected.model.calls.length, 6);
+    assert.deepEqual(corrected.result.tries.map((r) => r.attempt), [1, 1, 1, 2, 2, 2]);
+    assert.deepEqual(corrected.result.tries.map((r) => r.paused), [false, false, true, false, false, true]);
+    assert.equal(waits.length, 3, 'the consecutive-empty counter resets after content');
+    assert.equal(corrected.result.attempts, 2);
+    assert.deepEqual(corrected.result.costs, [0.9, 0.9, 0.25, 0.9, 0.9, 0.25]);
+    assert.ok(corrected.model.calls.every((call) => call.reasoningEffort === 'medium'));
+    checkPlanClean(corrected.result, 'correction after empty answers');
+  }
+
+  /* cancellation in the pause cannot start or bill a third request */
+  {
+    let stopped = false;
+    let calls = 0;
+    const empty = () => { calls += 1; return emptyAnswer('stop', 0.7); };
+    const failed = await errorOf(plan('s72', [empty, empty, () => { calls += 1; return good(); }], {
+      fatal: () => stopped,
+      sleep: async (ms) => { assert.equal(ms, 20000); stopped = true; }
+    }));
+    assert.equal(failed.name, 'AbortError');
+    assert.equal(calls, 2);
+    assert.deepEqual(failed.costs, [0.7, 0.7]);
+    stopped = true;
+    calls = 0;
+    assert.equal((await errorOf(plan('s72', [empty], { fatal: () => stopped }))).name, 'AbortError');
+    assert.equal(calls, 0, 'an already cancelled run makes no request');
+
+    stopped = false;
+    calls = 0;
+    let timer;
+    try {
+      const started = Date.now();
+      const interrupted = await errorOf(plan('s72', [empty, () => {
+        timer = setTimeout(() => { stopped = true; }, 10);
+        return empty();
+      }, empty], { fatal: () => stopped, sleep: null }));
+      assert.equal(interrupted.name, 'AbortError');
+      assert.equal(calls, 2);
+      assert.deepEqual(interrupted.costs, [0.7, 0.7]);
+      assert.ok(Date.now() - started < 2000, 'the default pause stops promptly');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /* three empty answers or two unusable content answers: WP52a, the node stops (HUDPLAN_MODEL_FAILED) and the expensive nodes behind it do not run; with "Allow a plain plan" the film is made of
      plain values as before, and every empty answer is counted */
   {
-    const failed = await errorOf(plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7)]));
+    const waits = [];
+    const failed = await errorOf(plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7), emptyAnswer('stop', 0.2)], {
+      sleep: async (ms) => { waits.push(ms); }
+    }));
+    assert.deepEqual(waits, [20000], 'no further pause or request after the third empty answer');
     assert.equal(failed && failed.code, 'HUDPLAN_MODEL_FAILED');
-    assert.deepEqual(failed.costs, [0.9, 0.7]);
-    assert.deepEqual(failed.data, { attempts: 2, usd: '1.60', plainUnits: grid.units.length, units: grid.units.length, plainLines: grid.lines.length, lines: grid.lines.length, tokens: 0, thinking: 0, limit: 64000, cut: false, model: '' });
-    assert.match(failed.message, /^The language model delivered no usable plan in 2 attempts \(empty answer; the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.90 USD · try 2: effort low, limit 64,000 tokens, empty, 0\.70 USD\): 22 of 22 units and 15 of 15 lines would be plain, 1\.60 USD were paid\. Run the node again, choose another model, or switch on "Allow a plain plan"/);
+    assert.deepEqual(failed.costs, [0.9, 0.7, 0.2]);
+    assert.deepEqual(failed.data, { attempts: 3, usd: '1.80', plainUnits: grid.units.length, units: grid.units.length, plainLines: grid.lines.length, lines: grid.lines.length, tokens: 0, thinking: 0, limit: 64000, cut: false, model: '' });
+    assert.match(failed.message, /^The language model delivered no usable plan in 3 attempts \(empty answer; /);
+    assert.match(failed.message, /request 3 \(empty before, again after a pause\): effort low.*1\.80 USD were paid/);
     assert.equal((await errorOf(plan('s72', ['not json', 'still not json']))).code, 'HUDPLAN_MODEL_FAILED', 'two answers that are no objects');
-    const { result, model, logs } = await plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7)], { allowPlain: true });
-    assert.equal(model.calls.length, 2);
+    const { result, model, logs } = await plan('s72', [emptyAnswer('length'), emptyAnswer('length', 0.7), emptyAnswer('stop', 0.2)], { allowPlain: true });
+    assert.equal(model.calls.length, 3);
     assert.equal(result.plain, true);
-    assert.deepEqual(result.costs, [0.9, 0.7]);
+    assert.deepEqual(result.costs, [0.9, 0.7, 0.2]);
     assert.equal(result.attempts, 0);
     assert.equal(result.fallbacks.units.length, grid.units.length);
     assert.equal(result.fallbacks.lines.length, grid.lines.length);
@@ -1011,6 +1090,22 @@ async function testRescue() {
       /^MODEL {6}anthropic\/claude-opus-5\.5 · try 1: effort medium, 64,000 of 64,000 tokens \(thinking 41,000, text 23,000\), cut off at the limit, 14 of 22 units and 0 of 15 lines complete, 0\.25 USD · try 2 \(the rest\): effort low, limit 64,000 tokens, complete, 0\.25 USD$/m
     );
     assert.doesNotMatch(result.board, /^PLAIN/m);
+  }
+
+  /* empty continuation requests preserve the salvaged parts and ask only for the rest */
+  {
+    const waits = [];
+    const { result, model } = await plan('s72', [
+      { reply: { text: cutInsideUnit(full, 14), finishReason: 'length', usage: CUT_USAGE } },
+      emptyAnswer('stop'), emptyAnswer('stop'),
+      { units: full.units.slice(14), lines: full.lines, endcard: full.endcard }
+    ], { sleep: async (ms) => { waits.push(ms); } });
+    assert.deepEqual(waits, [20000]);
+    assert.equal(model.calls.length, 4);
+    assert.ok(model.calls.slice(1).every((call) => call.prompt === model.calls[1].prompt));
+    assert.deepEqual(result.tries.map((r) => [r.attempt, r.rest]), [[1, false], [2, true], [2, true], [2, true]]);
+    assert.deepEqual(result.content, (await plan('s72', [full])).result.content);
+    checkPlanClean(result, 'continuation after two empty answers');
   }
 
   /* the rest is cut off too, a little: what is still missing is plain, and the board names exactly which plates and lines */
@@ -2177,27 +2272,27 @@ async function testNode() {
       assert.ok(ctx.logs.some((line) => /thinks less \(effort low\)/.test(line)));
     }
 
-    /* nothing usable (WP52a): the node stops with HUDPLAN_MODEL_FAILED, both answers are paid, nothing comes out; with "Allow a plain plan" plain prompts and
+    /* nothing usable (WP52a): the node stops with HUDPLAN_MODEL_FAILED, all requests are paid, nothing comes out; with "Allow a plain plan" plain prompts and
        plain graphics, the log says how many */
     {
-      reset([emptyAnswer('length', 0.7), 'not json at all']);
+      reset([emptyAnswer('length', 0.7), 'not json at all', 'still not json']);
       const failed = await errorOf(exec(makeCtx(), inputs()));
       assert.equal(failed && failed.code, 'HUDPLAN_MODEL_FAILED');
-      assert.match(failed.message, /^The language model delivered no usable plan in 2 attempts \(empty answer, no JSON object; the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.70 USD · try 2: effort low, /);
-      near(failed.costs.reduce((sum, usd) => sum + usd, 0), 0.7 + LLM_USD, 1e-9);
-      assert.equal(failed.data.attempts, 2);
+      assert.match(failed.message, /^The language model delivered no usable plan in 3 attempts \(empty answer, no JSON object; the language model · try 1: effort medium, limit 64,000 tokens, empty, 0\.70 USD · request 2 \(empty before, again\): effort low, /);
+      near(failed.costs.reduce((sum, usd) => sum + usd, 0), 0.7 + 2 * LLM_USD, 1e-9);
+      assert.equal(failed.data.attempts, 3);
       assert.equal(failed.data.model, '', 'the stub of the model names no model (a real answer does: the line then starts with its name)');
       // every request books its own cost in the journal and the budget (lib/nodes/llm.js), so the attempts of a failed node are not lost
-      reset([emptyAnswer('length', 0.7), 'not json at all']);
+      reset([emptyAnswer('length', 0.7), 'not json at all', 'still not json']);
       const ctx = makeCtx();
       const result = await exec(ctx, inputs(), { allow_plain: true });
-      assert.equal(calls.length, 2);
+      assert.equal(calls.length, 3);
       const out = result.variants[0];
       assert.equal(out.performance_prompts.items.length, grid.stats.sung, 'the film has all its units all the same');
       assert.ok(ctx.logs.some((line) => new RegExp(`^${grid.units.length} of ${grid.units.length} units got plain prompts`).test(line)), ctx.logs.join(' | '));
       assert.ok(ctx.logs.some((line) => new RegExp(`^${grid.lines.length} of ${grid.lines.length} lines got plain graphics`).test(line)));
       assert.match(out.board.value, /^PLAIN {6}made without the language model/m);
-      near(result.cost.usd, 0.7 + LLM_USD, 1e-9);
+      near(result.cost.usd, 0.7 + 2 * LLM_USD, 1e-9);
       assert.deepEqual(graphicsLib.prepareGraphics(JSON.parse(out.graphics.value), {}).warnings, [], 'the plain graphics find their places too');
     }
 
