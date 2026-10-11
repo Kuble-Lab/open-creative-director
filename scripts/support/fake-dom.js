@@ -60,6 +60,9 @@ class FakeNode {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+  removeAttribute(name) {
+    delete this.attributes[name];
+  }
   getAttribute(name) {
     return name in this.attributes ? this.attributes[name] : null;
   }
@@ -89,8 +92,9 @@ class FakeNode {
   closest() {
     return null;
   }
-  querySelectorAll() {
-    return [];
+  querySelectorAll(selector) {
+    const tags = String(selector).split(',').map((tag) => tag.trim().toUpperCase());
+    return this.find((node) => node !== this && tags.includes(node.tagName));
   }
   // the first node below this one with a tag ("span") or a class (".nv-x"), or null; nothing more (the list of files, WP55)
   querySelector(selector) {

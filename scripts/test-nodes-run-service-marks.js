@@ -15,7 +15,10 @@ async function main() {
   const planNode = () => workflow.graph.nodes.find((node) => node.id === 'n10');
   photoNode().params.assets = [{ assetId: 'upload-001', sessionId: workflow.sessionId, type: 'image' }];
   let saves = 0;
+  let overrides = {};
   const store = {
+    listRuns: async () => [{ id: "last" }],
+    readRun: async () => ({ overrides }),
     readWorkflow: async () => clone(workflow),
     saveGraph: async (_id, { graph }) => { saves++; workflow.graph = clone(graph); workflow.rev++; return clone(workflow); }
   };
@@ -25,7 +28,7 @@ async function main() {
     sessions: {
       isValidId: () => true,
       readSessionAccess: async () => ({}),
-      readLedger: async () => [{ id: 'source-photo', file: 'photo.png', kind: 'image' }]
+      readLedger: async () => ['source-photo', 'upload-001', 'upload-002', 'app-photo'].map((id) => ({ id, file: 'photo.png', kind: 'image' }))
     },
     assets: {
       typeFromLedgerEntry: () => 'image',
@@ -39,16 +42,30 @@ async function main() {
   assert.equal(photoNode().params.assets[0].assetId, 'upload-002');
   assert.equal(planNode().params.ai_marks['upload-002'], 'always', 'mark uses the copied id');
   const before = saves;
-  for (const [fileMarks, message] of [[{ 'upload-002': 'auto' }, /expected never or always/], [{ 'upload-002': 'maybe' }, /expected never or always/], [{ unknown: 'never' }, /Unknown file/], [[], /must be an object/]]) {
+  for (const [fileMarks, message] of [[{ 'upload-002': 'maybe' }, /expected never or always/], [{ unknown: 'never' }, /Unknown file/], [[], /must be an object/]]) {
     await assert.rejects(service.prepare(viewer, { workflowId: workflow.id, fileMarks }), message);
   }
   assert.equal(saves, before, 'bad marks do not mutate a workflow');
   await service.prepare(viewer, { workflowId: workflow.id, fileMarks: {} });
   assert.equal(planNode().params.ai_marks['upload-002'], 'always', 'omitting a mark leaves existing input values');
+  await service.prepare(viewer, { workflowId: workflow.id, fileMarks: { 'upload-002': 'auto' } });
+  assert.equal(planNode().params.ai_marks['upload-002'], undefined);
+  await service.prepare(viewer, { workflowId: workflow.id, fileMarks: { 'upload-002': 'never' } });
+  await service.prepare(viewer, { workflowId: workflow.id, fileMarks: { 'upload-002': null } });
+  assert.equal(planNode().params.ai_marks['upload-002'], undefined);
+  assert.equal(planNode().params.ai_marks['upload-001'], 'never', 'omitted photos stay unchanged');
+  overrides = { n2: { assets: [{ assetId: 'app-photo', sessionId: workflow.sessionId, type: 'image' }] } };
+  await service.prepare(viewer, { workflowId: workflow.id, fileMarks: { 'wf/app-photo': 'never' } });
+  assert.equal(planNode().params.ai_marks['app-photo'], 'never');
+  assert.equal(photoNode().params.assets[0].assetId, 'app-photo');
+  overrides.n2.assets[0].sessionId = 'another-session';
+  await assert.rejects(service.prepare(viewer, { workflowId: workflow.id, fileMarks: { 'wf/app-photo': 'always' } }), /another workflow/);
+  overrides.n2.assets[0] = { assetId: 'missing-photo', sessionId: workflow.sessionId };
+  await assert.rejects(service.prepare(viewer, { workflowId: workflow.id, fileMarks: { 'wf/missing-photo': 'always' } }), /unavailable/);
   const tools = createWorkflowTools({ service: () => service });
   for (const name of ['create_from_template', 'run_workflow']) {
     const tool = tools.find((tool) => tool.name === name);
-    assert.deepEqual(tool.inputSchema.properties.file_marks.additionalProperties.enum, ['never', 'always']);
+    assert.deepEqual(tool.inputSchema.properties.file_marks.additionalProperties.enum, ['never', 'always', 'auto', null]);
     assert.match(tool.inputSchema.properties.file_marks.description, /Unknown files/);
   }
   const requests = [];

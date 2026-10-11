@@ -63,7 +63,7 @@
   function reduceSnapshot(state, active, now) {
     if (!active) {
       if (!state.active) return state;
-      return { ...state, active: false, status: state.status === 'running' ? 'finished' : state.status, finishedAt: now, resync: true };
+      return { ...state, active: false, status: state.status, resync: true };
     }
     const base = state.runId === active.runId ? state : freshRun(active.runId, active, now);
     const nodes = { ...base.nodes };
@@ -105,6 +105,8 @@
   function reduce(state, event, now = Date.now()) {
     if (!event || typeof event.type !== 'string') return state;
     switch (event.type) {
+      case 'run_record':
+        return restoreRun(state, event.record);
       case 'snapshot':
         return reduceSnapshot(state, event.activeRun || null, now);
       case 'run_started': {
@@ -143,6 +145,18 @@
       default:
         return state;
     }
+  }
+
+  function restoreRun(state, record) {
+    if (!record || (state.runId && state.runId !== record.id)) return state;
+    const nodes = {};
+    for (const [id, node] of Object.entries(record.nodes || {})) nodes[id] = { ...node, entryId: node.entry,
+      startedAt: node.startedAt ? new Date(node.startedAt).getTime() : undefined,
+      endedAt: node.endedAt ? new Date(node.endedAt).getTime() : undefined };
+    return { ...createRunState(), logs: state.logs, runId: record.id, mode: record.mode, targets: record.targets || [],
+      active: record.status === 'running', status: record.status, nodes, cost: record.cost || { usd: 0, credits: 0 },
+      error: record.error || null, startedAt: record.startedAt ? new Date(record.startedAt).getTime() : null,
+      finishedAt: record.finishedAt ? new Date(record.finishedAt).getTime() : null };
   }
 
   function clearResync(state) {
@@ -505,6 +519,7 @@
     createRunState,
     reduce,
     clearResync,
+    restoreRun,
     activeNodeIds,
     progressOf,
     inFlightNodes,
@@ -879,17 +894,11 @@
     // Safety net next to the SSE stream: the run record repairs missed events and a lost run_finished.
     async function pollRun() {
       const id = workflowId();
-      if (!id || !runState.active || !runState.runId) return;
+      if (!id || (!runState.active && !runState.resync) || !runState.runId) return;
       try {
         const record = await api.getRun(id, runState.runId);
-        if (workflowId() !== id || !runState.active || runState.runId !== record.id) return;
-        if (record.status !== 'running') {
-          dispatch({ type: 'run_finished', runId: record.id, status: record.status, error: record.error });
-          return;
-        }
-        const nodes = {};
-        for (const [nodeId, node] of Object.entries(record.nodes || {})) nodes[nodeId] = node.status;
-        dispatch({ type: 'snapshot', activeRun: { runId: record.id, mode: record.mode, nodes } });
+        if (workflowId() !== id || runState.runId !== record.id) return;
+        dispatch({ type: 'run_record', record });
         const results = S().results;
         const missing = Object.entries(record.nodes || {}).some(([nodeId, node]) => node.entry && !(nodeResults(results, nodeId)?.history || []).some((entry) => entry.id === node.entry));
         if (missing) refreshResults();
@@ -919,13 +928,12 @@
         clearTimeout(planTimer);
         startTimers();
       }
-      if (!runState.active && before.active) {
+      if (!runState.active && (before.active || (before.resync && !runState.resync))) {
         stopTimers();
         onRunEnded(event);
       }
       if (runState.resync) {
-        runState = clearResync(runState);
-        onRunEnded({ type: 'snapshot' });
+        pollRun();
       }
       if (event.type === 'node_status' && event.nodeId) schedulePaint([event.nodeId]);
       else if (event.type !== 'node_result' && event.type !== 'node_log') schedulePaint();
