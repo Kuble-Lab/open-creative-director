@@ -114,11 +114,19 @@ function testLayout() {
   assert.equal(wide.look.accent, '#3B6CFF');
   assert.equal(wide.look.onAccent, '#FFFFFF');
   assert.equal(composition.onColour('#FFFFFF'), '#111214', 'a white accent (no branding) takes dark text');
-  // the end card on the last 3 s (D3): 4 % of 1920 in 9:16, 6.5 % of the height in 16:9 (4 % was too small to read at 1080p)
+  // the end card on the last 3 s (D3): 10 % of the width in 9:16, 6.5 % of the height in 16:9 (4 % was too small to read at 1080p)
   const last = composition.pageData({ graphics, format: '9:16', chunk: chunks[chunks.length - 1], logoFile: 'logo.png' });
   assert.equal(last.endcard.start, 57);
-  assert.equal(last.endcard.lineSize, 76.8);
+  assert.equal(last.endcard.lineSize, 108);
+  assert.equal(last.endcard.logoW, 648);
+  assert.equal(last.endcard.logoH, 302);
+  assert.ok(last.endcard.logoW < last.width * 0.84);
+  for (const line of last.endcard.lines) assert.ok(metrics.familyWidth(last.type.title.asked + ":700", line, last.endcard.lineSize) <= last.width * 0.84 + 0.5);
   assert.equal(last.endcard.logo, 'logo.png');
+  const longCard = composition.pageData({ graphics: { ...graphics, endcard: { ...graphics.endcard, line: 'W'.repeat(40), sub: 'W'.repeat(60), url: 'W'.repeat(60) } }, format: '9:16', chunk: chunks[chunks.length - 1] });
+  for (const [text, size, face] of [[longCard.endcard.lines[0], longCard.endcard.lineSize, longCard.type.title], [longCard.endcard.sub, longCard.endcard.subSize, longCard.type.body], [longCard.endcard.url, longCard.endcard.urlSize, longCard.type.body]]) {
+    assert.ok(metrics.familyWidth(face, text, size) <= longCard.width * 0.84 + 0.5, 'Long end-card text stays in the safe area');
+  }
   const lastWide = composition.pageData({ graphics, format: '16:9', chunk: chunks[chunks.length - 1] });
   assert.equal(lastWide.endcard.lineSize, 70.2);
   assert.ok(lastWide.endcard.lineSize >= wide.title.size * 0.9, 'the end card line is near the size of the title');

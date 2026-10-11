@@ -615,7 +615,9 @@
       const batch = node.type === 'input.text_list' || node.type === 'input.media_list';
       const label = entry.label || (def.category === 'input' ? ui.typeLabel(def) : ui.paramLabel(param.id));
       field.label = label;
-      const fieldEl = ui.field(label, widget.el, { hint: param.kind === 'textarea' && node.type === 'input.text_list' ? T('nodes.app.listHint') : ui.paramHint(def.type, param.id) });
+      const hint = param.kind === 'textarea' && node.type === 'input.text_list' ? T('nodes.app.listHint')
+        : node.type === 'input.media_list' && param.id === 'assets' && node.params.kind === 'image' ? T('nodes.app.photoFormats') : ui.paramHint(def.type, param.id);
+      const fieldEl = ui.field(label, widget.el, { hint });
       field.wrap = fieldEl;
       if (batch) {
         field.counter = el('div', { class: 'nv-batch-count' });
@@ -775,6 +777,7 @@
           if (why) cell.append(el('div', { class: 'nv-appswitch-note', text: why }));
           else if (entry.locked) cell.append(el('div', { class: 'nv-appswitch-note', text: T('nodes.app.switchLocked', { mark: marks && entry.mark ? ui.optionLabelOf(marks, entry.mark) : '' }) }));
           else if (entry.mark && marks) cell.append(el('div', { class: 'nv-appswitch-note', text: ui.optionLabelOf(marks, entry.mark) }));
+          if (entry.textWarning) cell.append(el('div', { class: 'nv-appswitch-note', text: T('nodes.app.switchTextWarning') }));
           grid.append(cell);
         }
         // the wording of the param where it has one (the AI clips of the event video), else the generic one

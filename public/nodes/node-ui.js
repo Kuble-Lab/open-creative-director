@@ -946,7 +946,7 @@
 
   function fileInputAccept(kind) {
     if (kind === 'document') return '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
-    return kind === 'image' ? 'image/*,.svg' : `${kind}/*`;
+    return kind === 'image' ? 'image/*,.svg,.heic,.heif' : `${kind}/*`;
   }
 
   // Asset picker (upload only in WP5): a drop zone plus preview. `multi` = list of values.
