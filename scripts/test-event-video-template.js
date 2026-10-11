@@ -216,14 +216,14 @@ function testCostText() {
     const code = p.vision + p.speech + p.music + p.llm + p.depth;
     const row = { code: one(code), ai: one(p.ai), voice: Math.round(p.voice * 100) / 100, stepOne: one(p.vision + p.speech + p.music + p.llm), max: one(code + p.ai + p.voice + p.llm) };
     if (length === 60) Object.assign(rows60, row);
-    assert.equal(row.code, { 30: 0.8, 60: 1.0, 90: 1.2 }[length], `${length} s with the code motion: ${code}`);
+    assert.equal(row.code, { 30: 0.5, 60: 0.7, 90: 0.8 }[length], `${length} s with the code motion: ${code}`);
     assert.equal(row.ai, { 30: 0.4, 60: 0.8, 90: 1.2 }[length], `${length} s: the AI clips add ${p.ai}`);
   }
-  assert.deepEqual(rows60, { code: 1.0, ai: 0.8, voice: 0.06, stepOne: 0.9, max: 2.2 }, 'the numbers of 60 seconds');
+  assert.deepEqual(rows60, { code: 0.7, ai: 0.8, voice: 0.06, stepOne: 0.6, max: 1.7 }, 'the numbers of 60 seconds');
   const say = {
-    en: [/about 0\.8 US dollars for 30 seconds, 1\.0 for 60 and 1\.2 for 90 seconds/, /adds about 0\.4, 0\.8 or 1\.2/, /voice-over about 0\.06/, /about 0\.9 for 60 seconds/, /At most about 2\.2 for 60 seconds/],
-    de: [/etwa 0\.8 US-Dollar für 30 Sekunden, 1\.0 für 60 und 1\.2 für 90 Sekunden/, /etwa 0\.4, 0\.8 oder 1\.2 mehr/, /Sprecherstimme etwa 0\.06/, /etwa 0\.9 für 60 Sekunden/, /Höchstens etwa 2\.2 für 60 Sekunden/],
-    es: [/unos 0\.8 dólares para 30 segundos, 1\.0 para 60 y 1\.2 para 90 segundos/, /añade unos 0\.4, 0\.8 o 1\.2/, /voz en off unos 0\.06/, /unos 0\.9 para 60 segundos/, /Como máximo unos 2\.2 para 60 segundos/]
+    en: [/about 0\.5 US dollars for 30 seconds, 0\.7 for 60 and 0\.8 for 90 seconds/, /adds about 0\.4, 0\.8 or 1\.2/, /voice-over about 0\.06/, /about 0\.6 for 60 seconds/, /At most about 1\.7 for 60 seconds/],
+    de: [/etwa 0\.5 US-Dollar für 30 Sekunden, 0\.7 für 60 und 0\.8 für 90 Sekunden/, /etwa 0\.4, 0\.8 oder 1\.2 mehr/, /Sprecherstimme etwa 0\.06/, /etwa 0\.6 für 60 Sekunden/, /Höchstens etwa 1\.7 für 60 Sekunden/],
+    es: [/unos 0\.5 dólares para 30 segundos, 0\.7 para 60 y 0\.8 para 90 segundos/, /añade unos 0\.4, 0\.8 o 1\.2/, /voz en off unos 0\.06/, /unos 0\.6 para 60 segundos/, /Como máximo unos 1\.7 para 60 segundos/]
   };
   for (const lang of LANGS) {
     const text = resolved(lang).description;
@@ -231,7 +231,7 @@ function testCostText() {
     assert.match(text, { en: /nothing is charged before you confirm/, de: /vor deiner Bestätigung wird nichts berechnet/, es: /no se cobra nada antes de que confirmes/ }[lang]);
   }
   // the gallery: the uploads are lists, so each priced node counts once (an analysis, the music at its longest, one AI clip, one depth map)
-  assert.deepEqual(templates.costSummary(template), { kind: 'partial', usd: 0.5287, credits: 0, paidNodes: 7, providers: ['openrouter', 'elevenlabs', 'fal'] });
+  assert.deepEqual(templates.costSummary(template), { kind: 'partial', usd: 0.5167, credits: 0, paidNodes: 7, providers: ['openrouter', 'elevenlabs', 'fal'] });
 }
 
 /* ---------- an event of photos only ---------- */

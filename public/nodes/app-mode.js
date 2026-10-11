@@ -1090,6 +1090,11 @@
         list.append(item);
       }
       body.append(list);
+      for (const row of info.followup || []) {
+        body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.aiFollowup', {
+          count: row.count, amount: row.usd === null ? T('nodes.run.confirm.unknown') : costText({ usd: row.usd }, { estimate: true })
+        }) }));
+      }
       const totals = info.totals;
       const summary = [];
       const totalCost = costText({ usd: totals.usd, credits: totals.credits }, { estimate: true });

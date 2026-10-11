@@ -305,7 +305,7 @@ function testNoShot() {
 
 async function testCodeUnchanged() {
   // the prompts (system and user) and the plans (shots, graphics, board, the lists, the notes) of the photos moved by code, computed with the code of
-  // main (3a4c45b) for the same material and answers
+  // main (3a4c45b) for the same material and answers. Plan digests include the recalibrated ESTIMATE row; prompt digests stay unchanged
   const prompts = {
     material60: ['9c67ed4e10cad7c9fcf357fc248b65ea9237f346aa71728a5642334bd7aedbb8', plan.readMaterial(material60.videos, material60.photos), styleFixture, CODE, 62],
     'material60 without parallax': ['899b10757f1dc87422ee754f261e4a9fccf06796780b26a98fc211b4d9f968c0', plan.readMaterial(material60.videos, material60.photos), styleFixture, { ...CODE, parallax: false, voiceover: true }, 62],
@@ -317,8 +317,8 @@ async function testCodeUnchanged() {
     assert.equal(sha(`${plan.systemPrompt({ style, grid, material, options })}\n----\n${plan.userPrompt({ brief: material60.brief, style, grid, material })}`), digest, `the prompt of ${name}`);
   }
   const digestOf = (result) => sha(JSON.stringify({ shots: result.shots, graphics: result.graphics, board: result.board, ai: result.aiPhotos, prompts: result.aiPrompts, parallax: result.parallaxPhotos, notes: result.notes }));
-  assert.equal(digestOf(await run({ options: CODE, ask: scripted(answerOk).ask })), '78cedc5de0f08dffa1c462eb4c8ac87b379fe3520c3c708f959877b35dc3080a', 'the plan of the fixtures');
-  assert.equal(digestOf(await run({ options: { ...CODE, parallax: false }, ask: scripted(answerOk).ask })), 'f5629a31276530eabc9d436db3d898ef506f352d944fbf1b3f2603dfa44dc393', 'without parallax');
+  assert.equal(digestOf(await run({ options: CODE, ask: scripted(answerOk).ask })), 'd2c8376fd68f698ccc2491c67ce8d6df58e675c26b737c40c75409985efba4cf', 'the plan of the fixtures');
+  assert.equal(digestOf(await run({ options: { ...CODE, parallax: false }, ask: scripted(answerOk).ask })), '090d1e6f2cfc76bf19d9b01a87df033be9d43b00557a38724c1962fe60e74c37', 'without parallax');
   const answerFor = (request) => ({
     treatment: 'Ein Nachmittag.',
     acts: picksFor(request.system, Array.from({ length: 14 }, (_, index) => `p${index}`)),
@@ -328,9 +328,9 @@ async function testCodeUnchanged() {
     endcard: { line: 'Danke.', source: 'generic' }
   });
   const films = {
-    'conference 60': ['cd9f8a2aa5de0b2543620d1967ec47e8f3cfdc9256e64227a159a79ce7d4be63', 'conference', 'fresh', 60],
-    'party 30': ['274eec79df19a348d0834eddb1d7b508d38f069ca67c7f33a79398976b8c86a8', 'party', 'fast', 30],
-    'celebration 90': ['942a41d3e663d8caa6088da9be1f09a605892b637bdafabe47cfaa31ef50dbca', 'celebration', 'calm', 90]
+    'conference 60': ['e6f572e1bcf9be30353741b39f60a328fcebde0b6dccf18f6d8b97c9a085b7e8', 'conference', 'fresh', 60],
+    'party 30': ['f3198c39a681a8162554b54648e31064c2117d99f9912ced98f3b05e922b5f55', 'party', 'fast', 30],
+    'celebration 90': ['5be6947f3cf4e0aaabeecdda36c3103346a45f738f127a0822a3cbc66ed363f0', 'celebration', 'calm', 90]
   };
   for (const [name, [digest, eventType, mood, length]] of Object.entries(films)) {
     const style = styles.combineStyle({ event_type: eventType, mood, length });
