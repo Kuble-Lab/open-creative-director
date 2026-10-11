@@ -59,6 +59,7 @@ async function main() {
     console.log(`OK: Session-Scan-Cache greift (${reads} Lesevorgaenge statt 3)`);
   } finally {
     store.readSession = originalRead;
+    await store.mutateSession(session.id, (saved) => { for (const job of saved.jobs) job.status = 'cancelled'; });
     await store.deleteSession(session.id);
   }
   console.log('test-poller-scan-cache.js: ok');

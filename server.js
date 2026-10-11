@@ -2235,7 +2235,7 @@ app.delete('/api/sessions/:id', async (req, res) => {
     await store.deleteSession(id);
     res.json({ ok: true });
   } catch (err) {
-    fail(res, 500, err.message);
+    fail(res, err.status || 500, err.message);
   }
 });
 

@@ -772,7 +772,7 @@ async function testBudget() {
     restarted.ensureJob({ budgetKey: 'hold:y', user: 'ben@example.com' });
     restarted.ensureJob({ budgetKey: 'hold:z', reservedUsd: 5, user: 'lokal' });
     restarted.ensureJob({});
-    assert.equal((await restarted.status(ben)).reservedUsd, 2.5, 'only hold reservations of a person are restored');
+    assert.equal((await restarted.status(ben)).reservedUsd, 17.5, 'run reservations and legacy jobs without estimates are restored too');
     // the cost arrives: a hold ends, whatever the amount (unknown = 0)
     budget.settleJob(job, 1.9);
     assert.equal((await budget.status(ben)).reservedUsd, 0);
@@ -829,6 +829,23 @@ async function testBudgetAsyncJobs() {
     const ben = view('ben@example.com');
     const cleo = view('cleo@example.com');
 
+    // A zero-estimate run has no original hold. Recovery must not count its own
+    // jobs against the budget being transferred when cancellation detaches them.
+    const persistedJobs = [];
+    const recovering = budgetLib.createBudget({ index, teams: () => teamsStore, now, loadJobs: async () => persistedJobs });
+    const unpricedRun = await recovering.beginRun(ben, { runId: 'recovered-unpriced', estimateUsd: 0 });
+    persistedJobs.push(
+      { budgetKey: unpricedRun.key, jobId: 'own', assetId: 'vid-own', user: ben.email, reservedUsd: 10 },
+      { budgetKey: 'hold:other-run', jobId: 'other', user: ben.email, reservedUsd: 3 }
+    );
+    assert.equal((await recovering.status(ben)).reservedUsd, 13, 'both persisted obligations are recovered before transfer');
+    const detached = await recovering.detachRun(ben, unpricedRun.key, 1);
+    assert.equal(detached[0].usd, 2, 'the unrelated job remains reserved; the own job does not consume its transfer');
+    Object.assign(persistedJobs[0], { budgetKey: detached[0].key, reservedUsd: detached[0].usd });
+    unpricedRun.release();
+    assert.equal((await recovering.status(ben)).reservedUsd, 5, 'one transferred hold plus the unrelated hold, without duplicates');
+    assert.equal(recovering.reservationCount(), 2);
+
     // a small rest: the flat reservation is capped by what is left, so the second video is refused at once
     const first = await budget.begin(cleo, { asyncJob: true, label: 'generate_video' });
     assert.equal(first.reservedUsd, 0.05, 'at most what is left');
@@ -878,7 +895,7 @@ async function testBudgetAsyncJobs() {
     const run = await budget.beginRun(dora, { runId: 'r1', estimateUsd: 3 });
     const inRun = await budget.begin(dora, { asyncJob: true, runKey: run.key });
     assert.equal(inRun.jobKey, run.key);
-    assert.equal(inRun.reservedUsd, 0);
+    assert.equal(inRun.reservedUsd, 3);
     run.release();
 
     // the reservation survives a restart of the app for the open job (the poller puts it back)
