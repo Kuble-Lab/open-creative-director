@@ -716,7 +716,9 @@ async function testRun() {
     assert.equal(result.graphics.title, null);
     assert.equal(result.graphics.endcard.line, 'Danke');
     assert.deepEqual(result.graphics.soundbites, []);
-    assert.deepEqual([result.aiPhotos, result.voLines], [[], []]);
+    assert.ok(result.aiPhotos.length > 0, 'the plain AI plan has clips and switches');
+    assert.ok(result.switches.length > 0);
+    assert.deepEqual(result.voLines, []);
     assert.match(result.board, /\nPLAIN {6}a plan by the score alone/);
   }
   // more than a quarter of the picks replaced: EVENTPLAN_MODEL_FAILED after the second try, the plain plan with allow_plain

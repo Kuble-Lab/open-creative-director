@@ -311,6 +311,8 @@ External agents (Claude Code, Codex, your own bots) can order runs from the app 
 | `run_workflow` | read and start | Starts a run; requires `max_usd`, the most the agent accepts to pay |
 | `cancel_run` | read and start | Cancels a run of this key |
 
+`create_from_template` and `run_workflow` accept optional `file_marks` for app file inputs with per-file AI marks: an object from asset id, `session_id/asset_id` or `wf/asset_id` to `never` or `always`. Omit `auto`. Unknown files and invalid marks are refused before changing the workflow; marks follow copied files into its storage.
+
 A *Read only* key sees and uses the five read tools. `run_workflow` refuses with a readable reason, and charges nothing, when the estimate is above `max_usd` or above the limit per run, when the calendar month would exceed the monthly limit (booked costs of the key plus reservations of running runs), when a paid step has no known price, when the workflow uses Higgsfield (blocked for agents), when the key already has two runs in progress, or when the budget of the person does not cover it.
 
 **Links.** Results are delivered as `GET /mcp/files/<token>` (signed, valid 24 hours, one file, no login; only media, no SVG or JSON). Large uploads go to `PUT /mcp/upload/<token>` (valid 15 minutes, once, up to 500 MB, SVG up to 10 MB, same type rules as the normal upload). Links begin with `PUBLIC_BASE_URL`, also with a sub-path; without it the address of the request is used. The signing secret lives in `data/mcp-link-secret` (mode 600). An upload link stops working as soon as the key is revoked or the person is no longer eligible; a result link is signed and keeps no state on the server, so it stays valid for its 24 hours.

@@ -185,6 +185,13 @@
     return { index: due, total, done: false, request: stageRequest(due, false) };
   }
 
+  // Restore the last executed field params; app runs use overrides rather than changing the saved graph.
+  function restoredParam(results, node, param, fallback) {
+    const history = results && results.nodes && results.nodes[node.id] && results.nodes[node.id].history;
+    const entry = (history || []).find((item) => item.params && item.params[param] !== undefined);
+    return entry ? entry.params[param] : fallback;
+  }
+
   /* ---------- marks per file and switches per item (WP55) ---------- */
 
   // An input of the app that is a list of files may carry `marks` ({ node, param }: a param of kind `marks`): every file gets a choice of the options
@@ -352,6 +359,8 @@
       let payload;
       try {
         payload = await api.getWorkflow(id);
+        // the files of the workflow give restored fields their previews; without them the fields still show their names
+        payload.assets = await api.assets(id).then((answer) => (answer && Array.isArray(answer.assets) ? answer.assets : [])).catch(() => []);
       } catch (error) {
         if (mine !== token) return;
         message('error', error.status === 404 ? T('nodes.toast.notFound') : T('nodes.toast.loadFailed', { error: error.message }), [{ label: T('nodes.topbar.backTitle'), onClick: () => cb.onBack && cb.onBack() }]);
@@ -362,6 +371,7 @@
         id,
         workflow: payload.workflow,
         results: payload.results,
+        assets: payload.assets || [],
         values: new Map(),
         fields: [],
         run: runLib.createRunState(),
@@ -511,7 +521,8 @@
     function writeStored() {
       const out = {};
       for (const field of s.fields) {
-        if (!isAssetKind(field.param.kind)) out[field.key] = s.values.get(field.key);
+        const value = s.values.get(field.key);
+        if (!isAssetKind(field.param.kind) || field.touched || (Array.isArray(value) ? value.length : value)) out[field.key] = value;
         if (field.marks) out[field.marks.key] = s.values.get(field.marks.key);
       }
       lsSet(storageKey(), JSON.stringify(out));
@@ -585,15 +596,20 @@
       let initial = previous.has(key) ? previous.get(key) : stored[key] !== undefined ? stored[key] : effective[param.id];
       if (isAssetKind(param.kind)) {
         if (previous.has(key)) initial = previous.get(key);
-        else if (param.kind === 'asset') initial = initial && !initial.missing ? initial : null;
+        else initial = stored[key] !== undefined ? stored[key] : restoredParam(s.results, node, param.id, effective[param.id]);
+        if (param.kind === 'asset') initial = initial && !initial.missing ? initial : null;
         else initial = Array.isArray(initial) ? initial.filter((item) => item && !item.missing) : [];
       }
+      if (isAssetKind(param.kind)) {
+        const hydrate = (item) => item && (s.assets.find((asset) => asset.assetId === item.assetId && (!item.sessionId || asset.sessionId === item.sessionId)) || item);
+        initial = Array.isArray(initial) ? initial.map(hydrate) : hydrate(initial);
+      }
       s.values.set(key, initial);
-      const field = { key, entry, node, def, param, connected, wrap: null, error: null, counter: null };
+      const field = { key, entry, node, def, param, connected, wrap: null, error: null, counter: null, touched: isAssetKind(param.kind) && (stored[key] === null || (Array.isArray(stored[key]) && !stored[key].length)) };
       // marks per file (WP55): their values live under the key of the param of marks
       field.marks = param.kind === 'assets' ? marksRefOf(entry.marks) : null;
       if (field.marks) {
-        const kept = previous.has(field.marks.key) ? previous.get(field.marks.key) : stored[field.marks.key];
+        const kept = previous.has(field.marks.key) ? previous.get(field.marks.key) : stored[field.marks.key] !== undefined ? stored[field.marks.key] : restoredParam(s.results, field.marks.node, field.marks.param.id, field.marks.node.params[field.marks.param.id]);
         s.values.set(field.marks.key, kept && typeof kept === 'object' && !Array.isArray(kept) ? kept : {});
       }
       const widget = ui.paramWidget(param, initial, {
@@ -601,6 +617,7 @@
         compact: false,
         workflowId: s.id,
         onChange: (value, meta) => {
+          field.touched = true;
           s.values.set(key, value);
           field.error = null;
           updateFieldMeta(field);
@@ -736,10 +753,21 @@
     }
 
     // The panel of the switches under an output: a switch per item with its picture, the items that cannot be switched on with the reason, and the
-    // number of items on with their price. Null without items. `editable` is false while a run is active or the stage of the output is not done yet.
+    // Number of items on with their price; an older result without switches shows a refresh hint. `editable` is false while a run is active or the stage of the output is not done yet.
     function switchPanel(item) {
       const payload = switchesPayloadOf(item.ref);
-      if (!payload || !payload.items.length) return null;
+      if (!payload || !payload.items.length) {
+        const result = s.results && s.results.nodes && s.results.nodes[item.ref.node.id];
+        const motion = virtualNodeOf(item.ref.node).params.photo_motion;
+        const entry = result && result.selected && (result.history || []).find((value) => value.id === result.selected.entry);
+        const variant = entry && (entry.variants || [])[result.selected.variant || 0];
+        let hasPhotos = true;
+        try {
+          const shots = JSON.parse(variant?.shots?.value).shots;
+          if (Array.isArray(shots)) hasPhotos = shots.some((shot) => String(shot.kind).startsWith('photo'));
+        } catch (_) { /* an older result may not have a shots payload */ }
+        return result && result.selected && motion === 'ai' && hasPhotos ? { el: el('p', { class: 'nv-hint', text: T('nodes.app.switchesRefresh') }), paint() {}, lock() {} } : null;
+      }
       const panel = el('section', { class: 'nv-appswitches', 'aria-label': ui.paramLabel(item.ref.param.id) });
       const head = el('div', { class: 'nv-appswitches-head' }, el('h4', { class: 'nv-appswitches-title', text: ui.paramLabel(item.ref.param.id) }));
       const sum = el('span', { class: 'nv-appswitches-sum', role: 'status' });
@@ -817,12 +845,13 @@
       for (const field of s.fields) {
         if (!field.visible) continue;
         const value = s.values.get(field.key);
-        // the marks of the files in the list now (WP55), only while their param is shown
-        if (field.marks && field.marksVisible) {
+        // Do not clear persisted marks along with an untouched empty file field.
+        const emptyAsset = isAssetKind(field.param.kind) && (value === null || (Array.isArray(value) && !value.length));
+        if (field.marks && field.marksVisible && (!emptyAsset || field.touched)) {
           const marks = marksOfItems(s.values.get(field.marks.key), value, field.marks.param.options);
-          if (Object.keys(marks).length) set(field.marks.node.id, field.marks.param.id, marks);
+          set(field.marks.node.id, field.marks.param.id, marks);
         }
-        if (value === undefined || (isAssetKind(field.param.kind) && (value === null || (Array.isArray(value) && !value.length)))) continue;
+        if (value === undefined || (!field.touched && emptyAsset)) continue;
         set(field.node.id, field.param.id, value);
       }
       for (const item of switchOutputs()) {
@@ -1502,6 +1531,7 @@
     approvalFlow,
     fieldOfIssue,
     // WP55: marks per file and switches per item
+    restoredParam,
     marksOfItems,
     switchPayload,
     switchesFromItems,

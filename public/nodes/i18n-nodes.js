@@ -1103,6 +1103,7 @@
     ['nodes.app.switchesSum', 'Eingeschaltet: {count} · ≈ {usd} USD', 'Switched on: {count} · ≈ {usd} USD', 'Activados: {count} · ≈ {usd} USD'],
     ['nodes.app.switchesCount.ai_choice', 'KI-Clips: {count}', 'AI clips: {count}', 'Clips de IA: {count}'],
     ['nodes.app.switchesSum.ai_choice', 'KI-Clips: {count} · ≈ {usd} USD', 'AI clips: {count} · ≈ {usd} USD', 'Clips de IA: {count} · ≈ {usd} USD'],
+    ['nodes.app.switchesRefresh', 'Die Schalter pro Foto erscheinen nach einem neuen Schritt 1.', 'The switches per photo appear after a new step 1.', 'Los interruptores por foto aparecen después de un nuevo paso 1.'],
     ['nodes.app.switchesHint', 'Die Schalter gelten für den nächsten Schritt und kosten keine neue Planung.', 'The switches count for the next step and cost no new planning.', 'Los interruptores cuentan para el paso siguiente y no cuestan una nueva planificación.'],
     ['nodes.marks.none', 'Keine Markierungen (im App-Formular pro Datei wählbar)', 'No marks (chosen per file in the app form)', 'Sin marcas (se eligen por archivo en el formulario de la app)'],
     ['nodes.marks.clear', 'Alle entfernen', 'Remove all', 'Quitar todas'],
