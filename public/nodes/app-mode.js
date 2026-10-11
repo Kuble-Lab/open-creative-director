@@ -1080,6 +1080,12 @@
         bar.append(el('i', { style: `width:${Math.round((progress.total ? progress.done / progress.total : 0) * 100)}%` }));
         box.append(bar);
         if (current.length) box.append(el('div', { class: 'nv-appstatus-now', text: current.join(' · ') }));
+        // a film that waits in the render queue (WP54): its place and the estimated wait, the server that starts, the part that is rendered
+        for (const nodeId of runLib.activeNodeIds(run)) {
+          const queue = run.nodes[nodeId] && run.nodes[nodeId].queue;
+          const text = queue ? runLib.queueText(queue, T) : '';
+          if (text) box.append(el('div', { class: 'nv-appstatus-queue', title: T('nodes.statusHint.renderQueue') }, icon('clock', 13), el('span', { text: current.length > 1 ? `${titleOf(nodeId)}: ${text}` : text })));
+        }
       } else {
         const failed = Object.entries(run.nodes).filter(([, info]) => info.status === 'error');
         // a run of the marked outputs of one stage alone is only one of the steps: it says which
@@ -1106,7 +1112,8 @@
         const list = el('ul', {});
         for (const row of rows) {
           const item = el('li', { dataset: { status: row.info.status } });
-          item.append(el('span', { class: 'nv-status-dot' }), el('span', { class: 'nv-appstep-name', text: titleOf(row.node.id) }), el('span', { class: 'nv-appstep-status', text: ui.statusLabel(row.info.status) }));
+          const queued = row.info.queue ? runLib.queueText(row.info.queue, T) : '';
+          item.append(el('span', { class: 'nv-status-dot' }), el('span', { class: 'nv-appstep-name', text: titleOf(row.node.id) }), el('span', { class: 'nv-appstep-status', text: queued || ui.statusLabel(row.info.status) }));
           if (row.info.progress && row.info.progress.total > 1) item.append(el('span', { class: 'nv-status-progress', text: `${row.info.progress.done}/${row.info.progress.total}` }));
           list.append(item);
         }

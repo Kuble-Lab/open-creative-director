@@ -60,7 +60,7 @@ Wait until `GET /health` shows `"queue":0,"running":false`, stop the service, ru
 
 ## Agent mode (own computers, WP46)
 
-In the app, **Menu → My computers → Create code** shows a code and a command. The command needs Node.js 22 or newer with npm; it fetches the package from the app with the code, installs it into `ocd-render-agent` in the home folder, pairs the computer and starts the agent:
+In the app, **Menu → My computers → Create code** shows a code and a command. The command needs Node.js 22 or newer with npm; it fetches the package from the app with the code, writes it into `ocd-render-agent` in the home folder, pairs the computer, installs the dependencies and starts the agent:
 
 ```bash
 curl -fsSL https://<app>/api/render-agent/install.sh | bash -s -- --server https://<app> --code XXXX-XXXX
@@ -87,3 +87,20 @@ Files: `agent.json` holds the address of the app and the token of the computer (
 The agent only talks to the app it was paired with, over HTTPS (plain `http://` only for an address of the computer itself, or with `RENDER_AGENT_ALLOW_HTTP=1`). Before a page is rendered, the agent puts a Content-Security-Policy into it: scripts only from the page and from jsDelivr, unpkg and cdnjs; images, media, styles and fonts also from `https:`; no fetch, XHR, WebSocket or form to any other address. The browser of HyperFrames runs without a sandbox, so a computer renders only the jobs of its owner unless the owner shares it with their teams (or an admin shares their own for everybody).
 
 To start the agent with the computer, wrap `node agent.js` in your platform's service manager (launchd, systemd, or a Windows Scheduled Task), as for the service.
+
+The installers pair first, before `npm ci` and the browser, so the code (10 minutes) does not run out on a slow computer; the versions of ffmpeg reach the app with the first poll. `hyperframes browser ensure` stops after 4 minutes. On Linux `install.sh` stops before it uses the code when `unzip` is missing (the browser of HyperFrames needs it) and says how to install it. Pairing again into a folder whose `node_modules` came from the same lockfile leaves `npm ci` out (`node_modules/.ocd-lock-sha256`).
+
+## Render servers in the cloud (WP54)
+
+The app can rent render servers at Hetzner Cloud when jobs wait (see the README of the app, «Render-Server bei Hetzner»). The servers start from a snapshot that [`cloud-image.sh`](cloud-image.sh) prepares on a fresh Ubuntu 24.04 server (CPX42, as root):
+
+```bash
+curl -fsSL https://<app>/api/render-agent/cloud-image.sh | sudo bash -s -- --server https://<app> --code XXXX-XXXX
+```
+
+The code (from **My computers**, of an admin) is only used to fetch the package and is not used up. The script installs Node.js 22 from NodeSource, unzip, the libraries of Chrome and the fonts (fonts-liberation, fonts-noto-core, fonts-noto-color-emoji, fonts-dejavu-core), makes the system user `ocdrender` (home `/var/lib/ocdrender`; not `render`, a group of that name exists on Ubuntu), installs the agent into `/opt/ocd-render-agent` without pairing it (`setup.js --update`: `npm ci`, the browser, ffmpeg) and enables two units:
+
+- `ocd-render-pair.service` (once, as root, while there is no `agent.json`): waits for `/etc/ocd-render/pairing.env`, which cloud-init writes from the `user_data` of the server (`OCD_SERVER`, `OCD_CODE`, `OCD_NAME`; read with sed, never run by a shell), fetches the current package with that code and runs `setup.js --server … --code … --no-start` as `ocdrender`, then deletes the file. `npm ci` runs only when the lockfile changed since the snapshot.
+- `ocd-render-agent.service`: `node agent.js` as `ocdrender` once `agent.json` exists; restarts on failure, but not after exit code 2 (removed in the app) or 3 (another version needed).
+
+SSH accepts keys only (`/etc/ssh/sshd_config.d/10-ocd-render.conf`; Hetzner gives a server without a key a root password): to log in to a render server, enter the name of an SSH key of the Hetzner project in the settings. Then switch the server off, take a snapshot, delete the server and enter the snapshot id in the app. The snapshot holds no token: every server pairs with its own code on its first start. Build a new snapshot when HyperFrames or Node.js change; an older one still works, it installs the new lockfile on every start (slower).

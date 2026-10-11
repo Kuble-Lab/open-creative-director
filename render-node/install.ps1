@@ -3,9 +3,11 @@
 #
 #   & ([scriptblock]::Create((irm '<app>/api/render-agent/install.ps1'))) -Server '<app>' -Code '<code>'
 #
-# Needs Node.js 22 or newer (with npm). Fetches the package (setup.js) with the code and runs it: it installs the agent into
-# %USERPROFILE%\ocd-render-agent, pairs the computer and starts the agent in the foreground. It never ends the PowerShell
-# session it runs in (no "exit"): a failure is a message and a return.
+# Needs Node.js 22 or newer (with npm). Fetches the package (setup.js) with the code and runs it: it pairs the computer first
+# (the code lasts 10 minutes, the slow steps may take longer), installs the agent into %USERPROFILE%\ocd-render-agent and
+# starts the agent in the foreground. No check for unzip as in install.sh: on Windows HyperFrames unpacks its browser with
+# tar.exe or PowerShell, and setup.js ends the browser check after a few minutes. It never ends the PowerShell session it runs
+# in (no "exit"): a failure is a message and a return.
 param(
   [string]$Server = '',
   [string]$Code = '',

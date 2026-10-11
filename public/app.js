@@ -2843,6 +2843,8 @@ async function loadSettingsAccess() {
     // Teams (trainings with a budget): only with user management, only for admins.
     if (OCAccess.isActive() && OCAccess.me().isAdmin) OCTeams.mount(document.getElementById('settingsTeamsSlot'));
     renderRenderNodes();
+    // render servers in the cloud (WP54, public/cloud-render-ui.js): settings and status for admins
+    OCCloudRender.mount(document.getElementById('cloudRenderSlot'), { onFeedback: showSettingsFeedback });
     renderHiggsfieldStatus();
     renderChatGPTStatus();
     return true;
@@ -6601,6 +6603,7 @@ window.onLangChange = () => {
   OCTeams.rerender();
   OCMcp.rerender();
   OCRenderAgents.rerender();
+  OCCloudRender.rerender();
   renderModelInfo();
   renderAttachments();
   renderJobStatusBar();

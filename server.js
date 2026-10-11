@@ -1163,6 +1163,8 @@ app.get('/api/rendernode/status', async (req, res) => {
   const status = { ...(await renderNodeStatus()) };
   // WP46: a computer that renders for this person makes the render tools available too
   if (renderAgentRoutes.availableFor(req)) Object.assign(status, { enabled: true, online: true, ownComputer: true });
+  // WP54: render servers in the cloud start when a job needs one
+  if (rendernode.cloud().ready()) Object.assign(status, { enabled: true, online: true, cloud: true });
   // The names of the render nodes are infrastructure: participants only get the totals.
   if (isRestricted(req)) {
     const { nodes, ...totals } = status;
@@ -1213,6 +1215,45 @@ app.delete('/api/rendernodes/:id', async (req, res) => {
     res.json(await renderNodesAdminPayload());
   } catch (err) {
     fail(res, renderNodesErrorStatus(err), err.message);
+  }
+});
+
+// Render servers in the cloud (WP54, lib/cloud-render.js): settings (the Hetzner token is only written, the answer says
+// whether it is set), the servers with their age and cost, the month against the cap, the last error; and «delete now».
+function failCloudRender(res, err) {
+  const status = Number.isInteger(err?.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+  if (status === 500) console.warn('[cloud-render]', err?.message || err);
+  res.status(status).json({ error: status === 500 ? 'Interner Fehler.' : err.message, code: err.code || 'ERROR' });
+}
+
+app.get('/api/cloud-render', (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(rendernode.cloud().status());
+  } catch (err) {
+    failCloudRender(res, err);
+  }
+});
+
+app.put('/api/cloud-render', (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    res.set('Cache-Control', 'no-store');
+    res.json(rendernode.cloud().updateSettings(body));
+  } catch (err) {
+    failCloudRender(res, err);
+  }
+});
+
+app.post('/api/cloud-render/delete-servers', async (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await rendernode.cloud().deleteAll());
+  } catch (err) {
+    failCloudRender(res, err);
   }
 });
 
@@ -2550,6 +2591,8 @@ function startServer() {
   poller.start();
   // the queue of the own computers (WP46): leases, render nodes that took a job, old jobs
   rendernode.queue().start();
+  // the render servers in the cloud (WP54): start, delete, reconcile (nothing happens while they are switched off)
+  rendernode.cloud().start();
   if (access.isActive() && access.internalDomains().length === 0) {
     console.warn(
       '[access] WARNUNG: INTERNAL_EMAIL_DOMAINS ist leer. Ohne Domainliste gilt jede Person ohne Team als intern; ' +

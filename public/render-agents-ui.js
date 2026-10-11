@@ -444,7 +444,7 @@
         agent.online ? null : lastSeenText(agent.lastSeenAt),
         agent.rendering && agent.rendering.length ? tr('agents.admin.rendering', { count: agent.rendering.length }) : null,
         tr('agents.admin.completed', { count: agent.completed || 0 }),
-        agent.shareAll ? tr('agents.badgeShared') : agent.shareTeams ? tr('agents.badgeTeams') : null,
+        agent.cloud ? tr('agents.badgeCloud') : agent.shareAll ? tr('agents.badgeShared') : agent.shareTeams ? tr('agents.badgeTeams') : null,
         agent.outdated ? tr('agents.badgeOutdated') : null
       ].filter(Boolean).join(' · ');
       const remove = h('button', { type: 'button', class: 'branding-manager-action danger', text: tr('agents.remove'), 'aria-label': tr('agents.removeNamed', { name: agent.name }) });

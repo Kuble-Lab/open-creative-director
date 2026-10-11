@@ -9,8 +9,12 @@
  *   node setup.js --update --dir <folder>        (what "node agent.js update" runs: new files, same token)
  *
  * It writes the files of the package (each checked against its SHA-256) into the folder (default: ocd-render-agent in the
- * home folder), installs the pinned dependencies with npm ci (HyperFrames, and ffmpeg and ffprobe when they can be
- * installed), makes sure HyperFrames has its browser, pairs the computer and starts the agent in the foreground.
+ * home folder), pairs the computer, installs the pinned dependencies with npm ci (HyperFrames, and ffmpeg and ffprobe when
+ * they can be installed), makes sure HyperFrames has its browser and starts the agent in the foreground.
+ * The pairing comes first (WP54): the code lasts 10 minutes, the slow steps may take longer (it reports the versions of the
+ * package; the agent reports the real ones, ffmpeg too, at its first poll). npm ci is left out when node_modules was
+ * installed from the same lockfile (a render server in the cloud starts from a snapshot that has it); an update always runs it.
+ * The browser check has a time limit, and on Linux it needs unzip (without it HyperFrames hangs and then fails).
  * The token of the computer goes into agent.json (mode 600) in that folder and is never printed.
  */
 
@@ -23,6 +27,10 @@ const { spawn, spawnSync } = require('child_process');
 const PACKAGE = /*@@PACKAGE@@*/ null;
 
 const MIN_NODE_MAJOR = 22;
+// the browser of HyperFrames: about 10 s with unzip; a download that hangs is ended after this
+const BROWSER_TIMEOUT_MS = 4 * 60 * 1000;
+// in node_modules: the SHA-256 of the lockfile it was installed from (npm ci removes the folder, and with it this file)
+const LOCK_MARKER = '.ocd-lock-sha256';
 const FILE_PATH = /^(?:[A-Za-z0-9_-][A-Za-z0-9._-]*\/)*[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 
 const TEXTS = {
@@ -34,8 +42,12 @@ const TEXTS = {
     corrupt: 'Die Datei {file} ist beschädigt angekommen. Bitte den Befehl noch einmal ausführen.',
     npm: 'Installiere HyperFrames {hyperframes} und ffmpeg (npm ci, das dauert einen Moment) …',
     npmFailed: 'npm ci ist fehlgeschlagen (Code {code}). Ist npm installiert und das Internet erreichbar?',
+    npmSkipped: 'HyperFrames {hyperframes} ist schon installiert (gleiche Lock-Datei).',
     browser: 'Prüfe den Browser von HyperFrames …',
     browserFailed: 'Der Browser von HyperFrames konnte noch nicht geladen werden; er wird beim ersten Render geladen.',
+    browserTimeout: 'Der Browser von HyperFrames kam nicht innert {minutes} Minuten; er wird beim ersten Render geladen.',
+    unzipMissing: 'unzip fehlt: Ohne unzip lädt HyperFrames seinen Browser nicht. Installieren (z. B. sudo apt-get install -y unzip), dann lädt ihn der erste Render.',
+    pairedFirst: 'Gekoppelt. Fehlt noch etwas, nach der Korrektur starten mit: {command}',
     ffmpegBundled: 'ffmpeg {version} (mitgeliefert).',
     ffmpegSystem: 'ffmpeg {version} vom System (das mitgelieferte liess sich nicht installieren).',
     ffmpegConfigured: 'ffmpeg {version} aus HYPERFRAMES_FFMPEG_PATH.',
@@ -52,8 +64,12 @@ const TEXTS = {
     corrupt: 'The file {file} arrived damaged. Please run the command again.',
     npm: 'Installing HyperFrames {hyperframes} and ffmpeg (npm ci, this takes a moment) …',
     npmFailed: 'npm ci failed (code {code}). Is npm installed and the internet reachable?',
+    npmSkipped: 'HyperFrames {hyperframes} is installed already (same lockfile).',
     browser: 'Checking the browser of HyperFrames …',
     browserFailed: 'The browser of HyperFrames could not be loaded yet; it is loaded on the first render.',
+    browserTimeout: 'The browser of HyperFrames did not arrive within {minutes} minutes; it is loaded on the first render.',
+    unzipMissing: 'unzip is missing: without unzip HyperFrames cannot load its browser. Install it (e.g. sudo apt-get install -y unzip), then the first render loads it.',
+    pairedFirst: 'Paired. If something is still missing, start it after the fix with: {command}',
     ffmpegBundled: 'ffmpeg {version} (bundled).',
     ffmpegSystem: 'ffmpeg {version} from the system (the bundled one could not be installed).',
     ffmpegConfigured: 'ffmpeg {version} from HYPERFRAMES_FFMPEG_PATH.',
@@ -70,8 +86,12 @@ const TEXTS = {
     corrupt: 'El archivo {file} llegó dañado. Vuelve a ejecutar el comando.',
     npm: 'Instalando HyperFrames {hyperframes} y ffmpeg (npm ci, tarda un momento) …',
     npmFailed: 'npm ci falló (código {code}). ¿Está npm instalado y hay conexión a internet?',
+    npmSkipped: 'HyperFrames {hyperframes} ya está instalado (mismo archivo de bloqueo).',
     browser: 'Comprobando el navegador de HyperFrames …',
     browserFailed: 'El navegador de HyperFrames aún no se pudo descargar; se descargará en el primer render.',
+    browserTimeout: 'El navegador de HyperFrames no llegó en {minutes} minutos; se descargará en el primer render.',
+    unzipMissing: 'Falta unzip: sin unzip HyperFrames no puede descargar su navegador. Instálalo (p. ej. sudo apt-get install -y unzip) y el primer render lo descargará.',
+    pairedFirst: 'Vinculado. Si aún falta algo, inícialo después de corregirlo con: {command}',
     ffmpegBundled: 'ffmpeg {version} (incluido).',
     ffmpegSystem: 'ffmpeg {version} del sistema (el incluido no se pudo instalar).',
     ffmpegConfigured: 'ffmpeg {version} de HYPERFRAMES_FFMPEG_PATH.',
@@ -135,6 +155,40 @@ function startCommand(dir) {
   return /\s/.test(agent) ? `node "${agent}"` : `node ${agent}`;
 }
 
+const lockHash = (dir) => {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, 'package-lock.json'))).digest('hex');
+  } catch (_) {
+    return null;
+  }
+};
+
+// Was node_modules installed from exactly this lockfile (and is HyperFrames there)?
+function installedFromLock(dir) {
+  const hash = lockHash(dir);
+  try {
+    return Boolean(hash) && fs.readFileSync(path.join(dir, 'node_modules', LOCK_MARKER), 'utf8').trim() === hash && fs.existsSync(path.join(dir, 'node_modules', 'hyperframes', 'package.json'));
+  } catch (_) {
+    return false;
+  }
+}
+
+function markInstalled(dir) {
+  const hash = lockHash(dir);
+  try {
+    if (hash) fs.writeFileSync(path.join(dir, 'node_modules', LOCK_MARKER), `${hash}\n`);
+  } catch (_) {
+    /* the next run installs again */
+  }
+}
+
+// Without unzip the browser download of HyperFrames (puppeteer) hangs and fails on Linux; macOS and Windows have their own.
+function unzipMissing(platform = process.platform, run = spawnSync) {
+  if (platform !== 'linux') return false;
+  const probe = run('unzip', ['-v'], { stdio: 'ignore' });
+  return Boolean(probe.error) || probe.status !== 0;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const major = Number.parseInt(process.versions.node.split('.')[0], 10);
   if (!(major >= MIN_NODE_MAJOR)) {
@@ -154,32 +208,53 @@ async function main(argv = process.argv.slice(2)) {
   console.log(t('writing', { dir }));
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   for (const file of PACKAGE.files) writeFile(dir, file);
+  // agent.js needs nothing but Node itself, so it can pair before npm ci
+  const agent = require(path.join(dir, 'agent.js'));
 
-  console.log(t('npm', { hyperframes: PACKAGE.hyperframes || '' }));
-  const windows = process.platform === 'win32';
-  const npm = spawnSync(windows ? 'npm.cmd' : 'npm', ['ci', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error'], {
-    cwd: dir,
-    stdio: ['ignore', 'inherit', 'inherit'],
-    shell: windows
-  });
-  if (npm.status !== 0) {
-    console.error(t('npmFailed', { code: npm.status === null ? npm.error?.code || 'signal' : npm.status }));
-    return 1;
+  // the pairing first, while the code is fresh: with the versions of the package (the app checks protocol and HyperFrames)
+  if (!options.update) {
+    const versions = { protocol: PACKAGE.protocol, agent: agent.AGENT_VERSION, hyperframes: PACKAGE.hyperframes, node: process.versions.node };
+    const paired = await agent.pair({ server: options.server, code: options.code, name: options.name, base: dir, startHint: false, versions });
+    if (paired !== 0) return paired;
   }
 
-  console.log(t('browser'));
-  const browser = spawnSync(process.execPath, [path.join(dir, 'node_modules', 'hyperframes', 'bin', 'hyperframes.mjs'), 'browser', 'ensure'], {
-    cwd: dir,
-    stdio: ['ignore', 'ignore', 'inherit'],
-    env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: '1', HYPERFRAMES_NO_AUTO_INSTALL: '1', HYPERFRAMES_NO_TELEMETRY: '1', HYPERFRAMES_SKIP_SKILLS: '1' },
-    timeout: 10 * 60 * 1000
-  });
-  if (browser.status !== 0) console.warn(t('browserFailed'));
+  if (!options.update && installedFromLock(dir)) {
+    console.log(t('npmSkipped', { hyperframes: PACKAGE.hyperframes || '' }));
+  } else {
+    console.log(t('npm', { hyperframes: PACKAGE.hyperframes || '' }));
+    const windows = process.platform === 'win32';
+    const npm = spawnSync(windows ? 'npm.cmd' : 'npm', ['ci', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error'], {
+      cwd: dir,
+      stdio: ['ignore', 'inherit', 'inherit'],
+      shell: windows
+    });
+    if (npm.status !== 0) {
+      console.error(t('npmFailed', { code: npm.status === null ? npm.error?.code || 'signal' : npm.status }));
+      if (!options.update) console.error(t('pairedFirst', { command: startCommand(dir) }));
+      return 1;
+    }
+    markInstalled(dir);
+  }
 
-  const agent = require(path.join(dir, 'agent.js'));
+  if (unzipMissing()) {
+    console.warn(t('unzipMissing'));
+  } else {
+    console.log(t('browser'));
+    const browser = spawnSync(process.execPath, [path.join(dir, 'node_modules', 'hyperframes', 'bin', 'hyperframes.mjs'), 'browser', 'ensure'], {
+      cwd: dir,
+      stdio: ['ignore', 'ignore', 'inherit'],
+      env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: '1', HYPERFRAMES_NO_AUTO_INSTALL: '1', HYPERFRAMES_NO_TELEMETRY: '1', HYPERFRAMES_SKIP_SKILLS: '1' },
+      timeout: BROWSER_TIMEOUT_MS,
+      killSignal: 'SIGKILL'
+    });
+    if (browser.error && browser.error.code === 'ETIMEDOUT') console.warn(t('browserTimeout', { minutes: Math.round(BROWSER_TIMEOUT_MS / 60000) }));
+    else if (browser.status !== 0) console.warn(t('browserFailed'));
+  }
+
   const ffmpeg = await agent.prepareFfmpeg({ base: dir, env: { ...process.env } });
   if (!ffmpeg) {
     console.error(t('ffmpegMissing'));
+    if (!options.update) console.error(t('pairedFirst', { command: startCommand(dir) }));
     return 1;
   }
   console.log(t({ bundled: 'ffmpegBundled', configured: 'ffmpegConfigured' }[ffmpeg.source] || 'ffmpegSystem', { version: ffmpeg.version }));
@@ -189,8 +264,6 @@ async function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  const paired = await agent.pair({ server: options.server, code: options.code, name: options.name, base: dir, startHint: false });
-  if (paired !== 0) return paired;
   if (!options.start) {
     console.log(t('start', { command: startCommand(dir) }));
     return 0;
@@ -217,4 +290,4 @@ if (require.main === module) {
   );
 }
 
-module.exports = { main, parseArgs, writeFile, language, TEXTS };
+module.exports = { main, parseArgs, writeFile, language, installedFromLock, markInstalled, unzipMissing, BROWSER_TIMEOUT_MS, LOCK_MARKER, TEXTS };
