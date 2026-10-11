@@ -373,13 +373,21 @@ async function testMonthlyCap() {
     await enqueue(queue);
     await env.manager.tick();
     assert.equal(api.count('POST', '/v1/servers'), 1, '0 + 0.15 is within 0.20');
-    // the server is deleted (did not pair in time does not matter here: removed by hand)
+    // the server is deleted (did not pair in time does not matter here: removed by hand); that switches the cloud off,
+    // else the waiting job would start a new server (and a new paid hour) in the next round
     await env.manager.deleteAll();
     assert.equal(api.servers.size, 0);
+    assert.equal(env.manager.status().settings.enabled, false, '«Server jetzt löschen» switches the cloud off');
+    await env.manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 1, 'off: nothing starts');
+    env.manager.updateSettings({ enabled: true });
     clock.now += 5 * MINUTE;
     await env.manager.tick();
     assert.equal(api.count('POST', '/v1/servers'), 1, '0.15 + 0.15 would go over 0.20: nothing starts');
+    const offers = api.count('GET', '/v1/server_types');
     await env.manager.tick();
+    await env.manager.tick();
+    assert.equal(api.count('GET', '/v1/server_types'), offers, 'with the cap reached no round asks Hetzner for the price again');
     const status = env.manager.status();
     assert.equal(status.phase, 'cap_reached');
     assert.equal(status.lastError.code, 'cap_reached');
@@ -773,6 +781,8 @@ async function testTokenGuard() {
     assert.ok(!api.servers.has(kept.id), 'deleted with the new token');
 
     // a token of another project does not see it: the server is booked out with a clear notice, not dropped silently
+    // (switched on again: «Server jetzt löschen» switched the cloud off)
+    env.manager.updateSettings({ enabled: true });
     await env.manager.tick();
     const lost = lastServer(api);
     api.tokens = new Map([[THIRD, 'p2']]);
