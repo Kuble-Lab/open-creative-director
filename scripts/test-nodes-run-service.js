@@ -737,7 +737,7 @@ async function run(iso) {
   assert.equal(view.totals.usd, 0.5);
   assert.equal(view.totals.usdKnown, true);
   assert.equal(view.totals.localSteps, 2);
-  assert.deepEqual(view.steps.find((step) => step.paid), { nodeId: 'b', type: 't.paid', label: 't.paid', status: 'stale', runs: true, paid: true, executions: 1, usd: 0.5, credits: null });
+  assert.deepEqual(view.steps.find((step) => step.paid), { nodeId: 'b', type: 't.paid', label: 't.paid', status: 'stale', runs: true, paid: true, executions: 1, usd: 0.5, credits: null, changeReason: 'upstream', changedParams: [] });
   // paid without a price: unknown, never 0
   const unknownFlow = await service.prepare(v.s1, { templateId: 'paid-unknown' });
   view = await service.estimate(v.s1, unknownFlow.workflowId);

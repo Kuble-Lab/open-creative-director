@@ -84,11 +84,13 @@ async function testController() {
       listRuns: async () => ({ runs: [] }),
       getWorkflow: async () => ({ workflow: state.workflow, results: state.results })
     };
+    let editDialog = null;
     const dialogs = [];
     const plain = [];
     let answer = false;
     ui.dialog = async (options) => {
       dialogs.push(options);
+      if (editDialog) editDialog(options);
       return answer;
     };
     ui.confirmDialog = async (options) => {
@@ -101,7 +103,8 @@ async function testController() {
     OCD.bus = { on: (name, fn) => { handlers[name] = fn; }, emit() {} };
     // the run that a confirmed start begins ends here (its timers must not outlive the test)
     const finish = () => handlers.sse({ type: 'run_finished', runId: 'run-1', status: 'completed' });
-    OCD.editor = { getState: () => state, getCanvas: () => null, getInspector: () => null, dom: () => ({ runSlot: page.document.createElement('div') }), flushSave: async () => {} };
+    const runSlot = page.document.createElement('div');
+    OCD.editor = { getState: () => state, getCanvas: () => null, getInspector: () => null, dom: () => ({ runSlot }), flushSave: async () => {} };
     OCD.extensions = { nodeMenu: [], workflowMenu: [] };
     FakeNode.prototype.querySelector = function querySelector(selector) {
       return this.find((item) => item.classes.has(String(selector).replace(/^\./, '')))[0] || null;
@@ -123,6 +126,61 @@ async function testController() {
     controller.attach();
     const started = () => calls.filter((call) => call[0] === 'startRun');
     const asked = () => calls.filter((call) => call[0] === 'plan');
+
+    const originalInterval = global.setInterval;
+    const originalClearInterval = global.clearInterval;
+    const timers = new Map();
+    global.setInterval = (fn, delay) => { timers.set(delay, fn); return delay; };
+    global.clearInterval = (id) => timers.delete(id);
+    try {
+      let accounting = { bookedUsd: 0, reservedUsd: 1, openJobs: 1, financiallyComplete: false };
+      OCD.api.listRuns = async () => ({ runs: [{ id: 'historical', status: 'completed', finishedAt: new Date().toISOString(), accounting: { ...accounting } }] });
+      handlers['workflow:open']({});
+      await sleep(10);
+      assert.equal(controller.getRunState().runId, null, 'historical accounting does not impersonate an active run');
+      assert.ok(timers.has(15000), 'a finished run with open accounting starts polling after reload');
+      const summary = () => runSlot.find((node) => node.classes.has('nv-run-summary'))[0];
+      assert.ok(summary().textContent.includes(T('nodes.run.accountingOpen')));
+      const listRuns = OCD.api.listRuns;
+      OCD.api.listRuns = async () => { throw new Error('temporary disconnection'); };
+      await timers.get(15000)();
+      assert.ok(timers.has(15000), 'temporary errors preserve polling');
+      assert.ok(summary().textContent.includes(T('nodes.run.accountingOpen')));
+      OCD.api.listRuns = listRuns;
+      accounting = { bookedUsd: 0.8, reservedUsd: 0, openJobs: 0, financiallyComplete: true };
+      await timers.get(15000)();
+      assert.ok(summary().textContent.includes(T('nodes.run.accounting', { booked: '$0.80', reserved: '$0.00' })));
+      assert.equal(summary().textContent.includes(T('nodes.run.accountingOpen')), false);
+      assert.equal(timers.has(15000), false, 'polling stops when accounting closes');
+      accounting = { openJobs: 1, financiallyComplete: false };
+      const now = Date.now;
+      let listCalls = 0;
+      const finishedAt = new Date().toISOString();
+      OCD.api.listRuns = async () => { listCalls++; return { runs: [{ id: 'old', status: 'completed', finishedAt, accounting }] }; };
+      handlers['workflow:open']({});
+      await sleep(10);
+      assert.ok(timers.has(15000));
+      try {
+        Date.now = () => now() + 6 * 60 * 60 * 1000 + 1;
+        const before = listCalls;
+        await timers.get(15000)();
+        assert.equal(listCalls, before, 'expired accounting is not fetched');
+        assert.equal(timers.has(15000), false, 'polling ends after six hours');
+      } finally { Date.now = now; }
+      accounting = { bookedUsd: 0, reservedUsd: 0, openJobs: 0, unknownCost: true, financiallyComplete: true };
+      handlers['workflow:open']({});
+      await sleep(10);
+      assert.equal(timers.has(15000), false, 'unknown cost alone does not start polling');
+      assert.ok(summary().textContent.includes(T('nodes.run.unknownCost')));
+      assert.equal(summary().textContent.includes(T('nodes.run.accountingOpen')), false);
+
+    } finally {
+      handlers['workflow:close']();
+      OCD.api.listRuns = async () => ({ runs: [] });
+      calls.length = 0;
+      global.setInterval = originalInterval;
+      global.clearInterval = originalClearInterval;
+    }
 
     // the entry in the workflow menu
     const menu = () => OCD.extensions.workflowMenu.flatMap((extra) => extra({ workflow: state.workflow }) || []);
@@ -156,6 +214,8 @@ async function testController() {
     assert.doesNotMatch(text, /ohne Schätzung/, 'every price is known here');
     assert.deepEqual(question.buttons.map((button) => [button.label, button.value]), [[T('nodes.common.cancel'), false], [T('nodes.run.confirmAll.start'), true]]);
     assert.equal(question.focus, 'cancel');
+    assert.equal(question.body.find((node) => node.tagName === 'INPUT')[0].value, '1.4');
+    assert.equal(question.body.find((node) => node.tagName === 'INPUT')[1].checked, true);
     assert.equal(started().length, 0, 'cancelling changes nothing: no run');
     assert.equal(controller.getRunState().active, false);
 
@@ -165,6 +225,9 @@ async function testController() {
     await controller.runAllAgain();
     assert.match(dialogs[0].body.textContent, /1 ohne Schätzung/);
     assert.match(dialogs[0].body.textContent, /Kosten unbekannt/);
+    assert.match(dialogs[0].body.textContent, /Keine Preisschätzung für: Szene/);
+    assert.equal(dialogs[0].body.find((node) => node.tagName === 'INPUT')[0].value, '0.65');
+    assert.equal(dialogs[0].body.find((node) => node.tagName === 'INPUT')[1].checked, false);
     assert.equal(started().length, 0);
 
     // confirming starts the whole workflow, forced
@@ -173,10 +236,41 @@ async function testController() {
     dialogs.length = 0;
     await controller.runAllAgain();
     assert.equal(started().length, 1);
-    assert.deepEqual(started()[0], ['startRun', 'wf1', { mode: 'all', force: true, rev: 7 }]);
+    assert.deepEqual(started()[0], ['startRun', 'wf1', { mode: 'all', force: true, maxUsd: 1.4, requireKnownPrices: true, rev: 7 }]);
     assert.equal(controller.getRunState().active, true, 'the run is started');
+    assert.match(dialogs[0].body.textContent, /Obergrenze|Kostenobergrenze/);
+    assert.equal(dialogs[0].body.find((node) => node.tagName === 'INPUT')[0].value, '1.4');
+    handlers.sse({ type: 'run_approval', runId: 'run-1', approval: { nodeId: 's', maxUsd: 1.1, requiredUsd: 2 } });
+    handlers.sse({ type: 'run_accounting', runId: 'run-1', accounting: { bookedUsd: 0.5, reservedUsd: 0.6, openJobs: 1, financiallyComplete: false } });
+    await sleep(10);
+    assert.match(runSlot.textContent, /Wartet auf Freigabe/);
+    assert.match(runSlot.textContent, /Gebucht/);
+    assert.match(runSlot.textContent, /Reserviert/);
+    assert.match(runSlot.textContent, /Abrechnung offen/);
+    let resumed;
+    OCD.api.resumeRun = async (id, runId, body) => { resumed = { id, runId, body }; };
+    OCD.api.getRun = async () => ({ id: 'run-1', status: 'running', nodes: {}, cost: { usd: 0.5 } });
+    const resumeButton = runSlot.find((node) => node.tagName === 'BUTTON' && node.textContent === T('nodes.run.resume'))[0];
+    await resumeButton.listeners.click[0]();
+    assert.deepEqual(resumed, { id: 'wf1', runId: 'run-1', body: { maxUsd: 2.5, requireKnownPrices: true } });
+    assert.equal(controller.getRunState().status, 'running');
     finish();
     assert.equal(controller.getRunState().active, false);
+
+    calls.length = 0;
+    editDialog = (dialog) => { dialog.body.find((node) => node.tagName === 'INPUT')[0].value = '-1'; };
+    await controller.runAllAgain();
+    assert.equal(started().length, 0, 'an invalid ceiling never starts a run');
+    editDialog = (dialog) => {
+      const inputs = dialog.body.find((node) => node.tagName === 'INPUT');
+      inputs[0].value = '3';
+      inputs[1].checked = false;
+    };
+    await controller.runAllAgain();
+    assert.equal(started()[0][2].maxUsd, 3, 'the person can change the suggested ceiling');
+    assert.equal(started()[0][2].requireKnownPrices, false, 'the person can change the known-price requirement');
+    finish();
+    editDialog = null;
 
     // nothing that costs money: asked all the same, in plain words
     nextPlan = forcedPlan({ paid: false });
@@ -188,7 +282,6 @@ async function testController() {
     assert.equal(plain.length, 1);
     assert.equal(plain[0].title, T('nodes.run.confirmAll.title'));
     assert.equal(plain[0].message, T('nodes.run.confirmAll.free'));
-    assert.equal(plain[0].confirmLabel, T('nodes.run.confirmAll.start'));
     assert.equal(started().length, 0, 'cancelled');
     answer = true;
     await controller.runAllAgain();
@@ -196,13 +289,15 @@ async function testController() {
     assert.equal(started()[0][2].force, true);
     finish();
 
-    // the ordinary "Run all" is unchanged: from the cache, no question without paid nodes
+    // A free normal run starts without confirmation or a budget.
     calls.length = 0;
     plain.length = 0;
     dialogs.length = 0;
     await controller.startRun({ mode: 'all', force: false });
     assert.deepEqual(asked()[0][2], { mode: 'all', force: false });
-    assert.equal(plain.length + dialogs.length, 0);
+    assert.equal(dialogs.length, 0);
+    assert.equal(plain.length, 0);
+    assert.equal(Object.hasOwn(started()[0][2], 'maxUsd'), false);
     assert.equal(started()[0][2].force, false);
     finish();
 
@@ -275,7 +370,7 @@ function testWiring() {
 }
 
 function testWording() {
-  const keys = ['nodes.run.menu.runAllAgain', 'nodes.run.menu.runAllAgainHint', 'nodes.run.confirmAll.title', 'nodes.run.confirmAll.intro', 'nodes.run.confirmAll.free', 'nodes.run.confirmAll.start', 'nodes.statusHint.stale', 'nodes.type.input.branding.tip.2'];
+  const keys = ['nodes.run.unknownCost', 'nodes.run.unknownPrices', 'nodes.run.limitHint', 'nodes.run.menu.runAllAgain', 'nodes.run.menu.runAllAgainHint', 'nodes.run.confirmAll.title', 'nodes.run.confirmAll.intro', 'nodes.run.confirmAll.free', 'nodes.run.confirmAll.start', 'nodes.statusHint.stale', 'nodes.type.input.branding.tip.2'];
   const rows = Object.fromEntries(nodeRows.map((row) => [row[0], row]));
   for (const key of keys) {
     const row = rows[key];

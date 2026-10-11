@@ -13,7 +13,7 @@
     root.OCDNodes.run = factory();
   }
 })(typeof self !== 'undefined' ? self : this, function () {
-  const ACTIVE_STATUSES = Object.freeze(['queued', 'running', 'waiting_job']);
+  const ACTIVE_STATUSES = Object.freeze(['queued', 'running', 'waiting_job', 'awaiting_approval']);
   const FINAL_STATUSES = Object.freeze(['cached', 'done', 'error', 'skipped', 'cancelled']);
   const MAX_HISTORY = 30;
 
@@ -72,7 +72,7 @@
       const startedAt = previous.startedAt || (status === 'running' || status === 'waiting_job' ? now : undefined);
       nodes[nodeId] = { ...previous, status, ...(startedAt ? { startedAt } : {}), ...(isFinal(status) && !previous.endedAt ? { endedAt: now } : {}) };
     }
-    return { ...base, active: true, status: 'running', mode: active.mode || base.mode, nodes, resync: false };
+    return { ...base, active: true, status: active.status || 'running', approval: active.approval || null, accounting: active.accounting || base.accounting, mode: active.mode || base.mode, nodes, resync: false };
   }
 
   function reduceNodeStatus(state, event, now) {
@@ -129,6 +129,10 @@
         const base = runFor(state, event.runId, now);
         return { ...base, nodes: { ...base.nodes, [event.nodeId]: { ...(base.nodes[event.nodeId] || {}), entryId: event.entry.id } } };
       }
+      case 'run_accounting':
+        return { ...runFor(state, event.runId, now), accounting: event.accounting };
+      case 'run_approval':
+        return { ...runFor(state, event.runId, now), active: true, status: event.approval ? 'awaiting_approval' : 'running', approval: event.approval };
       case 'run_cost': {
         const base = runFor(state, event.runId, now);
         return { ...base, cost: { usd: isNumber(event.usd) ? event.usd : 0, credits: isNumber(event.credits) ? event.credits : 0 } };
@@ -140,7 +144,7 @@
         for (const [nodeId, node] of Object.entries(base.nodes)) {
           nodes[nodeId] = isActive(node.status) && status !== 'completed' ? { ...node, status: 'cancelled', endedAt: now } : node;
         }
-        return { ...base, nodes, active: false, status, error: event.error || null, finishedAt: now, resync: false };
+        return { ...base, nodes, active: false, status, accounting: event.accounting || base.accounting, error: event.error || null, finishedAt: now, resync: false };
       }
       default:
         return state;
@@ -154,7 +158,7 @@
       startedAt: node.startedAt ? new Date(node.startedAt).getTime() : undefined,
       endedAt: node.endedAt ? new Date(node.endedAt).getTime() : undefined };
     return { ...createRunState(), logs: state.logs, runId: record.id, mode: record.mode, targets: record.targets || [],
-      active: record.status === 'running', status: record.status, nodes, cost: record.cost || { usd: 0, credits: 0 },
+      active: ['running', 'awaiting_approval'].includes(record.status), accounting: record.accounting, approval: record.approval, status: record.status, nodes, cost: record.cost || { usd: 0, credits: 0 },
       error: record.error || null, startedAt: record.startedAt ? new Date(record.startedAt).getTime() : null,
       finishedAt: record.finishedAt ? new Date(record.finishedAt).getTime() : null };
   }
@@ -373,7 +377,7 @@
         title: titleOf(nodeId),
         executions,
         estimate,
-        unknown: !estimate || executions === null,
+        unknown: !estimate || executions === null || (!isNumber(estimate.usd) && !isNumber(estimate.credits)),
         usd: estimate && isNumber(estimate.usd) && executions !== null ? estimate.usd * executions : null,
         credits: estimate && isNumber(estimate.credits) && executions !== null ? estimate.credits * executions : null,
         perRun,
@@ -383,6 +387,7 @@
     const issues = (plan && plan.issues) || [];
     return {
       paid,
+      changes: Object.entries(nodes).map(([nodeId, node]) => ({ nodeId, title: titleOf(nodeId), reason: node.changeReason || (node.status === 'cached' ? 'cached' : 'no_cache'), params: node.changedParams || [] })),
       willRun,
       followup: Object.values(nodes).map((node) => node.followup).filter((row) => row?.kind === 'eventAiClips'),
       totals: (plan && plan.totals) || { paidNodes: 0, usd: 0, credits: 0, unknownNodes: 0 },
@@ -777,6 +782,7 @@
     function flushPaint() {
       paintTimer = 0;
       const st = S();
+      updateTopbar();
       if (!st.workflow || !st.reg || !canvas()) return;
       const ids = paintAllNext ? st.graph.nodes.map((node) => node.id) : [...dirtyNodes];
       paintAllNext = false;
@@ -806,11 +812,13 @@
       parts.runAll = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-run-all', dataset: { tKey: 'nodes.run.allTitle' } }, icon('play', 12), el('span', { class: 'nv-btn-text', dataset: { tText: 'nodes.run.all' } }));
       parts.runSel = el('button', { type: 'button', class: 'nv-btn nv-run-sel', dataset: { tKey: 'nodes.run.selectionTitle' } }, icon('skip', 13), el('span', { class: 'nv-btn-text' }));
       parts.cancel = el('button', { type: 'button', class: 'nv-btn nv-run-cancel hidden', dataset: { tKey: 'nodes.run.cancelTitle' } }, icon('stop', 12), el('span', { class: 'nv-btn-text', dataset: { tText: 'nodes.run.cancel' } }));
+      parts.resume = el('button', { type: 'button', class: 'nv-btn hidden', text: T('nodes.run.resume') });
+      parts.resume.addEventListener('click', () => approveRun());
       parts.summary = el('span', { class: 'nv-run-summary hidden', role: 'status' });
       parts.runAll.addEventListener('click', () => startRun({ mode: 'all', force: false }));
       parts.runSel.addEventListener('click', () => runSelection());
       parts.cancel.addEventListener('click', () => cancelRun());
-      host.append(parts.summary, parts.cancel, parts.runSel, parts.runAll);
+      host.append(parts.summary, parts.resume, parts.cancel, parts.runSel, parts.runAll);
       relabelTopbar();
     }
 
@@ -821,6 +829,7 @@
         node.title = title;
         node.setAttribute('aria-label', title);
       }
+      parts.resume.textContent = T('nodes.run.resume');
       parts.runAll.querySelector('.nv-btn-text').textContent = T('nodes.run.all');
       parts.cancel.querySelector('.nv-btn-text').textContent = T('nodes.run.cancel');
       updateTopbar();
@@ -863,6 +872,15 @@
         state = last.status;
         title = `${T(`nodes.run.result.${last.status}`)} · ${last.user || ''} · ${last.startedAt ? new Date(last.startedAt).toLocaleString() : ''}`;
       }
+      parts.resume.classList.toggle('hidden', runState.status !== 'awaiting_approval');
+      if (runState.status === 'awaiting_approval') text = T('nodes.run.awaiting', { amount: runState.approval?.requiredUsd == null ? T('nodes.run.confirm.unknown') : money(runState.approval.requiredUsd) });
+      const accounting = runState.accounting || (!runState.runId ? recentRuns[0]?.accounting : null);
+      if (accounting) {
+        const a = accounting;
+        text += ' · ' + T('nodes.run.accounting', { booked: money(a.bookedUsd || 0), reserved: money(a.reservedUsd || 0) });
+        if (a.openJobs) text += ' · ' + T('nodes.run.accountingOpen');
+        if (a.unknownCost) text += ' · ' + T('nodes.run.unknownCost');
+      }
       parts.summary.textContent = text;
       parts.summary.title = title;
       parts.summary.dataset.state = state;
@@ -870,6 +888,12 @@
     }
 
     /* ----- ticker and polling ----- */
+
+    function pendingAccounting(record) {
+      const finished = typeof record.finishedAt === 'number' ? record.finishedAt : Date.parse(record.finishedAt);
+      return record.accounting?.openJobs > 0 && !record.accounting.financiallyComplete &&
+        Number.isFinite(finished) && Date.now() - finished < 6 * 60 * 60 * 1000;
+    }
 
     function startTimers() {
       if (!tickTimer) {
@@ -881,10 +905,11 @@
           }
         }, 1000);
       }
-      if (!pollTimer) pollTimer = setInterval(pollRun, 4000);
+      if (!pollTimer) pollTimer = setInterval(pollRun, 15000);
     }
 
-    function stopTimers() {
+    function stopTimers(force = false) {
+      if (!force && (runState.active || runState.resync || pendingAccounting(runState) || recentRuns.some(pendingAccounting))) return;
       clearInterval(tickTimer);
       clearInterval(pollTimer);
       tickTimer = null;
@@ -894,7 +919,12 @@
     // Safety net next to the SSE stream: the run record repairs missed events and a lost run_finished.
     async function pollRun() {
       const id = workflowId();
-      if (!id || (!runState.active && !runState.resync) || !runState.runId) return;
+      if (id && recentRuns.some(pendingAccounting)) await loadRecentRuns();
+      if (!runState.active && !runState.resync && !pendingAccounting(runState)) {
+        stopTimers();
+        return;
+      }
+      if (!id || !runState.runId) return;
       try {
         const record = await api.getRun(id, runState.runId);
         if (workflowId() !== id || runState.runId !== record.id) return;
@@ -929,9 +959,10 @@
         startTimers();
       }
       if (!runState.active && (before.active || (before.resync && !runState.resync))) {
-        stopTimers();
+        if (!runState.accounting || runState.accounting.financiallyComplete) stopTimers();
         onRunEnded(event);
       }
+      if (!runState.active && runState.accounting?.financiallyComplete) stopTimers();
       if (runState.resync) {
         pollRun();
       }
@@ -1009,11 +1040,13 @@
         const payload = await api.listRuns(id, 5);
         if (workflowId() !== id) return;
         recentRuns = payload.runs || [];
+        if (recentRuns.some(pendingAccounting)) startTimers();
+        else stopTimers();
         updateTopbar();
         const inspector = OCD.editor.getInspector();
         if (inspector && inspector.refreshRun) inspector.refreshRun();
       } catch (_) {
-        recentRuns = [];
+        /* Keep pending accounting visible and retry after a temporary failure. */
       }
     }
 
@@ -1091,9 +1124,26 @@
     }
 
     // `all`: the question of "Run all again" (nothing is taken from the cache), with its own title and texts.
-    async function confirmPaid(info, { all = false } = {}) {
+    async function confirmPaid(info, { all = false, resume = false } = {}) {
       const body = el('div', { class: 'nv-confirm' });
-      body.append(el('p', { class: 'nv-confirm-intro', text: T(all ? 'nodes.run.confirmAll.intro' : 'nodes.run.confirm.intro') }));
+      body.append(el('p', { class: 'nv-confirm-intro', text: T(resume ? 'nodes.run.resumeIntro' : all ? 'nodes.run.confirmAll.intro' : 'nodes.run.previewIntro') }));
+      const changes = el('ul', { class: 'nv-confirm-list' });
+      for (const row of info.changes || []) changes.append(el('li', { text: `${row.title}: ${T(`nodes.run.change.${row.reason}`)}${row.params.length ? ' (' + row.params.join(', ') + ')' : ''}` }));
+      body.append(changes);
+      const limitLabel = el('label', { class: 'nv-field', text: T('nodes.run.maxUsd') });
+      const suggested = Math.ceil((Math.max(info.totals.usd * 1.25, info.totals.usd + 0.10) - 1e-9) * 20) / 20;
+      const limit = el('input', { type: 'number', class: 'nv-input', min: '0', step: '0.0001', value: String(suggested) });
+      limit.value = String(suggested);
+      limitLabel.append(limit);
+      body.append(limitLabel);
+      const knownLabel = el('label', { class: 'nv-field', text: T('nodes.run.knownPrices') });
+      const known = el('input', { type: 'checkbox' });
+      const unknown = info.paid.filter((row) => row.unknown);
+      known.checked = !unknown.length && !info.totals.unknownNodes;
+      knownLabel.append(known);
+      body.append(knownLabel);
+      body.append(el('p', { class: 'nv-field-hint', text: T('nodes.run.limitHint') }));
+      if (unknown.length) body.append(el('p', { class: 'nv-field-hint', text: T('nodes.run.unknownPrices', { steps: unknown.map((row) => row.title).join(', ') }) }));
       const list = el('ul', { class: 'nv-confirm-list' });
       for (const row of info.paid) {
         const item = el('li', {});
@@ -1123,27 +1173,34 @@
       if (info.warnings.length) {
         body.append(el('h3', { class: 'nv-confirm-sub', text: T('nodes.run.confirm.warnings') }), issueList(info.warnings));
       }
-      return ui.dialog({
-        title: all ? T('nodes.run.confirmAll.title') : T('nodes.run.confirm.title', { count: info.paid.length }),
+      const accepted = await ui.dialog({
+        title: T(resume ? 'nodes.run.resume' : all ? 'nodes.run.confirmAll.title' : 'nodes.run.previewTitle'),
         body,
         width: 480,
         focus: 'cancel',
         buttons: [
           { label: T('nodes.common.cancel'), value: false, cancel: true },
-          { label: T(all ? 'nodes.run.confirmAll.start' : 'nodes.run.confirm.start'), value: true, primary: true, enter: false }
+          { label: T(resume ? 'nodes.run.resume' : all ? 'nodes.run.confirmAll.start' : 'nodes.run.confirm.start'), value: true, primary: true, enter: false }
         ]
       });
+      if (!accepted) return false;
+      const maxUsd = Number(limit.value);
+      if (!limit.value.trim() || !Number.isFinite(maxUsd) || maxUsd < 0) { ui.toast(T('nodes.run.invalidLimit'), { kind: 'error' }); return false; }
+      info.approved = { maxUsd, requireKnownPrices: known.checked };
+      return true;
     }
 
-    // "Run all again" with nothing that costs money: still asked once, because every node runs again (local renders take their time).
-    function confirmAllFree() {
-      return ui.confirmDialog({
-        title: T('nodes.run.confirmAll.title'),
-        message: T('nodes.run.confirmAll.free'),
-        confirmLabel: T('nodes.run.confirmAll.start'),
-        cancelLabel: T('nodes.common.cancel'),
-        focus: 'cancel'
-      });
+    async function approveRun() {
+      const approval = runState.approval;
+      if (!approval) return;
+      const info = { paid: [], changes: [], totals: { usd: approval.requiredUsd ?? approval.maxUsd, unknownNodes: approval.requiredUsd === null ? 1 : 0 }, warnings: [] };
+      if (!(await confirmPaid(info, { resume: true }))) return;
+      try { await api.resumeRun(workflowId(), runState.runId, info.approved); await pollRun(); }
+      catch (error) { ui.toast(startFailedText(error), { kind: 'error' }); }
+    }
+
+    async function confirmAllFree() {
+      return ui.confirmDialog({ title: T('nodes.run.confirmAll.title'), message: T('nodes.run.confirmAll.free'), confirmLabel: T('nodes.run.confirmAll.start') });
     }
 
     async function startRun({ mode, nodeIds, force, nodeId, items, again = false }) {
@@ -1198,11 +1255,9 @@
         if (info.needsConfirm) {
           const confirmed = await confirmPaid(info, { all: again });
           if (!confirmed) return;
-        } else if (again) {
-          if (!(await confirmAllFree())) return;
-        }
+        } else if (again && !(await confirmAllFree())) return;
         try {
-          const started = await api.startRun(id, { ...request, rev: S().rev });
+          const started = await api.startRun(id, { ...request, ...info.approved, rev: S().rev });
           if (workflowId() === id && !runState.active) dispatch({ type: 'run_started', runId: started.runId, mode, targets: planned.targets || nodeIds || (nodeId ? [nodeId] : []), plan: Object.fromEntries((planned.order || []).map((nodeId) => [nodeId, 'queued'])) });
         } catch (error) {
           if (error.status === 409 && error.code === 'RUN_ACTIVE') {
@@ -1502,6 +1557,8 @@
           runId: runState.runId,
           status: runState.status,
           cost: runState.cost,
+          accounting: runState.accounting || null,
+          approval: runState.approval || null,
           progress,
           recent: recentRuns,
           hasOutputs: hasOutputResults()
@@ -1600,7 +1657,7 @@
       });
       bus.on('workflow:open', (payload) => {
         painted.clear();
-        stopTimers();
+        stopTimers(true);
         clearTimeout(planTimer);
         runState = createRunState();
         plan = null;
@@ -1615,7 +1672,7 @@
         loadRecentRuns();
       });
       bus.on('workflow:close', () => {
-        stopTimers();
+        stopTimers(true);
         clearTimeout(planTimer);
         planToken += 1;
         runState = createRunState();

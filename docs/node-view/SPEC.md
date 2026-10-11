@@ -1196,3 +1196,58 @@ cost model). It never presents a local prompt draft or requested model as proven
 execution metadata. If a historical output did not record its prompt, the display
 explicitly says that the execution prompt was not recorded. The full saved
 parameters remain visible separately, including local drafts and requested models.
+
+### Run spending approval, accounting and change preview
+
+`POST /api/workflows/:id/runs` accepts optional `maxUsd` (finite, non-negative) and
+`requireKnownPrices` (default true when a ceiling is supplied). The run service
+forwards its approved amount, including MCP `max_usd`. Legacy direct engine/API
+requests without a ceiling keep their previous behaviour. Limits are metadata,
+never graph parameters or cache-key inputs.
+
+Before each fresh paid executor call, including each mapped item, the engine prices
+its resolved inputs and atomically reserves the estimate against booked plus
+reserved USD. Cache hits reserve nothing. An excessive or unknown required price
+sets `awaiting_approval`, persists `approval` (node, estimate, required amount and
+ceiling) and emits `run_approval`. `POST .../runs/:runId/resume` accepts a new
+`maxUsd` and optional `requireKnownPrices`; it continues the same in-memory run
+without repeating completed executors. Cancel also works while waiting. A server
+restart interrupts a waiting run; clients receive `interrupted` on readback and
+can start a new cache-aware run. Separate credit billing is not converted to USD.
+Provider charges above their estimate cannot be undone: actual costs replace the
+reservation and constrain subsequent calls. Explicitly allowing unknown prices
+removes the guarantee for those calls. Composite executors remain responsible for
+the completeness of their estimate across their internal provider calls.
+
+Run detail, run lists and service status expose `accounting`: `bookedUsd`,
+`reservedUsd`, `openJobs`, `unresolvedUsd`, `unknownCost`, `financiallyComplete`. Tracked provider
+references survive cancellation; readback reconciles them with the backing
+session using the same pending-accounting predicate as the poller. Execution
+completion is separate from financial completion. Missing referenced jobs stay
+unresolved. Failed executions without provider references book `err.usd` or zero.
+Successful executions without a known price or open provider job finish financially
+with `unknownCost: true`; unknown costs are displayed separately from pending accounting.
+`run_accounting` updates the editor while active; subsequent reads reconcile late
+bookings without repeating them. Legacy records without accounting remain valid.
+
+Plans add per-node `changeReason` (`cached`, `forced`, `parameters`, `upstream`,
+`no_cache`, `inputs`) and optional `changedParams`. This explanation observes the
+existing normalized cache parameters and lookup; it never changes cache identity.
+For paid plans the editor previews every step before starting, shows costs of fresh
+executions only, and lets the person set the ceiling and known-price requirement.
+The suggested ceiling is max(estimate × 1.25, estimate + USD 0.10), rounded up to
+USD 0.05. Known prices are required by default only when all paid steps are priced;
+otherwise the dialog names unpriced steps. Free runs start without a dialog or
+ceiling; free "Run all again" retains its short confirmation. The run
+summary separates booked and reserved USD and flags pending accounting.
+
+Unpriced successful steps keep their USD reservation during execution until
+provider accounting is settled, or until run completion when no provider job is open. Late bookings reconcile the live budget counters before another paid step
+or approval, as well as the API read model. Free reuse reported by a node's stamp
+hooks is checked again against execution inputs before reserving USD. After opening
+a workflow, the editor also polls recent completed runs with pending accounting
+every 15 seconds until settlement or six hours after `finishedAt`, retaining that
+state across temporary request failures. Unknown costs alone do not trigger polling.
+Without a ceiling, reservations do not read sessions or publish additional accounting
+writes. With a ceiling, reservation reconciliation reads only unresolved provider
+references; finalisation and status reads still reconcile provider accounting.
