@@ -1030,6 +1030,13 @@ async function engineFlow(iso, patch) {
   // step 1 is still done: its plan without the switches finds the result of before
   const preview = await engine.plan(workflow.id, { mode: 'selection', nodeIds: STEP1, user: STAFF, overrides: { n10: { ai_marks: aiMarks } } });
   assert.equal(preview.nodes.n10.status, 'cached');
+  const correction = JSON.stringify({ base: JSON.stringify(require('../lib/event-video/text-overrides').textFields(JSON.parse(step1.graphics.value)).map(({ path, value }) => [path, value])), values: { 'title.text': 'A corrected title' } });
+  const corrected = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides: { ...overrides, n15: { text_overrides: correction } } });
+  const unchanged = await engine.plan(workflow.id, { mode: 'all', user: STAFF, overrides });
+  for (const id of ['n0', 'n7', 'n8', 'n10', 'n11', 'n12', 'n13', 'n14']) {
+    assert.equal(corrected.nodes[id]?.status, unchanged.nodes[id]?.status, `${id}: text corrections preserve upstream cache state`);
+  }
+  assert.equal(seen.planner.length, 1, 'estimating text corrections does not call the model');
   // other switches later: again no request
   await finish({ mode: 'selection', nodeIds: ['n11'], overrides: { n10: { ai_marks: aiMarks, ai_choice: { [free[0].id]: 'on' } } } });
   assert.equal(seen.planner.length, 1);
@@ -1044,6 +1051,8 @@ async function engineFlow(iso, patch) {
   // (review) the planner forced to run again (the node view) asks the model once more: a new answer for the same request, shown with its board and
   // switches. The switches of the first approval again: the result made from the first answer must not be found by its key
   reversed = true;
+  const replanOnly = await engine.plan(workflow.id, { mode: 'node', nodeIds: ['n10'], force: true, user: STAFF, overrides: { n10: { ai_marks: aiMarks, ai_choice: {} } } });
+  assert.deepEqual(Object.entries(replanOnly.nodes).filter(([, node]) => node.status !== 'cached').map(([id]) => id), ['n10'], 'only the planner runs again');
   await finish({ mode: 'selection', nodeIds: ['n10'], force: true, overrides: { n10: { ai_marks: aiMarks } } });
   assert.equal(seen.planner.length, 2, 'a new answer');
   const renewed = JSON.parse((await latest()).variants[0].ai_switches.value);
