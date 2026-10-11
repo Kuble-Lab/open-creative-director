@@ -376,7 +376,7 @@ function testPrompt() {
   // AI clips (live test 2026-10-11): candidates of the picked photos, the best first, at most twice the clips; the parallax for the photos without one
   assert.match(system, /The code animates 4 of the photos you pick with AI and spreads them over the acts\. In "ai_photos" list candidates from the photos you pick, the best for an AI clip first/);
   assert.match(system, /every photo you pick if you pick 4 or fewer, else the best 8, from all acts\./);
-  assert.match(system, /Choose up to 2 of the photos you pick with clear depth for "parallax", the best first; a photo with an AI clip gets no parallax/);
+  assert.match(system, /In "parallax" list up to 6 of the photos you pick with clear depth, the best first; any of them may be among your candidates: the code gives the parallax to the first 2 without an AI clip\./);
   assert.match(system, /Soundbites: pick 1 to 2 complete, intelligible sentences of 4 to 7 s/);
   assert.match(system, /Voice-over \("voiceover"\): 2 or 3 short sentences in German \(Swiss High German/);
   assert.match(system, /Intertitles \(at most 2\)/);

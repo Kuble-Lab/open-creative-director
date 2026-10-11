@@ -588,6 +588,9 @@ function testAccepted() {
   accept('a candidate for AI in parallax too', 'checkAnswer', answer, (a) => (a.parallax[0] = 'p1'));
   accept('a candidate for every photo of a list', 'checkAnswer', answer, (a) => (a.ai_photos = Array.from({ length: contract.LIMITS.listItems }, (_, index) => ({ ref: `p${index}`, prompt: 'slow push in' }))));
   fails(contract.checkAnswer({ ...clone(answer), ai_photos: Array.from({ length: contract.LIMITS.listItems + 1 }, (_, index) => ({ ref: `p${index}`, prompt: 'slow push in' })) }), /^ai_photos has 51 entries, at most 50$/, 'more candidates than a list holds');
+  // the parallax list may be longer than the clips (D11: the code gives the parallax to the first photos without an AI clip), up to a whole list
+  accept('a parallax list longer than the clips', 'checkAnswer', answer, (a) => (a.parallax = Array.from({ length: contract.LIMITS.listItems }, (_, index) => `p${index}`)));
+  fails(contract.checkAnswer({ ...clone(answer), parallax: Array.from({ length: contract.LIMITS.listItems + 1 }, (_, index) => `p${index}`) }), /^parallax has 51 entries, at most 50$/, 'more photos with depth than a list holds');
   // shots: a dissolve later in the film, a parallax clip with an anchor, a shot of one frame
   accept('a dissolve', 'checkShots', shots, (s) => (s.shots[4].transition = 'dissolve'));
   accept('a parallax clip with an anchor', 'checkShots', shots, (s) => (s.shots[3].anchor = { x: 0.5, y: 0.4 }));

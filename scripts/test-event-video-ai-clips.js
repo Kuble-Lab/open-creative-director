@@ -6,6 +6,8 @@
 //   spread      spreadAiPhotos: the share of every act by its photos (largest remainder), the best candidates of an act, a share left over goes by the
 //               rank, no two AI shots in a row where another candidate allows it
 //   live        the case of the live test: at most one AI clip in hook and arrival, the others in the acts after, the parallax for photos without one
+//   depth list  the parallax list of the answer may hold photos that get an AI clip (the model cannot know which candidates the spread takes): the
+//               prompt asks for parallax + ai photos, the code gives the parallax to the first without an AI clip
 //   all         "all chosen photos": a prompt for every photo, every photo an AI clip, no parallax
 //   no shot     an AI clip whose shot is not in the film is not made, the clips are numbered again (D1)
 //   code        the photos moved by code: the prompts and the plans of main, byte for byte (digests computed with the code of main, 3a4c45b)
@@ -169,7 +171,7 @@ async function testLive() {
   passesContract(result, 'the live test');
   assert.equal(model.calls.length, 1, 'one request: the candidates left out are no problem');
   assert.match(model.calls[0].system, /The code animates 4 of the photos you pick with AI and spreads them over the acts\./);
-  assert.match(model.calls[0].system, /else the best 8, from all acts\. Choose up to 4 of the photos you pick with clear depth for "parallax"/);
+  assert.match(model.calls[0].system, /else the best 8, from all acts\. In "parallax" list up to 8 of the photos you pick with clear depth, the best first; any of them may be among your candidates: the code gives the parallax to the first 4 without an AI clip\./);
   const shots = result.shots.shots;
   const ai = shots.filter((shot) => shot.kind === 'photo_ai');
   assert.equal(ai.length, 4);
@@ -203,6 +205,44 @@ async function testLive() {
   const flat = await run({ ask: scripted(liveAnswer).ask, style, videos: [], photos: livePhotos(), options: { ...AI, parallax: false } });
   assert.deepEqual([flat.aiPhotos.length, flat.parallaxPhotos.length], [4, 0]);
   assert.match(flat.board, /parallax p\d+ was left out: the parallax is switched off/);
+}
+
+/* ---------- the list of the parallax ---------- */
+
+// The model lists as parallax the candidates 5 to 8 first (what the prompt of before suggested: photos not among its first 4 candidates), then four
+// photos that are no candidates. The spread gives three of the first four an AI clip (the share of programme, people and peak takes candidates of
+// rank 5 to 7): the parallax goes to the first four without an AI clip, still four depth maps.
+async function testDepthList() {
+  const style = styles.combineStyle({ event_type: 'conference', mood: 'fresh', length: 60 });
+  let listed = [];
+  const answerFor = (request) => {
+    const answer = liveAnswer(request);
+    const acts = answer.acts;
+    const of = (act) => acts.find((entry) => entry.act === act).picks.map((pick) => pick.ref);
+    const ranked = answer.ai_photos.map((item) => item.ref);
+    listed = [...ranked.slice(4, 8), of('programme')[0], of('people')[0], of('peak')[0], of('close')[1]];
+    return { ...answer, parallax: listed };
+  };
+  const model = scripted(answerFor);
+  const result = await run({ ask: model.ask, style, videos: [], photos: livePhotos(), options: AI });
+  passesContract(result, 'the list of the parallax');
+  assert.equal(model.calls.length, 1);
+  assert.match(model.calls[0].system, /In "parallax" list up to 8 of the photos you pick with clear depth, the best first; any of them may be among your candidates: the code gives the parallax to the first 4 without an AI clip\./);
+  const ai = new Set(result.aiPhotos.map((index) => `p${index}`));
+  assert.equal(ai.size, 4);
+  assert.equal(listed.slice(0, 4).filter((ref) => ai.has(ref)).length, 3, 'three of the candidates 5 to 8 get an AI clip');
+  const expected = listed.filter((ref) => !ai.has(ref)).slice(0, 4);
+  assert.deepEqual(result.parallaxPhotos.map((index) => `p${index}`), expected);
+  assert.equal(result.shots.shots.filter((shot) => shot.kind === 'photo_parallax').length, 4);
+  for (const ref of listed.slice(0, 4).filter((item) => ai.has(item))) assert.ok(result.notes.includes(`parallax ${ref} was left out: it gets an AI clip`), ref);
+  const spare = listed.filter((ref) => !ai.has(ref)).slice(4);
+  assert.deepEqual(spare.length, 1);
+  assert.ok(result.notes.includes(`parallax ${spare[0]} was not needed: the first 4 without an AI clip have it`), result.notes.join(' | '));
+  assert.ok(!result.notes.some((note) => /parallax .* at most/.test(note)), 'no limit note for the photos the prompt asked for');
+  assert.match(result.board, /\nESTIMATE {3}AI clips 4 0\.80 \+ depth maps 4 0\.04 /);
+  // the answer of before (the candidates 5 to 8 only) would have kept a single parallax clip
+  const before = await run({ ask: scripted((request) => ({ ...liveAnswer(request), parallax: answerFor(request).parallax.slice(0, 4) })).ask, style, videos: [], photos: livePhotos(), options: AI });
+  assert.equal(before.parallaxPhotos.length, 1);
 }
 
 /* ---------- all chosen photos ---------- */
@@ -351,7 +391,7 @@ function testField() {
 }
 
 async function main() {
-  for (const test of [testSpread, testLive, testAll, testNoShot, testCodeUnchanged, testField]) {
+  for (const test of [testSpread, testLive, testDepthList, testAll, testNoShot, testCodeUnchanged, testField]) {
     await test();
     console.log(`ok ${test.name}`);
   }
