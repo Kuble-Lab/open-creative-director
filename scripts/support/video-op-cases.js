@@ -3,6 +3,8 @@
 // The ffmpeg arguments of the ops that were not changed by WP33b, as the builders write them for inputs WITHOUT alpha. The result of
 // compute() was written to scripts/support/video-op-args-before-wp33b.json (key `more`) by the code of main (the day before WP33b);
 // test-nodes-video-alpha.js computes it again with the code of the branch and compares: byte for byte the same arguments.
+// The four imageToVideo* entries were written again on 2026-10-11, when image.to_video began to read its picture once (the `loop` filter
+// instead of `-loop 1` on the input; the same frames, compared with framemd5 for every motion).
 // The infos come from normaliseMediaProbe on a raw ffprobe output, as a real probe does (on the branch that adds `alpha: false`).
 
 function compute(ops, ffmpeg) {

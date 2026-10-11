@@ -114,11 +114,14 @@ function testLayout() {
   assert.equal(wide.look.accent, '#3B6CFF');
   assert.equal(wide.look.onAccent, '#FFFFFF');
   assert.equal(composition.onColour('#FFFFFF'), '#111214', 'a white accent (no branding) takes dark text');
-  // the end card on the last 3 s (D3), 4 % of the height
+  // the end card on the last 3 s (D3): 4 % of 1920 in 9:16, 6.5 % of the height in 16:9 (4 % was too small to read at 1080p)
   const last = composition.pageData({ graphics, format: '9:16', chunk: chunks[chunks.length - 1], logoFile: 'logo.png' });
   assert.equal(last.endcard.start, 57);
   assert.equal(last.endcard.lineSize, 76.8);
   assert.equal(last.endcard.logo, 'logo.png');
+  const lastWide = composition.pageData({ graphics, format: '16:9', chunk: chunks[chunks.length - 1] });
+  assert.equal(lastWide.endcard.lineSize, 70.2);
+  assert.ok(lastWide.endcard.lineSize >= wide.title.size * 0.9, 'the end card line is near the size of the title');
   // the tint of the look (spec §5c): warm or cool in soft light
   assert.equal(composition.tintStyle(-0.015), 'background:#4A7BFF;opacity:0.033');
   assert.equal(composition.tintStyle(0.12), 'background:#FF9F45;opacity:0.264');
