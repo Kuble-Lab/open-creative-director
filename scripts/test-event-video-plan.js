@@ -373,7 +373,10 @@ function testPrompt() {
   assert.match(system, /^You are the editor of an event aftermovie/);
   assert.ok(system.includes(styles.styleBlock(styleFixture)));
   for (const act of ctx.grid.acts) assert.ok(system.includes(`${act.act} ${act.picks} pick`), act.act);
-  assert.match(system, /Choose up to 4 of the photos you pick for AI animation/);
+  // AI clips (live test 2026-10-11): candidates of the picked photos, the best first, at most twice the clips; the parallax for the photos without one
+  assert.match(system, /The code animates 4 of the photos you pick with AI and spreads them over the acts\. In "ai_photos" list candidates from the photos you pick, the best for an AI clip first/);
+  assert.match(system, /every photo you pick if you pick 4 or fewer, else the best 8, from all acts\./);
+  assert.match(system, /Choose up to 2 of the photos you pick with clear depth for "parallax", the best first; a photo with an AI clip gets no parallax/);
   assert.match(system, /Soundbites: pick 1 to 2 complete, intelligible sentences of 4 to 7 s/);
   assert.match(system, /Voice-over \("voiceover"\): 2 or 3 short sentences in German \(Swiss High German/);
   assert.match(system, /Intertitles \(at most 2\)/);
@@ -431,8 +434,8 @@ function testAnswer() {
   assert.deepEqual(c.lowerThirds.map((third) => third.name), ['Anna Muster', 'Luca Beispiel']);
   assert.deepEqual(c.intertitles.map((title) => title.text), ['320 Gäste', '12 Workshops']);
   assert.deepEqual(c.aiPhotos.map((item) => item.ref), ['p1', 'p2']);
-  assert.deepEqual(c.parallax, [], 'no parallax when the photos are animated by AI');
-  assert.match(ok.notes.join(' '), /parallax p0 was left out: the photos are animated by AI/);
+  assert.deepEqual(c.parallax.map((item) => item.ref), ['p0', 'p5'], 'the photos without an AI clip get the parallax');
+  assert.match(ok.notes.join(' '), /AI clips: the answer has 2 candidates for 4 clips/);
   assert.equal(c.voiceover.length, 2);
   assert.deepEqual(c.endcard, { line: 'Danke. Bis 2027.', sub: null, url: 'innovation-day.example', source: 'description' });
   assert.equal(c.acts.programme[3].pair.ref, 'v3#2');
@@ -628,7 +631,7 @@ async function testRun() {
     assert.equal(result.graphics.title.text, 'Innovation Day 2026');
     assert.deepEqual(result.aiPhotos, [1, 2]);
     assert.deepEqual(result.aiPrompts.length, 2);
-    assert.deepEqual(result.parallaxPhotos, []);
+    assert.deepEqual(result.parallaxPhotos, [0, 5]);
     assert.equal(result.voLines.length, 2);
     assert.deepEqual(result.costs, [0.3]);
     // the soundbites: the shot plays its sentence at its own speed, the subtitle words relative to its start, the lower third over it

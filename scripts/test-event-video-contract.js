@@ -441,7 +441,6 @@ const BROKEN = [
   ['answer: a treatment that is too long', 'checkAnswer', answer, (a) => (a.treatment = 'y'.repeat(401)), /^treatment has 401 characters, at most 400$/],
   ['answer: a voice-over in the peak', 'checkAnswer', answer, (a) => (a.voiceover[0].act = 'peak'), /^voiceover\[0\]\.act "peak" is not one of arrival, close$/],
   ['answer: four voice-over lines', 'checkAnswer', answer, (a) => a.voiceover.push(...clone(a.voiceover)), /^voiceover has 4 entries, at most 3$/],
-  ['answer: a photo both animated and in parallax', 'checkAnswer', answer, (a) => (a.parallax[0] = 'p1'), /^parallax\[0\] "p1" is animated by AI already$/],
   ['answer: a scene for AI', 'checkAnswer', answer, (a) => (a.ai_photos[0].ref = 'v1#0'), /^ai_photos\[0\]\.ref "v1#0" has not the form/],
   ['answer: an AI prompt that is too long', 'checkAnswer', answer, (a) => (a.ai_photos[0].prompt = 'z'.repeat(301)), /^ai_photos\[0\]\.prompt has 301 characters, at most 300$/],
   ['answer: four intertitles', 'checkAnswer', answer, (a) => a.intertitles.push(...clone(a.intertitles)), /^intertitles has 4 entries, at most 3$/],
@@ -585,6 +584,10 @@ function testAccepted() {
     for (const act of a.acts) for (const pick of act.picks) for (const key of ['why', 'slow', 'pair']) delete pick[key];
   });
   accept('a lower third with a label only', 'checkAnswer', answer, (a) => Object.assign(a.lower_thirds[1], { name: null, role: null, label: 'Keynote', source: 'generic' }));
+  // ai_photos are candidates (D11): one may be in parallax too, the planner gives the parallax only to a photo without an AI clip; up to a whole list
+  accept('a candidate for AI in parallax too', 'checkAnswer', answer, (a) => (a.parallax[0] = 'p1'));
+  accept('a candidate for every photo of a list', 'checkAnswer', answer, (a) => (a.ai_photos = Array.from({ length: contract.LIMITS.listItems }, (_, index) => ({ ref: `p${index}`, prompt: 'slow push in' }))));
+  fails(contract.checkAnswer({ ...clone(answer), ai_photos: Array.from({ length: contract.LIMITS.listItems + 1 }, (_, index) => ({ ref: `p${index}`, prompt: 'slow push in' })) }), /^ai_photos has 51 entries, at most 50$/, 'more candidates than a list holds');
   // shots: a dissolve later in the film, a parallax clip with an anchor, a shot of one frame
   accept('a dissolve', 'checkShots', shots, (s) => (s.shots[4].transition = 'dissolve'));
   accept('a parallax clip with an anchor', 'checkShots', shots, (s) => (s.shots[3].anchor = { x: 0.5, y: 0.4 }));

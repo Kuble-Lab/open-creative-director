@@ -8,7 +8,8 @@
 //   steps       two steps: the music, the board and the chosen shots first (analysis, music and plan), then the rest
 //   cost        the prices of the description, recomputed from the estimate of the planner with the real prices of the nodes
 //   photos      an event of photos only is valid; the plan node refuses an empty description and too little material before anything is paid
-//   cache       the cache keys of every node of the other templates are the ones of main (a digest of all of them)
+//   cache       the cache keys of every node of the other templates are the ones of main (a digest of all of them); the nodes of this template keep
+//               theirs with the field "AI clips" (live test 2026-10-11)
 
 const assert = require('assert/strict');
 const crypto = require('crypto');
@@ -80,10 +81,13 @@ function testGraph() {
   assert.deepEqual(nodeOf(doc, 'n0').params, { event_type: 'conference', mood: 'fresh', length: '60', format: '16:9', language: 'en' });
   // the language of the texts follows the language of the interface
   assert.deepEqual(LANGS.map((lang) => nodeOf(resolved(lang), 'n0').params.language), ['en', 'de', 'es']);
-  // the app: the fields of spec §2 (both media lists optional, a description, the style, the motion of the photos, the voice, the branding, own music)
+  // the app: the fields of spec §2 (both media lists optional, a description, the style, the motion of the photos and the number of AI clips, the voice,
+  // the branding, own music)
   assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), [
-    'n1.assets', 'n2.assets', 'n3.prompt', 'n0.event_type', 'n0.mood', 'n0.length', 'n0.format', 'n10.photo_motion', 'n10.voiceover', 'n10.lower_thirds', 'n0.language', 'n4.branding', 'n5.assets'
+    'n1.assets', 'n2.assets', 'n3.prompt', 'n0.event_type', 'n0.mood', 'n0.length', 'n0.format', 'n10.photo_motion', 'n10.max_ai_photos', 'n10.voiceover', 'n10.lower_thirds',
+    'n0.language', 'n4.branding', 'n5.assets'
   ]);
+  assert.equal(nodeOf(doc, 'n10').params.max_ai_photos, 0, 'AI clips by the length of the film');
   assert.deepEqual(doc.app.inputs.filter((entry) => entry.optional).map((entry) => entry.node), ['n1', 'n2', 'n5']);
   assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n20', 'n21', 'n22', 'n23', 'n24', 'n25']);
 }
@@ -105,6 +109,10 @@ function testTexts() {
     const doc = resolved(lang);
     for (const text of [doc.description, doc.app.description, doc.app.outputs.find((entry) => entry.node === 'n25').hint]) assert.match(text, consent[lang], `${lang}: consent`);
     assert.match(I18N[lang]['nodes.paramhint.event_video.plan.photo_motion'], consent[lang], `${lang}: consent at the motion of the photos`);
+    // the field "AI clips": named in the hint of the motion of the photos, its own hint, the first and the last choice in words
+    assert.match(I18N[lang]['nodes.paramhint.event_video.plan.photo_motion'], { en: /“AI clips”/, de: /«KI-Clips»/, es: /«Clips de IA»/ }[lang], `${lang}: the hint names the field`);
+    assert.equal(resolved(lang).app.inputs.find((entry) => entry.param === 'max_ai_photos').label, { en: 'AI clips', de: 'KI-Clips', es: 'Clips de IA' }[lang]);
+    for (const key of ['nodes.paramhint.event_video.plan.max_ai_photos', 'nodes.option.max_ai_photos.0', `nodes.option.max_ai_photos.${contract.MAX_AI_PHOTOS}`]) assert.ok(I18N[lang][key], `${lang}: ${key}`);
   }
   // the nodes: label, keywords (at least three phrases), help, example and a tip; every port, setting and option; every error code of the contract
   const defs = EVENT_TYPES.map((type) => registry.get(type));
@@ -318,7 +326,28 @@ function testOtherCacheKeys() {
   assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), 'b1fa95d24bed7fc4fc58116bf4721ad7c5573e5b2d7e718683fada926fc5ac9f');
 }
 
-for (const test of [testGraph, testTexts, testSteps, testCostText, testPhotosOnly, testPreflightAndEstimate, testOtherCacheKeys]) {
+// The nodes of this template in every language and the planner with AI: the keys of main (3a4c45b), before the field "AI clips" had its list. A saved
+// workflow with the default keeps its plan, also with AI (the integer stays an integer, its list is only what the page offers)
+function testEventCacheKeys() {
+  const lines = [];
+  for (const lang of LANGS) {
+    for (const node of resolved(lang).graph.nodes) {
+      const def = registry.get(node.type);
+      lines.push(`${lang}/${node.id}: ${engine.computeCacheKey(def, registry.normalizeParams(def, node.params || {}), {})}`);
+    }
+  }
+  assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), 'd0338a4185837a9065ef44f0fccf9efac372499911bbf13a4d46924559bb9e37');
+  const def = registry.get('event_video.plan');
+  const n10 = nodeOf(resolved('en'), 'n10').params;
+  const keyOf = (extra) => engine.computeCacheKey(def, registry.normalizeParams(def, { ...n10, ...extra }), {});
+  assert.equal(keyOf({ photo_motion: 'ai' }), 'sha256:830b8d0304017691c51f327530fe42c3c3a4167cb905e16765d40102d5e8b05e');
+  assert.equal(keyOf({ photo_motion: 'ai', max_ai_photos: 3 }), 'sha256:a1eb3e68e4974bad30098415bf1cb5b25c5cc0777215a65c8e1fe5fae9f23e12');
+  assert.equal(keyOf({ photo_motion: 'ai', max_ai_photos: 6 }), 'sha256:79087f312862c31aacb50adf86a4529c1d533ffd078837552796fee0da27524e');
+  // another choice is another plan
+  assert.notEqual(keyOf({ photo_motion: 'ai', max_ai_photos: 8 }), keyOf({ photo_motion: 'ai' }));
+}
+
+for (const test of [testGraph, testTexts, testSteps, testCostText, testPhotosOnly, testPreflightAndEstimate, testOtherCacheKeys, testEventCacheKeys]) {
   test();
   console.log(`ok ${test.name}`);
 }
