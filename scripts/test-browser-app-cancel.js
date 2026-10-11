@@ -1,0 +1,32 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { runBrowserTest, ready, status, waitFor } = require('./support/browser');
+
+runBrowserTest('test-browser-app-cancel.js', async ({ page, workflow, open, calls, gates, engine }) => {
+  const id = await workflow({ approval: true });
+  await open(id);
+  await ready(page);
+  await page.click('.nv-apprun');
+  await status(page, 'completed');
+  await page.waitForSelector('.nv-appswitches [role=switch]:not([disabled])', { visible: true });
+  assert.deepEqual(calls, ['preview'], 'only the preview executes before approval');
+  await ready(page);
+  assert.equal(await page.$eval('.nv-apprun-label', element => element.textContent.trim()), 'Approve and finish', 'the final step requires explicit approval');
+  await page.click('.nv-apprun');
+  await waitFor(() => gates.has('gate'), 'approved second step starts');
+  await status(page, 'running');
+  assert(await page.$eval('.nv-apprun', element => element.disabled));
+  const runId = engine.activeRun(id).runId;
+  await page.waitForSelector('.nv-appcancel:not(.hidden)');
+  await page.click('.nv-appcancel');
+  await status(page, 'cancelled');
+  const record = await engine.whenFinished(id, runId);
+  assert.equal(record.status, 'cancelled');
+  assert.equal(calls.filter(call => call === 'preview').length, 1, 'approval reuses the preview');
+  assert(!calls.includes('after'), 'dependent steps cannot execute after cancellation');
+  gates.get('gate').finish();
+  await ready(page);
+  assert.equal(await page.$eval('.nv-apprun-label', element => element.textContent.trim()), 'Resume', 'a cancelled run can resume its pending steps');
+  assert(await page.$eval('.nv-appcancel', element => element.classList.contains('hidden')));
+  assert(!calls.includes('after'), 'late completion cannot restart a cancelled run');
+}).catch(error => { console.error(error); process.exitCode = 1; });
