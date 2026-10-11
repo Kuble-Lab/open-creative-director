@@ -150,7 +150,8 @@ async function fakeHetzner(clock, inProcess = false) {
       if (options.body) req.emit('data', Buffer.from(options.body));
       req.emit('end');
     });
-    api.close = async () => {};
+    const keepAlive = setInterval(() => {}, 1000);
+    api.close = async () => clearInterval(keepAlive);
   } else {
     const server = http.createServer(handle);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -163,7 +164,7 @@ async function fakeHetzner(clock, inProcess = false) {
 
 /* ---------- the parts of the app ---------- */
 
-async function setup({ settings = {}, limits = {}, hetzner, clock, inProcess = false } = {}) {
+async function setup({ settings = {}, limits = {}, hetzner, clock, inProcess = process.env.OCD_TEST_IN_PROCESS === '1' } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocd-cloud-render-'));
   clock = clock || { now: Date.parse('2026-10-11T10:00:00Z') };
   const now = () => clock.now;
@@ -510,12 +511,12 @@ async function testMaxServers() {
 }
 
 async function testMonthlyCap() {
-  const env = await setup({ settings: { monthlyCapEur: 0.2 } });
+  const env = await setup({ settings: { monthlyCapEur: 0.5 } });
   const { api, queue, clock } = env;
   try {
     await enqueue(queue);
     await env.manager.tick();
-    assert.equal(api.count('POST', '/v1/servers'), 1, '0 + 0.15 is within 0.20');
+    assert.equal(api.count('POST', '/v1/servers'), 1, '0 + three hours at 0.1547 fits within 0.50');
     // the server is deleted (did not pair in time does not matter here: removed by hand); that switches the cloud off,
     // else the waiting job would start a new server (and a new paid hour) in the next round
     await env.manager.deleteAll();
@@ -526,7 +527,7 @@ async function testMonthlyCap() {
     env.manager.updateSettings({ enabled: true });
     clock.now += 5 * MINUTE;
     await env.manager.tick();
-    assert.equal(api.count('POST', '/v1/servers'), 1, '0.15 + 0.15 would go over 0.20: nothing starts');
+    assert.equal(api.count('POST', '/v1/servers'), 1, '0.1547 spent + 0.4641 reserved exceeds 0.50');
     const offers = api.count('GET', '/v1/server_types');
     await env.manager.tick();
     await env.manager.tick();
@@ -534,7 +535,7 @@ async function testMonthlyCap() {
     const status = env.manager.status();
     assert.equal(status.phase, 'cap_reached');
     assert.equal(status.lastError.code, 'cap_reached');
-    assert.match(status.lastError.message, /Monatsdeckel von 0.2 € erreicht/);
+    assert.match(status.lastError.message, /Monatsdeckel von 0.5 € erreicht/);
     assert.equal(env.lines.filter((line) => /Monatsdeckel/.test(line)).length, 1, 'the log says it once');
     // the queue knows: no worker comes, the job fails after the orphan time with the reason
     assert.equal(env.manager.standby().available, false);
@@ -564,17 +565,17 @@ async function testHardLimit() {
     const created = lastServer(api);
     const { agent } = pairServer(env, created);
     const job = await poll(queue, agent);
-    // it renders for ever (a stuck job that still reports): at 3 h it is deleted anyway, the job goes back into the queue
-    for (const minutes of [59, 119, 179]) {
+    // a stuck job still reports: deletion starts before 3 h with time for the API, and the job goes back into the queue
+    for (const minutes of [59, 119, 178]) {
       clock.now = Date.parse(created.created) + minutes * MINUTE;
       queue.progress(agent, job.jobId, job.lease, { progress: 0.5 });
       await env.manager.tick();
     }
     assert.equal(api.servers.size, 1, 'rendering: kept until the hard limit');
-    clock.now = Date.parse(created.created) + 180 * MINUTE;
+    clock.now = Date.parse(created.created) + 179 * MINUTE;
     queue.progress(agent, job.jobId, job.lease, { progress: 0.5 });
     await env.manager.tick();
-    assert.equal(api.servers.size, 0, 'the hard limit');
+    assert.equal(api.servers.size, 0, 'deleted before the next billed hour, allowing time for the API');
     assert.equal(agents.getAgent(agent.id), null);
     assert.equal(queue.status(jobId).status, 'pending', 'the job is back in the queue');
     assert.ok(env.lines.some((line) => /harte Grenze/.test(line)));
@@ -625,7 +626,9 @@ async function testRefusalsAndBackoff() {
     assert.equal(status.phase, 'backoff');
     assert.equal(status.lastError.code, 'resource_unavailable');
     assert.match(status.lastError.message, /error during placement/);
-    assert.equal(status.servers.length, 0, 'nothing is kept of a refused start');
+    assert.equal(status.servers.length, 0, 'a refused creation made nothing: its reservation ends at once');
+    await env.manager.reconcile();
+    assert.equal(env.manager.status().servers.length, 0);
     // no loop: the rounds within the backoff send nothing
     for (let i = 0; i < 5; i += 1) {
       clock.now += 5000;
@@ -634,7 +637,8 @@ async function testRefusalsAndBackoff() {
     assert.equal(api.count('POST', '/v1/servers'), 1, 'within the first minute no second try');
     clock.now += 40 * 1000;
     await env.manager.tick();
-    assert.equal(api.count('POST', '/v1/servers'), 2, 'after the minute: one more');
+    assert.equal(api.count('POST', '/v1/servers'), 2, 'after the minute and reconciliation: one more');
+    await env.manager.reconcile();
     // the backoff grows: 2 minutes now
     clock.now += 61 * 1000;
     await env.manager.tick();
@@ -644,6 +648,7 @@ async function testRefusalsAndBackoff() {
     assert.equal(api.count('POST', '/v1/servers'), 3);
     // the type is not available at the place: no POST at all
     api.failCreate = null;
+    await env.manager.reconcile();
     api.available = false;
     clock.now += 10 * MINUTE;
     const before = api.count('POST', '/v1/servers');
@@ -702,7 +707,7 @@ async function testReconcile() {
     assert.ok(agents.getAgent(agent.id));
     const ledger = JSON.parse(fs.readFileSync(path.join(env.dir, 'cloud-render', 'ledger.json'), 'utf8'));
     assert.ok(ledger.entries.some((entry) => entry.serverId === 5001 && entry.endedAt), 'the stray server is booked');
-    assert.ok(api.requests.every((entry) => entry.method !== 'GET' || entry.path !== '/v1/servers' || entry.query.startsWith('?label_selector=ocd-render%3Dcloud&')), 'listed by the label of the render servers');
+    assert.ok(api.requests.every((entry) => entry.method !== 'GET' || entry.path !== '/v1/servers' || /^\?label_selector=ocd-render%3D(cloud|build)&/.test(entry.query)), 'listed by the label of the render servers');
     // ours is deleted at Hetzner by somebody else: booked out, its computer removed
     api.servers.delete(ours.id);
     await env.manager.reconcile();

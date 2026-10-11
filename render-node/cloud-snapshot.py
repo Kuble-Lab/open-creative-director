@@ -115,6 +115,8 @@ class Builder:
         self.clock = clock
         self.out = out
         self.server_id = None
+        self.build_id = secrets.token_hex(12)
+        self.create_attempted = False
 
     def wait(self, what, check, timeout, every=5):
         deadline = self.clock() + timeout
@@ -141,7 +143,8 @@ class Builder:
     def create_server(self):
         options = self.options
         key = int(options.ssh_key) if str(options.ssh_key).isdigit() else options.ssh_key
-        name = f'ocd-render-build-{secrets.token_hex(3)}'
+        name = f'ocd-render-build-{self.build_id}'
+        self.create_attempted = True
         answer = self.api('POST', '/servers', {
             'name': name,
             'server_type': options.type,
@@ -149,7 +152,7 @@ class Builder:
             'location': options.location,
             'ssh_keys': [key],
             'start_after_create': True,
-            'labels': {'ocd-render': 'build'},
+            'labels': {'ocd-render': 'build', 'ocd-build': self.build_id},
         })
         server = answer.get('server') or {}
         if not server.get('id'):
@@ -211,14 +214,31 @@ class Builder:
         return image_id
 
     def delete_server(self):
-        if not self.server_id:
+        if not self.create_attempted:
             return
-        server_id, self.server_id = self.server_id, None
-        try:
-            self.api('DELETE', f'/servers/{server_id}')
-            self.out(f'Server #{server_id} deleted.')
-        except BuildError as err:
-            self.out(f'The server #{server_id} could NOT be deleted, delete it in the Hetzner Console: {err}')
+        last_error = None
+        for attempt in range(3):
+            try:
+                if not self.server_id:
+                    answer = self.api('GET', f'/servers?label_selector=ocd-render%3Dbuild%2Cocd-build%3D{self.build_id}')
+                    servers = answer.get('servers')
+                    if not isinstance(servers, list):
+                        raise BuildError('Incomplete server list during cleanup.')
+                    if not servers:
+                        if attempt < 2:
+                            self.sleep(5)
+                            continue
+                        return
+                    self.server_id = servers[0]['id']
+                self.api('DELETE', f'/servers/{self.server_id}')
+                self.out(f'Server #{self.server_id} deleted.')
+                self.server_id = None
+                return
+            except BuildError as err:
+                last_error = err
+                if attempt < 2:
+                    self.sleep(5)
+        raise BuildError(f'Cleanup failed for server #{self.server_id or "unknown"} (build {self.build_id}); delete it in the Hetzner Console: {last_error}')
 
     def run(self):
         try:

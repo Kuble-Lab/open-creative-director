@@ -11,3 +11,6 @@ render-node/keys/
 render-node/agent.json
 render-node/agent-jobs/
 render-node/agent.lock
+
+# compiled Python (render-node/cloud-snapshot.py)
+__pycache__/

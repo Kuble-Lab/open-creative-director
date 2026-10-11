@@ -36,11 +36,18 @@ class Fake:
         self.polls = 0
         self.ssh_calls = []
         self.off = False
+        self.labels = {}
     def api(self, method, path, body=None):
         self.calls.append([method, path, body])
+        if method == 'POST' and path == '/servers':
+            self.labels = body['labels']
+        if method == 'GET' and path.startswith('/servers?'):
+            return {'servers': [{'id': 77, 'labels': self.labels}] if self.fail.get('lost') else []}
         if (method, path) in self.fail:
             raise snap.BuildError(self.fail[(method, path)])
         if method == 'POST' and path == '/servers':
+            if self.fail.get('lost'):
+                raise snap.BuildError('lost response')
             return {'server': {'id': 77, 'public_net': {'ipv4': {'ip': '192.0.2.10'}}}, 'action': {'id': 1}}
         if method == 'GET' and path.startswith('/actions/'):
             return {'action': {'status': 'success'}}
@@ -83,6 +90,8 @@ result['ok'] = run(Fake())
 result['scriptFails'] = run(Fake({'script': 1}))
 result['snapshotFails'] = run(Fake({('POST', '/servers/77/actions/create_image'): 'Hetzner: limit'}))
 result['createFails'] = run(Fake({('POST', '/servers'): 'Hetzner: no'}))
+result['lost'] = run(Fake({'lost': True}))
+result['deleteFails'] = run(Fake({('DELETE', '/servers/77'): 'delete failed'}))
 result['byName'] = run(Fake(), ssh_key='ops key')['calls'][0]
 
 # the token in an answer of Hetzner never reaches the error text
@@ -121,7 +130,9 @@ function main() {
   assert.equal(create[2].server_type, 'cpx42');
   assert.equal(create[2].location, 'nbg1');
   assert.deepEqual(create[2].ssh_keys, [12345], 'an id is sent as a number');
-  assert.deepEqual(create[2].labels, { 'ocd-render': 'build' });
+  assert.equal(create[2].labels['ocd-render'], 'build');
+  assert.match(create[2].labels['ocd-build'], /^[a-f0-9]{24}$/);
+  assert.ok(create[2].name.endsWith(create[2].labels['ocd-build']));
   assert.deepEqual(result.byName[2].ssh_keys, ['ops key'], 'a name as text');
   const commands = ok.ssh.map(([, command]) => command);
   assert.equal(commands.filter((command) => command === 'true').length, 2, 'waits until SSH answers');
@@ -150,6 +161,13 @@ function main() {
   assert.ok(!result.scriptFails.calls.some(([, url]) => url.includes('create_image')));
   assert.ok(result.createFails.error);
   assert.ok(!result.createFails.calls.some(([method]) => method === 'DELETE'), 'nothing to delete without a server');
+
+  assert.ok(result.lost.error);
+  assert.ok(result.lost.calls.some(([method, url]) => method === 'GET' && url.includes('ocd-build%3D')));
+  assert.ok(result.lost.calls.some(([method, url]) => method === 'DELETE' && url === '/servers/77'));
+  assert.match(result.deleteFails.error, /Cleanup failed for server #77/);
+  assert.equal(result.deleteFails.image, null, 'cleanup failure cannot report success');
+  assert.equal(result.deleteFails.calls.filter(([method]) => method === 'DELETE').length, 3);
 
   // the token never in an error
   assert.ok(result.redacted && result.redacted.includes('[token]'), result.redacted);
