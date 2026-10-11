@@ -46,13 +46,29 @@ const SKIPPED_WITHOUT_GIT = new Set(['.git', 'node_modules', 'data', 'projects',
 // write into them without starting the app.
 const DATA_DIRS = ['data', 'projects', 'assets'];
 
-// The environment of the shell without GEMINI_API_KEY: with it, lib/tools.js sends the Google image models straight to Google, so
-// the tests that replace only OpenRouter (test-teams-api.js, test-result-meta.js, test-nodes-image-models.js ...) would call Google
-// for real. A test that needs the key sets it itself.
+// Only runtime essentials are inherited. Tests supply their own mock credentials and service settings.
 function testEnvironment() {
-  const env = { ...process.env };
-  delete env.GEMINI_API_KEY;
+  const env = {};
+  const names = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'LANG', 'LC_ALL', 'TZ', 'CI'];
+  // switches of the test runs themselves (OCD_TEST_IN_PROCESS ...)
+  names.push(...Object.keys(process.env).filter((name) => name.startsWith('OCD_TEST_')));
+  for (const name of names) {
+    if (!/KEY|TOKEN|SECRET|PASSWORD/i.test(name) && process.env[name] !== undefined) env[name] = process.env[name];
+  }
   return env;
+}
+
+function killTestTree(child) {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  } else {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch (error) {
+      if (error.code !== 'ESRCH') throw error;
+    }
+  }
 }
 
 function parseArgs(argv) {
@@ -153,6 +169,7 @@ function removeCopy(dir) {
 
 // The test processes that are running, so that an interrupted run can end them before it removes the copy.
 const running = new Set();
+let interrupted = false;
 
 function lastNonEmptyLine(text) {
   const lines = text.split(/\r?\n/);
@@ -174,11 +191,11 @@ function runTest(name, timeoutSeconds, root) {
     let stderr = '';
     let timedOut = false;
     let finished = false;
-    let killTimer = null;
 
     const child = spawn(process.execPath, [path.join('scripts', name)], {
       cwd: root,
       env: testEnvironment(),
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe']
     });
     running.add(child);
@@ -192,8 +209,7 @@ function runTest(name, timeoutSeconds, root) {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGTERM');
-      killTimer = setTimeout(() => child.kill('SIGKILL'), 3000);
+      killTestTree(child);
     }, timeoutSeconds * 1000);
 
     const done = (code, signal, spawnError) => {
@@ -201,7 +217,6 @@ function runTest(name, timeoutSeconds, root) {
       finished = true;
       running.delete(child);
       clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
       const seconds = (Date.now() - started) / 1000;
       const expected = `${name}: ok`;
       let ok = false;
@@ -239,8 +254,12 @@ async function main() {
   const copy = createCopy();
   // Ctrl+C or a kill: end the tests that are running, then remove the copy
   for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.once(signal, () => {
-      for (const child of running) child.kill('SIGKILL');
+    process.once(signal, async () => {
+      interrupted = true;
+      await Promise.all([...running].map((child) => new Promise((resolve) => {
+        child.once('close', resolve);
+        killTestTree(child);
+      })));
       if (!options.keep) removeCopy(copy);
       process.exit(signal === 'SIGINT' ? 130 : 143);
     });
@@ -261,7 +280,7 @@ async function runAll(options, copy) {
   const results = [];
   let next = 0;
   async function worker() {
-    while (next < tests.length) {
+    while (!interrupted && next < tests.length) {
       const name = tests[next++];
       const result = await runTest(name, options.timeoutSeconds, copy);
       results.push(result);
@@ -289,10 +308,12 @@ async function runAll(options, copy) {
   return failed.length ? 1 : 0;
 }
 
-main().then(
+if (require.main === module) main().then(
   (code) => { process.exitCode = code; },
   (error) => {
     console.error(error && error.message ? error.message : error);
     process.exitCode = 1;
   }
 );
+
+module.exports = { testEnvironment, runTest };

@@ -43,6 +43,8 @@ cp .env.example .env    # then put your OpenRouter key into .env
 npm start               # → http://localhost:3111
 ```
 
+By default the app listens only on `127.0.0.1`. For network or container access, set `HOST` explicitly, for example `HOST=0.0.0.0 npm start`, and configure authentication before exposing it. With an explicit `PORT` or `NODE_ENV=production`, an occupied port aborts startup; only development without `PORT` tries the next port.
+
 That's it. Everything else is optional and degrades gracefully.
 
 > Prefer to let an AI agent do the setup? Copy the prompt from [INSTALL-PROMPT.md](INSTALL-PROMPT.md) into Claude Code, Codex or any coding agent.
@@ -335,7 +337,7 @@ npm test -- --jobs=4              # several at once (faster; tests share the dat
 npm test -- --keep                # keep the temporary copy the tests ran in (its path is printed)
 ```
 
-`scripts/run-tests.js` starts each `scripts/test-*.js` as its own process and prints `PASS` or `FAIL` with the duration, then `n/m passed` (exit code 1 if anything failed). A test passes only if it exits with 0 **and** its last output line is `<file name>: ok`; a test that just stops early (for example a promise that never settles) is reported as `FAIL ... silent end`. Every new test therefore ends with `console.log('test-<name>.js: ok')`, after its last check. Some tests skip their browser part when Chrome or `render-node/` is missing. `npm test` runs the tests in a temporary copy of the repository (the files git tracks or would track, `node_modules` linked, empty `data/`, `projects/` and `assets/`; no `.env`), so they never write into your `data/`, `projects/` or `assets/` and never read your settings or keys; the copy is removed at the end. A test started directly with `node scripts/test-….js` runs in place.
+`scripts/run-tests.js` starts each `scripts/test-*.js` as its own process and prints `PASS` or `FAIL` with the duration, then `n/m passed` (exit code 1 if anything failed). A test passes only if it exits with 0 **and** its last output line is `<file name>: ok`; a test that just stops early (for example a promise that never settles) is reported as `FAIL ... silent end`. Every new test therefore ends with `console.log('test-<name>.js: ok')`, after its last check. Some tests skip their browser part when Chrome or `render-node/` is missing. `npm test` runs the tests in a temporary copy of the repository (the files git tracks or would track, `node_modules` linked, empty `data/`, `projects/` and `assets/`; no `.env`), so they never write into your `data/`, `projects/` or `assets/` and never read your settings or keys; the copy is removed at the end. A test started directly with `node scripts/test-….js` runs in place. Test processes inherit only a small allowlist of runtime environment variables, without service credentials. Each test runs in its own process group; a timeout kills the entire group before the temporary copy is removed.
 
 ## Help and contributing
 

@@ -649,7 +649,7 @@ function testDocuments() {
   assert.match(read('docs', 'node-view', 'IMPLEMENTATION-NOTES.md'), /### Google image models straight at Google/);
   assert.match(read('.env.example'), /^GEMINI_API_KEY=$/m);
   // a key in the shell never reaches a test, which could otherwise call Google for real
-  assert.match(read('scripts', 'run-tests.js'), /delete env\.GEMINI_API_KEY/);
+  assert.equal(require('./run-tests').testEnvironment().GEMINI_API_KEY, undefined);
 }
 
 async function main() {

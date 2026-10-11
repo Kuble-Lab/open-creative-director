@@ -2544,11 +2544,15 @@ app.get('*', (req, res) => {
 
 /* ---------- startup ---------- */
 
-const BIND_HOST = process.env.HOST || '0.0.0.0';
+const BIND_HOST = process.env.HOST || '127.0.0.1';
+const ALLOW_PORT_FALLBACK = process.env.PORT === undefined && process.env.NODE_ENV !== 'production';
+let httpServer;
+let shuttingDown = false;
 
 function listen(port, attemptsLeft) {
-  const server = app.listen(port, BIND_HOST, () => {
-    console.log(`\n  Open Creative Director laeuft auf http://localhost:${port}`);
+  const server = httpServer = app.listen(port, BIND_HOST, () => {
+    console.log(`\n  Open Creative Director laeuft auf http://${BIND_HOST.includes(':') ? `[${BIND_HOST}]` : BIND_HOST}:${port}`);
+    if (!process.env.HOST) console.log('  Nur lokal erreichbar. Fuer Netzwerkbetrieb HOST ausdruecklich setzen (z. B. HOST=0.0.0.0).');
     console.log(`  Bildmodell: ${runtime.imageModel} | Videomodell: ${runtime.videoModel}`);
     if (!or.hasKey()) {
       console.log('  WARNUNG: kein OPENROUTER_API_KEY gesetzt - Generierung ist deaktiviert.');
@@ -2556,31 +2560,38 @@ function listen(port, attemptsLeft) {
     console.log('');
   });
   server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE' && attemptsLeft > 0) {
+    if (err.code === 'EADDRINUSE' && ALLOW_PORT_FALLBACK && attemptsLeft > 0) {
       console.warn(`[server] Port ${port} belegt, versuche ${port + 1}.`);
       listen(port + 1, attemptsLeft - 1);
     } else {
-      console.error('[server]', err.message);
+      console.error('[server]', err.code === 'EADDRINUSE'
+        ? `Port ${port} belegt; Serverstart abgebrochen.` : err.message);
       process.exit(1);
     }
   });
 }
 
-function startServer() {
+async function startServer() {
   process.on('unhandledRejection', (reason) => {
     console.error('[unhandledRejection]', reason);
   });
   process.on('uncaughtException', (err) => {
     console.error('[uncaughtException]', err);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    setTimeout(() => process.exit(1), 1000);
+    if (httpServer) httpServer.close(() => process.exit(1));
   });
 
+  try {
+    const count = await nodeWorkflows.defaultStore.markInterruptedRuns();
+    if (count > 0) console.log(`[nodes] ${count} unterbrochene(r) Workflow-Lauf/Laeufe markiert.`);
+  } catch (err) {
+    // a broken run file must not keep the app down: it starts, the runs that could not be marked stay as they are
+    console.warn('[nodes] Startbereinigung fehlgeschlagen:', err.message);
+  }
+  if (shuttingDown) return;
   listen(BASE_PORT, 20);
-  nodeWorkflows.defaultStore
-    .markInterruptedRuns()
-    .then((count) => {
-      if (count > 0) console.log(`[nodes] ${count} unterbrochene(r) Workflow-Lauf/Laeufe markiert.`);
-    })
-    .catch((err) => console.warn('[nodes]', err.message));
   discovery
     .resolveModels(fileConfig)
     .then((models) => {
