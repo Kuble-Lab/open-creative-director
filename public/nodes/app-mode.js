@@ -593,7 +593,8 @@
       if (ports.inputs.some((port) => port.param === param.id && connected.has(port.id))) return; // driven by a connection
       const key = `${node.id}.${param.id}`;
       const effective = graphLib.effectiveParams(def, node);
-      let initial = previous.has(key) ? previous.get(key) : stored[key] !== undefined ? stored[key] : effective[param.id];
+      // what this browser kept, else what the last run used (app runs override the graph and leave it as it is), else the graph
+      let initial = previous.has(key) ? previous.get(key) : stored[key] !== undefined ? stored[key] : restoredParam(s.results, node, param.id, effective[param.id]);
       if (isAssetKind(param.kind)) {
         if (previous.has(key)) initial = previous.get(key);
         else initial = stored[key] !== undefined ? stored[key] : restoredParam(s.results, node, param.id, effective[param.id]);

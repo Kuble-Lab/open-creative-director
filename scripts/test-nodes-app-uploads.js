@@ -21,17 +21,20 @@ async function testUploads() {
       { id: 'music', type: 'input.audio', params: { asset: { assetId: audio.assetId } } },
       { id: 'plan', type: 'event_video.plan', params: { photo_motion: 'ai', ai_marks: {} } },
       { id: 'out', type: 'output.result', params: {} },
+      { id: 'brief', type: 'input.prompt', params: { prompt: '' } },
       { id: 'empty', type: 'input.media_list', params: { assets: [{ assetId: 'gone', missing: true }] } }
     ], edges: [], groups: [], notes: [] },
     app: { enabled: true, inputs: [
       { node: 'photos', param: 'assets', marks: { node: 'plan', param: 'ai_marks' } },
       { node: 'music', param: 'asset' },
-      { node: 'empty', param: 'assets', optional: true }
+      { node: 'empty', param: 'assets', optional: true },
+      { node: 'brief', param: 'prompt' }
     ], outputs: [{ node: 'out' }] }
   };
   const results = { nodes: {
     photos: { history: [{ params: { assets: [{ assetId: photo.assetId }] } }] },
-    plan: { history: [{ params: { ai_marks: { [photo.assetId]: 'never' } } }] }
+    plan: { history: [{ params: { ai_marks: { [photo.assetId]: 'never' } } }] },
+    brief: { history: [{ params: { prompt: 'An evening of ideas' } }] }
   } };
   const requests = [];
   const started = [];
@@ -67,6 +70,7 @@ async function testUploads() {
   assert.equal(requests.at(-1).overrides.music.asset.assetId, audio.assetId);
   assert.equal(requests.at(-1).overrides.empty, undefined, 'untouched empty fields do not overwrite saved values');
   assert.deepEqual(requests.at(-1).overrides.plan.ai_marks, { [photo.assetId]: 'never' });
+  assert.equal(requests.at(-1).overrides.brief.prompt, 'An evening of ideas', 'a text field restores what the last run used');
   host.find((node) => node.classes?.has('nv-apprun'))[0].fire('click');
   await tick();
   assert.equal(started.length, 1, 'restored fields start without selecting files again');
