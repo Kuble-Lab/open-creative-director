@@ -408,6 +408,14 @@ function testRunRequest() {
 /* ---------- static wiring ---------- */
 
 function testWiring() {
+  const css = fs.readFileSync(path.join(root, 'public', 'nodes', 'nodes.css'), 'utf8');
+  assert.match(css, /\.nv-topbar-title\s*\{[^}]*overflow: hidden;/, 'shrinking title cannot paint over run controls');
+  assert.match(css, /\.nv-save-state\s*\{[^}]*flex: none;/, 'save status keeps its text width');
+  assert.match(css, /\.nv-name-input\s*\{[^}]*min-width: 0;/, 'workflow name gives space to status');
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*?\.nv-save-state\s*\{\s*display: none;/, 'narrow header hides save status');
+  assert.match(css, /\.nv-topbar:has\(\.nv-run-summary\[data-state='running'\]\) \.nv-save-state\s*\{\s*display: none;/, 'run status replaces save status');
+  assert.match(css, /@media \(max-width: 1360px\)[\s\S]*?\.nv-run-summary\[data-state='running'\]\s*\{\s*display: inline-flex;/, 'run progress stays visible at narrow widths');
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*?overflow-x: auto;/, 'narrow actions stay accessible by scrolling');
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   assert.ok(html.indexOf('nodes/preview.js') > html.indexOf('nodes/node-ui.js'), 'preview.js loads after node-ui.js');
   assert.ok(html.indexOf('nodes/run.js') > html.indexOf('nodes/workflow-list.js') && html.indexOf('nodes/run.js') < html.indexOf('nodes/main.js'), 'run.js loads before main.js');

@@ -41,7 +41,7 @@ const settle = async () => {
 
 /* ---------- the fake Hetzner API ---------- */
 
-async function fakeHetzner(clock) {
+async function fakeHetzner(clock, inProcess = false) {
   const api = {
     servers: new Map(),
     requests: [],
@@ -53,7 +53,7 @@ async function fakeHetzner(clock) {
     echoToken: false,
     url: ''
   };
-  const server = http.createServer((req, res) => {
+  const handle = (req, res) => {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
@@ -117,27 +117,44 @@ async function fakeHetzner(clock) {
       }
       return send(404, { error: { code: 'not_found', message: 'unknown path' } });
     });
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  api.url = `http://127.0.0.1:${server.address().port}/v1`;
-  api.close = () => new Promise((resolve) => server.close(resolve));
+  };
+  if (inProcess) {
+    // The same fake API without a socket: focused regressions also run in restricted sandboxes.
+    api.url = 'http://127.0.0.1/v1';
+    api.fetch = async (url, options) => new Promise((resolve) => {
+      const req = new (require('events').EventEmitter)();
+      req.url = new URL(url).pathname + new URL(url).search;
+      req.method = options.method;
+      req.headers = { authorization: options.headers.Authorization };
+      let status;
+      handle(req, { writeHead: (value) => { status = value; }, end: (body) => resolve(new Response(body, { status })) });
+      if (options.body) req.emit('data', Buffer.from(options.body));
+      req.emit('end');
+    });
+    api.close = async () => {};
+  } else {
+    const server = http.createServer(handle);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    api.url = `http://127.0.0.1:${server.address().port}/v1`;
+    api.close = () => new Promise((resolve) => server.close(resolve));
+  }
   api.count = (method, prefix) => api.requests.filter((entry) => entry.method === method && entry.path.startsWith(prefix)).length;
   return api;
 }
 
 /* ---------- the parts of the app ---------- */
 
-async function setup({ settings = {}, limits = {}, hetzner, clock } = {}) {
+async function setup({ settings = {}, limits = {}, hetzner, clock, inProcess = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocd-cloud-render-'));
   clock = clock || { now: Date.parse('2026-10-11T10:00:00Z') };
   const now = () => clock.now;
-  const api = hetzner || (await fakeHetzner(clock));
+  const api = hetzner || (await fakeHetzner(clock, inProcess));
   const lines = [];
   const log = { info: (line) => lines.push(line), warn: (line) => lines.push(line), log: (line) => lines.push(line) };
   const agents = createRenderAgentsStore({ file: path.join(dir, 'render-agents.json'), now });
   let manager = null;
   const queue = createRenderQueue({ dir: path.join(dir, 'render-queue'), agents, mayServe: defaultMayServe, push: null, standby: () => manager.standby(), now, log: { warn() {} } });
-  const make = () => cloudLib.createCloudRender({ dir: path.join(dir, 'cloud-render'), agents, queue, serverUrl: () => APP, apiBase: api.url, now, limits, log });
+  const make = () => cloudLib.createCloudRender({ dir: path.join(dir, 'cloud-render'), agents, queue, serverUrl: () => APP, apiBase: api.url, fetchImpl: api.fetch, now, limits, log });
   manager = make();
   if (settings) manager.updateSettings({ enabled: true, token: TOKEN, snapshotId: '123456789', ...settings });
   return {
@@ -177,6 +194,113 @@ function lastServer(api) {
 }
 
 /* ---------- the tests ---------- */
+
+async function testRenderFailurePause() {
+  const env = await setup({ inProcess: true });
+  const { api, queue, clock, agents } = env;
+  try {
+    for (let i = 0; i < 3; i += 1) {
+      await enqueue(queue);
+      await env.manager.tick();
+      const server = lastServer(api);
+      const { agent, token } = pairServer(env, server);
+      let job = await poll(queue, agent);
+      await env.manager.tick();
+      queue.fail(agent, job.jobId, job.lease, { error: `Chrome failed ${TOKEN} ${token} ${'x'.repeat(800)}` });
+      await env.manager.tick();
+      assert.ok(api.servers.has(server.id), 'one render failure keeps the server');
+      job = await poll(queue, agent);
+      queue.fail(agent, job.jobId, job.lease, { error: `Chrome failed ${TOKEN} ${token} ${'x'.repeat(800)}` });
+      agents.reload();
+      assert.equal(agents.getAgent(agent.id).consecutiveFailed, 2, 'failure streak survives reload');
+      await env.manager.tick();
+      assert.ok(!api.servers.has(server.id), 'two failed renders delete the server');
+      assert.equal(agents.getAgent(agent.id), null, 'agent is removed');
+      const error = env.manager.status().lastError;
+      assert.equal(error.code, 'render_failed');
+      assert.ok(error.message.includes(server.name));
+      assert.match(error.message, /Snapshot prüfen/);
+      assert.ok(error.message.length <= 300);
+      assert.ok(!JSON.stringify(env.manager.status()).includes(TOKEN));
+      assert.ok(!env.lines.join(' ').includes(token));
+      clock.now += 10 * MINUTE;
+    }
+    assert.equal(env.manager.status().phase, 'paused', 'three broken render servers pause starts');
+    await enqueue(queue);
+    await env.manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 3);
+    env.manager.updateSettings({ monthlyCapEur: 30 });
+    await env.manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 4, 'saving settings resumes starts');
+  } finally {
+    queue.stop();
+    env.manager.stop();
+    await api.close();
+  }
+}
+
+async function testRenderSuccessResetsStreak() {
+  const env = await setup({ inProcess: true });
+  const { api, queue, agents } = env;
+  try {
+    await enqueue(queue);
+    await env.manager.tick();
+    const server = lastServer(api);
+    const { agent } = pairServer(env, server);
+    let job = await poll(queue, agent);
+    await env.manager.tick();
+    queue.fail(agent, job.jobId, job.lease, { error: 'Chrome failed' });
+    job = await poll(queue, agent);
+    await queue.acceptResult(agent, job.jobId, job.lease, Readable.from([MP4]));
+    await enqueue(queue);
+    job = await poll(queue, agent);
+    queue.fail(agent, job.jobId, job.lease, { error: 'Chrome failed again' });
+    agents.reload();
+    assert.equal(agents.getAgent(agent.id).consecutiveFailed, 1, 'a success resets consecutive failures');
+    await env.manager.tick();
+    assert.ok(api.servers.has(server.id));
+    // a server that rendered before is not deleted for two broken jobs in a row (they, not the server, are the likely cause)
+    await enqueue(queue);
+    job = await poll(queue, agent);
+    queue.fail(agent, job.jobId, job.lease, { error: 'broken composition' });
+    agents.reload();
+    assert.equal(agents.getAgent(agent.id).consecutiveFailed, 2);
+    await env.manager.tick();
+    assert.ok(api.servers.has(server.id), 'a server that rendered before stays');
+    assert.notEqual(env.manager.status().lastError?.code, 'render_failed');
+  } finally {
+    queue.stop();
+    env.manager.stop();
+    await api.close();
+  }
+}
+
+async function testOnlineClearsBootError() {
+  for (const code of ['boot_timeout', 'network', 'resource_unavailable', 'invalid_answer', 'cap_reached', 'unauthorized', 'server_not_visible']) {
+    const env = await setup({ inProcess: true });
+    try {
+      await enqueue(env.queue);
+      await env.manager.tick();
+      const server = lastServer(env.api);
+      const { agent } = pairServer(env, server);
+      const file = path.join(env.dir, 'cloud-render', 'state.json');
+      const state = JSON.parse(fs.readFileSync(file));
+      state.lastError = { code, message: 'Previous error', at: new Date(env.clock.now).toISOString() };
+      fs.writeFileSync(file, JSON.stringify(state));
+      env.manager.reload();
+      await poll(env.queue, agent);
+      await env.manager.tick();
+      assert.equal(env.manager.status().servers[0].status, 'online');
+      assert.equal(env.manager.status().lastError?.code || null,
+        ['boot_timeout', 'network', 'resource_unavailable', 'invalid_answer'].includes(code) ? null : code,
+        `online clears only start errors: ${code}`);
+    } finally {
+      env.queue.stop();
+      env.manager.stop();
+      await env.api.close();
+    }
+  }
+}
 
 async function testStartPairRenderDelete() {
   const env = await setup();
@@ -1031,6 +1155,9 @@ function testInterface() {
 }
 
 async function main() {
+  await testRenderFailurePause();
+  await testRenderSuccessResetsStreak();
+  await testOnlineClearsBootError();
   testSystemCodes();
   testInterface();
   await testStartPairRenderDelete();
