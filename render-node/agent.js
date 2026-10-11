@@ -314,6 +314,23 @@ async function prepareFfmpeg({ base = BASE, env = process.env } = {}) {
   return null;
 }
 
+// On a render server in the cloud: the versions its snapshot was built with (render-node/cloud-image.sh writes them, the unit
+// passes the file in OCD_IMAGE_FILE). The app compares them with the versions it expects and says when to build a new
+// snapshot; HyperFrames itself may be newer, because the first start installs the current lockfile.
+function imageVersions(env = process.env) {
+  const file = env.OCD_IMAGE_FILE;
+  if (!file) return {};
+  try {
+    const image = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const clean = (value) => (typeof value === 'string' && /^[0-9A-Za-z.+_-]{1,40}$/.test(value.trim()) ? value.trim() : null);
+    const hyperframes = clean(image?.hyperframes);
+    const node = clean(image?.node);
+    return { ...(hyperframes ? { imageHyperframes: hyperframes } : {}), ...(node ? { imageNode: node } : {}) };
+  } catch (_) {
+    return {};
+  }
+}
+
 function hyperframesVersion(base = BASE) {
   try {
     return JSON.parse(fs.readFileSync(path.join(base, 'node_modules', 'hyperframes', 'package.json'), 'utf8')).version || null;
@@ -601,7 +618,8 @@ function createAgent(options = {}) {
       hyperframes,
       node: process.versions.node,
       ffmpeg: ffmpeg.version,
-      ffmpegSource: ffmpeg.source
+      ffmpegSource: ffmpeg.source,
+      ...imageVersions(env)
     };
     const source = { bundled: 'ffmpegBundled', configured: 'ffmpegConfigured' }[ffmpeg.source] || 'ffmpegSystem';
     log(t('header', { agent: AGENT_VERSION, hyperframes, ffmpeg: `${ffmpeg.version} (${t(source)})` }));
@@ -714,7 +732,7 @@ async function pair({ server: rawServer, code, name, base = BASE, fetchImpl, env
     }
     // a copy: pairing only reports the versions, the paths are set by the run itself
     const ffmpeg = await prepareFfmpeg({ base, env: { ...env } });
-    versions = { protocol: PROTOCOL_VERSION, agent: AGENT_VERSION, hyperframes, node: process.versions.node, ...(ffmpeg ? { ffmpeg: ffmpeg.version, ffmpegSource: ffmpeg.source } : {}) };
+    versions = { protocol: PROTOCOL_VERSION, agent: AGENT_VERSION, hyperframes, node: process.versions.node, ...(ffmpeg ? { ffmpeg: ffmpeg.version, ffmpegSource: ffmpeg.source } : {}), ...imageVersions(env) };
   }
   const request = fetchImpl || ((...args) => global.fetch(...args));
   let res;
@@ -860,6 +878,7 @@ module.exports = {
   lockHolder,
   prepareFfmpeg,
   hyperframesVersion,
+  imageVersions,
   language,
   translator,
   TEXTS

@@ -11,7 +11,9 @@
 // the token never in a log, a status or an error; with the cloud off everything is as before. A server is online from the
 // first request of its computer, not from the pairing (one that paired and stays silent is deleted after the boot time, one
 // that falls silent after offlineMs); the token stays while servers exist (except when Hetzner refuses it); the id of the
-// installation survives a lost state.json, and servers of another id are shown, not deleted. A fake clock.
+// installation survives a lost state.json, and servers of another id are shown, not deleted. The code of a booting server
+// survives a restart (as a hash on disk); every server gets the firewall of the installation (only ICMP in), and without it
+// none starts; the versions of the snapshot against the expected ones. A fake clock.
 
 const assert = require('assert/strict');
 const fs = require('fs');
@@ -48,6 +50,8 @@ async function fakeHetzner(clock, inProcess = false) {
     nextId: 1000,
     failCreate: null, // { status, code, message }
     failDelete: null, // { status, code, message }
+    failFirewall: null, // { status, code, message }: the list and the creation of firewalls
+    firewalls: new Map(),
     tokens: new Map([[TOKEN, 'p1']]), // token -> project (a server without one is in p1)
     available: true,
     echoToken: false,
@@ -72,6 +76,21 @@ async function fakeHetzner(clock, inProcess = false) {
         return send(401, { error: { code: 'unauthorized', message: `unable to authenticate ${api.echoToken ? req.headers.authorization : ''}`.trim() } });
       }
       if (url.pathname === '/v1/datacenters') return send(410, { error: { code: 'gone', message: 'removed' } });
+      if (url.pathname === '/v1/firewalls') {
+        if (api.failFirewall) return send(api.failFirewall.status, { error: { code: api.failFirewall.code, message: api.failFirewall.message } });
+        if (req.method === 'GET') {
+          const wanted = String(url.searchParams.get('label_selector') || '').split(',').filter(Boolean).map((pair) => pair.split('='));
+          const list = [...api.firewalls.values()].filter((item) => inProject(item) && wanted.every(([key, value]) => item.labels?.[key] === value));
+          return send(200, { firewalls: list, meta: { pagination: { page: 1, next_page: null } } });
+        }
+        if (req.method === 'POST') {
+          if ([...api.firewalls.values()].some((item) => inProject(item) && item.name === body.name)) return send(409, { error: { code: 'uniqueness_error', message: 'name is already used' } });
+          const id = api.nextId++;
+          const created = { id, name: body.name, labels: body.labels, rules: body.rules, project };
+          api.firewalls.set(id, created);
+          return send(201, { firewall: created, actions: [] });
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/v1/server_types') {
         return send(200, {
           server_types: [{
@@ -316,7 +335,7 @@ async function testStartPairRenderDelete() {
     await env.manager.tick();
     assert.equal(api.count('POST', '/v1/servers'), 1);
     assert.equal(api.count('GET', '/v1/datacenters'), 0, 'GET /datacenters is gone at Hetzner');
-    const post = api.requests.find((entry) => entry.method === 'POST');
+    const post = api.requests.find((entry) => entry.method === 'POST' && entry.path === '/v1/servers');
     assert.equal(post.auth, `Bearer ${TOKEN}`);
     assert.equal(post.body.server_type, 'cpx42');
     assert.equal(post.body.location, 'nbg1');
@@ -588,7 +607,7 @@ async function testBootTimeoutAndPause() {
     env.manager.updateSettings({ snapshotId: '987654321' });
     await env.manager.tick();
     assert.equal(api.count('POST', '/v1/servers'), 4, 'saved again: it tries');
-    assert.equal(api.requests.filter((entry) => entry.method === 'POST').pop().body.image, '987654321');
+    assert.equal(api.requests.filter((entry) => entry.method === 'POST' && entry.path === '/v1/servers').pop().body.image, '987654321');
   } finally {
     await api.close();
   }
@@ -723,7 +742,15 @@ async function testRestart() {
       assert.equal(fs.readFileSync(file, 'utf8').includes(TOKEN), name === 'settings.json', name);
     }
     assert.equal(fs.statSync(path.join(env.dir, 'cloud-render')).mode & 0o777, 0o700);
-    // a restart: the servers are known again; the one that had not paired lost its code with the restart and is deleted
+    // the code of the booting server is on disk as a salted hash only (mode 600), never as text
+    const codesFile = path.join(env.dir, 'render-agent-codes.json');
+    assert.equal(fs.statSync(codesFile).mode & 0o777, 0o600);
+    const code = codeOf(booting);
+    const onDisk = fs.readFileSync(codesFile, 'utf8');
+    assert.ok(!onDisk.includes(code) && !onDisk.includes(code.replace('-', '')), 'no code in plain text');
+    // a restart (the store of the computers is read again as well): the servers are known again, and the one that had not
+    // paired keeps its code
+    env.agents.reload();
     const manager = env.restart();
     assert.equal(manager.status().servers.length, 2);
     assert.equal(manager.status().settings.tokenSet, true);
@@ -731,12 +758,169 @@ async function testRestart() {
     clock.now += 30 * 1000;
     await manager.tick();
     assert.ok(api.servers.has(paired.id), 'the paired one renders on');
-    assert.ok(!api.servers.has(booting.id), 'the one without its code is deleted');
-    assert.ok(env.lines.some((line) => /Kopplungscode nach Neustart verloren/.test(line)));
+    assert.ok(api.servers.has(booting.id), 'the booting one keeps its code over the restart');
+    assert.ok(!env.lines.some((line) => /Kopplungscode nach Neustart verloren/.test(line)));
+    // it pairs with the code of its user_data against a new process (a store that only knows the file)
+    const fresh = createRenderAgentsStore({ file: path.join(env.dir, 'render-agents.json'), now: () => clock.now });
+    const { agent } = fresh.pair({ code, ip: '203.0.113.9', name: 'cloud-x', platform: 'linux-x64', versions: VERSIONS });
+    assert.equal(agent.cloud, booting.labels['ocd-server']);
+    assert.ok(!fs.readFileSync(codesFile, 'utf8').includes(booting.labels['ocd-server']), 'the used code leaves the file');
+    assert.throws(() => fresh.pair({ code, ip: '203.0.113.9', name: 'cloud-x', versions: VERSIONS }), /ungültig/, 'once');
+    env.agents.reload();
+    await poll(queue, env.agents.getAgent(agent.id));
+    await manager.tick();
+    assert.equal(manager.status().servers.find((server) => server.serverId === booting.id).status, 'online');
     // the same instance id after the restart (the labels of its servers)
     await manager.reconcile();
     assert.ok(api.servers.has(paired.id), 'still known after the restart');
   } finally {
+    await api.close();
+  }
+}
+
+// Every server gets the firewall of the installation (only ICMP in), made once and found again by its labels; without it no
+// server starts, the error is shown with the code firewall and the next round after the backoff tries again.
+async function testFirewall() {
+  const env = await setup({ inProcess: true });
+  const { api, queue, clock } = env;
+  try {
+    api.failFirewall = { status: 503, code: 'unavailable', message: 'firewalls are down' };
+    await enqueue(queue);
+    await env.manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 0, 'no server without its firewall');
+    let status = env.manager.status();
+    assert.equal(status.lastError.code, 'firewall');
+    assert.match(status.lastError.message, /Firewall/);
+    assert.equal(status.phase, 'backoff');
+    await env.manager.tick();
+    assert.equal(api.count('GET', '/v1/firewalls'), 1, 'no loop: the backoff holds the next try');
+    // the next round after the backoff: the firewall is made and given to the server
+    api.failFirewall = null;
+    clock.now += 61 * 1000;
+    await env.manager.tick();
+    assert.equal(api.firewalls.size, 1);
+    const firewall = [...api.firewalls.values()][0];
+    const instance = lastServer(api).labels['ocd-instance'];
+    assert.deepEqual(firewall.labels, { 'ocd-render': 'firewall', 'ocd-instance': instance });
+    assert.equal(firewall.name, `ocd-render-${instance}`);
+    assert.deepEqual(firewall.rules, [{ direction: 'in', protocol: 'icmp', source_ips: ['0.0.0.0/0', '::/0'], description: 'ICMP' }], 'nothing in but ICMP');
+    const post = api.requests.filter((entry) => entry.method === 'POST' && entry.path === '/v1/servers').pop();
+    assert.deepEqual(post.body.firewalls, [{ firewall: firewall.id }]);
+    const created = lastServer(api);
+    // it is found again, not made anew (also after a restart); an admin's extra rule for SSH stays
+    firewall.rules.push({ direction: 'in', protocol: 'tcp', port: '22', source_ips: ['198.51.100.7/32'] });
+    pairServer(env, created);
+    env.manager.updateSettings({ maxServers: 2, mode: 'first' });
+    await enqueue(queue);
+    await enqueue(queue);
+    const manager = env.restart();
+    await manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 2);
+    assert.equal(api.count('POST', '/v1/firewalls'), 1, 'made once');
+    assert.equal(api.firewalls.size, 1);
+    assert.deepEqual(api.requests.filter((entry) => entry.method === 'POST' && entry.path === '/v1/servers').pop().body.firewalls, [{ firewall: firewall.id }]);
+    assert.equal(firewall.rules.length, 2, 'the rules of a found firewall are left alone');
+    // deleting the servers leaves the firewall (it costs nothing)
+    await manager.deleteAll();
+    assert.equal(api.firewalls.size, 1);
+    // a token refused at the firewall stays a refused token (its own phase, the longer wait)
+    api.failFirewall = { status: 401, code: 'unauthorized', message: 'unable to authenticate' };
+    manager.updateSettings({ enabled: true });
+    await enqueue(queue);
+    await manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 2);
+    status = manager.status();
+    assert.equal(status.lastError.code, 'unauthorized');
+    assert.equal(status.phase, 'unauthorized');
+    assert.ok(!JSON.stringify(status).includes(TOKEN));
+  } finally {
+    queue.stop();
+    env.manager.stop();
+    await api.close();
+  }
+}
+
+// The versions the snapshot was built with (reported by the computer of a server) against the versions the app expects.
+async function testSnapshotVersions() {
+  const env = await setup({ inProcess: true });
+  const { api, queue, clock, agents } = env;
+  const expected = cloudLib.expectedVersions();
+  assert.match(expected.hyperframes, /^\d+\.\d+\.\d+$/, 'HyperFrames of the agent package');
+  assert.match(expected.node, /^\d+$/, 'the Node.js major of cloud-image.sh');
+  const agentPackage = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'render-node', 'agent', 'package.json'), 'utf8'));
+  assert.equal(expected.hyperframes, agentPackage.dependencies.hyperframes);
+  try {
+    assert.deepEqual({ found: env.manager.status().snapshot.found, outdated: env.manager.status().snapshot.outdated }, { found: null, outdated: false }, 'nothing known yet');
+    const online = async (versions) => {
+      await enqueue(queue);
+      await env.manager.tick();
+      const created = lastServer(api);
+      const { agent } = env.agents.pair({ code: codeOf(created), ip: '203.0.113.9', name: 'cloud', platform: 'linux-x64', versions });
+      await poll(queue, agent);
+      agents.touch(agent.id, { versions });
+      await env.manager.tick();
+      return { created, agent };
+    };
+    // an old snapshot: HyperFrames and Node.js of the snapshot differ
+    const first = await online({ ...VERSIONS, hyperframes: expected.hyperframes, node: '20.11.1', imageHyperframes: '0.8.100', imageNode: '20.11.1' });
+    let snapshot = env.manager.status().snapshot;
+    assert.equal(snapshot.outdated, true);
+    assert.deepEqual(snapshot.problems, [
+      { name: 'HyperFrames', found: '0.8.100', expected: expected.hyperframes },
+      { name: 'Node.js', found: '20.11.1', expected: `${expected.node}.x` }
+    ]);
+    assert.equal(snapshot.found.server, first.created.name);
+    assert.ok(env.lines.some((line) => /Snapshot veraltet: HyperFrames 0\.8\.100/.test(line)), 'and in the log');
+    // the notice stays after the server is gone
+    await env.manager.deleteAll();
+    assert.equal(env.manager.status().snapshot.outdated, true);
+    // a new snapshot id: the notice ends until a server of it reports
+    env.manager.updateSettings({ enabled: true, snapshotId: '222222222' });
+    assert.equal(env.manager.status().snapshot.found, null);
+    clock.now += 1000;
+    await online({ ...VERSIONS, hyperframes: expected.hyperframes, node: `${expected.node}.3.0`, imageHyperframes: expected.hyperframes, imageNode: `${expected.node}.3.0` });
+    snapshot = env.manager.status().snapshot;
+    assert.deepEqual({ outdated: snapshot.outdated, unknown: snapshot.unknown, problems: snapshot.problems }, { outdated: false, unknown: false, problems: [] }, 'a current snapshot');
+    // a snapshot built before the versions were reported: unknown
+    await env.manager.deleteAll();
+    env.manager.updateSettings({ enabled: true, snapshotId: '333333333' });
+    await online({ ...VERSIONS, hyperframes: expected.hyperframes, node: `${expected.node}.3.0` });
+    snapshot = env.manager.status().snapshot;
+    assert.deepEqual({ outdated: snapshot.outdated, unknown: snapshot.unknown }, { outdated: false, unknown: true });
+    // the state survives a restart
+    const manager = env.restart();
+    assert.equal(manager.status().snapshot.unknown, true);
+    // the expected versions can be given (tests, another layout)
+    const other = cloudLib.createCloudRender({ dir: path.join(env.dir, 'cloud-render'), agents, queue, serverUrl: () => APP, fetchImpl: api.fetch, apiBase: api.url, now: () => clock.now, log: { info() {}, warn() {} }, expected: { hyperframes: '9.9.9', node: '30' } });
+    assert.deepEqual(other.status().snapshot.expected, { hyperframes: '9.9.9', node: '30' });
+  } finally {
+    queue.stop();
+    env.manager.stop();
+    await api.close();
+  }
+}
+
+// A server whose code is gone at the restart (expired, or kept in memory by an older version of the app) never pairs: it
+// is deleted at once, without counting as a failed start.
+async function testRestartWithoutCode() {
+  const env = await setup({ inProcess: true });
+  const { api, queue, clock } = env;
+  try {
+    await enqueue(queue);
+    await env.manager.tick();
+    const booting = lastServer(api);
+    fs.rmSync(path.join(env.dir, 'render-agent-codes.json'));
+    env.agents.reload();
+    const manager = env.restart();
+    clock.now += 30 * 1000;
+    await manager.tick();
+    assert.ok(!api.servers.has(booting.id), 'the one without its code is deleted');
+    assert.ok(env.lines.some((line) => /Kopplungscode nach Neustart verloren/.test(line)));
+    assert.equal(manager.status().lastError, null, 'no fault of the server');
+    assert.throws(() => env.agents.pair({ code: codeOf(booting), ip: '203.0.113.9', name: 'x', versions: VERSIONS }), /ungültig/);
+  } finally {
+    queue.stop();
+    env.manager.stop();
     await api.close();
   }
 }
@@ -850,6 +1034,19 @@ function testCloudImageUnits() {
   assert.ok(source.indexOf('cat > /etc/systemd/system/ocd-render-agent.service') < source.lastIndexOf('\n  sync\n'), 'sync comes after the units');
   const check = require('child_process').spawnSync('bash', ['-n', file], { encoding: 'utf8' });
   assert.equal(check.status, 0, check.stderr);
+  // the versions of the snapshot: written by the script, passed to the agent, reported by it
+  assert.match(source, /> "\$\{LIB_DIR\}\/image\.json"/);
+  assert.match(agent, /^Environment=OCD_IMAGE_FILE=\$\{LIB_DIR\}\/image\.json$/m);
+  assert.ok(source.indexOf('image.json"') < source.lastIndexOf('\n  sync\n'), 'on the disk before the snapshot');
+  const { imageVersions } = require('../render-node/agent');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocd-image-'));
+  const image = path.join(dir, 'image.json');
+  fs.writeFileSync(image, JSON.stringify({ hyperframes: '0.8.139', node: '22.17.0', builtAt: '2026-10-11T10:00:00Z' }));
+  assert.deepEqual(imageVersions({ OCD_IMAGE_FILE: image }), { imageHyperframes: '0.8.139', imageNode: '22.17.0' });
+  assert.deepEqual(imageVersions({}), {}, 'not on a render server in the cloud');
+  assert.deepEqual(imageVersions({ OCD_IMAGE_FILE: path.join(dir, 'missing.json') }), {});
+  fs.writeFileSync(image, JSON.stringify({ hyperframes: '0.8.139; rm -rf /', node: 22 }));
+  assert.deepEqual(imageVersions({ OCD_IMAGE_FILE: image }), {}, 'plain version texts only');
 }
 
 async function testTokenGuard() {
@@ -1049,7 +1246,7 @@ async function testSettings() {
     manager.updateSettings({ token: TOKEN });
     await enqueue(env.queue);
     await manager.tick();
-    assert.deepEqual(env.api.requests.find((entry) => entry.method === 'POST').body.ssh_keys, ['ops key']);
+    assert.deepEqual(env.api.requests.find((entry) => entry.method === 'POST' && entry.path === '/v1/servers').body.ssh_keys, ['ops key']);
     // without the public address of the app nothing can pair: not ready
     const other = cloudLib.createCloudRender({ dir: path.join(env.dir, 'cloud-render'), agents: env.agents, queue: env.queue, serverUrl: () => '', apiBase: env.api.url, now: () => env.clock.now, log: { warn() {}, info() {} } });
     assert.deepEqual(other.status().problems, ['publicUrl']);
@@ -1148,6 +1345,12 @@ function testInterface() {
   assert.equal(helpers.ageText(12 * 60), '12 min');
   assert.equal(helpers.phaseText({ phase: 'not_configured', problems: ['token', 'publicUrl'] }), 'Eingeschaltet, aber es fehlt: Token, PUBLIC_BASE_URL der App.');
   assert.equal(helpers.serverLine({ status: 'online', ageSeconds: 3000, costEur: 0.1547, rendering: 1 }), 'bereit · 50 min · 0.15 € · rendert');
+  // an outdated snapshot: one line per version; an unknown one: one line
+  // (arrays of the page's context: compared as plain copies)
+  assert.deepEqual([...helpers.snapshotLines({ snapshot: { found: { hyperframes: '0.8.100' }, unknown: false, problems: [{ name: 'HyperFrames', found: '0.8.100', expected: '0.8.139' }] } })], ['Snapshot veraltet: HyperFrames 0.8.100 auf dem Render-Server, erwartet 0.8.139. Snapshot neu bauen: siehe Anleitung.']);
+  assert.equal(helpers.snapshotLines({ snapshot: { found: { hyperframes: null }, unknown: true, problems: [] } }).length, 1);
+  assert.equal(helpers.snapshotLines({ snapshot: { found: null, problems: [] } }).length, 0);
+  assert.equal(helpers.snapshotLines({}).length, 0);
   // the token field is a password field that is emptied after saving, and only sent when typed
   assert.match(source, /type: 'password'/);
   assert.match(source, /if \(token\.value\.trim\(\)\) patch\.token = token\.value\.trim\(\);/);
@@ -1170,6 +1373,9 @@ async function main() {
   await testRefusalsAndBackoff();
   await testReconcile();
   await testRestart();
+  await testRestartWithoutCode();
+  await testFirewall();
+  await testSnapshotVersions();
   await testPairedButSilent();
   await testSilentAfterOnline();
   testCloudImageUnits();
