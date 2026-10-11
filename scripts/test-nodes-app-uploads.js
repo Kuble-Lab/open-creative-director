@@ -13,6 +13,8 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
 
 async function testUploads() {
   const photo = { assetId: 'upload-001', sessionId: 'wf-session', type: 'image', url: '/assets/wf-session/photo.png' };
+  // the list of the workflow's files carries more than a value (the name and date of the upload)
+  const listed = (asset) => ({ ...asset, prompt: 'photo.png', createdAt: '2026-10-11T12:00:00.000Z' });
   const audio = { assetId: 'upload-002', sessionId: 'wf-session', type: 'audio', url: '/assets/wf-session/music.wav' };
   const workflow = {
     id: 'wf1', name: 'Photo app', sessionId: 'wf-session',
@@ -41,7 +43,7 @@ async function testUploads() {
   let cached = false;
   const page = loadPage('en', { api: {
     getWorkflow: async () => ({ workflow: clone(workflow), results: clone(results) }),
-    assets: async () => ({ assets: [photo, audio] }),
+    assets: async () => ({ assets: [listed(photo), listed(audio)] }),
     outputsZipUrl: () => '/fake.zip',
     openEvents: () => ({ close() {} }),
     startRun: async (_id, request) => { started.push(clone(request)); return { runId: 'test-run' }; },
@@ -67,6 +69,7 @@ async function testUploads() {
   const mark = host.find((node) => node.tagName === 'SELECT' && node.dataset.mark === 'never')[0];
   assert.ok(mark, 'the last run marks are restored');
   assert.equal(requests.at(-1).overrides.photos.assets[0].assetId, photo.assetId);
+  assert.deepEqual(requests.at(-1).overrides.photos.assets[0], photo, 'a restored file has the fields of a value only, so the nodes after it stay cached');
   assert.equal(requests.at(-1).overrides.music.asset.assetId, audio.assetId);
   assert.equal(requests.at(-1).overrides.empty, undefined, 'untouched empty fields do not overwrite saved values');
   assert.deepEqual(requests.at(-1).overrides.plan.ai_marks, { [photo.assetId]: 'never' });
