@@ -92,6 +92,11 @@ class FakeNode {
   querySelectorAll() {
     return [];
   }
+  // the first node below this one with a tag ("span") or a class (".nv-x"), or null; nothing more (the list of files, WP55)
+  querySelector(selector) {
+    const match = String(selector).startsWith('.') ? (node) => node.classes && node.classes.has(String(selector).slice(1)) : (node) => node.tagName === String(selector).toUpperCase();
+    return this.find((node) => node !== this && match(node))[0] || null;
+  }
   // sends an event to the listeners of this node; returns what they did with it
   fire(type, init = {}) {
     const event = { type, target: this, stopped: false, prevented: false, stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; }, ...init };

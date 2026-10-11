@@ -373,9 +373,10 @@ function testPrompt() {
   assert.match(system, /^You are the editor of an event aftermovie/);
   assert.ok(system.includes(styles.styleBlock(styleFixture)));
   for (const act of ctx.grid.acts) assert.ok(system.includes(`${act.act} ${act.picks} pick`), act.act);
-  // AI clips (live test 2026-10-11): candidates of the picked photos, the best first, at most twice the clips; the parallax for the photos without one
-  assert.match(system, /The code animates 4 of the photos you pick with AI and spreads them over the acts\. In "ai_photos" list candidates from the photos you pick, the best for an AI clip first/);
-  assert.match(system, /every photo you pick if you pick 4 or fewer, else the best 8, from all acts\./);
+  // AI clips (live test 2026-10-11): the picked photos ranked, the best first, the clips from the first twice the clips; a prompt for every picked photo
+  // (WP55: the switches of the approval); the parallax for the photos without one
+  assert.match(system, /The code animates 4 of the photos you pick with AI and spreads them over the acts\. In "ai_photos" rank every photo you pick, the best for an AI clip first/);
+  assert.match(system, /the code takes the clips from your first 8, from all acts; the person may switch on any other one, so give each a prompt\./);
   assert.match(system, /In "parallax" list up to 6 of the photos you pick with clear depth, the best first; any of them may be among your candidates: the code gives the parallax to the first 2 without an AI clip\./);
   assert.match(system, /Soundbites: pick 1 to 2 complete, intelligible sentences of 4 to 7 s/);
   assert.match(system, /Voice-over \("voiceover"\): 2 or 3 short sentences in German \(Swiss High German/);
@@ -999,8 +1000,10 @@ async function testNodeDefinition() {
   const own = registry.createRegistry();
   nodes.registerAll(own);
   const def = own.get('event_video.plan');
-  assert.deepEqual(def.outputs.map((port) => `${port.id}:${port.type}`), ['shots:text', 'graphics:text', 'board:text', 'selection:image', 'ai_photos:image[]', 'ai_prompts:text[]', 'parallax_photos:image[]', 'vo_lines:text[]']);
-  assert.deepEqual(registry.normalizeParams(def, {}), { model: '', brief: '', photo_motion: 'code', parallax: true, max_ai_photos: 0, voiceover: false, lower_thirds: true, soundbites: 'auto', allow_plain: false });
+  assert.deepEqual(def.outputs.map((port) => `${port.id}:${port.type}`), ['shots:text', 'graphics:text', 'board:text', 'selection:image', 'ai_photos:image[]', 'ai_prompts:text[]', 'parallax_photos:image[]', 'vo_lines:text[]', 'ai_switches:text']);
+  // the switches of the approval and the answer they are applied to (WP55): not connectable
+  assert.equal(def.outputs.find((port) => port.id === 'ai_switches').hidden, true);
+  assert.deepEqual(registry.normalizeParams(def, {}), { model: '', brief: '', photo_motion: 'code', parallax: true, max_ai_photos: 0, ai_marks: {}, ai_choice: {}, voiceover: false, lower_thirds: true, soundbites: 'auto', allow_plain: false });
   assert.deepEqual(nodes.optionsOf(registry.normalizeParams(def, { photo_motion: 'ai', max_ai_photos: 3 })), { photoMotion: 'ai', parallax: true, maxAiPhotos: 3, voiceover: false, lowerThirds: true, soundbites: 'auto', allowPlain: false });
   // the estimate of one answer: the typical material while the analysis is not there, else the prompt of the material
   const openrouter = require('../lib/openrouter');

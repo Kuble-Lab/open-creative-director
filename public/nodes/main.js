@@ -157,21 +157,27 @@
 
   // workflow.app with all fields present (older documents and imports may lack some). An output keeps `approve` as `true` (step 1,
   // also written as 1) or a whole number from 2 to 5 (a later step) and `hint` as a text of at most 300 characters; anything else is
-  // dropped (the server does the same).
+  // dropped (the server does the same). An input keeps `marks` and an output `switches` (WP55): { node, param } of a param of marks.
   function normalizeApp(raw) {
     const app = raw && typeof raw === 'object' ? raw : {};
     const stage = (value) => (value === true || value === 1 ? true : Number.isInteger(value) && value >= 2 && value <= 5 ? value : null);
     const hint = (value) => (typeof value === 'string' && value.trim() ? [...value.trim()].slice(0, 300).join('') : '');
+    const ref = (value) => (value && typeof value === 'object' && typeof value.node === 'string' && typeof value.param === 'string' ? { node: value.node, param: value.param } : null);
     const output = (entry) => {
       const approve = stage(entry.approve);
       const text = hint(entry.hint);
-      return { node: entry.node, label: typeof entry.label === 'string' ? entry.label : '', ...(approve !== null ? { approve } : {}), ...(text ? { hint: text } : {}) };
+      const switches = ref(entry.switches);
+      return { node: entry.node, label: typeof entry.label === 'string' ? entry.label : '', ...(approve !== null ? { approve } : {}), ...(text ? { hint: text } : {}), ...(switches ? { switches } : {}) };
+    };
+    const input = (entry) => {
+      const marks = ref(entry.marks);
+      return { node: entry.node, param: entry.param, label: typeof entry.label === 'string' ? entry.label : '', ...(entry.optional === true ? { optional: true } : {}), ...(marks ? { marks } : {}) };
     };
     return {
       enabled: app.enabled === true,
       title: typeof app.title === 'string' ? app.title : '',
       description: typeof app.description === 'string' ? app.description : '',
-      inputs: Array.isArray(app.inputs) ? app.inputs.filter((entry) => entry && typeof entry.node === 'string' && typeof entry.param === 'string').map((entry) => ({ node: entry.node, param: entry.param, label: typeof entry.label === 'string' ? entry.label : '', ...(entry.optional === true ? { optional: true } : {}) })) : [],
+      inputs: Array.isArray(app.inputs) ? app.inputs.filter((entry) => entry && typeof entry.node === 'string' && typeof entry.param === 'string').map(input) : [],
       outputs: Array.isArray(app.outputs) ? app.outputs.filter((entry) => entry && typeof entry.node === 'string').map(output) : []
     };
   }
@@ -211,14 +217,21 @@
     }
   }
 
-  // Drops exposures of nodes that no longer exist (the server does the same on save).
+  // Drops exposures of nodes that no longer exist (the server does the same on save), and the marks and switches (WP55) whose node is gone.
   function pruneApp() {
     if (!state.workflow || !state.workflow.app) return;
     const ids = new Set(state.graph.nodes.map((node) => node.id));
     const app = state.workflow.app;
-    const inputs = app.inputs.filter((entry) => ids.has(entry.node));
-    const outputs = app.outputs.filter((entry) => ids.has(entry.node));
-    if (inputs.length !== app.inputs.length || outputs.length !== app.outputs.length) {
+    let dangling = false;
+    const prune = (entry, key) => {
+      if (!entry[key] || ids.has(entry[key].node)) return entry;
+      dangling = true;
+      const { [key]: _gone, ...rest } = entry;
+      return rest;
+    };
+    const inputs = app.inputs.filter((entry) => ids.has(entry.node)).map((entry) => prune(entry, 'marks'));
+    const outputs = app.outputs.filter((entry) => ids.has(entry.node)).map((entry) => prune(entry, 'switches'));
+    if (dangling || inputs.length !== app.inputs.length || outputs.length !== app.outputs.length) {
       state.workflow.app = { ...app, inputs, outputs };
       updateAppButton();
     }
