@@ -100,7 +100,7 @@ main() {
   rm -f "$setup"
 
   # 5. the agent without pairing: files, npm ci, the browser, ffmpeg
-  runuser -u "$AGENT_USER" -- env HOME="$AGENT_HOME" node "${AGENT_HOME}/setup.js" --update --dir "$AGENT_DIR" </dev/null
+  runuser -u "$AGENT_USER" -- env HOME="$AGENT_HOME" node "${AGENT_HOME}/setup.js" --update --snapshot-build --dir "$AGENT_DIR" </dev/null
   rm -f "${AGENT_HOME}/setup.js"
 
   # 6. the first start and the agent

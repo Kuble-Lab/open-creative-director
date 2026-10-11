@@ -131,6 +131,7 @@ function parseArgs(argv) {
     else if (flag === '--code') options.code = value();
     else if (flag === '--dir') options.dir = value();
     else if (flag === '--name') options.name = value();
+    else if (flag === '--snapshot-build') options.snapshotBuild = true;
     else if (flag === '--update') options.update = true;
     else if (flag === '--no-start') options.start = false;
   }
@@ -238,6 +239,7 @@ async function main(argv = process.argv.slice(2)) {
 
   if (unzipMissing()) {
     console.warn(t('unzipMissing'));
+    if (options.snapshotBuild) return 1;
   } else {
     console.log(t('browser'));
     const browser = spawnSync(process.execPath, [path.join(dir, 'node_modules', 'hyperframes', 'bin', 'hyperframes.mjs'), 'browser', 'ensure'], {
@@ -249,6 +251,7 @@ async function main(argv = process.argv.slice(2)) {
     });
     if (browser.error && browser.error.code === 'ETIMEDOUT') console.warn(t('browserTimeout', { minutes: Math.round(BROWSER_TIMEOUT_MS / 60000) }));
     else if (browser.status !== 0) console.warn(t('browserFailed'));
+    if (options.snapshotBuild && (browser.error || browser.status !== 0)) return 1;
   }
 
   const ffmpeg = await agent.prepareFfmpeg({ base: dir, env: { ...process.env } });
