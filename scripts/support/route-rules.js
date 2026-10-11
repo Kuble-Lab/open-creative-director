@@ -154,6 +154,7 @@ const ROUTE_RULES = {
   'GET /api/workflows/:id/outputs.zip': 'workflow',
   'GET /api/workflows/:id/runs/:runId': 'workflow',
   'POST /api/workflows/:id/runs/:runId/cancel': 'workflow',
+  'POST /api/workflows/:id/runs/:runId/resume': 'workflow', // a run that waits at its spending limit, with a new limit
   'PATCH /api/workflows/:id/results/:nodeId': 'workflow',
   'DELETE /api/workflows/:id/results/:nodeId': 'workflow',
   'DELETE /api/workflows/:id/results/:nodeId/entries/:entryId': 'workflow',
@@ -304,6 +305,7 @@ const PARTICIPANT_RULES = {
   'GET /api/workflows/:id/outputs.zip': 'same',
   'GET /api/workflows/:id/runs/:runId': 'same',
   'POST /api/workflows/:id/runs/:runId/cancel': 'same',
+  'POST /api/workflows/:id/runs/:runId/resume': 'same',
   'PATCH /api/workflows/:id/results/:nodeId': 'same',
   'DELETE /api/workflows/:id/results/:nodeId': 'same',
   'DELETE /api/workflows/:id/results/:nodeId/entries/:entryId': 'same',

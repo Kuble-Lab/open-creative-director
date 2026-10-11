@@ -28,6 +28,8 @@ function fixture({ count = 2, price = 1, execute, hooks = {} } = {}) {
     getWorkflow: async () => ({ workflow: clone(workflow), results: clone(results) }),
     readResults: async () => clone(results),
     readWorkflow: async () => clone(workflow), newRunId: () => 'r',
+    // the route checks the review revision of the results first (variant approvals); here it only starts
+    startReviewedRun: async (_id, _revision, start) => start(),
     writeRun: async (_, run) => { record = clone(run); }, readRun: async () => clone(record), pruneRuns: async () => {},
     appendHistory: async (_, id, entry) => {
       entry = { ...entry, id: id + '-result' };

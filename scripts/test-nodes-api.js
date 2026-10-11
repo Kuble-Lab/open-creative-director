@@ -1119,6 +1119,7 @@ async function main() {
         ['/api/workflows/:id/outputs.zip', 'get'],
         ['/api/workflows/:id/runs/:runId', 'get'],
         ['/api/workflows/:id/runs/:runId/cancel', 'post'],
+        ['/api/workflows/:id/runs/:runId/resume', 'post'],
         ['/api/workflows/:id/results/:nodeId', 'patch'],
         ['/api/workflows/:id/results/:nodeId/entries/:entryId', 'delete'],
         ['/api/workflows/:id/results/:nodeId', 'delete'],
