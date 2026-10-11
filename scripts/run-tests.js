@@ -17,7 +17,7 @@
  *
  * A filter is a part of a file name ("nodes-" runs every node-view test).
  * Defaults: one test after another, 240 s per test. --jobs=<n> runs several at once; tests
- * that use the shared data folders of the copy can then get in each other's way.
+ * run in separate worker copies so their data folders cannot interfere.
  *
  * The tests run in a temporary copy of the repository, never in the checkout itself: many of them
  * write sessions and files into data/, projects/ and assets/, and some load server.js, which reads
@@ -34,7 +34,7 @@ const path = require('node:path');
 const SCRIPTS_DIR = __dirname;
 const ROOT = path.resolve(SCRIPTS_DIR, '..');
 const DEFAULT_TIMEOUT_SECONDS = 240;
-// Tests share the data folders of the copy (data/, projects/), so by default they run one after another.
+// Default to serial execution; parallel workers each own an isolated repository copy.
 const DEFAULT_JOBS = 1;
 const OUTPUT_TAIL_LINES = 25;
 const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
@@ -279,18 +279,26 @@ async function runAll(options, copy) {
 
   const results = [];
   let next = 0;
-  async function worker() {
-    while (!interrupted && next < tests.length) {
-      const name = tests[next++];
-      const result = await runTest(name, options.timeoutSeconds, copy);
-      results.push(result);
-      const duration = `${result.seconds.toFixed(1)} s`;
-      if (result.ok) {
-        console.log(`PASS ${result.name} (${duration})`);
-      } else {
-        console.log(`FAIL ${result.name} (${duration}): ${result.reason}`);
-        const output = [tail(result.stdout, OUTPUT_TAIL_LINES), tail(result.stderr, OUTPUT_TAIL_LINES)].filter(Boolean);
-        if (output.length) console.log(output.join('\n').split('\n').map((line) => `    ${line}`).join('\n'));
+  async function worker(_, index) {
+    const workerCopy = index === 0 ? copy : createCopy();
+    try {
+      while (!interrupted && next < tests.length) {
+        const name = tests[next++];
+        const result = await runTest(name, options.timeoutSeconds, workerCopy);
+        results.push(result);
+        const duration = `${result.seconds.toFixed(1)} s`;
+        if (result.ok) {
+          console.log(`PASS ${result.name} (${duration})`);
+        } else {
+          console.log(`FAIL ${result.name} (${duration}): ${result.reason}`);
+          const output = [tail(result.stdout, OUTPUT_TAIL_LINES), tail(result.stderr, OUTPUT_TAIL_LINES)].filter(Boolean);
+          if (output.length) console.log(output.join('\n').split('\n').map((line) => `    ${line}`).join('\n'));
+        }
+      }
+    } finally {
+      if (workerCopy !== copy) {
+        if (options.keep) console.log(`The temporary copy stays in ${workerCopy}`);
+        else removeCopy(workerCopy);
       }
     }
   }

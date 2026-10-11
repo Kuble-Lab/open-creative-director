@@ -41,6 +41,8 @@ class Fake:
         self.calls.append([method, path, body])
         if method == 'POST' and path == '/servers':
             self.labels = body['labels']
+            assert int(self.labels['ocd-expires']) > 0
+            assert len(self.labels['ocd-origin']) == 32
         if method == 'GET' and path.startswith('/servers?'):
             return {'servers': [{'id': 77, 'labels': self.labels}] if self.fail.get('lost') else []}
         if (method, path) in self.fail:

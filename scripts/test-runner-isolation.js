@@ -49,6 +49,18 @@ async function main() {
     const heartbeat = fs.readFileSync(path.join(root, 'heartbeat'), 'utf8');
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(fs.readFileSync(path.join(root, 'heartbeat'), 'utf8'), heartbeat, 'grandchild stops before cleanup');
+    const parallel = path.join(root, 'parallel');
+    fs.mkdirSync(path.join(parallel, 'scripts'), { recursive: true });
+    fs.copyFileSync(path.join(__dirname, 'run-tests.js'), path.join(parallel, 'scripts', 'run-tests.js'));
+    for (const name of ['a', 'b']) {
+      fs.writeFileSync(path.join(parallel, 'scripts', `test-${name}.js`), `
+        require('node:fs').writeFileSync('projects/shared.json', '${name}', { flag: 'wx' });
+        setTimeout(() => console.log('test-${name}.js: ok'), 200);
+      `);
+    }
+    const output = require('node:child_process').execFileSync(process.execPath,
+      [path.join(parallel, 'scripts', 'run-tests.js'), '--jobs=3'], { encoding: 'utf8', timeout: 10000 });
+    assert.match(output, /2\/2 passed/, 'parallel tests own separate mutable data folders');
     fs.writeFileSync(path.join(root, 'scripts', 'test-pass.js'), "console.log('test-pass.js: ok');");
     assert.equal((await runTest('test-pass.js', 5, root)).ok, true);
   } finally {

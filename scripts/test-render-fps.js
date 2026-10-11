@@ -98,11 +98,19 @@ async function testToolCall() {
     const asText = await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Bildrate als Text', fps: '30' });
     assert.equal(calls[2].args[4], 30);
     assert.equal(asText.job.fps, 30);
+    const nodeAbort = new AbortController();
+    const runAbort = new AbortController();
+    await executeTool({ ...ctx, signal: nodeAbort.signal, runSignal: runAbort.signal }, 'render_motion_graphics', { html: HTML, label: 'Cancellable' });
+    const forwarded = calls.at(-1).args[5].signal;
+    assert.equal(forwarded.aborted, false);
+    runAbort.abort();
+    assert.equal(forwarded.aborted, true, 'run cancellation still reaches a submitted render after its executor returned');
+
     // empty values mean "not set"
     await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Leer', fps: '' });
     await executeTool(ctx, 'render_motion_graphics', { html: HTML, label: 'Null', fps: null });
-    assert.equal(calls[3].args[4], undefined);
     assert.equal(calls[4].args[4], undefined);
+    assert.equal(calls[5].args[4], undefined);
 
     // refused: no job is made
     const made = calls.length;
