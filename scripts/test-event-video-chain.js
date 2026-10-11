@@ -83,7 +83,7 @@ function visionAnswer(prompt, counter) {
 }
 
 // The planner "answers" from its prompt: the units of the list in order, as many per act as the grid asks for (each once), the soundbite of the
-// transcript, the texts from the description, one photo with AI and two with parallax when the options ask for them
+// transcript, the texts from the description, one candidate for an AI clip and two photos with parallax when the options ask for them
 function planAnswer(system, prompt) {
   const acts = [...system.matchAll(/(hook|arrival|programme|people|peak|close) (\d+) picks?/g)].map((match) => ({ act: match[1], count: Number(match[2]) }));
   const units = [];
@@ -104,7 +104,7 @@ function planAnswer(system, prompt) {
     title: { text: 'Innovation Day 2026', sub: 'Zürich, 12. März 2026', source: 'description' },
     lower_thirds: transcripts.length ? [{ soundbite: 0, name: 'Anna Muster', role: 'CEO', label: null, source: 'description' }] : [],
     intertitles: [],
-    ai_photos: /for AI animation \("ai_photos"\)/.test(system) ? units.filter((ref) => ref.startsWith('p')).slice(0, 1).map((ref) => ({ ref, prompt: 'slow push in, people move a little' })) : [],
+    ai_photos: /The code animates (\d+ of the photos|every photo) you pick with AI/.test(system) ? units.filter((ref) => ref.startsWith('p')).slice(0, 1).map((ref) => ({ ref, prompt: 'slow push in, people move a little' })) : [],
     parallax: units.filter((ref) => ref.startsWith('p')).slice(1, 3),
     voiceover: [],
     endcard: { line: 'Danke, Zürich.', sub: null, url: null, source: 'description' }
@@ -391,12 +391,13 @@ async function run(iso) {
     assert.equal(seen.vision, 6);
     assert.equal(seen.speech, 0, 'no clip, no speech');
     assert.doesNotMatch(seen.planner[0].prompt, /transcript \(/, 'no transcript in the prompt');
-    assert.match(seen.planner[0].system, /for AI animation \("ai_photos"\)/, 'the planner may choose photos for AI clips');
+    assert.match(seen.planner[0].system, /The code animates 1 of the photos you pick with AI/, 'the planner ranks photos for one AI clip');
     assert.equal(seen.planner.length, 1, 'one answer of the planner: no second try');
     const shots = JSON.parse((await resultOf(workflow, 'n10')).variants[0].shots.value);
     assert.ok(shots.shots.every((shot) => shot.kind !== 'video' && shot.kind !== 'soundbite'), 'only photos (and their AI and parallax clips)');
     await finish(workflow, { mode: 'all' });
     assert.equal(seen.clips, 1, 'one photo animated with AI');
+    assert.equal(seen.depth, 2, 'two photos without an AI clip get the parallax (live test 2026-10-11)');
     const { srt } = await film(workflow, { width: 1080, height: 1920 });
     assert.equal(srt.trim(), '', 'no soundbite, no subtitle');
     console.log(`ok B: photos only, ${shots.shots.length} shots, ${seen.renders} chunks`);

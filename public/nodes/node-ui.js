@@ -1154,6 +1154,12 @@
       };
     }
 
+    // An integer with a list of values (`options`, the AI clips of the event video) is a select that hands on numbers.
+    if (kind === 'integer' && Array.isArray(param.options)) {
+      const widget = paramWidget({ ...param, kind: 'select' }, value, { ...ctx, onChange: (next, meta) => ctx.onChange(Number(next), meta) });
+      return { ...widget, get: () => Number(widget.get()) };
+    }
+
     if (kind === 'number' || kind === 'integer') {
       const input = el('input', {
         class: 'nv-input nv-nodrag',
