@@ -112,6 +112,11 @@ async function main() {
     else process.env.RENDER_NODE_URL = originalRenderNodeUrl;
     if (originalRenderNodeToken === undefined) delete process.env.RENDER_NODE_TOKEN;
     else process.env.RENDER_NODE_TOKEN = originalRenderNodeToken;
+    // The submission stub has no poller: finish its job before deleting the backing session.
+    await store.mutateSession(session.id, (s) => {
+      const job = s.jobs.find((entry) => entry.jobId === 'render-job-test');
+      if (job) Object.assign(job, { status: 'failed', accountingStatus: 'booked', error: 'test render stopped' });
+    });
     await store.deleteSession(session.id);
   }
   console.log('test-render-motion-assets.js: ok');

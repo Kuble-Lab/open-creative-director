@@ -777,19 +777,19 @@ async function main() {
         await push({ jobId: 'j1', assetId: 'vid-001', status: 'pending' });
         const waiting = jobs.waitForSessionJob(session.id, 'j1', { intervalMs: 10, timeoutMs: 2000 });
         await sleep(40);
-        await setStatus('j1', { status: 'completed' });
+        await setStatus('j1', { status: 'completed', accountingStatus: 'booked' });
         assert.deepEqual(await waiting, ['vid-001']);
 
         await push({ jobId: 'j2', assetId: 'img-001', status: 'running' });
         const multi = jobs.waitForSessionJob(session.id, 'j2', { intervalMs: 10, timeoutMs: 2000 });
-        await setStatus('j2', { status: 'completed', resultAssetIds: ['img-001', 'img-002'] });
+        await setStatus('j2', { status: 'completed', accountingStatus: 'booked', resultAssetIds: ['img-001', 'img-002'] });
         assert.deepEqual(await multi, ['img-001', 'img-002']);
 
         await push({ jobId: 'j3', assetId: 'vid-002', status: 'running' });
         const failing = jobs.waitForSessionJob(session.id, 'j3', { intervalMs: 10, timeoutMs: 2000 });
         // the handler first: under load the poll can see the new status before setStatus returns, and a rejection nobody waits for ends the process
         const rejected = assert.rejects(failing, /provider said no/);
-        await setStatus('j3', { status: 'failed', error: 'provider said no' });
+        await setStatus('j3', { status: 'failed', accountingStatus: 'booked', error: 'provider said no' });
         await rejected;
 
         await push({ jobId: 'j4', assetId: 'vid-003', status: 'running' });
@@ -800,12 +800,15 @@ async function main() {
         await assert.rejects(jobs.waitForSessionJob(session.id, 'j4', { intervalMs: 10, timeoutMs: 60 }), /Timed out/);
         await assert.rejects(jobs.waitForSessionJob(session.id, 'nope', { intervalMs: 5, timeoutMs: 1000 }), /not found/);
 
+        // Aborting or timing out a waiter does not finish its provider job. Simulate its final poll.
+        await setStatus('j4', { status: 'failed', accountingStatus: 'booked', error: 'test provider stopped' });
+
         // Higgsfield can reuse a job id: with assetId the waiter follows its own job, not the first match
-        await push({ jobId: 'dup', assetId: 'img-010', status: 'completed' });
+        await push({ jobId: 'dup', assetId: 'img-010', status: 'completed', accountingStatus: 'booked' });
         await push({ jobId: 'dup', assetId: 'img-011', status: 'running' });
         const own = jobs.waitForSessionJob(session.id, 'dup', { assetId: 'img-011', intervalMs: 10, timeoutMs: 2000 });
         await sleep(40);
-        await store.mutateSession(session.id, (s) => Object.assign(s.jobs.find((j) => j.assetId === 'img-011'), { status: 'completed' }));
+        await store.mutateSession(session.id, (s) => Object.assign(s.jobs.find((j) => j.assetId === 'img-011'), { status: 'completed', accountingStatus: 'booked' }));
         assert.deepEqual(await own, ['img-011']);
         // without an assetId the newest job with that id counts (store.findSessionJob), not the first one
         assert.deepEqual(await jobs.waitForSessionJob(session.id, 'dup', { intervalMs: 5, timeoutMs: 500 }), ['img-011']);
@@ -831,6 +834,7 @@ async function main() {
       await store.mutateSession(wf.sessionId, (s) => {
         const job = s.jobs.find((entry) => entry.jobId === env.state.jobSubmitted);
         job.status = 'completed';
+        job.accountingStatus = 'booked';
         job.resultAssetIds = ['vid-001', 'vid-002'];
       });
       const record = await engine.whenFinished(wf.id, runId);
