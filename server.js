@@ -2251,7 +2251,7 @@ app.post('/api/sessions/:id/video-model-requests/:requestId', async (req, res) =
     const request = (session.videoModelRequests || []).find((item) => item && item.id === requestId);
     res.status(201).json({
       choice: videoModels.publicChoice(request, await budget.status(viewer)),
-      job: jobsWithUrls(session).find((item) => item.jobId === outcome.job?.jobId) || null,
+      job: store.findSessionJob(jobsWithUrls(session), outcome.job),
       videoModelPreference: videoModels.publicPreference(session, viewer)
     });
   } catch (err) {

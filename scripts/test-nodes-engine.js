@@ -807,7 +807,8 @@ async function main() {
         await sleep(40);
         await store.mutateSession(session.id, (s) => Object.assign(s.jobs.find((j) => j.assetId === 'img-011'), { status: 'completed' }));
         assert.deepEqual(await own, ['img-011']);
-        assert.deepEqual(await jobs.waitForSessionJob(session.id, 'dup', { intervalMs: 5, timeoutMs: 500 }), ['img-010']);
+        // without an assetId the newest job with that id counts (store.findSessionJob), not the first one
+        assert.deepEqual(await jobs.waitForSessionJob(session.id, 'dup', { intervalMs: 5, timeoutMs: 500 }), ['img-011']);
       } finally {
         await store.deleteSession(session.id);
       }
