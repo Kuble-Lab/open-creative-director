@@ -287,7 +287,7 @@ async function testSubmitAndStatus() {
   });
 
   const job = await client.submit('minimax/h3-max/text-to-video', { prompt: 'a cat', duration: 5 });
-  assert.deepEqual(job, { requestId: 'req-123', statusUrl: queued.status_url, responseUrl: queued.response_url });
+  assert.deepEqual(job, { requestId: 'req-123', statusUrl: queued.status_url, responseUrl: queued.response_url, cancelUrl: queued.cancel_url });
   assert.equal(calls[0].url, 'https://queue.fal.run/minimax/h3-max/text-to-video');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.headers.Authorization, `Key ${KEY}`);
@@ -489,7 +489,8 @@ async function testTool(sessionId, otherSessionId) {
     return {
       requestId: `req-${submitCounter}`,
       statusUrl: `https://queue.fal.run/${endpoint}/requests/req-${submitCounter}/status`,
-      responseUrl: `https://queue.fal.run/${endpoint}/requests/req-${submitCounter}`
+      responseUrl: `https://queue.fal.run/${endpoint}/requests/req-${submitCounter}`,
+      cancelUrl: `https://queue.fal.run/${endpoint}/requests/req-${submitCounter}/cancel`
     };
   });
   const untouched = () => assert.deepEqual([calls.upload.length, calls.submit.length], [0, 0], 'no upload and no submit');
@@ -609,6 +610,7 @@ async function testTool(sessionId, otherSessionId) {
   assert.equal(job.endpoint, 'minimax/h3-max/reference-to-video');
   assert.match(job.statusUrl, /^https:\/\/queue\.fal\.run\//);
   assert.match(job.responseUrl, /^https:\/\/queue\.fal\.run\//);
+  assert.equal(job.cancelUrl, `${job.responseUrl}/cancel`);
   assert.equal(job.kind, 'video');
   assert.equal(job.status, 'pending');
   assert.equal(job.costEstimateUsd, 0.4);
@@ -680,6 +682,24 @@ async function testTool(sessionId, otherSessionId) {
   assert.equal(calls.submit.length, 0);
   assert.equal((await store.readLedger(sessionId)).length, ledgerAfter);
   assert.equal((await store.readSession(sessionId)).jobs.length, jobsBefore);
+  // A run aborting during submit still records the returned id and sends one queue cancellation.
+  const race = new AbortController();
+  let cancellations = 0;
+  patch(fal, 'submit', async () => {
+    race.abort();
+    return { requestId: 'abort-in-flight', statusUrl: 'https://queue.fal.run/test/model/requests/abort-in-flight/status',
+      responseUrl: 'https://queue.fal.run/test/model/requests/abort-in-flight', cancelUrl: 'https://queue.fal.run/test/model/requests/abort-in-flight/cancel' };
+  });
+  patch(fal, 'cancelJob', async (job) => {
+    cancellations += 1;
+    assert.equal(job.jobId, 'abort-in-flight');
+    assert.match(job.cancelUrl, /abort-in-flight\/cancel$/);
+    return { status: 'CANCELLATION_REQUESTED' };
+  });
+  await rejects(tools.executeTool({ ...ctx, nodeId: 'race', signal: race.signal, runSignal: race.signal }, 'fal_generate', base), null,
+    (err) => assert.equal(err.name, 'AbortError'));
+  assert.equal(cancellations, 1);
+  assert.equal(store.findSessionJob((await store.readSession(sessionId)).jobs, { jobId: 'abort-in-flight' }).status, 'failed', 'an accepted cancellation closes the job like a failed one');
   void video;
 }
 
@@ -959,6 +979,21 @@ async function testPoller(sessionId) {
   patch(fal, 'hasKey', () => true);
   await poller.pollOnce();
   assert.equal((await jobOf(sessionId, skipped.assetId)).status, 'queued');
+  await store.mutateSession(sessionId, (session) => { store.findSessionJob(session.jobs, skipped).status = 'failed'; });
+
+  const cancelled = await addFalJob(sessionId);
+  status = { status: 'CANCELLED', error: null };
+  await poller.pollOnce();
+  assert.equal((await jobOf(sessionId, cancelled.assetId)).status, 'failed', 'Provider cancellation ends polling');
+  assert.match((await jobOf(sessionId, cancelled.assetId)).error, /abgebrochen/);
+
+  const race = await addFalJob(sessionId);
+  patch(fal, 'getStatus', async () => {
+    await store.mutateSession(sessionId, (session) => { store.findSessionJob(session.jobs, race).status = 'cancelled'; });
+    return { status: 'IN_QUEUE', error: null };
+  });
+  await poller.pollOnce();
+  assert.equal((await jobOf(sessionId, race.assetId)).status, 'cancelled', 'A stale queue response cannot reopen an accepted cancellation');
 }
 
 async function main() {

@@ -489,11 +489,11 @@ async function testAdded() {
 // The plans of AI mode without marks: shots, graphics, board, lists and notes as with the code of main (34fe755). The digests were computed with
 // that code and these scenarios.
 const MAIN_DIGESTS = Object.freeze({
-  'live 4': '888997820facc7dec6b7b2bdfb6bec6d0a12000b387cb310818b4b082ecb54ca',
-  'live 8': '15352e3d1167843ac9c7829c012f011c4b4fb330b6d8bf49543983278091ba1d',
-  'live flat': '8538337b3213f02ea8c251c93a7c89b4fea8a6032e927db7a0a13a0a9d305f2c',
-  'fixtures ai': '18ab715b2f90b51c9368567bc171dc1880834a8583fcde7a36a7e27aee42a04b',
-  'all 9': '4c975408626dc0c61bb338990cf2d5cdff205f0bdffb080c76a4de26fa2cb7b0',
+  'live 4': 'bb25f1a1f844087eba25141235ca700e7eb73dd39a9f2038fbf405932b2c5e5d',
+  'live 8': '6a74896e8f23636cf27accd55af33ae572ae90747966b958edd2e24f9f0b897e',
+  'live flat': '34293edbdf1182131d93fc1bce4795ff2b8b3d4892ee54086e56e1a111664cc5',
+  'fixtures ai': '152f91f12fce1002d39fb763a46b5d5f686fa243b91dd937062a3560bb794b73',
+  'all 9': '2a0bd83bc6fe60828be0c2a56e19341bde0915d23b3d8c2fec45e2b177cc6f22',
   'prompt all 9': 'b8f1067ed0d81d7d5fac8b359e168dcba74de16fa0fb11587ab2ecf241c19f52'
 });
 // The cache keys of the node without marks (computed with the code of main)
@@ -503,6 +503,7 @@ const MAIN_KEYS = Object.freeze({
   'ai all': 'sha256:9b5659dcf27e83eb4d128fdd6130e86c88a60d1dc770c4cb1b607a0941686d96'
 });
 
+// The board digests include the recalibrated cost row; the prompt remains pinned to its original digest.
 async function testMain() {
   const digestOf = (result) => sha(JSON.stringify({ shots: result.shots, graphics: result.graphics, board: result.board, ai: result.aiPhotos, prompts: result.aiPrompts, parallax: result.parallaxPhotos, notes: result.notes }));
   const out = {};

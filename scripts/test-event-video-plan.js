@@ -962,9 +962,9 @@ function testEstimate() {
   const cents = (value) => Math.round(value * 100) / 100;
   const cpm = styles.derive(styles.combineStyle({})).cpm;
   const table = {
-    30: { vision: 0.24, speech: 0.06, music: 0.11, llm: 0.35, depth: 0.02, ai: 0.4, voice: 0.03, code: 0.8 },
-    60: { vision: 0.24, speech: 0.06, music: 0.21, llm: 0.42, depth: 0.04, ai: 0.8, voice: 0.06, code: 1.0 },
-    90: { vision: 0.24, speech: 0.06, music: 0.31, llm: 0.5, depth: 0.06, ai: 1.2, voice: 0.08, code: 1.2 }
+    30: { vision: 0.24, speech: 0.06, music: 0.11, llm: 0.10, depth: 0.02, ai: 0.4, voice: 0.03, code: 0.5 },
+    60: { vision: 0.24, speech: 0.06, music: 0.21, llm: 0.13, depth: 0.04, ai: 0.8, voice: 0.06, code: 0.7 },
+    90: { vision: 0.24, speech: 0.06, music: 0.31, llm: 0.17, depth: 0.06, ai: 1.2, voice: 0.08, code: 0.8 }
   };
   const voiceChars = { 30: 360, 60: 720, 90: 1000 };
   for (const length of [30, 60, 90]) {
@@ -1013,7 +1013,7 @@ async function testNodeDefinition() {
   try {
     openrouter.hasKey = () => true;
     const typical = def.cost.estimate(registry.normalizeParams(def, {}), { inputs: {} });
-    assert.equal(Math.round(typical.usd * 100) / 100, 0.42);
+    assert.equal(Math.round(typical.usd * 100) / 100, 0.11);
     const { textValue, listValue } = require('../lib/nodes/types');
     const style = textValue(JSON.stringify(styleFixture));
     const inputs = {
@@ -1024,7 +1024,7 @@ async function testNodeDefinition() {
       photo_info: listValue('text', material60.photos.map((info) => textValue(JSON.stringify(info))))
     };
     const known = def.cost.estimate(registry.normalizeParams(def, {}), { inputs });
-    assert.ok(known.usd > 0.2 && known.usd < 0.6, `estimate ${known.usd}`);
+    assert.ok(known.usd > 0.06 && known.usd < 0.12, `estimate ${known.usd}`);
     assert.equal(def.cost.estimate(registry.normalizeParams(def, { model: 'vendor/unknown' }), { inputs }), null);
   } finally {
     openrouter.hasKey = savedKey;

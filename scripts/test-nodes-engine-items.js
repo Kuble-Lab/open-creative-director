@@ -180,6 +180,7 @@ async function main() {
       assert.equal(usd(first), 2);
       const entry = (await results(wf.id, 'm')).history[0];
       assert.equal(entry.itemKeys.length, 4, 'a mapped entry stores the key of every item');
+      assert.equal(entry.freshItemCount, 4, 'Fresh item count supports per-item cost estimates');
       assert.equal(new Set(entry.itemKeys).size, 4);
       assert.ok(entry.itemKeys.every((key) => /^sha256:[0-9a-f]{64}$/.test(key)));
       assert.equal(entry.itemKeys.includes(entry.cacheKey), false, 'an item key is not the key of the whole list');
@@ -209,6 +210,7 @@ async function main() {
       assert.equal(second.status, 'completed', JSON.stringify(second.nodes));
       assert.deepEqual(ranItems('m'), ['b2'], 'only the changed item runs');
       assert.equal(usd(second), 0.5, 'only the new item is booked');
+      assert.equal((await results(wf.id, 'm')).history[0].freshItemCount, 1, 'Reused items do not dilute the per-item cost');
       assert.equal(ranItems('f').length, 1, 'the follower runs for the one new value only');
       assert.match(ranItems('f')[0], /^b2-plain#\d+$/);
       const after = await selectedList(wf.id, 'm');
