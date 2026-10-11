@@ -204,7 +204,7 @@
 
     /* upload tab */
     function renderUpload() {
-      const accept = kind === 'image' ? 'image/*,.svg' : `${kind}/*`;
+      const accept = kind === 'image' ? 'image/*,.svg,.heic,.heif' : `${kind}/*`;
       const input = el('input', { type: 'file', class: 'nv-file-input', accept, multiple: multi || null, tabindex: '-1' });
       const zone = el('button', { type: 'button', class: 'nv-ap-dropzone' });
       zone.append(icon('upload', 26), el('strong', { text: multi ? T('nodes.asset.addFiles') : T('nodes.asset.upload') }), el('small', { text: T(`nodes.asset.hint.${kind}`) }));

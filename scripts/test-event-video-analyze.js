@@ -306,16 +306,28 @@ async function main() {
     const bad = await analyzeMedia(ctx, failed, { kind: 'photo' });
     valid(bad);
     check(!bad.usable && bad.reason === 'decode_failed' && asks === before, 'Corrupt media is cached without a provider call');
-    const heic = await analyzeMedia(ctx, path.join(scratch, 'photo.heic'), { kind: 'photo' });
-    valid(heic);
-    check(heic.reason === 'heic', 'HEIC gives a clear reason');
+    const phone = path.join(scratch, 'phone.heic');
+    await fs.writeFile(phone, Buffer.concat([Buffer.from('HEIF fixture'), jpegExif(6).subarray(12, -2)]));
+    let conversions = 0;
+    ctx.eventVideo.convertPhoto = async (_command, args, options) => {
+      conversions += 1;
+      check(options.timeoutMs === 60000 && !args.includes('-noautorotate'), 'HEIC conversion keeps decoder autorotation');
+      await run(['-i', cornersJpg, '-vf', 'transpose=clock', '-frames:v', '1', args.at(-1)]);
+    };
+    const phoneInfo = await analyzeMedia(ctx, phone, { kind: 'photo' });
+    valid(phoneInfo);
+    check(phoneInfo.meta.width === 240 && phoneInfo.meta.height === 320 && phoneInfo.meta.rotation === 0, 'HEIC uses upright JPEG dimensions without a second rotation');
+    check(phoneInfo.meta.taken_at === '2026-03-12T18:04:00+02:00', 'HEIC capture time survives analysis');
+    await analyzeMedia(ctx, phone, { kind: 'photo' });
+    check(conversions === 1, 'HEIC analysis reuses the converted JPEG');
+    delete ctx.eventVideo.convertPhoto;
     check((await analyzeMedia(ctx, 'photo.tiff', { kind: 'photo' })).reason === 'unsupported_format', 'Unsupported format');
     check(assets.typeFromExtension('.MOV') === 'video' && assets.typeFromExtension('.m4v') === 'video', 'MOV and M4V upload types');
     check(
       routes.uploadExtension('video/quicktime', '').ext === '.mov' && routes.uploadExtension('video/x-m4v', '').ext === '.m4v',
       'MOV and M4V MIME types'
     );
-    check(routes.uploadExtension('image/heic', 'photo.heic').reason === 'heic', 'HEIC upload rejection');
+    check(routes.uploadExtension('image/heic', 'photo.heic').ext === '.heic' && assets.typeFromExtension('.HEIF') === 'image', 'HEIC/HEIF upload acceptance');
     const clip = path.join(scratch, 'clip.mov');
     await run(['-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=24', '-t', '2', '-c:v', 'libx264', '-threads', '2', clip]);
     const clipInfo = await analyzeMedia(ctx, clip);
@@ -462,6 +474,9 @@ async function main() {
     const shaking = frames.analyzeFrames([0, 8, 0, 8, 0, 8].map(sample), { seconds: 1.2, width: 320, height: 180, rate: 5 });
     check(shaking[0].reasons.includes('shaky') && shaking[0].motion === 'handheld', 'Projection acceleration detects shake');
     // Live answers of 2026-10-10: a subject of 169 characters and people as the number 0 failed 12 of 18 real photos; the reader repairs them.
+    check(vision.readVision(JSON.stringify({ ...visionFixture, text: 'prominent' })).text === 'prominent', 'Prominent text survives vision parsing');
+    check(vision.readVision(JSON.stringify({ ...visionFixture, text: 'invalid' })).text === undefined, 'Repaired text remains unknown');
+    check(vision.readVision(JSON.stringify(visionFixture)).text === undefined, 'Legacy analysis remains unknown');
     const repaired = vision.readVision(JSON.stringify({
       ...visionFixture,
       subject: `${'A speaker at a lectern in front of a large screen, '.repeat(4)}end`,
