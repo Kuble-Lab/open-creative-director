@@ -1156,3 +1156,43 @@ Aborting a run stops new submissions and requests cancellation of every submitte
 The event planner prefers the newest positive measured cost of the same node and model; zero-cost reused answers are skipped. A known change in film length scales this cost, as the number of picks usually grows with length. Without history, the estimate uses 1,500 fixed output tokens plus 100 per pick (including thinking), calibrated to about 3,200 output tokens at 17 picks and measured costs of USD 0.0628–0.0847. The local Opus 5.5 price table is USD 4 input / 20 output per million tokens; input tokens use the actual analysed prompt when available, otherwise the known uploads (or a modest 17-photo baseline). Before a photo-only analysis, the distinct pick count is capped at the uploaded photos. These prices were not verified live. Formula estimates are not billing guarantees.
 
 Both run confirmation dialogs show a separate step-2 AI-clip preview when the planner uses AI photo motion: max(requested clips, uploaded photos marked `always`), capped at the uploaded photo count; the automatic field follows film length and “all” means all uploaded photos. The unit price uses the newest positive clip cost of the connected clip node type in the workflow, divided by fresh items when that count was recorded, otherwise by output items; without history it uses the connected clip node’s formula. This information never enters step 1's total or budget reservation. Known fresh upload lists supply item counts for analysis estimates before the upload node runs; empty mapped lists cost zero. These pricing inputs do not establish cache hits.
+
+### Variant comparison and approval
+
+The editor inspector offers a side-by-side comparison when a node has two or more
+history variants. It shows playable media/text, the saved prompt, model, parameters,
+creation time and cost of each complete history entry (not a fabricated per-variant
+price). Missing historical metadata is labelled as not recorded. Selecting a variant
+and approving it are separate actions; both are available from the comparison.
+
+A node result may carry `approved: { entry, variant }`, with at most one approved
+variant per node. `PATCH /api/workflows/:id/results/:nodeId` accepts the existing
+`entry` and `variant` plus an optional boolean `approved`. With that field it only
+sets/removes the approval; without it the existing selection API is unchanged.
+Approval uses the same access guard and results lock as selection, and emits
+`results_changed`. It never changes `selected`, parameters, cache keys or output
+values. Downstream execution still uses `selected`. An approved entry survives
+history trimming (up to one extra entry); explicitly deleting it clears its approval.
+
+Edits affecting approved nodes or their ancestors show a warning before the graph
+is updated, deduplicated while typing. Before editor API run submission, fresh
+results and a plan are checked and affected approvals require confirmation. Cached
+steps whose selected result is approved also warn conservatively: the plan does not
+expose which cached history entry will become selected. Selecting another variant
+also warns when it replaces a selected approval or affects approved descendants.
+Cancelling does not send the run/selection mutation. These are editor safeguards,
+not a new execution permission for MCP clients or older render nodes. The editor sends an optional `reviewRevision` from the fresh results with run starts
+and selections. A mismatch returns `409 REVIEW_CONFLICT`; the editor reloads and
+asks for confirmation again (at most three attempts). A separate review lock
+serialises run admission, selection and approval without blocking the engine's
+results reads. Approval writes are refused while the engine is busy, including
+run startup. Clients that omit the token retain their existing API behaviour.
+The token is results metadata only and never enters execution parameters or cache
+keys. Undo and redo each warn before restoring a snapshot, even after a previous
+typing warning.
+
+The comparison uses recorded output prompts and output models (then the measured
+cost model). It never presents a local prompt draft or requested model as proven
+execution metadata. If a historical output did not record its prompt, the display
+explicitly says that the execution prompt was not recorded. The full saved
+parameters remain visible separately, including local drafts and requested models.

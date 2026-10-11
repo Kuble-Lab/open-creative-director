@@ -13,6 +13,92 @@
 
   const DYNAMIC = 'higgsfield-model';
 
+  function approvedNodes(results) {
+    return Object.entries(results?.nodes || {}).filter(([, node]) => node?.approved && node.history?.some((entry) => entry.id === node.approved.entry && entry.variants?.[node.approved.variant]));
+  }
+
+  function downstreamApprovals(edges, changed, results) {
+    const reached = new Set(changed);
+    let size;
+    do {
+      size = reached.size;
+      for (const edge of edges) if (reached.has(edge.from.node)) reached.add(edge.to.node);
+    } while (size !== reached.size);
+    return approvedNodes(results).map(([id]) => id).filter((id) => reached.has(id));
+  }
+
+  function affectedApprovals(before, after, results) {
+    if (!before || !after || !approvedNodes(results).length) return [];
+    const changed = new Set();
+    const signature = (node) => JSON.stringify(node && [node.type, node.typeVersion, Object.fromEntries(Object.entries(node.params || {}).filter(([key]) => key !== 'label' && key !== 'title'))]);
+    const old = new Map((before.nodes || []).map((node) => [node.id, node]));
+    for (const node of after.nodes || []) {
+      if (signature(old.get(node.id)) !== signature(node)) changed.add(node.id);
+      old.delete(node.id);
+    }
+    for (const id of old.keys()) changed.add(id);
+    const edges = [...(before.edges || []), ...(after.edges || [])];
+    const incoming = (graph, id) => JSON.stringify((graph.edges || []).filter((edge) => edge.to.node === id).map((edge) => [edge.from, edge.to]));
+    for (const edge of edges) if (incoming(before, edge.to.node) !== incoming(after, edge.to.node)) changed.add(edge.to.node);
+    return downstreamApprovals(edges, changed, results);
+  }
+
+  let warnedResults = null;
+  const warnedApprovals = new Set();
+  function warnApprovalChanges(before, after, results, { repeat = false } = {}) {
+    if (warnedResults !== results) {
+      warnedResults = results;
+      warnedApprovals.clear();
+    }
+    const affected = affectedApprovals(before, after, results).filter((id) => (repeat || !warnedApprovals.has(id)));
+    if (!affected.length) return;
+    affected.forEach((id) => warnedApprovals.add(id));
+    ui.toast(ui.T('nodes.compare.changeWarning', { nodes: affected.join(', ') }), { kind: 'warn' });
+  }
+
+  // Wrap the shared API boundary so toolbar, keyboard and context-menu runs also warn.
+  function installApprovalGuard(api, getState) {
+    const start = api.startRun;
+    api.startRun = async (id, request) => {
+      const state = getState();
+      if (state.workflow?.id !== id) return start(id, request);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const fresh = await api.getWorkflow(id);
+        if (approvedNodes(fresh.results).length) {
+          const plan = await api.plan(id, request);
+          const affected = approvedNodes(fresh.results).filter(([nodeId, node]) => {
+            const status = plan.nodes?.[nodeId]?.status;
+            return ['stale', 'forced'].includes(status) || (status === 'cached' && node.selected?.entry === node.approved.entry && node.selected.variant === node.approved.variant);
+          }).map(([nodeId]) => nodeId);
+          if (affected.length && !(await ui.confirmDialog({ title: ui.T('nodes.compare.approved'), message: ui.T('nodes.compare.runWarning', { nodes: affected.join(', ') }), focus: 'cancel' }))) {
+            throw new Error(ui.T('nodes.compare.cancelled'));
+          }
+        }
+        try {
+          return await start(id, { ...request, reviewRevision: fresh.results?.reviewRevision || 0 });
+        } catch (error) {
+          if (error.code !== 'REVIEW_CONFLICT' || attempt === 2) throw error;
+        }
+      }
+    };
+    api.selectVariant = async (id, nodeId, entry, variant) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const fresh = await api.getWorkflow(id);
+        const node = fresh.results?.nodes?.[nodeId];
+        const approved = node?.approved;
+        const replacing = approved && node.selected?.entry === approved.entry && node.selected.variant === approved.variant && (entry !== approved.entry || variant !== approved.variant);
+        const graph = fresh.workflow?.graph;
+        const downstream = graph ? downstreamApprovals(graph.edges || [], [nodeId], fresh.results).filter((id) => id !== nodeId) : [];
+        if ((replacing || downstream.length) && !(await ui.confirmDialog({ title: ui.T('nodes.compare.approved'), message: ui.T('nodes.compare.selectionWarning'), focus: 'cancel' }))) throw new Error(ui.T('nodes.compare.cancelled'));
+        try {
+          return await api.request('PATCH', `/api/workflows/${encodeURIComponent(id)}/results/${encodeURIComponent(nodeId)}`, { entry, variant, reviewRevision: fresh.results?.reviewRevision || 0 });
+        } catch (error) {
+          if (error.code !== 'REVIEW_CONFLICT' || attempt === 2) throw error;
+        }
+      }
+    };
+  }
+
   function createInspector({ host, getReg, callbacks }) {
     const cb = callbacks || {};
     let lastKey = null;
@@ -23,6 +109,7 @@
     let runRefs = null; // { nodeId?, runEl, scenesEl?, histEl? } containers refreshed by refreshRun() without rebuilding the form
     // The rows ticked in the scene table, per node and result: `${nodeId}:${entryId}` -> Set of item numbers (from 0). A new result starts empty.
     const sceneTicks = new Map();
+    let approvalSaving = false;
     let lengthRefs = null; // { nodeId, el }: the line about the song length of a music node, refreshed by refreshRun()
     // Fields whose visibility follows the value of another param (showIf on a param): they stay in the form and are shown or
     // hidden in place by applyGates(), so typing never builds the form again. { el, showIf, inverse }
@@ -221,6 +308,23 @@
       return variant[visible[0]] || variant[order[0]] || null;
     }
 
+    async function approve(nodeId, entry, variant, approved, container) {
+      const state = OCD.editor?.getState();
+      const id = state?.workflow?.id;
+      if (!id || approvalSaving || cb.run.info(nodeId)?.busy) return;
+      approvalSaving = true;
+      renderHistory(container, nodeId);
+      try {
+        const node = await api.request('PATCH', `/api/workflows/${encodeURIComponent(id)}/results/${encodeURIComponent(nodeId)}`, { entry, variant, approved });
+        if (state.workflow?.id === id) state.results = { ...state.results, nodes: { ...state.results?.nodes, [nodeId]: node } };
+      } catch (error) {
+        ui.toast(ui.T('nodes.compare.saveFailed', { error: error.message }), { kind: 'error' });
+      } finally {
+        approvalSaving = false;
+        if (state.workflow?.id === id) renderHistory(container, nodeId);
+      }
+    }
+
     function renderHistory(container, nodeId) {
       const info = cb.run && cb.run.info(nodeId);
       container.textContent = '';
@@ -253,6 +357,22 @@
         }
         wrap.append(tools);
       }
+      wrap.append(el('p', { class: 'nv-hint', text: ui.T('nodes.compare.selectionHelp') }));
+      const entries = history.flatMap((entry) => (entry.variants || []).map((variant, index) => ({ entry, variant, index })));
+      if (entries.length > 1) {
+        const compare = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-compare-open', text: ui.T('nodes.compare.open') });
+        compare.addEventListener('click', () => {
+          let close = () => {};
+          const body = OCD.preview.comparisonPanel(entries, {
+            selected: info.selected, approved: info.results.approved, busy: info.busy || approvalSaving,
+            costText: cb.run.costText,
+            onSelect: async (entry, index) => { close(); await cb.run.selectVariant(nodeId, entry, index); },
+            onApprove: async (entry, index, value) => { close(); await approve(nodeId, entry, index, value, container); }
+          });
+          ui.dialog({ title: ui.T('nodes.compare.open'), body, width: 1200, onOpen: (panel) => { close = () => panel.querySelector('.nv-dialog-actions button').click(); }, buttons: [{ label: ui.T('nodes.common.close'), cancel: true }] });
+        });
+        wrap.append(compare);
+      }
       const list = el('div', { class: 'nv-history-list' });
       for (const entry of history) {
         const selectedEntry = Boolean(info.selected && info.selected.entry === entry.id);
@@ -281,7 +401,10 @@
           button.append(OCD.preview.thumb(primaryValue(variant, info), { poster: OCD.preview.posterOf(Object.values(variant)) }));
           if ((entry.variants || []).length > 1) button.append(el('span', { class: 'nv-history-index', text: String(index + 1) }));
           button.addEventListener('click', () => cb.run.selectVariant(nodeId, entry.id, index));
-          variants.append(button);
+          const approved = info.results.approved?.entry === entry.id && info.results.approved.variant === index;
+          const mark = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-approve', disabled: info.busy || approvalSaving, title: ui.T(approved ? 'nodes.compare.unapprove' : 'nodes.compare.approve'), 'aria-pressed': approved ? 'true' : 'false', text: ui.T(approved ? 'nodes.compare.approved' : 'nodes.compare.approve') });
+          mark.addEventListener('click', () => approve(nodeId, entry.id, index, !approved, container));
+          variants.append(el('div', { class: 'nv-history-choice' }, button, mark));
         });
         item.append(variants);
         if (selectedEntry) item.append(el('span', { class: 'nv-history-badge', text: ui.T('nodes.history.selected') }));
@@ -1136,5 +1259,5 @@
     };
   }
 
-  OCD.inspector = { createInspector };
+  OCD.inspector = { createInspector, approvedNodes, affectedApprovals, warnApprovalChanges, installApprovalGuard };
 })(window);
