@@ -47,13 +47,14 @@ function testBuilders(h) {
   assert.equal(ops.resolveMotion('varied', undefined), 'in');
   assert.equal(ops.resolveMotion('pan_up', 3), 'pan_up', 'a fixed motion ignores the position');
 
-  // the filter chains: the old ones are unchanged, the pans are zoompan at a constant zoom 1.15
+  // the filter chains: the old ones are unchanged (the picture is read once and its scaled frame repeated), the pans are zoompan at a
+  // constant zoom 1.15
   const build = (zoom, opts = {}, raw = {}) => ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom, ...raw }), [probeOf(320, 180)], opts);
   assert.equal(
     build('in').chain,
-    "scale=640:360:flags=lanczos,zoompan=z='1+0.2*on/50':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=320x180:fps=25,setsar=1,scale=out_range=tv,format=yuv420p"
+    "scale=640:360:flags=lanczos,loop=loop=-1:size=1:start=0,setpts=N/(25*TB),zoompan=z='1+0.2*on/50':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=320x180:fps=25,setsar=1,scale=out_range=tv,format=yuv420p"
   );
-  const panChain = (x, y) => `scale=640:360:flags=lanczos,zoompan=z='1.15':x='${x}':y='${y}':d=1:s=320x180:fps=25,setsar=1,scale=out_range=tv,format=yuv420p`;
+  const panChain = (x, y) => `scale=640:360:flags=lanczos,loop=loop=-1:size=1:start=0,setpts=N/(25*TB),zoompan=z='1.15':x='${x}':y='${y}':d=1:s=320x180:fps=25,setsar=1,scale=out_range=tv,format=yuv420p`;
   assert.equal(build('pan_right').chain, panChain('(iw-iw/zoom)*on/49', 'ih/2-(ih/zoom/2)'));
   assert.equal(build('pan_left').chain, panChain('(iw-iw/zoom)*(1-on/49)', 'ih/2-(ih/zoom/2)'));
   assert.equal(build('pan_down').chain, panChain('iw/2-(iw/zoom/2)', '(ih-ih/zoom)*on/49'));
@@ -71,10 +72,10 @@ function testBuilders(h) {
     ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom, ...raw }), infos, { depth: true });
   for (const zoom of ['parallax_left', 'parallax_right', 'parallax_in']) {
     const spec = withDepth(zoom);
-    assert.match(spec.graph, /\[1:v\]scale=160:90:flags=bilinear,format=gbrp,gblur=sigma=2,split=2\[dx\]\[dy\]/, zoom);
+    assert.match(spec.graph, /\[1:v\]scale=160:90:flags=bilinear,format=gbrp,gblur=sigma=2,loop=loop=-1:size=1:start=0,setpts=N\/\(25\*TB\),split=2\[dx\]\[dy\]/, `${zoom}: the depth map is read once and its frame repeated`);
     assert.match(spec.graph, /\[src\]\[xmap\]\[ymap\]displace=edge=smear,zoompan=/, zoom);
     assert.match(spec.graph, /geq=r='clip\(.*T\/2.*,0,255\)'/, `${zoom}: the map changes with the time`);
-    assert.deepEqual(spec.inputOpts, [['-loop', '1', '-framerate', '25'], ['-loop', '1', '-framerate', '25']], 'the depth map is a looped image as well');
+    assert.deepEqual(spec.inputOpts, [['-framerate', '25'], ['-framerate', '25']], 'picture and depth map are one frame each, not looped on the input');
     assert.deepEqual(spec.outputs[0].maps, ['[out]']);
     assert.deepEqual(spec.notes, []);
   }
@@ -91,7 +92,7 @@ function testBuilders(h) {
   // kept, and a large clip is encoded with two threads and a short lookahead; a picture up to that size is cut exactly as before
   const photo = (zoom, size) => ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom }), [probeOf(...size), probeOf(100, 100)], { depth: true });
   const encoder = (spec) => spec.outputs[0].args.join(' ');
-  assert.match(photo('parallax_right', [5712, 4284]).graph, /^\[0:v\]scale=2560:1920:flags=lanczos,format=gbrp\[src\]/);
+  assert.match(photo('parallax_right', [5712, 4284]).graph, /^\[0:v\]scale=2560:1920:flags=lanczos,format=gbrp,loop=loop=-1:size=1:start=0,setpts=N\/\(25\*TB\)\[src\]/);
   assert.match(photo('parallax_in', [4284, 5712]).graph, /^\[0:v\]scale=1920:2560:/);
   assert.match(photo('parallax_in', [4284, 5712]).notes.join(' '), /The picture is 4284x5712: the clip is made at 1920x2560/);
   assert.equal(encoder(photo('parallax_in', [4284, 5712])), '-threads 2 -x264-params rc-lookahead=10 -t 2');
@@ -104,7 +105,13 @@ function testBuilders(h) {
   const audioSpec = ops.buildImageToVideo(h.params('image.to_video', { duration: 2, fps: 25, zoom: 'parallax_right' }), [probeOf(320, 180), { audio: { codec: 'aac' }, duration: 2 }, probeOf(100, 60)], { depth: true });
   assert.match(audioSpec.graph, /\[2:v\]scale=/);
   assert.deepEqual(audioSpec.outputs[0].maps, ['[out]', '1:a:0']);
-  assert.deepEqual(audioSpec.inputOpts, [['-loop', '1', '-framerate', '25'], [], ['-loop', '1', '-framerate', '25']]);
+  assert.deepEqual(audioSpec.inputOpts, [['-framerate', '25'], [], ['-framerate', '25']]);
+  // the picture is decoded once for every motion (a 24 MP photo with its depth map: 719 instead of 1010 MB, the same frames)
+  for (const zoom of ['none', 'in', 'out', 'pan_left', 'parallax_in']) {
+    const spec = photo(zoom, [5712, 4284]);
+    assert.equal((spec.graph.match(/loop=loop=-1:size=1:start=0,setpts=N\/\(25\*TB\)/g) || []).length, zoom.startsWith('parallax') ? 2 : 1, zoom);
+    assert.ok(!spec.inputOpts.flat().includes('-loop'), `${zoom}: no -loop on the input`);
+  }
 
   // without a depth map: the matching travel or the zoom, with a line for the log
   for (const [zoom, fallback] of [['parallax_left', 'pan_left'], ['parallax_right', 'pan_right'], ['parallax_in', 'in']]) {

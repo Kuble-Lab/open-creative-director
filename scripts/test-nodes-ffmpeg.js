@@ -188,13 +188,13 @@ function testPureBuilders() {
   // video
   const clip = probeOf(320, 180, { duration: 3, audio: { codec: 'aac' } });
   const still = ops.buildImageToVideo(params('image.to_video', { duration: 5, fps: 30, zoom: 'none' }), [probeOf(321, 181)]);
-  assert.equal(still.chain, 'scale=322:182:flags=lanczos,fps=30,setsar=1,scale=out_range=tv,format=yuv420p');
-  assert.deepEqual(still.inputOpts, [['-loop', '1', '-framerate', '30']]);
+  assert.equal(still.chain, 'scale=322:182:flags=lanczos,loop=loop=-1:size=1:start=0,setpts=N/(30*TB),fps=30,setsar=1,scale=out_range=tv,format=yuv420p');
+  assert.deepEqual(still.inputOpts, [['-framerate', '30']]);
   assert.deepEqual(still.outputs[0].args, ['-t', '5']);
   const zoomed = ops.buildImageToVideo(params('image.to_video', { duration: 2, fps: 25, zoom: 'in' }), [probeOf(320, 180)]);
   assert.equal(
     zoomed.chain,
-    "scale=640:360:flags=lanczos,zoompan=z='1+0.2*on/50':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=320x180:fps=25,setsar=1,scale=out_range=tv,format=yuv420p"
+    "scale=640:360:flags=lanczos,loop=loop=-1:size=1:start=0,setpts=N/(25*TB),zoompan=z='1+0.2*on/50':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=320x180:fps=25,setsar=1,scale=out_range=tv,format=yuv420p"
   );
   assert.match(ops.buildImageToVideo(params('image.to_video', { duration: 2, fps: 25, zoom: 'out' }), [probeOf(4000, 2000)]).chain, /z='1\.2-0\.2\*on\/50'/);
   const withAudio = ops.buildImageToVideo(params('image.to_video', { duration: 5, match_audio: true }), [probeOf(320, 180), { audio: { codec: 'aac' }, duration: 7.5 }]);
