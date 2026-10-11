@@ -720,6 +720,10 @@ function testCloudImageUnits() {
   assert.match(agent, /^After=.*\bocd-render-pair\.service\b/m);
   assert.match(pair, /^RemainAfterExit=yes$/m, 'the pairing stays active, so the agent is never stopped with it');
   assert.match(pair, /^ConditionPathExists=!/m);
+  // the files written last reach the disk before the server is switched off (a cut power left them empty in a snapshot)
+  const cleanup = source.slice(source.indexOf('truncate -s 0 /etc/machine-id'));
+  assert.match(cleanup, /^\s*sync$/m, 'sync after the cleanup');
+  assert.ok(source.indexOf('cat > /etc/systemd/system/ocd-render-agent.service') < source.lastIndexOf('\n  sync\n'), 'sync comes after the units');
   const check = require('child_process').spawnSync('bash', ['-n', file], { encoding: 'utf8' });
   assert.equal(check.status, 0, check.stderr);
 }

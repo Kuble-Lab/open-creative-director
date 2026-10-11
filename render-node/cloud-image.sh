@@ -197,10 +197,13 @@ UNIT
   cloud-init clean --logs >/dev/null 2>&1 || true
   truncate -s 0 /etc/machine-id
   if [ -d /var/lib/dbus ]; then ln -sf /etc/machine-id /var/lib/dbus/machine-id; fi
+  # onto the disk now: «Power off» in the Hetzner Console (or the API action poweroff) cuts the power, and files written in
+  # the last seconds (the units, first-boot.sh) would be empty in the snapshot, which systemd reads as masked units
+  sync
 
-  say "Fertig. Jetzt: poweroff, in der Hetzner Console einen Snapshot dieses Servers erstellen, den Server löschen und die Snapshot-ID in der App eintragen." \
-      "Done. Now: poweroff, take a snapshot of this server in the Hetzner Console, delete the server and enter the snapshot id in the app." \
-      "Listo. Ahora: poweroff, crea un snapshot de este servidor en la Hetzner Console, elimina el servidor y escribe el ID del snapshot en la app."
+  say "Fertig. Jetzt hier im Server poweroff eingeben (nicht «Power off» in der Console, das schneidet den Strom ab), dann in der Hetzner Console einen Snapshot dieses Servers erstellen, den Server löschen und die Snapshot-ID in der App eintragen." \
+      "Done. Now type poweroff here on the server (not «Power off» in the Console, which cuts the power), then take a snapshot of this server in the Hetzner Console, delete the server and enter the snapshot id in the app." \
+      "Listo. Ahora escribe poweroff aquí en el servidor (no «Power off» en la Console, que corta la corriente), luego crea un snapshot de este servidor en la Hetzner Console, elimina el servidor y escribe el ID del snapshot en la app."
 }
 
 main "$@"
