@@ -21,7 +21,7 @@ const { createRenderQueue, filmSecondsOf } = require('../lib/render-queue');
 const { defaultMayServe } = require('../lib/rendernode');
 const runLib = require('../public/nodes/run');
 
-const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(200, 7)]);
+const MP4 = require('./support/render-test-video');
 const VERSIONS = { protocol: 1, agent: '1.0.0', hyperframes: '0.8.139', node: '22.17.0' };
 const page = (seconds) => `<!doctype html><html><body><div id="main-composition" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="${seconds}" data-fps="24"><video class="clip" data-start="0" data-duration="99"></video></div></body></html>`;
 

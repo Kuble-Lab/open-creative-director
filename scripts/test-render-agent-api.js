@@ -19,7 +19,7 @@ const ADMIN = 'admin@example.com';
 const ANNA = 'anna@example.com';
 const BEN = 'ben@example.com';
 const VERSIONS = { protocol: 1, agent: '1.0.0', hyperframes: '0.8.139', node: '22.17.0', ffmpeg: '6.1.1', ffmpegSource: 'bundled' };
-const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(300, 9)]);
+const MP4 = require('./support/render-test-video');
 const HTML = '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="main-composition" data-width="1920" data-height="1080">x</div></body></html>';
 
 const logged = [];
@@ -181,6 +181,8 @@ async function main() {
     const put = (token, body, type = 'application/octet-stream') => iso.request(`/api/render-agent/jobs/${job.jobId}/result`, { method: 'PUT', headers: bearer(token, { ...lease, 'Content-Type': type }), body });
     assert.equal((await put(annaToken, MP4, 'application/json')).status, 415);
     assert.equal((await put(annaToken, Buffer.from('<html>no video</html>'))).status, 422);
+    const retryPoll = await api('/api/render-agent/poll', { method: 'POST', headers: bearer(annaToken), json: { versions: VERSIONS } });
+    lease['X-Render-Lease'] = retryPoll.body.job.lease;
     assert.equal((await put(benToken, MP4)).status, 404);
     const done = await put(annaToken, MP4);
     assert.equal(done.status, 200, done.text);

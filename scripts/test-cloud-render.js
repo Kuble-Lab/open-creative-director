@@ -32,7 +32,7 @@ const cloudLib = require('../lib/cloud-render');
 const TOKEN = 'HzTestTokenAbcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLmnop';
 const APP = 'https://creator.example.com';
 const HTML = '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="main" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="20"></div></body></html>';
-const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(200, 7)]);
+const MP4 = require('./support/render-test-video');
 const VERSIONS = { protocol: 1, agent: '1.0.0', hyperframes: '0.8.139', node: '22.17.0' };
 const MINUTE = 60 * 1000;
 

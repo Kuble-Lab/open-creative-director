@@ -18,6 +18,22 @@ say() {
   esac
 }
 
+# Validate before downloading executable code; HTTP is an explicit opt-in off loopback.
+server_protocols() {
+  local address="$1" authority
+  [[ "$address" =~ ^https?://[^/?#@]+(/[^?#]*)?$ ]] || return 1
+  authority="${address#*://}"
+  authority="${authority%%/*}"
+  if [[ "$address" == https://* ]]; then
+    printf '=https'
+  elif [[ "$authority" =~ ^(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[::1\])(:[0-9]+)?$ ]] ||
+       [[ "${RENDER_AGENT_ALLOW_HTTP:-}" =~ ^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; then
+    printf '=http,https'
+  else
+    return 1
+  fi
+}
+
 main() {
   local server="" code="" dir="${HOME}/ocd-render-agent" name="" start="yes"
   while [ "$#" -gt 0 ]; do
@@ -37,6 +53,13 @@ main() {
     exit 2
   fi
   server="${server%/}"
+  local protocols
+  if ! protocols="$(server_protocols "$server")"; then
+    say "Die App muss über HTTPS erreichbar sein. HTTP nur lokal oder mit RENDER_AGENT_ALLOW_HTTP=1." \
+        "The app must use HTTPS. HTTP is allowed only on loopback or with RENDER_AGENT_ALLOW_HTTP=1." \
+        "La app debe usar HTTPS. HTTP solo está permitido en bucle local o con RENDER_AGENT_ALLOW_HTTP=1." >&2
+    exit 1
+  fi
 
   if ! command -v node >/dev/null 2>&1; then
     say "Node.js fehlt. Der Render-Agent braucht Node.js 22 oder neuer: https://nodejs.org/" \
@@ -70,7 +93,7 @@ main() {
   OCD_SETUP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ocd-render-agent.XXXXXX")"
   trap 'rm -rf "${OCD_SETUP_DIR:-}"' EXIT
   local tmp="$OCD_SETUP_DIR"
-  if ! curl -fsS -H "X-Render-Agent-Code: ${code}" -o "${tmp}/setup.js" "${server}/api/render-agent/package"; then
+  if ! curl --proto "$protocols" --proto-redir =https -fsS -H "X-Render-Agent-Code: ${code}" -o "${tmp}/setup.js" "${server}/api/render-agent/package"; then
     say "Das Paket konnte nicht geladen werden. Ist der Code noch gültig (10 Minuten)? Sonst in der App einen neuen holen." \
         "The package could not be loaded. Is the code still valid (10 minutes)? Otherwise get a new one in the app." \
         "No se pudo descargar el paquete. ¿Sigue siendo válido el código (10 minutos)? Si no, pide uno nuevo en la app." >&2

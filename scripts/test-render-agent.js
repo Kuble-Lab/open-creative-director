@@ -118,11 +118,16 @@ async function testHelpers() {
   assert.match(csp, /form-action 'none'/);
   assert.match(csp, /object-src 'none'/);
   assert.ok(!/connect-src[^;]*https?:/.test(csp));
-  const withCharset = agentLib.withContentSecurityPolicy(PAGE);
-  assert.ok(withCharset.startsWith('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy"'), 'first in the head, right after the charset');
-  assert.ok(agentLib.withContentSecurityPolicy('<html><head><script>x</script></head></html>').startsWith('<html><head><meta http-equiv="Content-Security-Policy"'));
-  assert.ok(agentLib.withContentSecurityPolicy('<html><body>x</body></html>').startsWith('<html><head><meta http-equiv="Content-Security-Policy"'));
-  assert.ok(agentLib.withContentSecurityPolicy('<div>x</div>').startsWith('<meta http-equiv="Content-Security-Policy"'));
+  for (const prefix of ['', '<html>', '<html><head>', '<head>', '<!doctype html>', '<!doctype html><html><head>']) {
+    const input = `${prefix}<script>fetch('/early')</script><meta charset="utf-8">`;
+    const output = agentLib.withContentSecurityPolicy(input);
+    assert.ok(output.indexOf('Content-Security-Policy') < output.indexOf('<script>'));
+    assert.ok(output.indexOf('Content-Security-Policy') < output.lastIndexOf('<meta charset'));
+    // the inserted charset and policy stay within the first 1024 bytes the browser reads for the encoding
+    assert.ok(output.indexOf('<meta charset="utf-8">') < 1024 && output.indexOf('<meta charset="utf-8">') < output.indexOf('Content-Security-Policy'));
+    if (prefix.startsWith('<!doctype')) assert.ok(output.startsWith('<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy"'));
+    else assert.ok(output.startsWith('<meta charset="utf-8"><meta http-equiv="Content-Security-Policy"'));
+  }
   assert.equal(agentLib.progressFrom('  ███░  26%  Capturing frame 1/60  ███ 41% '), 0.41);
   assert.equal(agentLib.progressFrom('no number'), null);
   assert.deepEqual(agentLib.normaliseServer('https://app.example.com/sub/', {}), { server: 'https://app.example.com/sub' });

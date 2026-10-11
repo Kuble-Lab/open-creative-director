@@ -27,7 +27,7 @@ const BEN = 'ben@example.com';
 const CARL = 'carl@example.com';
 const ADMIN = 'admin@example.com';
 const HTML = '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="main" data-width="1920" data-height="1080"></div></body></html>';
-const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(200, 7)]);
+const MP4 = require('./support/render-test-video');
 const quiet = { warn() {}, log() {} };
 
 // Teams: anna and ben in T1, carl in T2.
@@ -533,7 +533,7 @@ async function testRestart() {
 }
 
 async function testLimitsAndChecks() {
-  const { queue, computer, dir } = setup({ limits: { maxHtmlBytes: 200, maxAssetBytes: 1000, maxResultBytes: 500 } });
+  const { queue, computer, dir } = setup({ limits: { maxHtmlBytes: 200, maxAssetBytes: 1000, maxResultBytes: MP4.length + 300 } });
   const anna = computer(ANNA, 'Annas Mac');
   await poll(queue, anna);
   await expectQueueError(queue.enqueue({ html: 'x'.repeat(201), owner: ANNA }), 'TOO_LARGE', 413);
@@ -563,14 +563,17 @@ async function testLimitsAndChecks() {
   await expectQueueError(() => queue.progress(anna, '../etc', job.lease, {}), 'JOB_NOT_FOUND', 404);
   await expectQueueError(() => queue.progress(anna, jobId, 'abc', {}), 'JOB_NOT_FOUND', 404);
   // the result: size, type, empty
-  await expectQueueError(result(queue, anna, job, MP4, { contentLength: '501' }), 'TOO_LARGE', 413);
+  await expectQueueError(result(queue, anna, job, MP4, { contentLength: String(MP4.length + 301) }), 'TOO_LARGE', 413);
   await expectQueueError(result(queue, anna, job, Buffer.concat([MP4, Buffer.alloc(400)])), 'TOO_LARGE', 413);
   await expectQueueError(result(queue, anna, job, Buffer.from('<html>not a video</html>')), 'INVALID_RESULT', 422);
-  await expectQueueError(result(queue, anna, job, Buffer.alloc(0)), 'INVALID_RESULT', 422);
-  assert.equal(queue.status(jobId).status, 'running', 'a refused upload keeps the lease');
+  assert.equal(queue.status(jobId).status, 'pending', 'an invalid upload fails the attempt');
   assert.deepEqual(fs.readdirSync(path.join(dir, 'render-queue', jobId)).filter((name) => name.endsWith('.part')), [], 'no partial file stays');
-  await result(queue, anna, job);
-  assert.equal(queue.status(jobId).status, 'completed');
+  const retry = await poll(queue, anna);
+  await expectQueueError(result(queue, anna, retry, Buffer.alloc(0)), 'INVALID_RESULT', 422);
+  assert.equal(queue.status(jobId).status, 'failed');
+  const valid = await queue.enqueue({ html, owner: ANNA });
+  await result(queue, anna, await poll(queue, anna));
+  assert.equal(queue.status(valid.jobId).status, 'completed');
   await expectQueueError(queue.readResult('rq-nope'), 'JOB_NOT_FOUND', 404);
 }
 
