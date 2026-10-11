@@ -182,9 +182,70 @@ function testChanges() {
   assert.deepEqual(reread.listAgents().map((entry) => [entry.id, entry.owner]), [['ra-0123456789ab', 'h@example.com']]);
 }
 
+// System codes of render servers in the cloud (WP54) outlive a restart: on disk as a salted hash (mode 600), never as text;
+// a new process takes them, once; they expire, their uses are limited across restarts, and forgetting a server ends its code.
+function testSystemCodesOnDisk() {
+  const { file, clock, store, again } = setup();
+  const codesFile = path.join(path.dirname(file), agentsLib.CODES_FILE_NAME);
+  const one = store.createSystemPairingCode('cr-00000000000a');
+  const two = store.createSystemPairingCode('cr-00000000000b');
+  const person = store.createPairingCode('lokal');
+  assert.equal(fs.statSync(codesFile).mode & 0o777, 0o600);
+  const raw = fs.readFileSync(codesFile, 'utf8');
+  for (const code of [one.code, two.code]) assert.ok(!raw.includes(code) && !raw.includes(code.replace('-', '')), 'no code in plain text');
+  const entries = JSON.parse(raw).codes;
+  assert.equal(entries.length, 2, 'the codes of people stay in memory');
+  for (const entry of entries) {
+    assert.match(entry.salt, /^[0-9a-f]{32}$/);
+    assert.match(entry.hash, /^[0-9a-f]{64}$/);
+  }
+  assert.notEqual(entries[0].salt, entries[1].salt, 'a salt per code');
+  assert.ok(!fs.readdirSync(path.dirname(file)).some((name) => name.endsWith('.tmp')), 'written atomically');
+  // a restart: a new store reads the file; the code of a person is gone, the system codes are not
+  const next = again();
+  expectError(() => next.checkCode(person.code, '10.0.0.1'), 'INVALID_CODE', 401);
+  assert.equal(next.hasSystemCode('cr-00000000000a'), true);
+  const { agent } = next.pair({ code: one.code, ip: '10.0.0.2', name: 'cloud-a', versions: VERSIONS });
+  assert.equal(agent.cloud, 'cr-00000000000a');
+  assert.equal(next.hasSystemCode('cr-00000000000a'), false, 'used up');
+  // once, also for yet another process
+  expectError(() => again().pair({ code: one.code, ip: '10.0.0.2', name: 'cloud-a', versions: VERSIONS }), 'INVALID_CODE', 401);
+  // the uses of a code count across restarts
+  for (let i = 0; i < LIMITS.codeUses; i += 1) again().checkCode(two.code, `10.0.1.${i}`);
+  expectError(() => again().checkCode(two.code, '10.0.2.1'), 'INVALID_CODE', 401);
+  assert.equal(again().hasSystemCode('cr-00000000000b'), false, 'a code used too often leaves the file');
+  // expiry: after 15 minutes the code stops working and leaves the file
+  const three = again().createSystemPairingCode('cr-00000000000c');
+  clock.now += LIMITS.systemCodeTtlMs;
+  const later = again();
+  expectError(() => later.checkCode(three.code, '10.0.3.1'), 'INVALID_CODE', 401);
+  assert.deepEqual(JSON.parse(fs.readFileSync(codesFile, 'utf8')).codes, []);
+  // forgetting the server (its creation failed, it was deleted) ends its code for every process
+  const four = later.createSystemPairingCode('cr-00000000000d');
+  later.forgetSystemCode('cr-00000000000d');
+  expectError(() => again().checkCode(four.code, '10.0.4.1'), 'INVALID_CODE', 401);
+  // a damaged file is no code at all
+  fs.writeFileSync(codesFile, JSON.stringify({ version: 1, codes: [{ salt: 'x', hash: 'y', cloud: 'cr-00000000000e', createdAt: 0, expiresAt: Date.now() * 2, uses: 0 }] }));
+  assert.equal(again().hasSystemCode('cr-00000000000e'), false);
+  fs.writeFileSync(codesFile, '{');
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.equal(again().hasSystemCode('cr-00000000000e'), false);
+  } finally {
+    console.warn = warn;
+  }
+  // the versions a snapshot was built with are kept with the computer
+  const five = again().createSystemPairingCode('cr-00000000000f');
+  const paired = again().pair({ code: five.code, ip: '10.0.5.1', name: 'cloud-f', versions: { ...VERSIONS, imageHyperframes: '0.8.120', imageNode: '22.11.0' } });
+  assert.equal(again().getAgent(paired.agent.id).versions.imageHyperframes, '0.8.120');
+  assert.equal(again().getAgent(paired.agent.id).versions.imageNode, '22.11.0');
+}
+
 testCodes();
 testLimits();
 testTokens();
 testChanges();
-console.log('Eigene Rechner (Speicher): Codes, Limits, Token als Hash, Datei mit Modus 600, Neustart, Änderungen und Entfernen sind korrekt.');
+testSystemCodesOnDisk();
+console.log('Eigene Rechner (Speicher): Codes, Limits, Token als Hash, Datei mit Modus 600, Neustart, Kopplungscodes der Render-Server als Hash über einen Neustart, Änderungen und Entfernen sind korrekt.');
 console.log('test-render-agents-store.js: ok');

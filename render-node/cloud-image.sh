@@ -6,6 +6,8 @@
 #
 #   curl -fsSL <app>/api/render-agent/cloud-image.sh | sudo bash -s -- --server <app> --code <code>
 #
+# render-node/cloud-snapshot.py does all of it (server, this script, a clean shutdown, the snapshot, deleting the server).
+#
 # What it does: fetches the package of the agent with the code (first, before the slow steps: the code lasts 10 minutes),
 # installs Node.js 22 (NodeSource), unzip, the libraries of Chrome and the fonts, makes the user ocdrender (not "render": that
 # group exists on Ubuntu), installs the agent into /opt/ocd-render-agent without pairing it (setup.js --update: npm ci, the
@@ -103,6 +105,12 @@ main() {
 
   # 6. the first start and the agent
   install -d -m 755 "$LIB_DIR"
+  # the versions of this snapshot: the agent reports them (OCD_IMAGE_FILE), and the app says when the snapshot is outdated
+  local hyperframes node_version
+  hyperframes="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version || ""))' "${AGENT_DIR}/node_modules/hyperframes/package.json" 2>/dev/null || true)"
+  node_version="$(node -p 'process.versions.node')"
+  printf '{"hyperframes":"%s","node":"%s","builtAt":"%s"}\n' "${hyperframes:-unknown}" "$node_version" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${LIB_DIR}/image.json"
+  chmod 644 "${LIB_DIR}/image.json"
   cat > "${LIB_DIR}/first-boot.sh" <<'FIRSTBOOT'
 #!/usr/bin/env bash
 # First start of a render server made from the snapshot (WP54): the pairing comes from user_data (cloud-init writes
@@ -169,6 +177,7 @@ User=${AGENT_USER}
 Group=${AGENT_USER}
 WorkingDirectory=${AGENT_DIR}
 Environment=HOME=${AGENT_HOME}
+Environment=OCD_IMAGE_FILE=${LIB_DIR}/image.json
 ExecStart=/usr/bin/node ${AGENT_DIR}/agent.js
 Restart=on-failure
 RestartSec=5

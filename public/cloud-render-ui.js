@@ -8,7 +8,7 @@
 //   OCCloudRender.rerender()                    language change
 //
 // The section shows the status (phase, the servers with their age, state and cost, the month against the cap, the last
-// error, servers of another installation in the project) and the settings: on/off, the Hetzner API token (only written: the page shows «set» or «not set», never the token),
+// error, an outdated snapshot, servers of another installation in the project) and the settings: on/off, the Hetzner API token (only written: the page shows «set» or «not set», never the token),
 // server type, location, snapshot id, SSH key, mode, servers at most and the monthly cap; and «Delete servers now».
 // Everything from the server is written as text, never as HTML.
 (function (global) {
@@ -72,6 +72,16 @@
     return tr(`cloud.phase.${phase}`);
   }
 
+  // The notice when the snapshot is outdated (status.snapshot of lib/cloud-render.js): one line per version that differs, or
+  // one when the snapshot is older than the report of its versions.
+  function snapshotLines(status) {
+    const snapshot = status && status.snapshot;
+    if (!snapshot || !snapshot.found) return [];
+    const lines = (snapshot.problems || []).map((item) => tr('cloud.snapshotOutdated', { name: item.name, found: item.found, expected: item.expected }));
+    if (!lines.length && snapshot.unknown) lines.push(tr('cloud.snapshotUnknown'));
+    return lines;
+  }
+
   function serverLine(server) {
     const parts = [tr(`cloud.server.${server.status}`) || server.status, ageText(server.ageSeconds), euro(server.costEur)];
     if (server.rendering) parts.push(tr('cloud.server.rendering'));
@@ -116,6 +126,7 @@
       const when = Number.isNaN(at.getTime()) ? '' : at.toLocaleString(typeof global.getLang === 'function' && global.getLang() === 'de' ? 'de-CH' : undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       box.append(h('div', { class: 'cloud-render-error', role: 'status', text: tr('cloud.lastError', { when, message: status.lastError.message || status.lastError.code || '' }) }));
     }
+    for (const line of snapshotLines(status)) box.append(h('div', { class: 'cloud-render-error cloud-render-snapshot', role: 'status', text: line }));
     const foreign = status.foreign || [];
     if (foreign.length) {
       const names = foreign.map((server) => `${server.name} (${ageText(server.ageSeconds)})`).join(', ');
@@ -315,5 +326,5 @@
     if (state.slot && state.status) render();
   }
 
-  global.OCCloudRender = { mount, load: () => load(), rerender, helpers: { euro, ageText, phaseText, serverLine } };
+  global.OCCloudRender = { mount, load: () => load(), rerender, helpers: { euro, ageText, phaseText, serverLine, snapshotLines } };
 })(window);
