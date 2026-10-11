@@ -4,8 +4,9 @@
 #
 #   curl -fsSL <app>/api/render-agent/install.sh | bash -s -- --server <app> --code <code> [--dir <folder>] [--name <name>]
 #
-# Needs Node.js 22 or newer (with npm) and curl. Fetches the package (setup.js) with the code and runs it: it installs the
-# agent into ~/ocd-render-agent, pairs the computer and starts the agent in the foreground.
+# Needs Node.js 22 or newer (with npm) and curl, on Linux also unzip. Fetches the package (setup.js) with the code and runs it:
+# it pairs the computer first (the code lasts 10 minutes), installs the agent into ~/ocd-render-agent and starts it in the
+# foreground.
 set -euo pipefail
 OCD_SETUP_DIR=""
 
@@ -55,6 +56,14 @@ main() {
     say "npm fehlt (es gehört zu Node.js): https://nodejs.org/" \
         "npm is missing (it comes with Node.js): https://nodejs.org/" \
         "Falta npm (viene con Node.js): https://nodejs.org/" >&2
+    exit 1
+  fi
+  # Linux: without unzip the browser download of HyperFrames hangs for minutes and then fails (WP54). Checked before the
+  # code is used, so the same command works again after the installation.
+  if [ "$(uname -s 2>/dev/null || echo unknown)" = "Linux" ] && ! command -v unzip >/dev/null 2>&1; then
+    say "unzip fehlt (HyperFrames braucht es für seinen Browser). Installieren, z. B. mit: sudo apt-get install -y unzip (Debian, Ubuntu) oder sudo dnf install -y unzip (Fedora). Danach diesen Befehl noch einmal ausführen; der Code gilt 10 Minuten." \
+        "unzip is missing (HyperFrames needs it for its browser). Install it, e.g. with: sudo apt-get install -y unzip (Debian, Ubuntu) or sudo dnf install -y unzip (Fedora). Then run this command again; the code is valid for 10 minutes." \
+        "Falta unzip (HyperFrames lo necesita para su navegador). Instálalo, p. ej. con: sudo apt-get install -y unzip (Debian, Ubuntu) o sudo dnf install -y unzip (Fedora). Después vuelve a ejecutar este comando; el código vale 10 minutos." >&2
     exit 1
   fi
 

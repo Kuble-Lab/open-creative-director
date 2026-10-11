@@ -62,6 +62,10 @@ const ROUTE_RULES = {
   'POST /api/rendernodes': 'admin',
   'PATCH /api/rendernodes/:id': 'admin',
   'DELETE /api/rendernodes/:id': 'admin',
+  // render servers in the cloud (WP54): settings with the Hetzner token, status, «delete now»
+  'GET /api/cloud-render': 'admin',
+  'PUT /api/cloud-render': 'admin',
+  'POST /api/cloud-render/delete-servers': 'admin',
   'GET /api/higgsfield/status': 'admin',
   'POST /api/higgsfield/connect': 'admin',
   'GET /api/higgsfield/oauth/callback': 'admin', // browser callback of the admin's own login
@@ -208,6 +212,10 @@ const PARTICIPANT_RULES = {
   'POST /api/rendernodes': 'admin',
   'PATCH /api/rendernodes/:id': 'admin',
   'DELETE /api/rendernodes/:id': 'admin',
+  // render servers in the cloud (WP54): settings with the Hetzner token, status, «delete now»
+  'GET /api/cloud-render': 'admin',
+  'PUT /api/cloud-render': 'admin',
+  'POST /api/cloud-render/delete-servers': 'admin',
   'GET /api/higgsfield/status': 'admin',
   'POST /api/higgsfield/connect': 'admin',
   'GET /api/higgsfield/oauth/callback': 'admin',

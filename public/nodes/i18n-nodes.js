@@ -350,6 +350,15 @@
     ['nodes.statusHint.queued', 'Wartet auf freie Kapazität.', 'Waiting for a free slot.', 'Esperando un hueco libre.'],
     ['nodes.statusHint.running', 'Wird gerade ausgeführt.', 'Running right now.', 'Ejecutándose ahora.'],
     ['nodes.statusHint.waiting_job', 'Der Anbieter bearbeitet den Auftrag. Das kann mehrere Minuten dauern.', 'The provider is processing the job. This can take several minutes.', 'El proveedor está procesando el trabajo. Puede tardar varios minutos.'],
+    ['nodes.statusHint.renderQueue', 'Der Film wartet auf einen freien Render-Rechner. Jeder Film zählt einmal, auch wenn er in Stücken gerendert wird; die Zeit ist eine Schätzung.', 'The film is waiting for a free render computer. Every film counts once, even when it is rendered in parts; the time is an estimate.', 'La película espera un ordenador de render libre. Cada película cuenta una vez, aunque se renderice por partes; el tiempo es una estimación.'],
+
+    /* the render queue (WP54): the place of the film, the server that starts, the part that is rendered */
+    ['nodes.queue.place', 'In der Warteschlange: Platz {position} von {total}', 'In the queue: place {position} of {total}', 'En la cola: puesto {position} de {total}'],
+    ['nodes.queue.eta', 'etwa {minutes} min', 'about {minutes} min', 'unos {minutes} min'],
+    ['nodes.queue.starting', 'Render-Server startet', 'Render server is starting', 'El servidor de render se está iniciando'],
+    ['nodes.queue.rendering', 'Wird gerendert', 'Rendering', 'Renderizando'],
+    ['nodes.queue.renderingChunk', 'Wird gerendert: Stück {chunk} von {chunks}', 'Rendering: part {chunk} of {chunks}', 'Renderizando: parte {chunk} de {chunks}'],
+    ['nodes.queue.remaining', 'noch etwa {minutes} min', 'about {minutes} min left', 'quedan unos {minutes} min'],
     ['nodes.statusHint.cached', 'Unverändert: Ergebnis aus dem Cache übernommen.', 'Unchanged: result taken from the cache.', 'Sin cambios: resultado tomado de la caché.'],
     ['nodes.statusHint.done', 'In diesem Lauf neu berechnet.', 'Computed in this run.', 'Calculado en esta ejecución.'],
     ['nodes.statusHint.error', 'Der Node ist fehlgeschlagen.', 'The node failed.', 'El nodo ha fallado.'],

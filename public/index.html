@@ -291,6 +291,11 @@
             <p class="settings-hint" data-i18n="agents.admin.hint">Eigene Rechner, die Personen verbunden haben. Sie rendern die Aufträge ihrer Besitzer (und auf Wunsch ihrer Teams). Entfernen sperrt den Rechner sofort.</p>
             <div id="renderAgentsAdminList" class="render-nodes-list"></div>
           </section>
+          <section class="settings-cloud-render" aria-labelledby="cloudRenderTitle">
+            <h3 id="cloudRenderTitle" class="settings-section-title" data-i18n="cloud.title">Render-Server bei Hetzner</h3>
+            <p class="settings-hint" data-i18n="cloud.hint">Wartet ein Film und ist kein Rechner frei, mietet die App einen Server bei Hetzner Cloud und löscht ihn wieder, bevor die bezahlte Stunde um ist.</p>
+            <div id="cloudRenderSlot" class="settings-slot" data-slot="cloud-render"></div>
+          </section>
           </div>
           <div id="settingsFeedback" class="settings-feedback hidden" aria-live="polite"></div>
         </div>
@@ -539,6 +544,7 @@
     <script src="team-groups.js"></script>
     <script src="mcp-ui.js"></script>
     <script src="render-agents-ui.js"></script>
+    <script src="cloud-render-ui.js"></script>
     <script src="email-list.js"></script>
     <script src="teams-ui.js"></script>
     <script src="access-client.js"></script>

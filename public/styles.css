@@ -1041,10 +1041,76 @@ code {
   font-size: 11px;
 }
 
+/* render servers in the cloud (WP54, public/cloud-render-ui.js) */
+.settings-cloud-render {
+  margin-top: 18px;
+}
+
+.cloud-render-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cloud-render-status-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.cloud-render-month {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.cloud-render-error {
+  padding: 8px 10px;
+  border: 1px solid rgba(224, 104, 95, 0.4);
+  border-radius: var(--radius-sm);
+  background: rgba(224, 104, 95, 0.09);
+  color: #f0a39c;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.cloud-render-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cloud-render-wide {
+  grid-column: 1 / -1;
+}
+
+.cloud-render-token-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cloud-render-token-row .render-node-field {
+  flex: 1 1 260px;
+}
+
+.cloud-render-token {
+  padding-bottom: 9px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.cloud-render-token.is-set {
+  color: #62c987;
+}
+
 @media (max-width: 760px) {
   .settings-row,
   .render-node-manager-row,
   .render-node-form,
+  .cloud-render-form,
   .admin-form,
   .higgsfield-connection-row,
   .chatgpt-connection-row {

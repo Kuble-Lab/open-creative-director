@@ -4,8 +4,11 @@
 // node_modules or a token), the checksums, the pinned versions (HyperFrames of the package = the version the app demands =
 // the lockfile; ffmpeg and ffprobe exact; every package from the npm registry with its integrity), the push nodes keep their
 // render-node/package.json, setup.js refuses odd paths and damaged files, and both installers. The bash installer runs for
-// real against a fake app on 127.0.0.1, with a fake npm on the PATH (no download): package with the code, files, npm ci,
-// the browser check, ffmpeg, pairing (agent.json with mode 600), then "node agent.js update" with the token and no code.
+// real against a fake app on 127.0.0.1, with a fake npm on the PATH (no download): package with the code, files, pairing
+// first (WP54: the code lasts 10 minutes, npm ci and the browser may take longer; agent.json with mode 600), npm ci, the browser
+// check, ffmpeg, then "node agent.js update" with the token and no code, and a second pairing that leaves npm ci out (same
+// lockfile, as on a render server in the cloud). On Linux install.sh refuses to start without unzip; the browser check has
+// a time limit.
 
 const assert = require('assert/strict');
 const crypto = require('crypto');
@@ -109,6 +112,24 @@ function testSetupChecks() {
   const raw = spawnSync(process.execPath, [path.join(RENDER_NODE, 'setup.js')], { encoding: 'utf8', env: { ...process.env, LANG: 'de_CH.UTF-8', LC_ALL: '', LC_MESSAGES: '' } });
   assert.equal(raw.status, 1);
   assert.match(raw.stderr, /kein Paket/);
+  // WP54: unzip only matters on Linux; the browser check ends after a few minutes (it hung for 10 without unzip)
+  assert.equal(setupLib.unzipMissing('darwin', () => assert.fail('not asked on macOS')), false);
+  assert.equal(setupLib.unzipMissing('win32', () => assert.fail('not asked on Windows')), false);
+  assert.equal(setupLib.unzipMissing('linux', () => ({ status: 0 })), false);
+  assert.equal(setupLib.unzipMissing('linux', () => ({ status: null, error: Object.assign(new Error('spawn unzip ENOENT'), { code: 'ENOENT' }) })), true);
+  assert.ok(setupLib.BROWSER_TIMEOUT_MS >= 60 * 1000 && setupLib.BROWSER_TIMEOUT_MS <= 5 * 60 * 1000, 'a few minutes, not ten');
+  // npm ci is left out only for node_modules installed from exactly this lockfile
+  const lockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocd-setup-lock-'));
+  fs.writeFileSync(path.join(lockDir, 'package-lock.json'), '{"lockfileVersion":3}\n');
+  assert.equal(setupLib.installedFromLock(lockDir), false, 'no node_modules');
+  fs.mkdirSync(path.join(lockDir, 'node_modules', 'hyperframes'), { recursive: true });
+  fs.writeFileSync(path.join(lockDir, 'node_modules', 'hyperframes', 'package.json'), '{}');
+  assert.equal(setupLib.installedFromLock(lockDir), false, 'no marker');
+  setupLib.markInstalled(lockDir);
+  assert.equal(setupLib.installedFromLock(lockDir), true);
+  fs.writeFileSync(path.join(lockDir, 'package-lock.json'), '{"lockfileVersion":3,"changed":true}\n');
+  assert.equal(setupLib.installedFromLock(lockDir), false, 'another lockfile installs again');
+  fs.rmSync(lockDir, { recursive: true, force: true });
 }
 
 function testInstallerTexts() {
@@ -167,11 +188,13 @@ function fakeTools(dir) {
     ''
   ].join('\n'));
   fs.writeFileSync(path.join(bin, 'npm'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
+  // a Linux machine that runs the test needs unzip for install.sh (WP54)
+  fs.writeFileSync(path.join(bin, 'unzip'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   return bin;
 }
 
-async function fakeApp(packageText) {
-  const seen = { pair: [], packages: [] };
+async function fakeApp(packageText, { onPair } = {}) {
+  const seen = { pair: [], packages: [], pairedBeforeInstall: [] };
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
@@ -191,6 +214,7 @@ async function fakeApp(packageText) {
       if (req.method === 'POST' && url.pathname === '/api/render-agent/pair') {
         const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
         seen.pair.push(body);
+        if (typeof onPair === 'function') seen.pairedBeforeInstall.push(onPair());
         res.writeHead(201, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ token: TOKEN, agent: { id: 'ra-0123456789ab', name: body.name, owner: 'anna@example.com' } }));
       }
@@ -227,7 +251,8 @@ async function testBashInstaller(packageText) {
   fs.mkdirSync(tmp);
   const bin = fakeTools(home);
   const target = path.join(home, 'mein agent');
-  const app = await fakeApp(packageText);
+  // WP54: the pairing comes before npm ci (node_modules is not there yet when the app is asked)
+  const app = await fakeApp(packageText, { onPair: () => !fs.existsSync(path.join(target, 'node_modules')) });
   const env = {
     PATH: [bin, path.dirname(process.execPath), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(path.delimiter),
     HOME: home,
@@ -270,7 +295,10 @@ async function testBashInstaller(packageText) {
     assert.equal(app.seen.pair.length, 1);
     assert.equal(app.seen.pair[0].code, CODE);
     assert.equal(app.seen.pair[0].name, 'Test Mac');
-    assert.deepEqual(app.seen.pair[0].versions, { protocol: 1, agent: agentLib.AGENT_VERSION, hyperframes: routesLib.HYPERFRAMES_VERSION, node: process.versions.node, ffmpeg: '6.0', ffmpegSource: 'bundled' });
+    // paired first, with the versions of the package (ffmpeg comes with the first poll of the agent)
+    assert.deepEqual(app.seen.pairedBeforeInstall, [true], 'paired before npm ci');
+    assert.deepEqual(app.seen.pair[0].versions, { protocol: 1, agent: agentLib.AGENT_VERSION, hyperframes: routesLib.HYPERFRAMES_VERSION, node: process.versions.node });
+    assert.ok(result.output.indexOf('Gekoppelt als') < result.output.indexOf('Installiere HyperFrames'), result.output);
     const credentials = path.join(target, 'agent.json');
     assert.equal(fs.statSync(credentials).mode & 0o777, 0o600);
     assert.equal(JSON.parse(fs.readFileSync(credentials, 'utf8')).token, TOKEN);
@@ -289,6 +317,25 @@ async function testBashInstaller(packageText) {
     const status = await run(process.execPath, [path.join(target, 'agent.js'), 'status'], { env, cwd: home });
     assert.match(status.output, /Gekoppelt mit http:\/\/127\.0\.0\.1:\d+ als «Test Mac» \(ra-0123456789ab\)\./);
     assert.ok(!status.output.includes(TOKEN.slice(5)));
+    // a second pairing into the same folder (the first start of a render server from its snapshot, WP54): same lockfile, no npm ci
+    const again = await run('bash', [path.join(RENDER_NODE, 'install.sh'), '--server', app.url, '--code', CODE, '--dir', target, '--name', 'Cloud', '--no-start'], { env });
+    assert.equal(again.status, 0, again.output);
+    assert.match(again.output, /HyperFrames [0-9.]+ ist schon installiert \(gleiche Lock-Datei\)\./);
+    assert.equal(fs.readFileSync(path.join(home, 'npm-calls.txt'), 'utf8').trim().split('\n').length, 2, 'npm ci left out');
+    assert.equal(app.seen.pair.length, 2);
+    assert.equal(fs.readFileSync(path.join(home, 'hyperframes-calls.txt'), 'utf8'), 'browser ensure\nbrowser ensure\nbrowser ensure\n', 'the browser is still checked');
+    // Linux without unzip: install.sh stops before it uses the code (a fake uname, a PATH without unzip)
+    const linux = path.join(home, 'linux-bin');
+    fs.mkdirSync(linux);
+    fs.writeFileSync(path.join(linux, 'uname'), '#!/bin/sh\necho Linux\n', { mode: 0o755 });
+    fs.symlinkSync(process.execPath, path.join(linux, 'node'));
+    fs.symlinkSync(path.join(bin, 'npm'), path.join(linux, 'npm'));
+    const packagesBefore = app.seen.packages.length;
+    const noUnzip = await run('/bin/bash', [path.join(RENDER_NODE, 'install.sh'), '--server', app.url, '--code', CODE, '--dir', path.join(home, 'linux')], { env: { ...env, PATH: linux } });
+    assert.equal(noUnzip.status, 1, noUnzip.output);
+    assert.match(noUnzip.output, /unzip fehlt .*sudo apt-get install -y unzip/);
+    assert.equal(app.seen.packages.length, packagesBefore, 'the code was not used');
+    assert.ok(!fs.existsSync(path.join(home, 'linux')));
   } finally {
     await app.close();
     fs.rmSync(home, { recursive: true, force: true });

@@ -30,7 +30,7 @@
       targets: [],
       active: false,
       status: 'idle', // idle | running | completed | failed | cancelled | interrupted | finished
-      nodes: {}, // nodeId -> { status, message?, code?, data?, progress?, startedAt?, endedAt?, entryId? }
+      nodes: {}, // nodeId -> { status, message?, code?, data?, progress?, queue?, startedAt?, endedAt?, entryId? }
       logs: {}, // nodeId -> [label]
       cost: { usd: 0, credits: 0 },
       error: null,
@@ -94,6 +94,10 @@
     else delete next.data;
     if (event.progress && isNumber(event.progress.done) && isNumber(event.progress.total)) next.progress = { done: event.progress.done, total: event.progress.total };
     else if (isFinal(status)) delete next.progress;
+    // the place of the film in the render queue (WP54): only while the node waits for its render
+    const queue = status === 'waiting_job' ? cleanQueue(event.queue) : null;
+    if (queue) next.queue = queue;
+    else delete next.queue;
     return { ...base, active: base.active || !isFinal(status), status: base.status === 'idle' ? 'running' : base.status, nodes: { ...base.nodes, [event.nodeId]: next } };
   }
 
@@ -161,6 +165,35 @@
     return Object.entries(state.nodes)
       .filter(([nodeId, node]) => node.status === 'waiting_job' || (node.status === 'running' && Boolean(isPaid && isPaid(nodeId))))
       .map(([nodeId]) => nodeId);
+  }
+
+  /* ---------- the render queue (WP54) ---------- */
+
+  const QUEUE_PHASES = ['queued', 'starting', 'rendering'];
+
+  function cleanQueue(raw) {
+    if (!raw || typeof raw !== 'object' || !QUEUE_PHASES.includes(raw.phase)) return null;
+    const out = { phase: raw.phase };
+    for (const key of ['position', 'total', 'chunk', 'chunks', 'etaSeconds']) {
+      if (isNumber(raw[key]) && raw[key] >= 0) out[key] = Math.round(raw[key]);
+    }
+    return out;
+  }
+
+  // «In der Warteschlange: Platz 2 von 3, etwa 4 min», «Render-Server startet, etwa 1 min», «Wird gerendert: Stück 2 von 3».
+  // `tr(key, vars)` is the translation of the page; the minutes are rounded up (at least 1).
+  function queueText(queue, tr) {
+    const info = cleanQueue(queue);
+    if (!info || typeof tr !== 'function') return '';
+    const minutes = isNumber(info.etaSeconds) ? Math.max(1, Math.ceil(info.etaSeconds / 60)) : null;
+    const eta = minutes === null ? '' : tr('nodes.queue.eta', { minutes });
+    if (info.phase === 'rendering') {
+      const base = info.chunks > 1 ? tr('nodes.queue.renderingChunk', { chunk: info.chunk, chunks: info.chunks }) : tr('nodes.queue.rendering');
+      return eta ? `${base}, ${tr('nodes.queue.remaining', { minutes })}` : base;
+    }
+    if (info.phase === 'starting') return eta ? `${tr('nodes.queue.starting')}, ${eta}` : tr('nodes.queue.starting');
+    const place = tr('nodes.queue.place', { position: info.position || 1, total: Math.max(info.total || 1, info.position || 1) });
+    return eta ? `${place}, ${eta}` : place;
   }
 
   /* ---------- formatting ---------- */
@@ -478,6 +511,7 @@
     formatUsd,
     formatCredits,
     costParts,
+    queueText,
     nodeResults,
     selectedRef,
     selectedEntry,
@@ -681,6 +715,11 @@
       if ((status === 'running' || status === 'waiting_job') && run && run.startedAt) slot.since = run.startedAt;
       if (isActive(status) && run && run.progress) slot.progress = run.progress;
       if (status === 'waiting_job' && run && !run.progress) slot.tooltip = T('nodes.statusHint.waiting_job');
+      // the film waits in the render queue (WP54): its place, or the server that starts, or the chunk that is rendered
+      if (status === 'waiting_job' && run && run.queue) {
+        slot.message = queueText(run.queue, T);
+        slot.tooltip = T('nodes.statusHint.renderQueue');
+      }
 
       // preview of the selected result (inputs already show their asset in the widget)
       let items = [];

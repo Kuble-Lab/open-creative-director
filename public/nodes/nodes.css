@@ -970,6 +970,14 @@
   color: var(--text-dim);
 }
 
+/* the place of the film in the render queue (WP54): information, not a fault */
+.nv-node[data-status='waiting_job'] .nv-node-msg {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  user-select: none;
+}
+
 /* run button in the header (appears on hover / selection) */
 .nv-node-run {
   flex: none;
@@ -6243,6 +6251,22 @@ button.nv-scene-preview:focus-visible {
   font-size: 12px;
   color: var(--text-dim);
   overflow-wrap: anywhere;
+}
+
+/* the place of the film in the render queue (WP54) */
+.nv-appstatus-queue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.nv-appstatus-queue svg {
+  flex: none;
+  color: var(--nv-status-running);
 }
 
 .nv-appprogress {
