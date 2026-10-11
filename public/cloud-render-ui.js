@@ -8,7 +8,7 @@
 //   OCCloudRender.rerender()                    language change
 //
 // The section shows the status (phase, the servers with their age, state and cost, the month against the cap, the last
-// error) and the settings: on/off, the Hetzner API token (only written: the page shows «set» or «not set», never the token),
+// error, servers of another installation in the project) and the settings: on/off, the Hetzner API token (only written: the page shows «set» or «not set», never the token),
 // server type, location, snapshot id, SSH key, mode, servers at most and the monthly cap; and «Delete servers now».
 // Everything from the server is written as text, never as HTML.
 (function (global) {
@@ -116,6 +116,11 @@
       const when = Number.isNaN(at.getTime()) ? '' : at.toLocaleString(typeof global.getLang === 'function' && global.getLang() === 'de' ? 'de-CH' : undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       box.append(h('div', { class: 'cloud-render-error', role: 'status', text: tr('cloud.lastError', { when, message: status.lastError.message || status.lastError.code || '' }) }));
     }
+    const foreign = status.foreign || [];
+    if (foreign.length) {
+      const names = foreign.map((server) => `${server.name} (${ageText(server.ageSeconds)})`).join(', ');
+      box.append(h('div', { class: 'cloud-render-error', role: 'status', text: tr('cloud.foreign', { count: foreign.length, names }) }));
+    }
     if (status.backoffUntil) {
       const until = new Date(status.backoffUntil);
       if (!Number.isNaN(until.getTime())) box.append(h('div', { class: 'settings-hint', text: tr('cloud.backoffUntil', { time: until.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) }) }));
@@ -177,7 +182,8 @@
     const cap = h('input', { class: 'settings-input', type: 'number', min: '0', max: '10000', step: '1', value: String(settings.monthlyCapEur ?? 30) });
     const save = h('button', { class: 'branding-manager-action', type: 'submit', text: tr('cloud.save') });
     const tokenState = h('span', { class: `cloud-render-token${settings.tokenSet ? ' is-set' : ''}`, text: settings.tokenSet ? tr('cloud.tokenSet') : tr('cloud.tokenNotSet') });
-    const clearToken = settings.tokenSet ? h('button', { type: 'button', class: 'branding-manager-action danger', text: tr('cloud.tokenRemove') }) : null;
+    // while servers exist the token stays (they can only be deleted with it); the server says so as well
+    const clearToken = settings.tokenSet && !(status.servers || []).length ? h('button', { type: 'button', class: 'branding-manager-action danger', text: tr('cloud.tokenRemove') }) : null;
     const form = h(
       'form',
       { class: 'render-node-form cloud-render-form', novalidate: true },

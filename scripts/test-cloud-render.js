@@ -8,7 +8,10 @@
 // in the ledger; a server that does not pair; refusals of the API with a backoff and no loop (401, resource_unavailable);
 // the reconcile (unknown servers and those of the hard limit deleted and booked, gone ones booked out, computers without a
 // server removed); a restart (state, ledger and settings in files of mode 600; a server that had not paired is deleted);
-// the token never in a log, a status or an error; with the cloud off everything is as before. A fake clock.
+// the token never in a log, a status or an error; with the cloud off everything is as before. A server is online from the
+// first request of its computer, not from the pairing (one that paired and stays silent is deleted after the boot time, one
+// that falls silent after offlineMs); the token stays while servers exist (except when Hetzner refuses it); the id of the
+// installation survives a lost state.json, and servers of another id are shown, not deleted. A fake clock.
 
 const assert = require('assert/strict');
 const fs = require('fs');
@@ -44,6 +47,8 @@ async function fakeHetzner(clock) {
     requests: [],
     nextId: 1000,
     failCreate: null, // { status, code, message }
+    failDelete: null, // { status, code, message }
+    tokens: new Map([[TOKEN, 'p1']]), // token -> project (a server without one is in p1)
     available: true,
     echoToken: false,
     url: ''
@@ -59,7 +64,10 @@ async function fakeHetzner(clock) {
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(value));
       };
-      if (req.headers.authorization !== `Bearer ${TOKEN}`) {
+      const bearer = String(req.headers.authorization || '').replace(/^Bearer /, '');
+      const project = api.tokens.get(bearer);
+      const inProject = (item) => (item.project || 'p1') === project;
+      if (!project) {
         // a careless API could repeat what it got: the manager must not pass it on
         return send(401, { error: { code: 'unauthorized', message: `unable to authenticate ${api.echoToken ? req.headers.authorization : ''}`.trim() } });
       }
@@ -86,6 +94,7 @@ async function fakeHetzner(clock) {
           status: 'initializing',
           created: new Date(clock.now).toISOString(),
           labels: body.labels,
+          project,
           server_type: { name: body.server_type, prices: [{ location: body.location, price_hourly: { net: '0.1300000000', gross: '0.1547000000' } }] },
           datacenter: { name: `${body.location}-dc3`, location: { name: body.location } },
           user_data: body.user_data
@@ -96,13 +105,14 @@ async function fakeHetzner(clock) {
       const match = /^\/v1\/servers\/(\d+)$/.exec(url.pathname);
       if (req.method === 'DELETE' && match) {
         const id = Number(match[1]);
-        if (!api.servers.has(id)) return send(404, { error: { code: 'not_found', message: 'server not found' } });
+        if (api.failDelete) return send(api.failDelete.status, { error: { code: api.failDelete.code, message: api.failDelete.message } });
+        if (!api.servers.has(id) || !inProject(api.servers.get(id))) return send(404, { error: { code: 'not_found', message: 'server not found' } });
         api.servers.delete(id);
         return send(200, { action: { id: 2, command: 'delete_server', status: 'running' } });
       }
       if (req.method === 'GET' && url.pathname === '/v1/servers') {
         const wanted = String(url.searchParams.get('label_selector') || '').split(',').filter(Boolean).map((pair) => pair.split('='));
-        const list = [...api.servers.values()].filter((item) => wanted.every(([key, value]) => item.labels?.[key] === value));
+        const list = [...api.servers.values()].filter((item) => inProject(item) && wanted.every(([key, value]) => item.labels?.[key] === value));
         return send(200, { servers: list, meta: { pagination: { page: 1, per_page: 50, next_page: null, total_entries: list.length } } });
       }
       return send(404, { error: { code: 'not_found', message: 'unknown path' } });
@@ -218,12 +228,19 @@ async function testStartPairRenderDelete() {
     assert.equal(agent.shareAll, true);
     assert.equal(agent.cloud, created.labels['ocd-server']);
     assert.throws(() => env.agents.pair({ code: codeOf(created), ip: '203.0.113.9', name: 'again', versions: VERSIONS }), /ungültig|abgelaufen/, 'the code works once');
+    // paired is not online: the first start still installs (npm ci, the browser, ffmpeg) before its agent asks for work
     await env.manager.tick();
-    assert.equal(env.manager.status().servers[0].status, 'online');
-    assert.equal(env.manager.status().bootSeconds, 55, 'the measured start moves the estimate (60 and 50)');
-    // it takes the job (it renders for everybody) and renders it
+    assert.equal(env.manager.status().servers[0].status, 'booting');
+    assert.equal(env.manager.status().phase, 'starting');
+    assert.equal(env.manager.standby().starting, 1);
+    assert.equal(env.manager.status().bootSeconds, 60);
+    // its agent asks 30 s later: it takes the job (it renders for everybody), and the server is online from then on
+    clock.now += 30 * 1000;
     const job = await poll(queue, agent);
     assert.equal(job.jobId, jobId);
+    await env.manager.tick();
+    assert.equal(env.manager.status().servers[0].status, 'online');
+    assert.equal(env.manager.status().bootSeconds, 70, 'the start is measured to the first request (80 s), not to the pairing (50 s)');
     assert.equal(job.label, '', 'the server never sees the label of a person');
     queue.progress(agent, job.jobId, job.lease, { progress: 0.5 });
     assert.equal(queue.filmStatus({ group: 'run-1:hud' }).phase, 'rendering');
@@ -528,12 +545,13 @@ async function testReconcile() {
     await env.manager.reconcile();
     assert.ok(!api.servers.has(5001), 'the unknown server of this installation is deleted');
     assert.ok(api.servers.has(5002), 'a server of another installation is not touched');
+    assert.deepEqual(env.manager.status().foreign.map((item) => [item.name, item.serverId, item.instance]), [['other-app', 5002, 'ffffffffffff']], 'but shown');
     assert.ok(api.servers.has(ours.id), 'ours stays');
     assert.equal(agents.getAgent(orphan.id), null, 'a computer without a server is removed');
     assert.ok(agents.getAgent(agent.id));
     const ledger = JSON.parse(fs.readFileSync(path.join(env.dir, 'cloud-render', 'ledger.json'), 'utf8'));
     assert.ok(ledger.entries.some((entry) => entry.serverId === 5001 && entry.endedAt), 'the stray server is booked');
-    assert.ok(api.requests.every((entry) => entry.method !== 'GET' || entry.path !== '/v1/servers' || /label_selector=ocd-render%3Dcloud%2Cocd-instance%3D[0-9a-f]{12}/.test(entry.query)), 'listed by our labels only');
+    assert.ok(api.requests.every((entry) => entry.method !== 'GET' || entry.path !== '/v1/servers' || entry.query.startsWith('?label_selector=ocd-render%3Dcloud&')), 'listed by the label of the render servers');
     // ours is deleted at Hetzner by somebody else: booked out, its computer removed
     api.servers.delete(ours.id);
     await env.manager.reconcile();
@@ -586,6 +604,238 @@ async function testRestart() {
     // the same instance id after the restart (the labels of its servers)
     await manager.reconcile();
     assert.ok(api.servers.has(paired.id), 'still known after the restart');
+  } finally {
+    await api.close();
+  }
+}
+
+async function testPairedButSilent() {
+  // The first start pairs before it installs. A server whose computer paired but never asks for work (npm ci, the browser
+  // or ffmpeg failed after the pairing) is not online: it counts as starting, no second server comes for the same film, and
+  // it is deleted after the boot time like one that never paired; three in a row pause the starts.
+  const env = await setup({ settings: { maxServers: 2, mode: 'first' }, limits: { backoffMs: [1000] } });
+  const { api, queue, clock } = env;
+  try {
+    await enqueue(queue, { group: 'run-2:hud' });
+    for (let round = 1; round <= 3; round += 1) {
+      await env.manager.tick();
+      assert.equal(api.count('POST', '/v1/servers'), round, `start ${round}`);
+      const created = lastServer(api);
+      const start = Date.parse(created.created);
+      clock.now = start + 60 * 1000;
+      pairServer(env, created);
+      for (let minute = 1; minute < 15; minute += 1) {
+        clock.now = start + minute * MINUTE;
+        await queue.sweep();
+        await env.manager.tick();
+        assert.equal(api.count('POST', '/v1/servers'), round, `minute ${minute}: no second server for one film`);
+        assert.equal(env.manager.status().servers[0].status, 'booting');
+        assert.equal(env.manager.standby().starting, 1);
+      }
+      assert.equal(queue.filmStatus({ group: 'run-2:hud' }).phase, 'starting');
+      clock.now = start + 15 * MINUTE;
+      await queue.sweep();
+      await env.manager.tick();
+      assert.equal(api.servers.size, 0, `paired and silent: deleted after 15 minutes (${round})`);
+      const status = env.manager.status();
+      assert.equal(status.lastError.code, 'boot_timeout');
+      assert.match(status.lastError.message, /gekoppelt, sein Agent fragt aber nicht ab/);
+      assert.equal(status.bootSeconds, 60, 'a server that never asked teaches nothing about the start time');
+      assert.equal(env.agents.listAgents().length, 0, 'its computer is removed with it');
+      clock.now += 2000;
+      await queue.sweep();
+    }
+    await env.manager.tick();
+    assert.equal(api.count('POST', '/v1/servers'), 3, 'three in a row: paused');
+    assert.equal(env.manager.status().phase, 'paused');
+    assert.ok(env.lines.some((line) => /gekoppelt, fragt aber nicht ab/.test(line)), env.lines.join('\n'));
+  } finally {
+    await api.close();
+  }
+}
+
+async function testSilentAfterOnline() {
+  // Online once, then its agent stops asking (it stopped for another version, or crashed) while a film waits: it renders
+  // nothing, so it is deleted after offlineMs and not kept until the hard limit; a new server starts for the film.
+  const env = await setup();
+  const { api, queue, clock } = env;
+  try {
+    await enqueue(queue);
+    await env.manager.tick();
+    const created = lastServer(api);
+    const { agent } = pairServer(env, created);
+    const job = await poll(queue, agent);
+    await env.manager.tick();
+    assert.equal(env.manager.status().servers[0].status, 'online');
+    await queue.acceptResult(agent, job.jobId, job.lease, Readable.from([MP4]));
+    await enqueue(queue);
+    for (const minutes of [1, 5, 10]) {
+      clock.now = Date.parse(created.created) + minutes * MINUTE - 1000;
+      await env.manager.tick();
+      assert.equal(api.count('DELETE', '/v1/servers/'), 0, `${minutes} min without a request: kept`);
+    }
+    clock.now = Date.parse(created.created) + 10 * MINUTE;
+    await env.manager.tick();
+    assert.equal(api.count('DELETE', '/v1/servers/'), 1, '10 minutes without a request: deleted');
+    assert.ok(env.lines.some((line) => /Rechner meldet sich nicht mehr/.test(line)), env.lines.join('\n'));
+    assert.equal(api.count('POST', '/v1/servers'), 2, 'and a new server for the waiting film');
+    // a restart of the app forgets when a computer last asked: the first look counts, nothing is deleted at once
+    const fresh = lastServer(api);
+    const { agent: second } = pairServer(env, fresh);
+    await poll(queue, second);
+    await env.manager.tick();
+    const manager = env.restart();
+    clock.now += 20 * MINUTE;
+    await manager.tick();
+    assert.ok(api.servers.has(fresh.id), 'after a restart: a grace of offlineMs');
+    clock.now += 10 * MINUTE;
+    await manager.tick();
+    assert.ok(!api.servers.has(fresh.id), 'still silent: deleted');
+  } finally {
+    await api.close();
+  }
+}
+
+// The agent of a server starts only after a successful first start (the pairing comes before npm ci, so a failed first
+// start leaves an agent.json behind).
+function testCloudImageUnits() {
+  const file = path.resolve(__dirname, '..', 'render-node', 'cloud-image.sh');
+  const source = fs.readFileSync(file, 'utf8');
+  const unit = (name) => {
+    const match = new RegExp(`cat > /etc/systemd/system/${name.replace(/\./g, '\\.')} <<UNIT\n([\\s\\S]*?)\nUNIT\n`).exec(source);
+    assert.ok(match, name);
+    return match[1];
+  };
+  const agent = unit('ocd-render-agent.service');
+  const pair = unit('ocd-render-pair.service');
+  assert.match(agent, /^Requires=ocd-render-pair\.service$/m, 'no agent after a failed first start');
+  assert.match(agent, /^After=.*\bocd-render-pair\.service\b/m);
+  assert.match(pair, /^RemainAfterExit=yes$/m, 'the pairing stays active, so the agent is never stopped with it');
+  assert.match(pair, /^ConditionPathExists=!/m);
+  const check = require('child_process').spawnSync('bash', ['-n', file], { encoding: 'utf8' });
+  assert.equal(check.status, 0, check.stderr);
+}
+
+async function testTokenGuard() {
+  const OTHER = 'OtherTokenAbcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH';
+  const THIRD = 'ThirdTokenAbcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH';
+  const env = await setup();
+  const { api, queue, clock } = env;
+  const settingsFile = path.join(env.dir, 'cloud-render', 'settings.json');
+  const refused = (patch) => assert.throws(
+    () => env.manager.updateSettings(patch),
+    (err) => err instanceof cloudLib.CloudRenderError && err.status === 409 && err.code === 'SERVERS_RUNNING' && /Server jetzt löschen/.test(err.message) && !err.message.includes('Token' + 'Abc'),
+    JSON.stringify(Object.keys(patch))
+  );
+  try {
+    await enqueue(queue);
+    await env.manager.tick();
+    assert.equal(api.servers.size, 1);
+    // while a server exists the token can be neither removed nor changed: only it can delete the server
+    refused({ token: '' });
+    refused({ token: OTHER, monthlyCapEur: 50 });
+    assert.ok(fs.readFileSync(settingsFile, 'utf8').includes(TOKEN), 'the stored token is unchanged');
+    assert.equal(env.manager.status().settings.monthlyCapEur, 30, 'nothing of a refused change is saved');
+    env.manager.updateSettings({ token: TOKEN, monthlyCapEur: 40 });
+    assert.equal(env.manager.status().settings.monthlyCapEur, 40, 'the same token with other fields is fine');
+    // switched off while its DELETE fails: «stopping», not «off», as long as it runs
+    api.failDelete = { status: 503, code: 'unavailable', message: 'maintenance' };
+    env.manager.updateSettings({ enabled: false });
+    await env.manager.tick();
+    assert.equal(api.servers.size, 1);
+    assert.equal(env.manager.status().servers[0].status, 'deleting');
+    assert.equal(env.manager.status().phase, 'stopping');
+    refused({ token: '' });
+    api.failDelete = null;
+    clock.now += 31 * 1000;
+    await env.manager.tick();
+    assert.equal(api.servers.size, 0);
+    assert.equal(env.manager.status().phase, 'off');
+    // no server: it can be removed and set again
+    env.manager.updateSettings({ token: '' });
+    assert.equal(env.manager.status().settings.tokenSet, false);
+    env.manager.updateSettings({ token: TOKEN, enabled: true });
+
+    // Hetzner refuses the token (deleted in the console) while a server runs: a new one may replace it, the empty one not
+    await env.manager.tick();
+    const kept = lastServer(api);
+    api.tokens = new Map([[OTHER, 'p1']]);
+    refused({ token: THIRD });
+    await env.manager.reconcile();
+    assert.equal(env.manager.status().lastError.code, 'unauthorized');
+    refused({ token: '' });
+    env.manager.updateSettings({ token: OTHER });
+    // a token of the same project sees the server: nothing to report, and it can delete it
+    await env.manager.reconcile();
+    assert.equal(env.manager.status().servers.length, 1);
+    assert.notEqual(env.manager.status().lastError?.code, 'server_not_visible');
+    await env.manager.deleteAll();
+    assert.ok(!api.servers.has(kept.id), 'deleted with the new token');
+
+    // a token of another project does not see it: the server is booked out with a clear notice, not dropped silently
+    await env.manager.tick();
+    const lost = lastServer(api);
+    api.tokens = new Map([[THIRD, 'p2']]);
+    await env.manager.reconcile();
+    env.manager.updateSettings({ token: THIRD });
+    await env.manager.reconcile();
+    const status = env.manager.status();
+    assert.equal(status.servers.length, 0);
+    assert.equal(status.lastError.code, 'server_not_visible');
+    assert.ok(status.lastError.message.includes(lost.name), status.lastError.message);
+    assert.match(status.lastError.message, /anderen Hetzner-Projekt/);
+    assert.ok(api.servers.has(lost.id), 'it still runs in the old project: that is what the notice is for');
+    for (const text of [JSON.stringify(status), env.lines.join('\n'), fs.readFileSync(path.join(env.dir, 'cloud-render', 'state.json'), 'utf8')]) {
+      for (const token of [TOKEN, OTHER, THIRD]) assert.ok(!text.includes(token));
+    }
+  } finally {
+    await api.close();
+  }
+}
+
+async function testInstanceId() {
+  const env = await setup();
+  const { api, queue } = env;
+  const dir = path.join(env.dir, 'cloud-render');
+  const read = (name) => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+  try {
+    await enqueue(queue);
+    await env.manager.tick();
+    const first = lastServer(api);
+    const id = first.labels['ocd-instance'];
+    assert.equal(read('instance.json').instanceId, id);
+    assert.equal(fs.statSync(path.join(dir, 'instance.json')).mode & 0o777, 0o600);
+    assert.equal(read('ledger.json').entries[0].instanceId, id, 'every entry of the ledger carries the id');
+    // state.json lost (a move, a reset): the id comes from instance.json, and the reconcile finds the server as one of this
+    // installation that it does not know: deleted and booked, not left running
+    fs.rmSync(path.join(dir, 'state.json'));
+    let manager = env.restart();
+    await manager.reconcile();
+    assert.ok(!api.servers.has(first.id), 'the server of the lost state is deleted');
+    assert.equal(read('state.json').instanceId, id);
+    assert.ok(read('ledger.json').entries.find((entry) => entry.serverId === first.id).endedAt, 'and booked out');
+    // state.json and instance.json lost: the open entry of the ledger knows the id
+    await manager.tick();
+    const second = lastServer(api);
+    assert.equal(second.labels['ocd-instance'], id, 'the same id after the restart');
+    fs.rmSync(path.join(dir, 'state.json'));
+    fs.rmSync(path.join(dir, 'instance.json'));
+    manager = env.restart();
+    await manager.reconcile();
+    assert.ok(!api.servers.has(second.id), 'found by the id of the ledger and deleted');
+    assert.equal(read('instance.json').instanceId, id);
+    assert.ok(env.lines.some((line) => /aus dem Kassenbuch/.test(line)), env.lines.join('\n'));
+    // everything lost: a new id; the server of the old one is not deleted (it could belong to another installation) but shown
+    await manager.tick();
+    const third = lastServer(api);
+    for (const name of ['state.json', 'instance.json', 'ledger.json']) fs.rmSync(path.join(dir, name));
+    manager = env.restart();
+    await manager.reconcile();
+    assert.notEqual(read('instance.json').instanceId, id);
+    assert.ok(api.servers.has(third.id), 'not deleted');
+    const foreign = manager.status().foreign;
+    assert.deepEqual(foreign.map((item) => [item.name, item.serverId, item.instance]), [[third.name, third.id, id]]);
+    assert.ok(foreign[0].ageSeconds >= 0);
   } finally {
     await api.close();
   }
@@ -779,11 +1029,16 @@ async function main() {
   await testRefusalsAndBackoff();
   await testReconcile();
   await testRestart();
+  await testPairedButSilent();
+  await testSilentAfterOnline();
+  testCloudImageUnits();
+  await testTokenGuard();
+  await testInstanceId();
   await testSwitchedOff();
   await testSettings();
   await testRouting();
   await settle();
-  console.log('Render-Server in der Cloud: Start bei wartenden Aufträgen (Reserve und zuerst), Kopplung mit eigenem Code, Löschen vor der nächsten Stunde, harte Grenze, Monatsdeckel, Backoff ohne Schleife, Abgleich, Neustart und der Token nirgends: korrekt.');
+  console.log('Render-Server in der Cloud: Start bei wartenden Aufträgen (Reserve und zuerst), Kopplung mit eigenem Code, online erst mit der ersten Abfrage, Löschen vor der nächsten Stunde, harte Grenze, Monatsdeckel, Backoff ohne Schleife, Abgleich, Neustart, Token bleibt bei laufenden Servern, ID der Installation und der Token nirgends: korrekt.');
   console.log('test-cloud-render.js: ok');
 }
 

@@ -14,7 +14,10 @@
 #   ocd-render-pair.service    on the first start of a server made from the snapshot: reads the pairing that cloud-init wrote
 #                              from user_data (/etc/ocd-render/pairing.env), fetches the current package with that code and
 #                              pairs (setup.js --no-start; npm ci only when the lockfile changed), then deletes the file
-#   ocd-render-agent.service   the agent (node agent.js) as ocdrender, once agent.json exists
+#   ocd-render-agent.service   the agent (node agent.js) as ocdrender, once agent.json exists and only when the first start
+#                              succeeded (Requires=): setup.js pairs before npm ci, so a first start that fails later leaves
+#                              an agent.json behind, and the agent must not run without its modules (the app deletes a server
+#                              whose computer paired but never asks for work)
 #
 # No token is ever in the snapshot: agent.json is made on the first start of every server, with its own code.
 set -euo pipefail
@@ -143,6 +146,8 @@ ConditionPathExists=!${AGENT_DIR}/agent.json
 
 [Service]
 Type=oneshot
+# stays active after it succeeded, so the agent that requires it is never stopped with it
+RemainAfterExit=yes
 ExecStart=${LIB_DIR}/first-boot.sh
 TimeoutStartSec=20min
 
@@ -155,6 +160,8 @@ UNIT
 Description=Open Creative Director: render agent
 After=network-online.target ocd-render-pair.service
 Wants=network-online.target
+# not after a failed first start; on a later boot the pairing unit is skipped by its condition, and that counts as done
+Requires=ocd-render-pair.service
 ConditionPathExists=${AGENT_DIR}/agent.json
 
 [Service]
