@@ -1381,6 +1381,15 @@
     const wrap = el('div', { class: `nv-field ${options.inline ? 'is-inline' : ''}`.trim() });
     if (labelText) {
       const label = el('label', { class: 'nv-field-label', text: labelText });
+      if (options.labelId) {
+        label.id = options.labelId;
+        const controls = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(widgetEl.tagName) ? [widgetEl] : widgetEl.querySelectorAll('input, textarea, select');
+        for (const control of controls) {
+          if (control.classList.contains('nv-asset-mark')) continue;
+          control.removeAttribute('aria-label');
+          control.setAttribute('aria-labelledby', options.labelId);
+        }
+      }
       if (options.action) {
         // small text button next to the label, e.g. "Move into a Prompt node"
         const action = el('button', { type: 'button', class: 'nv-field-action', title: options.action.title, 'aria-label': options.action.title, dataset: options.action.dataset || {} }, icon(options.action.icon || 'extract', 12), el('span', { text: options.action.label }));

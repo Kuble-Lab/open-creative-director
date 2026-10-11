@@ -182,8 +182,16 @@ function testCosts() {
     assert.equal(compute({ n10: { photo_motion: 'code' } }).nodes.n10.followup, null);
     assert.equal(compute({ n10: { max_ai_photos: 50 } }).nodes.n10.followup.count, 7);
     assert.equal(compute({ n2: { assets: node('n2').params.assets.slice(0, 5) }, n10: { max_ai_photos: 16 } }).nodes.n10.followup.count, 5);
-    results.nodes.n11 = { history: [{ cost: { usd: 0.24 }, freshItemCount: 2, variants: [{ video: listValue('video', Array.from({ length: 5 }, () => ({ type: 'video' }))) }] }] };
+    results.nodes.n11 = { history: [{ params: { ...node('n11').params }, cost: { usd: 0.24 }, freshItemCount: 2, variants: [{ video: listValue('video', Array.from({ length: 5 }, () => ({ type: 'video' }))) }] }] };
     assert.equal(compute().nodes.n10.followup.usd, 0.36, 'Clip price counts fresh items, excluding cache hits');
+
+    const excluded = Object.fromEntries(node('n2').params.assets.map((photo) => [photo.assetId, 'never']));
+    assert.deepEqual(compute({ n10: { ai_marks: excluded } }).nodes.n10.followup, { kind: 'eventAiClips', count: 0, usd: 0 });
+    results.nodes.n11.history[0].params.duration = 99;
+    assert.equal(compute().nodes.n10.followup.usd, 0.6, 'different clip settings use the current formula');
+
+    delete results.nodes.n11.history[0].params;
+    assert.equal(compute().nodes.n10.followup.usd, 0.6, 'unknown historical settings use the formula');
 
     const def = registry.get('event_video.plan');
     const params = registry.normalizeParams(def, { model: 'anthropic/claude-opus-5.5' });

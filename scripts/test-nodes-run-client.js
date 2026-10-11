@@ -46,7 +46,14 @@ function testSnapshot() {
   // reconnect after the run ended: snapshot says no run -> finished + resync request
   const ended = run.reduce(later, { type: 'snapshot', activeRun: null }, T0 + 9000);
   assert.equal(ended.active, false);
-  assert.equal(ended.status, 'finished');
+  assert.equal(ended.status, 'running', 'unknown final status is not presented as finished');
+  const repaired = run.reduce(ended, { type: 'run_record', record: { id: 'r1', status: 'failed', cost: { usd: 2, credits: 3 }, error: 'failure', nodes: { b: { status: 'error', message: 'failure' } }, startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:01:00Z' } });
+  assert.equal(repaired.status, 'failed');
+  assert.equal(repaired.error, 'failure');
+  assert.deepEqual(repaired.cost, { usd: 2, credits: 3 });
+  assert.equal(repaired.nodes.b.status, 'error');
+  assert.equal(repaired.finishedAt, Date.parse('2026-01-01T00:01:00Z'));
+  assert.equal(repaired.resync, false);
   assert.equal(ended.resync, true, 'the client has to reload results');
   assert.equal(run.clearResync(ended).resync, false);
   assert.equal(run.reduce(ended, { type: 'snapshot', activeRun: null }, T0 + 9500).resync, true, 'still flagged until cleared');

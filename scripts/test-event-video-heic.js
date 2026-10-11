@@ -47,7 +47,31 @@ async function main() {
     abort.abort();
     let attempts = 0;
     await assert.rejects(preparePhoto(fail, { signal: abort.signal, runProcess: async () => { attempts++; throw Object.assign(new Error('aborted'), { name: 'AbortError' }); } }), /aborted/);
-    assert.equal(attempts, 1, 'Cancellation does not trigger fallbacks');
+    assert.equal(attempts, 0, 'An already cancelled request never starts a converter');
+    let release, started;
+    const ready = new Promise((resolve) => { started = resolve; });
+    const gate = new Promise((resolve) => { release = resolve; });
+    let sharedSignal;
+    const sharedMock = async (_command, args, { signal }) => {
+      sharedSignal = signal;
+      started();
+      await gate;
+      signal.throwIfAborted();
+      await fs.writeFile(args.at(-1), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    };
+    const one = new AbortController();
+    const two = new AbortController();
+    const firstWait = preparePhoto(fail, { signal: one.signal, runProcess: sharedMock });
+    const secondWait = preparePhoto(fail, { signal: two.signal, runProcess: sharedMock });
+    await ready;
+    one.abort();
+    await assert.rejects(firstWait, /abort/i);
+    assert.equal(sharedSignal.aborted, false, 'another caller still needs the conversion');
+    two.abort();
+    await assert.rejects(secondWait, /abort/i);
+    assert.equal(sharedSignal.aborted, true, 'the last cancellation stops the shared converter');
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     for (const ext of ['.heic', '.heif']) {
       assert.equal(assets.typeFromExtension(ext.toUpperCase()), 'image');
       assert.equal(routes.uploadExtension('image/' + ext.slice(1), '').ext, ext);
@@ -62,9 +86,24 @@ async function main() {
       assert.equal(resolved.assetId, 'photo');
       assert.equal(assets.assetFilePath(resolved), first, 'All consumers receive the reusable JPEG');
       assert.ok(resolved.url.endsWith('.jpg'), 'AI providers receive a JPEG URL');
+      await assert.rejects(assets.resolveAssetParam({ assetId: 'photo' }, 'test', 'image', { signal: abort.signal }), /abort/i, 'asset resolution forwards the signal through to photo preparation');
     } finally {
       Object.assign(store, original);
     }
+    const { registry } = require('../lib/nodes/registry');
+    const originalResolve = assets.resolveAssetParam;
+    const listAbort = new AbortController();
+    let resolvedCount = 0;
+    try {
+      assets.resolveAssetParam = async (_param, _session, _kind, options) => {
+        assert.equal(options.signal, listAbort.signal, 'list forwards cancellation to asset preparation');
+        resolvedCount++;
+        listAbort.abort();
+        return { type: 'image' };
+      };
+      await assert.rejects(registry.get('input.media_list').execute({ sessionId: 'test', signal: listAbort.signal }, {}, { kind: 'image', assets: [{}, {}] }), /abort/i);
+      assert.equal(resolvedCount, 1, 'cancellation stops the next list item');
+    } finally { assets.resolveAssetParam = originalResolve; }
     // Use an installed HEIF encoder for a real round trip; there is no downloaded fixture.
     let encoder = null;
     for (const command of ['magick', 'convert']) {

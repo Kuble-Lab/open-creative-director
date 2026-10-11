@@ -187,7 +187,10 @@
 
   // Restore the last executed field params; app runs use overrides rather than changing the saved graph.
   function restoredParam(results, node, param, fallback) {
-    const history = results && results.nodes && results.nodes[node.id] && results.nodes[node.id].history;
+    const result = results && results.nodes && results.nodes[node.id];
+    const history = result && result.history;
+    const selected = (history || []).find((item) => item.id === result?.selected?.entry);
+    if (selected?.params && selected.params[param] !== undefined) return selected.params[param];
     const entry = (history || []).find((item) => item.params && item.params[param] !== undefined);
     return entry ? entry.params[param] : fallback;
   }
@@ -388,6 +391,8 @@
         switches: new Map() // the switches of an output (WP55): `${node}.${param}` -> { base, value }
       };
       if (payload.activeRun) s.run = { ...runLib.createRunState(), runId: typeof payload.activeRun === 'string' ? payload.activeRun : payload.activeRun.runId, active: true, status: 'running' };
+      await restoreRun();
+      if (!s || s.id !== id) return;
       build();
       openEvents();
       refreshPlan(0);
@@ -428,6 +433,19 @@
       }
     }
 
+    async function restoreRun() {
+      if (!s || !api.getRun) return;
+      const current = s;
+      try {
+        let runId = current.run.runId;
+        if (!runId && api.listRuns) runId = (await api.listRuns(current.id, 1)).runs?.[0]?.id;
+        if (!runId) return;
+        const record = await api.getRun(current.id, runId);
+        if (s !== current || (s.run.runId && s.run.runId !== runId)) return;
+        s.run = runLib.restoreRun(s.run, record);
+      } catch (_) { /* retry on the next reconnect or results refresh */ }
+    }
+
     async function reconcile() {
       if (!s) return;
       const id = s.id;
@@ -435,6 +453,9 @@
         const payload = await api.getWorkflow(id);
         if (!s || s.id !== id) return;
         s.results = payload.results;
+        await restoreRun();
+        if (!s || s.id !== id) return;
+        renderStatus();
         if (!payload.activeRun && s.run.active) dispatch({ type: 'snapshot', activeRun: null });
         renderResults();
         renderRunButton();
@@ -525,6 +546,7 @@
         if (!isAssetKind(field.param.kind) || field.touched || (Array.isArray(value) ? value.length : value)) out[field.key] = value;
         if (field.marks) out[field.marks.key] = s.values.get(field.marks.key);
       }
+      out._switches = Object.fromEntries(s.switches);
       lsSet(storageKey(), JSON.stringify(out));
     }
 
@@ -643,7 +665,7 @@
       field.label = label;
       const hint = param.kind === 'textarea' && node.type === 'input.text_list' ? T('nodes.app.listHint')
         : node.type === 'input.media_list' && param.id === 'assets' && node.params.kind === 'image' ? T('nodes.app.photoFormats') : ui.paramHint(def.type, param.id);
-      const fieldEl = ui.field(label, widget.el, { hint });
+      const fieldEl = ui.field(label, widget.el, { hint, labelId: `app-field-${encodeURIComponent(s.id)}-${encodeURIComponent(key)}` });
       field.wrap = fieldEl;
       if (batch) {
         field.counter = el('div', { class: 'nv-batch-count' });
@@ -754,10 +776,14 @@
 
     // The state of the switches of one output: kept while the result they are about is the same (`base`), else read from the result shown.
     function switchState(ref, payload) {
-      const kept = s.switches.get(ref.key);
-      if (kept && kept.base === payload.base) return kept;
+      const kept = s.switches.get(ref.key) || (payload.base !== null ? readStored()._switches?.[ref.key] : null);
+      if (kept && kept.base === payload.base) {
+        s.switches.set(ref.key, kept);
+        return kept;
+      }
       const state = { base: payload.base, value: switchesFromItems(payload.items) };
       s.switches.set(ref.key, state);
+      if (kept) writeStored();
       return state;
     }
 
@@ -804,6 +830,7 @@
           button.addEventListener('click', () => {
             if (!switchesEditable(item.stage) || entry.locked) return;
             state.value = toggleSwitch(state.value, entry, !entry.on);
+            writeStored();
             paint();
             schedulePlan();
           });
@@ -946,7 +973,7 @@
         .filter((issue) => issue.level === 'error')
         .map((issue) => {
           const field = fieldOfIssue(issue, s ? s.fields : []);
-          if (field) return { title: '', message: T('nodes.app.fieldEmpty', { field: field.label }) };
+          if (field && (/(?:_EMPTY|_REQUIRED)$/.test(issue.code || '') || ['no_asset', 'missing_input'].includes(issue.code))) return { title: '', message: T('nodes.app.fieldEmpty', { field: field.label }) };
           return { title: issue.nodeId ? titleOf(issue.nodeId) : '', message: ui.issueText(issue, 'app') };
         });
     }
@@ -1287,7 +1314,8 @@
         const payload = await api.getWorkflow(id);
         if (!s || s.id !== id) return;
         s.results = payload.results;
-        s.run = runLib.clearResync(s.run);
+        await restoreRun();
+        if (!s || s.id !== id) return;
         renderResults();
         renderStatus();
         renderRunButton(); // the step that is due also depends on whether a result is there to show
@@ -1357,7 +1385,7 @@
       const progress = runLib.progressOf(run);
       const head = el('div', { class: 'nv-appstatus-head' });
       head.append(el('span', { class: 'nv-status-dot' }));
-      if (run.active) {
+      if (run.active || run.resync) {
         const current = runLib.activeNodeIds(run).map(titleOf);
         head.append(el('span', { class: 'nv-appstatus-text', text: T('nodes.app.statusRunning', { done: progress.done, total: progress.total || 1 }) }));
         head.append(el('span', { class: 'nv-status-time', text: run.startedAt ? runLib.formatDuration(Date.now() - run.startedAt) : '' }));
