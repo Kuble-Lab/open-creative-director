@@ -1131,7 +1131,9 @@
       for (const panel of s.switchPanels || []) panel.lock();
       const plan = flow ? (flow.index < stages.length && !flow.done ? s.plans.previews[flow.index] : s.plans.all) : s.plan;
       const summary = resumeSummary(plan);
-      const resumable = summary.pending.length > 0 && (summary.kept.length > 0 || Boolean(s.run.runId));
+      // only a run that did not end well (cancelled, failed, cut off by a restart) is continued; a step that ended and waits for its
+      // approval, or a finished run with changed values, keeps its own label
+      const resumable = !active && Boolean(s.run.runId) && ['cancelled', 'failed', 'interrupted'].includes(s.run.status) && summary.pending.length > 0;
       if (!active) s.resumeIntent = resumable;
       resumeBox.textContent = '';
       if (!active && resumable) {

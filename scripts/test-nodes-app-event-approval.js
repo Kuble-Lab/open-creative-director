@@ -77,11 +77,13 @@ async function testUI(lang) {
     board: { selected: { entry: 'board-a' }, history: [{ id: 'board-a', variants: [{ result: { type: 'text', value: 'Storyboard' } }] }] }
   } };
   const requests = [], started = [], confirmations = [];
-  let changed = false, complete = false, partial = false, staleOutput = false;
+  // the status of the last run (null: none yet); only a run that did not end well is offered for continuing
+  let changed = false, complete = false, partial = false, staleOutput = false, lastRun = null;
   const page = loadPage(lang, { api: {
     getWorkflow: async () => ({ workflow: clone(workflow), results: clone(results) }),
     assets: async () => ({ assets: [] }), outputsZipUrl: () => '/test.zip',
-    openEvents: () => ({ close() {} }), listRuns: async () => ({ runs: [] }),
+    openEvents: () => ({ close() {} }), listRuns: async () => ({ runs: lastRun ? [{ id: 'last' }] : [] }),
+    getRun: async () => ({ id: 'last', status: lastRun, mode: 'all', nodes: {}, cost: { usd: 0, credits: 0 } }),
     startRun: async (_id, request) => { started.push(clone(request)); return { runId: 'run' }; },
     plan: async (_id, request) => {
       requests.push(clone(request));
@@ -106,8 +108,14 @@ async function testUI(lang) {
   await open();
   assert.deepEqual(clone(page.OCD.appMode.eventTextFields(graphics)).map(({ path, value, max }) => ({ path, value, max })), textFields(graphics));
   assert.equal(find('nv-appreplan').classes.has('hidden'), false);
+  assert.equal(find('nv-appresume').textContent, '', 'a step that waits for its approval is not an interrupted run');
+  assert.equal(find('nv-apprun-label').textContent, page.window.I18N[lang]['nodes.app.approveFinish']);
+  app.close(); lastRun = 'cancelled';
+  await open();
   assert.match(find('nv-appresume').textContent, /source|Text|Prompt/);
   assert.equal(find('nv-apprun-label').textContent, page.window.I18N[lang]['nodes.app.resume']);
+  app.close(); lastRun = null;
+  await open();
   const thirdIndexes = textFields(graphics).map((field, index) => field.path.startsWith('lower_thirds.0.') ? index : -1).filter((index) => index >= 0);
   assert.equal(thirdIndexes.length, 3);
   for (const index of thirdIndexes) { fields()[index].value = ''; fields()[index].fire('input'); }
@@ -156,7 +164,7 @@ async function testUI(lang) {
   assert.equal(started.length, 2);
   assert.equal(started[1].force, false, 'resume reuses cached outputs');
   assert.equal(started[1].mode, 'all');
-  app.close(); partial = true;
+  app.close(); partial = true; lastRun = 'interrupted';
   await open();
   assert.equal(find('nv-apprun-label').textContent, page.window.I18N[lang]['nodes.app.resume']);
   find('nv-apprun').fire('click'); await tick();
@@ -174,7 +182,7 @@ async function testUI(lang) {
   assert.equal(find('nv-apprun-label').textContent, page.window.I18N[lang]['nodes.app.runAgain']);
   app.close();
   workflow.app.outputs[0].approve = false;
-  complete = false;
+  complete = false; lastRun = 'failed';
   await open();
   assert.equal(find('nv-apprun-label').textContent, page.window.I18N[lang]['nodes.app.resume']);
   const beforeUnstagedRace = started.length;
