@@ -624,6 +624,7 @@ async function testSharing(ctx) {
     ['GET', `/api/workflows/${id}/runs`],
     ['GET', `/api/workflows/${id}/runs/run-1`],
     ['POST', `/api/workflows/${id}/runs/run-1/cancel`, {}],
+    ['POST', `/api/workflows/${id}/runs/run-1/resume`, { maxUsd: 5 }],
     ['GET', `/api/workflows/${id}/outputs.zip`],
     ['PATCH', `/api/workflows/${id}/results/n1`, { entry: 'e' }],
     ['DELETE', `/api/workflows/${id}/results/n1`],
