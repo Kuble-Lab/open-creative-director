@@ -74,6 +74,7 @@ async function testSessionSupport() {
     assert.equal(polledSession.jobs[0].status, 'running');
   } finally {
     await store.deleteSession(chat.id);
+    await store.mutateSession(hidden.id, (saved) => { for (const job of saved.jobs) job.status = 'cancelled'; });
     await store.deleteSession(hidden.id);
   }
 }

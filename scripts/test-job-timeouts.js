@@ -81,6 +81,7 @@ async function main() {
   } finally {
     rendernode.listConfiguredNodes = originalListNodes;
     rendernode.jobStatus = originalJobStatus;
+    await store.mutateSession(session.id, (saved) => { for (const job of saved.jobs) job.status = 'cancelled'; });
     await store.deleteSession(session.id);
   }
   console.log('test-job-timeouts.js: ok');

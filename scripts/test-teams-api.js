@@ -120,6 +120,21 @@ function registeredRoutes(app) {
 
 const imageResult = (cost) => ({ data: [{ b64_json: PNG_B64, media_type: 'image/png' }], ...(cost === null ? {} : { usage: { cost } }) });
 
+// Simulate the poller's persisted completion as well as its in-memory settlement.
+// Releasing only the reservation leaves a pending provider job that budget recovery
+// must reserve again on the next refresh. Match both IDs: the provider may reuse jobId.
+async function settleProviderJob(ctx, sessionId, job, amount) {
+  await ctx.store.mutateSession(sessionId, (session) => {
+    const saved = ctx.store.findSessionJob(session.jobs, job);
+    assert.ok(saved, 'the settled provider job exists in its session');
+    saved.status = 'completed';
+    saved.cost = amount;
+    saved.accountingStatus = 'booked';
+    delete saved.accountingEntry;
+  });
+  ctx.budget.settleJob(job, amount);
+}
+
 function sse(events) {
   return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
 }
@@ -1087,7 +1102,7 @@ async function testBudgetTools(ctx) {
   assert.equal(videoCalls, 1, video && video.message);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 1, 'the job keeps its reservation');
   assert.equal((await budgetLib.statusOfEmail(PAB)).reservedUsd, 2);
-  const openJobs = async () => (await store.readSession(chat.id)).jobs.filter((job) => job.budgetKey);
+  const openJobs = async () => (await store.readSession(chat.id)).jobs.filter((job) => job.budgetKey && store.jobNeedsAccounting(job));
   let jobs = await openJobs();
   assert.equal(jobs.length, 1);
   assert.match(jobs[0].budgetKey, /^hold:/);
@@ -1102,8 +1117,9 @@ async function testBudgetTools(ctx) {
   assert.equal(budgetLib.defaultBudget.reservationCount(), 2);
   // a call that fails at the provider leaves nothing behind
   jobs = await openJobs();
-  for (const job of jobs) budgetLib.settleJob(job, 1); // the poller books the costs
+  for (const job of jobs) await settleProviderJob(ctx, chat.id, job, 1);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
+  assert.equal((await budgetLib.statusOfEmail(PAB)).reservedUsd, 0, 'completed jobs stay settled after budget recovery');
   patch(or, 'createVideo', async () => {
     throw new Error('provider hiccup');
   });
@@ -1119,7 +1135,7 @@ async function testBudgetTools(ctx) {
   assert.ok(Math.abs((await budgetLib.statusOfEmail(PAB)).reservedUsd - 0.05) < 1e-9);
   const noMore = await errorOf(run(PAB, 'generate_video', { prompt: 'Noch eins' }));
   assert.equal(noMore.code, 'BUDGET_EXHAUSTED');
-  for (const job of await openJobs()) budgetLib.settleJob(job, 0.05);
+  for (const job of await openJobs()) await settleProviderJob(ctx, chat.id, job, 0.05);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   teamsLib.defaultStore.updateMember(ctx.teamA.id, PAB, { resetBudget: true });
 
@@ -1295,7 +1311,7 @@ async function testBudgetTools(ctx) {
   assert.deepEqual([nodeJob.model, nodeJob.modelName, nodeJob.estimateUsd, nodeJob.reservedUsd], [VIDEO_KLING, 'Kling v3.0 Standard', 0.63, 0.63]);
   assert.deepEqual(nodeJob.estimateMinUsd, 0.42);
   assert.match(nodeJob.budgetKey, /^hold:/);
-  budgetLib.settleJob(nodeJob, 0.5);
+  await settleProviderJob(ctx, chat.id, nodeJob, 0.5);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0, 'booked: nothing stays reserved');
   await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: chat.id, type: 'image', model: 'm', cost: (await budgetLib.statusOfEmail(PAB)).remainingUsd - 0.5, user: PAB });
   const tooDearVideo = await errorOf(run(PAB, 'generate_video', { prompt: 'Noch ein Spaziergang', mode: 'text_to_video', duration_seconds: 5 }, videoNode));
@@ -1306,7 +1322,7 @@ async function testBudgetTools(ctx) {
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   const unpricedVideo = await run(PAB, 'generate_video', { prompt: 'Noch ein Spaziergang', mode: 'text_to_video', duration_seconds: 5 }, { ...videoNode, videoOption: { id: VIDEO_KLING, name: 'Kling v3.0 Standard' }, videoEstimateUsd: undefined });
   assert.equal(nodeVideoCalls, 2, 'no price known: anything left is enough');
-  for (const job of (await store.readSession(chat.id)).jobs.filter((entry) => entry.budgetKey)) budgetLib.settleJob(job, 0.1);
+  for (const job of await openJobs()) await settleProviderJob(ctx, chat.id, job, 0.1);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   assert.ok(unpricedVideo.job);
   await sleep(1100);
@@ -1758,7 +1774,7 @@ async function testBudgetNodes(ctx) {
   const restarted = budgetLib.createBudget({ index: budgetLib.createCostIndex({ file: costsLib.COSTS_FILE }), teams: () => teamsLib.defaultStore });
   restarted.ensureJob(openJob);
   assert.equal((await restarted.statusOfEmail(person)).reservedUsd, 2);
-  budgetLib.settleJob(openJob, 1.4);
+  await settleProviderJob(ctx, vflow.sessionId, openJob, 1.4);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   restoreAll();
 

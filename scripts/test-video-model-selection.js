@@ -461,8 +461,12 @@ async function run(iso) {
   assert.equal(pJob.reservedUsd, 0.63, 'reserved by the estimate of the chosen model');
   assert.equal((await budgetLib.statusOfEmail(P1)).reservedUsd, 0.63);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 1);
-  budgetLib.settleJob(pJob, 0.45); // the poller books the cost
   await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: pChat.id, type: 'video', model: KLING, cost: 0.45, user: P1 });
+  // Like the poller, persist the terminal, booked job before settling its reservation.
+  await store.mutateSession(pChat.id, (s) => {
+    Object.assign(s.jobs.find((job) => job.assetId === pJob.assetId), { status: 'completed', accountingStatus: 'booked' });
+  });
+  budgetLib.settleJob(pJob, 0.45);
   assert.equal(budgetLib.defaultBudget.reservationCount(), 0);
   // remembered, but the rest (0.55) no longer takes the upper estimate (0.63): the card comes back and says why
   const pAgain = await call(pChat.id, P1, askVideo({ prompt: 'Again for the participant.' }));
@@ -479,7 +483,12 @@ async function run(iso) {
   assert.ok(pDirect.job, 'fits the budget: no card');
   assert.equal(submitted.at(-1).model, WAN);
   assert.equal((await store.readSession(pChat.id)).jobs.at(-1).reservedUsd, 0.5, 'the estimate of the remembered model');
-  budgetLib.releaseJob((await store.readSession(pChat.id)).jobs.at(-1));
+  const directJob = (await store.readSession(pChat.id)).jobs.at(-1);
+  await store.mutateSession(pChat.id, (s) => {
+    Object.assign(s.jobs.find((job) => job.assetId === directJob.assetId), { status: 'failed', accountingStatus: 'booked', error: 'test provider stopped' });
+  });
+  budgetLib.releaseJob(directJob);
+  assert.equal((await budgetLib.statusOfEmail(P1)).reservedUsd, 0, 'a refresh does not restore finished jobs');
   // used up: no card at all, the person is told why
   await costsLib.recordCost({ ts: new Date().toISOString(), sessionId: pChat.id, type: 'video', model: KLING, cost: 50, user: P1 });
   await assert.rejects(call(pChat.id, P1, askVideo()), (error) => error.code === 'BUDGET_EXHAUSTED');
