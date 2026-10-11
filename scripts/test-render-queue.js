@@ -341,6 +341,127 @@ async function testWorkStealing() {
   await expectQueueError(() => queue.progress(anna, fourth.jobId, lazy.lease, {}), 'LEASE_LOST', 409);
 }
 
+async function testFailedWorkerFallback() {
+  const { queue, computer, store, dir, make } = setup();
+  const workers = [computer(ANNA, 'Broken'), computer(BEN, 'Team', { shareTeams: true }), computer(ADMIN, 'Shared', { shareAll: true })];
+  for (const agent of workers) await poll(queue, agent);
+  const { jobId } = await queue.enqueue({ html: HTML, owner: ANNA });
+  for (let i = 0; i < workers.length; i += 1) {
+    const job = await poll(queue, workers[i]);
+    assert.equal(job.jobId, jobId);
+    queue.fail(workers[i], jobId, job.lease, { error: 'Chrome failed' });
+    if (i < workers.length - 1) {
+      assert.equal(queue.status(jobId).status, 'pending', 'an untried eligible worker gets a chance beyond maxFailures');
+      assert.equal(await poll(queue, workers[i]), null, 'a failed worker cannot take the job again');
+    }
+  }
+  assert.equal(queue.status(jobId).status, 'failed', 'all eligible workers tried: bounded failure');
+  queue.stop();
+  const restored = make();
+  assert.equal(restored.status(jobId).status, 'failed');
+  const record = JSON.parse(fs.readFileSync(path.join(dir, 'render-queue', jobId, 'job.json')));
+  assert.equal(record.failedWorkers.length, 3);
+  assert.equal(store.getAgent(workers[0].id).failed, 1);
+  restored.stop();
+}
+
+async function testFailedWorkerAttemptCap() {
+  const { queue, computer } = setup({ limits: { maxAttempts: 2, maxFailures: 1 } });
+  const bad = computer(ANNA, 'Broken');
+  const next = computer(BEN, 'Team', { shareTeams: true });
+  const spare = computer(ADMIN, 'Spare', { shareAll: true });
+  for (const agent of [bad, next, spare]) await poll(queue, agent);
+  const { jobId } = await queue.enqueue({ html: HTML, owner: ANNA });
+  let job = await poll(queue, bad);
+  queue.fail(bad, jobId, job.lease, { error: 'Chrome failed' });
+  assert.equal(queue.status(jobId).status, 'pending', 'untried online worker overrides maxFailures');
+  job = await poll(queue, next);
+  queue.fail(next, jobId, job.lease, { error: 'Chrome failed again' });
+  assert.equal(queue.status(jobId).status, 'failed', 'maxAttempts wins even with an untried online worker');
+  queue.stop();
+}
+
+async function testFailedWorkerGoesOffline() {
+  const { queue, computer, clock } = setup({ limits: { maxFailures: 1 } });
+  const bad = computer(ANNA, 'Broken');
+  const next = computer(BEN, 'Team', { shareTeams: true });
+  await poll(queue, next);
+  const { jobId } = await queue.enqueue({ html: HTML, owner: ANNA });
+  const job = await poll(queue, bad);
+  queue.fail(bad, jobId, job.lease, { error: 'Chrome failed' });
+  assert.equal(queue.status(jobId).status, 'pending');
+  clock.now += 46000;
+  await queue.sweep();
+  assert.equal(queue.status(jobId).status, 'failed', 'no untried online worker remains');
+  queue.stop();
+}
+
+async function testFailedWorkerPersistence() {
+  const { queue, computer, dir, make } = setup();
+  const bad = computer(ANNA, 'Broken');
+  const good = computer(BEN, 'Team', { shareTeams: true });
+  await queue.enqueue({ html: HTML, owner: BEN });
+  const busy = await poll(queue, good);
+  const { jobId } = await queue.enqueue({ html: HTML, owner: ANNA });
+  const job = await poll(queue, bad);
+  queue.fail(bad, jobId, job.lease, { error: 'Chrome failed' });
+  queue.stop();
+  const restored = make();
+  restored.progress(good, busy.jobId, busy.lease, { progress: 0.5 });
+  assert.equal(await poll(restored, bad), null, 'failed worker survives a queue restart');
+  await result(restored, good, busy);
+  const retry = await poll(restored, good);
+  await result(restored, good, retry);
+  restored.stop();
+  const file = path.join(dir, 'render-queue', jobId, 'job.json');
+  const old = JSON.parse(fs.readFileSync(file));
+  delete old.failedWorkers;
+  old.status = 'queued';
+  old.failures = 0;
+  old.tries = 0;
+  fs.writeFileSync(file, JSON.stringify(old));
+  const legacy = make();
+  assert.equal((await poll(legacy, bad)).jobId, jobId, 'old job.json loads without failedWorkers');
+  legacy.stop();
+}
+
+async function testFailedWorkerPushFallback() {
+  const { queue, computer, push } = setup({ withPush: true });
+  const bad = computer(ANNA, 'Broken');
+  const { jobId } = await queue.enqueue({ html: HTML, owner: ANNA });
+  const job = await poll(queue, bad);
+  const node = push.add('node-good', 'Render node');
+  queue.fail(bad, jobId, job.lease, { error: 'Chrome failed' });
+  assert.equal(await poll(queue, bad), null, 'an online push node prevents the broken agent retry');
+  await queue.dispatch();
+  await settle();
+  assert.equal(node.sent.length, 1);
+  push.finish(node.id, node.sent[0].remote);
+  await queue.watchPush();
+  assert.equal(queue.status(jobId).status, 'completed');
+  queue.stop();
+}
+
+async function testFailedPushWorkerFallback() {
+  const { queue, push } = setup({ withPush: true });
+  const bad = push.add('bad', 'Broken node');
+  const { jobId } = await queue.enqueue({ html: HTML, owner: ANNA });
+  await queue.dispatch();
+  await settle();
+  const good = push.add('good', 'Good node');
+  bad.jobs.set(bad.sent[0].remote, { status: 'failed', error: 'Chrome failed' });
+  bad.status.running = false;
+  await queue.watchPush();
+  await queue.dispatch();
+  await settle();
+  assert.equal(bad.sent.length, 1, 'failed push node does not take the retry');
+  assert.equal(good.sent.length, 1);
+  push.finish(good.id, good.sent[0].remote);
+  await queue.watchPush();
+  assert.equal(queue.status(jobId).status, 'completed');
+  queue.stop();
+}
+
 async function testFailuresAndOrphans() {
   const { queue, computer, clock } = setup();
   const anna = computer(ANNA, 'Annas Mac');
@@ -464,6 +585,12 @@ async function main() {
 }
 
 async function runAll() {
+  await testFailedWorkerAttemptCap();
+  await testFailedWorkerGoesOffline();
+  await testFailedWorkerFallback();
+  await testFailedWorkerPersistence();
+  await testFailedWorkerPushFallback();
+  await testFailedPushWorkerFallback();
   await testOwnerOnly();
   await testTeamsAndEverybody();
   await testOrder();
