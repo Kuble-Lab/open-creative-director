@@ -161,7 +161,9 @@
   //              "Run again" asks for the approvals once more instead of making the expensive part unseen
   // With `redo` the request makes the stage before the due one again, forced (the one that stands for approval; the first one while
   // that is due itself), and `index` is that stage.
-  function stageFlow({ stages, overrides, previews = [], all = null, hasResult = () => true, redo = false }) {
+  // `stageOverrides` (optional, WP55): the form values of the request of each stage, where they differ from `overrides` (the switches of an approval
+  // count only for the steps after it); `overrides` is then what the last step sends.
+  function stageFlow({ stages, overrides, stageOverrides = null, previews = [], all = null, hasResult = () => true, redo = false }) {
     if (!Array.isArray(stages) || !stages.length || stages.some((targets) => !Array.isArray(targets) || !targets.length)) return null;
     const total = stages.length + 1;
     const planOf = (index) => (Array.isArray(previews) && previews[index]) || null;
@@ -170,7 +172,8 @@
       return stages[index].every((id) => nodes[id] && nodes[id].status === 'cached' && hasResult(id));
     };
     // `force` holds for the targets only: a forced stage lists every node it needs (`order` of its plan, see previewRequest)
-    const stageRequest = (index, force) => previewRequest({ targets: stages[index], overrides, force, order: planOf(index) && planOf(index).order });
+    const overridesOf = (index) => (Array.isArray(stageOverrides) && stageOverrides[index]) || overrides;
+    const stageRequest = (index, force) => previewRequest({ targets: stages[index], overrides: overridesOf(index), force, order: planOf(index) && planOf(index).order });
     let due = 0;
     while (due < stages.length && current(due)) due += 1;
     if (due === stages.length && allCached(all)) return { index: 0, total, done: true, request: stageRequest(0, true) };
@@ -180,6 +183,69 @@
     }
     if (due === stages.length) return { index: due, total, done: false, request: { mode: 'all', force: false, overrides } };
     return { index: due, total, done: false, request: stageRequest(due, false) };
+  }
+
+  /* ---------- marks per file and switches per item (WP55) ---------- */
+
+  // An input of the app that is a list of files may carry `marks` ({ node, param }: a param of kind `marks`): every file gets a choice of the options
+  // of that param (the photos of the event video: auto, never AI, surely AI), kept by the asset id of the file. An output marked for approval may carry
+  // `switches` ({ node, param }, a param of marks with `source`): the items its node lists at that output (every photo of the film) get a switch, sent
+  // with the steps after the approval. The functions below are pure.
+
+  // The marks that are sent: those of the files in the list now, without the first option (no mark).
+  function marksOfItems(marks, items, options) {
+    const out = {};
+    if (!marks || typeof marks !== 'object' || Array.isArray(marks)) return out;
+    const allowed = Array.isArray(options) ? options.slice(1) : [];
+    for (const item of Array.isArray(items) ? items : []) {
+      const id = item && typeof item.assetId === 'string' ? item.assetId : null;
+      if (id && allowed.includes(marks[id])) out[id] = marks[id];
+    }
+    return out;
+  }
+
+  // The item list of switches as the node delivers it (a JSON text: { items: [{ id, label, value, on, auto, locked, mark }], unit: { usd }, base }),
+  // or null.
+  function switchPayload(text) {
+    let data = null;
+    try {
+      data = JSON.parse(String(text || ''));
+    } catch (_) {
+      return null;
+    }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.items)) return null;
+    const items = data.items.filter((item) => item && typeof item.id === 'string' && item.id);
+    const usd = data.unit && typeof data.unit.usd === 'number' && Number.isFinite(data.unit.usd) ? data.unit.usd : null;
+    const base = data.base || (data.answer && data.answer.id) || null;
+    return { items, usd, base };
+  }
+
+  // The switches of the shown result as a value of the param: an item whose state differs from the plan's own (`auto`) is set, so the state shown is the
+  // state sent (also after a reload, when the result shown is one with switches).
+  function switchesFromItems(items) {
+    const value = {};
+    for (const item of items || []) if (!item.locked && Boolean(item.on) !== Boolean(item.auto)) value[item.id] = item.on ? 'on' : 'off';
+    return value;
+  }
+
+  // Every item with its state now (`on`), the number of items on and their price (null when one item has no price).
+  function switchView(payload, value) {
+    const items = (payload ? payload.items : []).map((item) => {
+      const wish = value && value[item.id];
+      const on = item.locked ? false : wish === 'on' ? true : wish === 'off' ? false : Boolean(item.auto);
+      return { ...item, on };
+    });
+    const count = items.filter((item) => item.on).length;
+    return { items, count, usd: payload && payload.usd !== null ? Math.round(count * payload.usd * 100) / 100 : null };
+  }
+
+  // The value after one switch: back to the plan's own decision (no entry) or the wish; a locked item stays as it is.
+  function toggleSwitch(value, item, on) {
+    const next = { ...(value || {}) };
+    if (item.locked) return next;
+    if (Boolean(on) === Boolean(item.auto)) delete next[item.id];
+    else next[item.id] = on ? 'on' : 'off';
+    return next;
   }
 
   // stageFlow for marks of one stage, in the words of the two steps: null without a mark, else { step, done, request } with
@@ -308,7 +374,8 @@
         starting: false,
         events: null,
         refs: null,
-        sseBroken: false
+        sseBroken: false,
+        switches: new Map() // the switches of an output (WP55): `${node}.${param}` -> { base, value }
       };
       if (payload.activeRun) s.run = { ...runLib.createRunState(), runId: typeof payload.activeRun === 'string' ? payload.activeRun : payload.activeRun.runId, active: true, status: 'running' };
       build();
@@ -421,9 +488,10 @@
       return stageFlow({ stages, previews: s.plans.previews, all: s.plans.all, hasResult });
     }
 
-    // The plans that say which step is due (stageFlow): the plan of every stage, not forced, and the plan of everything, asked at once.
-    async function askPlans(id, stages, overrides) {
-      const plans = await Promise.all([...stages.map((targets) => api.plan(id, previewRequest({ targets, overrides }))), api.plan(id, { mode: 'all', force: false, overrides })]);
+    // The plans that say which step is due (stageFlow): the plan of every stage, not forced, and the plan of everything, asked at once. `overridesOf(step)`
+    // gives the form values of a step (the switches of an approval count only after it, WP55).
+    async function askPlans(id, stages, overridesOf) {
+      const plans = await Promise.all([...stages.map((targets, index) => api.plan(id, previewRequest({ targets, overrides: overridesOf(index) }))), api.plan(id, { mode: 'all', force: false, overrides: overridesOf(stages.length) })]);
       return { previews: plans.slice(0, stages.length), all: plans[stages.length] };
     }
 
@@ -442,7 +510,10 @@
 
     function writeStored() {
       const out = {};
-      for (const field of s.fields) if (!isAssetKind(field.param.kind)) out[field.key] = s.values.get(field.key);
+      for (const field of s.fields) {
+        if (!isAssetKind(field.param.kind)) out[field.key] = s.values.get(field.key);
+        if (field.marks) out[field.marks.key] = s.values.get(field.marks.key);
+      }
       lsSet(storageKey(), JSON.stringify(out));
     }
 
@@ -519,6 +590,12 @@
       }
       s.values.set(key, initial);
       const field = { key, entry, node, def, param, connected, wrap: null, error: null, counter: null };
+      // marks per file (WP55): their values live under the key of the param of marks
+      field.marks = param.kind === 'assets' ? marksRefOf(entry.marks) : null;
+      if (field.marks) {
+        const kept = previous.has(field.marks.key) ? previous.get(field.marks.key) : stored[field.marks.key];
+        s.values.set(field.marks.key, kept && typeof kept === 'object' && !Array.isArray(kept) ? kept : {});
+      }
       const widget = ui.paramWidget(param, initial, {
         node,
         compact: false,
@@ -531,7 +608,8 @@
           if (!meta || meta.commit !== false) writeStored();
           schedulePlan();
         },
-        uploadFile: (file, options) => api.upload(s.id, file, options).then((result) => result.value)
+        uploadFile: (file, options) => api.upload(s.id, file, options).then((result) => result.value),
+        ...(field.marks ? { itemExtra: (item) => markControl(field, item) } : {})
       });
       field.widget = widget;
       const batch = node.type === 'input.text_list' || node.type === 'input.media_list';
@@ -566,27 +644,185 @@
 
     // showIf conditions of exposed params depend on the current form values of the same node.
     function virtualNode(field) {
-      const params = { ...field.node.params };
-      for (const other of s.fields) if (other.node.id === field.node.id) params[other.param.id] = s.values.get(other.key);
-      return { ...field.node, params };
+      return virtualNodeOf(field.node);
+    }
+
+    function virtualNodeOf(node) {
+      const params = { ...node.params };
+      for (const other of s.fields) if (other.node.id === node.id) params[other.param.id] = s.values.get(other.key);
+      return { ...node, params };
     }
 
     function refreshVisibility() {
       for (const field of s.fields) {
         field.visible = graphLib.isVisible(field.param.showIf, virtualNode(field), field.def, field.connected);
         field.wrap.classList.toggle('hidden', !field.visible);
+        // the marks of the files follow the showIf of their param (the photos of the event video: only when they are animated by AI)
+        if (field.marks) {
+          const marks = field.marks;
+          const connected = new Set(graphLib.incomingEdges(s.workflow.graph, marks.node.id).map((edge) => edge.to.port));
+          field.marksVisible = graphLib.isVisible(marks.param.showIf, virtualNodeOf(marks.node), marks.def, connected);
+          field.wrap.classList.toggle('has-marks', field.marksVisible);
+        }
       }
+    }
+
+    /* ---------- marks per file and switches per item (WP55) ---------- */
+
+    // { node, def, param, key } of a reference { node, param } to a param of marks, or null.
+    function marksRefOf(ref) {
+      if (!ref || typeof ref.node !== 'string' || typeof ref.param !== 'string') return null;
+      const node = nodeOf(ref.node);
+      const def = node && reg.types.get(node.type);
+      const param = def && def.params.find((item) => item.id === ref.param && item.kind === 'marks');
+      return param ? { node, def, param, key: `${node.id}.${param.id}` } : null;
+    }
+
+    // The choice of the mark of one file: the options of the param of marks (the first is no mark).
+    function markControl(field, item) {
+      const { param, key } = field.marks;
+      const id = item && typeof item.assetId === 'string' ? item.assetId : null;
+      if (!id) return null;
+      const marks = s.values.get(key) || {};
+      const select = el('select', { class: 'nv-input nv-select nv-asset-mark', 'aria-label': T('nodes.app.markLabel', { item: item.file || id }) });
+      for (const option of param.options) select.append(el('option', { value: option, text: ui.optionLabelOf(param, option) }));
+      const current = param.options.slice(1).includes(marks[id]) ? marks[id] : param.options[0];
+      select.value = current;
+      select.dataset.mark = current;
+      select.addEventListener('click', (event) => event.stopPropagation());
+      select.addEventListener('change', () => {
+        const next = { ...(s.values.get(key) || {}) };
+        if (select.value === param.options[0]) delete next[id];
+        else next[id] = select.value;
+        select.dataset.mark = select.value;
+        s.values.set(key, next);
+        writeStored();
+        schedulePlan();
+      });
+      return select;
+    }
+
+    // The outputs with switches, each with the index of its stage of approval (the switches count for the steps after it).
+    function switchOutputs() {
+      const stages = approveStages();
+      const out = [];
+      for (const entry of appDef().outputs) {
+        const ref = entry && marksRefOf(entry.switches);
+        const stage = stages.findIndex((ids) => ids.includes(entry.node));
+        if (ref && ref.param.source && stage >= 0) out.push({ entry, ref, stage });
+      }
+      return out;
+    }
+
+    // The items of the switches of one output: the result of their node at the output its param names (`source`), or null.
+    function switchesPayloadOf(ref) {
+      const result = s.results && s.results.nodes && s.results.nodes[ref.node.id];
+      if (!result || !result.selected) return null;
+      const entry = (result.history || []).find((item) => item.id === result.selected.entry);
+      const variant = entry && ((entry.variants || [])[result.selected.variant || 0] || (entry.variants || [])[0]);
+      const value = variant && variant[ref.param.source];
+      return value && value.type === 'text' ? switchPayload(value.value) : null;
+    }
+
+    // The state of the switches of one output: kept while the result they are about is the same (`base`), else read from the result shown.
+    function switchState(ref, payload) {
+      const kept = s.switches.get(ref.key);
+      if (kept && kept.base === payload.base) return kept;
+      const state = { base: payload.base, value: switchesFromItems(payload.items) };
+      s.switches.set(ref.key, state);
+      return state;
+    }
+
+    // The panel of the switches under an output: a switch per item with its picture, the items that cannot be switched on with the reason, and the
+    // number of items on with their price. Null without items. `editable` is false while a run is active or the stage of the output is not done yet.
+    function switchPanel(item) {
+      const payload = switchesPayloadOf(item.ref);
+      if (!payload || !payload.items.length) return null;
+      const panel = el('section', { class: 'nv-appswitches', 'aria-label': ui.paramLabel(item.ref.param.id) });
+      const head = el('div', { class: 'nv-appswitches-head' }, el('h4', { class: 'nv-appswitches-title', text: ui.paramLabel(item.ref.param.id) }));
+      const sum = el('span', { class: 'nv-appswitches-sum', role: 'status' });
+      head.append(sum);
+      const grid = el('div', { class: 'nv-appswitches-grid' });
+      panel.append(head, el('p', { class: 'nv-hint', text: T('nodes.app.switchesHint') }), grid);
+      const marks = marksParamOf(item.ref);
+      const buttons = [];
+      // the switches may change or not (a run, a stage not done yet): only the buttons follow
+      const lock = () => {
+        const editable = switchesEditable(item.stage);
+        panel.classList.toggle('is-locked', !editable);
+        for (const { button, entry } of buttons) button.disabled = !editable || Boolean(entry.locked);
+      };
+      const paint = () => {
+        const state = switchState(item.ref, payload);
+        const view = switchView(payload, state.value);
+        grid.textContent = '';
+        buttons.length = 0;
+        for (const entry of view.items) {
+          const cell = el('div', { class: `nv-appswitch${entry.on ? ' is-on' : ''}${entry.locked ? ' is-locked' : ''}` });
+          // a small picture that loads when it is seen (a film may have 50 photos)
+          if (entry.value && OCD.preview.isMedia(entry.value)) cell.append(el('div', { class: 'nv-appswitch-thumb' }, OCD.preview.thumb(entry.value, { cover: true })));
+          const button = el('button', { type: 'button', class: `nv-switch${entry.on ? ' is-on' : ''}`, role: 'switch', 'aria-checked': entry.on ? 'true' : 'false', 'aria-label': T('nodes.app.switchItem', { item: entry.label || '' }) }, el('span', { class: 'nv-switch-knob' }));
+          button.addEventListener('click', () => {
+            if (!switchesEditable(item.stage) || entry.locked) return;
+            state.value = toggleSwitch(state.value, entry, !entry.on);
+            paint();
+            schedulePlan();
+          });
+          buttons.push({ button, entry });
+          cell.append(el('div', { class: 'nv-appswitch-row' }, el('span', { class: 'nv-appswitch-name', text: entry.label || '' }), button));
+          if (entry.locked) cell.append(el('div', { class: 'nv-appswitch-note', text: T('nodes.app.switchLocked', { mark: marks && entry.mark ? ui.optionLabelOf(marks, entry.mark) : '' }) }));
+          else if (entry.mark && marks) cell.append(el('div', { class: 'nv-appswitch-note', text: ui.optionLabelOf(marks, entry.mark) }));
+          grid.append(cell);
+        }
+        // the wording of the param where it has one (the AI clips of the event video), else the generic one
+        const id = item.ref.param.id;
+        const words = (key, vars) => (ui.tr(`${key}.${id}`, '') ? T(`${key}.${id}`, vars) : T(key, vars));
+        sum.textContent = view.usd === null ? words('nodes.app.switchesCount', { count: view.count }) : words('nodes.app.switchesSum', { count: view.count, usd: view.usd.toFixed(2) });
+        lock();
+      };
+      paint();
+      return { el: panel, paint, lock };
+    }
+
+    // The param of marks of the form whose marks the items show (the input of the app with marks on the same node), or null.
+    function marksParamOf(ref) {
+      for (const entry of appDef().inputs) {
+        const marks = entry && marksRefOf(entry.marks);
+        if (marks && marks.node.id === ref.node.id) return marks.param;
+      }
+      return null;
+    }
+
+    // Switches may change once their stage is done (it stands for approval, or everything is done) and no run is active.
+    function switchesEditable(stage) {
+      if (!s || s.run.active || s.starting) return false;
+      const flow = currentFlow();
+      return Boolean(flow) && (flow.done || flow.index > stage);
     }
 
     /* ---------- overrides, validation ---------- */
 
-    function buildOverrides() {
+    // `step` (an app with approval steps, counted from 0): the switches of an output count only for the steps after its stage (WP55); without it, all.
+    function buildOverrides(step = Infinity) {
       const overrides = {};
+      const set = (nodeId, paramId, value) => {
+        (overrides[nodeId] = overrides[nodeId] || {})[paramId] = value;
+      };
       for (const field of s.fields) {
         if (!field.visible) continue;
         const value = s.values.get(field.key);
+        // the marks of the files in the list now (WP55), only while their param is shown
+        if (field.marks && field.marksVisible) {
+          const marks = marksOfItems(s.values.get(field.marks.key), value, field.marks.param.options);
+          if (Object.keys(marks).length) set(field.marks.node.id, field.marks.param.id, marks);
+        }
         if (value === undefined || (isAssetKind(field.param.kind) && (value === null || (Array.isArray(value) && !value.length)))) continue;
-        (overrides[field.node.id] = overrides[field.node.id] || {})[field.param.id] = value;
+        set(field.node.id, field.param.id, value);
+      }
+      for (const item of switchOutputs()) {
+        const payload = switchesPayloadOf(item.ref);
+        const state = payload ? switchState(item.ref, payload) : null;
+        if (item.stage < step && state && Object.keys(state.value).length) set(item.ref.node.id, item.ref.param.id, { ...state.value });
       }
       return overrides;
     }
@@ -636,7 +872,7 @@
           const stages = approveStages();
           if (stages.length) {
             // outputs marked for approval: the plan of every stage and the plan of everything (what is left once the stages are done)
-            const plans = await askPlans(id, stages, overrides);
+            const plans = await askPlans(id, stages, (step) => buildOverrides(step));
             if (!s || s.id !== id || mine !== s.planToken) return;
             s.plans = plans;
             s.plan = null;
@@ -699,6 +935,7 @@
       // the step that is due: what is left to run, so the hint and the costs name only that.
       const stages = approveStages();
       const flow = currentFlow();
+      for (const panel of s.switchPanels || []) panel.lock();
       const plan = flow ? (flow.index < stages.length && !flow.done ? s.plans.previews[flow.index] : s.plans.all) : s.plan;
       const rerun = !active && (flow ? flow.done : allCached(plan));
       runBtn.disabled = active;
@@ -863,9 +1100,9 @@
         let planned = null;
         try {
           if (stages.length) {
-            const asked = await askPlans(id, stages, overrides);
+            const asked = await askPlans(id, stages, (step) => buildOverrides(step));
             if (!s || s.id !== id) return;
-            const flow = stageFlow({ stages, overrides, previews: asked.previews, all: asked.all, hasResult, redo });
+            const flow = stageFlow({ stages, overrides, stageOverrides: stages.map((_, step) => buildOverrides(step)), previews: asked.previews, all: asked.all, hasResult, redo });
             // A later step makes more, and the last one the expensive part. If the button did not say so (a result came from another tab,
             // a field went back to an earlier value), nothing starts: the button and the results show how things stand now, and the next
             // click decides. The same for "make step n again" when another stage stands for approval now.
@@ -1184,6 +1421,9 @@
       const stages = approveStages();
       const stepOf = new Map();
       stages.forEach((ids, index) => ids.forEach((id) => stepOf.set(id, index + 1)));
+      // the switches of an output (WP55) stand under its result
+      const switchesOf = new Map(switchOutputs().map((item) => [item.entry.node, item]));
+      s.switchPanels = [];
       for (const entry of app.outputs) {
         const node = nodeOf(entry.node);
         if (!node) continue;
@@ -1218,6 +1458,11 @@
           body.append(cell);
         });
         card.append(body);
+        const panel = switchesOf.has(entry.node) ? switchPanel(switchesOf.get(entry.node)) : null;
+        if (panel) {
+          card.append(panel.el);
+          s.switchPanels.push(panel);
+        }
         outputsBox.append(card);
       }
       if (any) {
@@ -1240,5 +1485,21 @@
     return { open, close, showError, relabel, setRegistry };
   }
 
-  OCD.appMode = { createAppView, countTextItems, approvalStage, approvalTargets, approvalStages, previewRequest, stageFlow, approvalFlow, fieldOfIssue };
+  OCD.appMode = {
+    createAppView,
+    countTextItems,
+    approvalStage,
+    approvalTargets,
+    approvalStages,
+    previewRequest,
+    stageFlow,
+    approvalFlow,
+    fieldOfIssue,
+    // WP55: marks per file and switches per item
+    marksOfItems,
+    switchPayload,
+    switchesFromItems,
+    switchView,
+    toggleSwitch
+  };
 })(window);

@@ -171,7 +171,7 @@ async function testLive() {
   passesContract(result, 'the live test');
   assert.equal(model.calls.length, 1, 'one request: the candidates left out are no problem');
   assert.match(model.calls[0].system, /The code animates 4 of the photos you pick with AI and spreads them over the acts\./);
-  assert.match(model.calls[0].system, /else the best 8, from all acts\. In "parallax" list up to 8 of the photos you pick with clear depth, the best first; any of them may be among your candidates: the code gives the parallax to the first 4 without an AI clip\./);
+  assert.match(model.calls[0].system, /the code takes the clips from your first 8, from all acts; the person may switch on any other one, so give each a prompt\. In "parallax" list up to 8 of the photos you pick with clear depth, the best first; any of them may be among your candidates: the code gives the parallax to the first 4 without an AI clip\./);
   const shots = result.shots.shots;
   const ai = shots.filter((shot) => shot.kind === 'photo_ai');
   assert.equal(ai.length, 4);

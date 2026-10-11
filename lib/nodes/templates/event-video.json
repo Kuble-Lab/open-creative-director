@@ -776,7 +776,11 @@
         "node": "n2",
         "param": "assets",
         "label": "Photos",
-        "optional": true
+        "optional": true,
+        "marks": {
+          "node": "n10",
+          "param": "ai_marks"
+        }
       },
       {
         "node": "n3",
@@ -867,7 +871,11 @@
         "node": "n25",
         "label": "Chosen shots",
         "approve": true,
-        "hint": "Check that everybody shown agreed to be in the film, above all in photos that are animated with AI. Then “Approve and finish” makes the AI clips, the cut and the graphics."
+        "hint": "Check that everybody shown agreed to be in the film, above all in photos that are animated with AI. With AI you switch the animation of every photo on or off below the shots. Then “Approve and finish” makes the AI clips, the cut and the graphics.",
+        "switches": {
+          "node": "n10",
+          "param": "ai_choice"
+        }
       }
     ]
   },
@@ -909,7 +917,7 @@
       "app.output.n23": "Musik",
       "app.output.n24": "Board",
       "app.output.n25": "Gewählte Shots",
-      "app.hint.n25": "Prüfe, ob alle gezeigten Personen einverstanden sind, im Film zu erscheinen, besonders auf Fotos, die mit KI animiert werden. Dann macht «Freigeben und fertigstellen» die KI-Clips, den Schnitt und die Grafiken.",
+      "app.hint.n25": "Prüfe, ob alle gezeigten Personen einverstanden sind, im Film zu erscheinen, besonders auf Fotos, die mit KI animiert werden. Mit KI schaltest du unter den Shots die Animation jedes Fotos ein oder aus. Dann macht «Freigeben und fertigstellen» die KI-Clips, den Schnitt und die Grafiken.",
       "param.n20.label": "Event-Video",
       "param.n21.label": "Kontaktbogen",
       "param.n22.label": "Untertitel (SRT)",
@@ -956,7 +964,7 @@
       "app.output.n23": "Música",
       "app.output.n24": "Tablero",
       "app.output.n25": "Tomas elegidas",
-      "app.hint.n25": "Comprueba que todas las personas que aparecen estén de acuerdo en salir en el vídeo, sobre todo en las fotos que se animan con IA. Después «Aprobar y terminar» crea los clips de IA, el montaje y los gráficos.",
+      "app.hint.n25": "Comprueba que todas las personas que aparecen estén de acuerdo en salir en el vídeo, sobre todo en las fotos que se animan con IA. Con IA activas o desactivas la animación de cada foto debajo de las tomas. Después «Aprobar y terminar» crea los clips de IA, el montaje y los gráficos.",
       "param.n20.label": "Vídeo del evento",
       "param.n21.label": "Hoja de contactos",
       "param.n22.label": "Subtítulos (SRT)",

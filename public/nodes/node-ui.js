@@ -993,6 +993,9 @@
       });
       cell.append(remove);
       if (item?.file && !multi && !isDocumentValue(item)) cell.append(el('div', { class: 'nv-asset-name', text: item.file }));
+      // what the caller shows with each file (the marks of the photos in the app view, WP55)
+      const extra = typeof ctx.itemExtra === 'function' && item && !item.missing ? ctx.itemExtra(item, index) : null;
+      if (extra) cell.append(extra);
       return cell;
     }
 
@@ -1333,6 +1336,28 @@
       });
       wrap.append(picker, hex);
       return { el: wrap, set: show, get: () => hex.value };
+    }
+
+    // Marks per item of a list (WP55: the photos of the event video): the app view sets them on the files themselves; here the summary, how many
+    // items carry which mark, and a button that takes them all away.
+    if (kind === 'marks') {
+      const wrap = el('div', { class: 'nv-marks nv-nodrag' });
+      const text = el('span', { class: 'nv-hint' });
+      const clear = el('button', { type: 'button', class: 'nv-btn nv-btn-sm' }, el('span', { text: T('nodes.marks.clear') }));
+      let current = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+      const show = (marks) => {
+        current = marks && typeof marks === 'object' && !Array.isArray(marks) ? marks : {};
+        const counts = (param.options || []).slice(1).map((option) => [option, Object.values(current).filter((mark) => mark === option).length]).filter(([, count]) => count);
+        text.textContent = counts.length ? counts.map(([option, count]) => `${optionLabelOf(param, option)}: ${count}`).join(' · ') : T('nodes.marks.none');
+        clear.hidden = !counts.length;
+      };
+      clear.addEventListener('click', () => {
+        show({});
+        ctx.onChange({}, { commit: true });
+      });
+      show(current);
+      wrap.append(text, clear);
+      return { el: wrap, set: show, get: () => current };
     }
 
     if (kind === 'tags') {
