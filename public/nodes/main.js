@@ -444,6 +444,7 @@
 
   // Applies a new graph. meta: { history: label|false, key: coalesceKey, render: bool }.
   function applyGraph(next, meta = {}) {
+    OCD.inspector.warnApprovalChanges(state.graph, next, state.results);
     state.graph = next;
     if (meta.render !== false) canvas.render(next);
     if (meta.history !== false) {
@@ -1487,6 +1488,7 @@
 
   function restoreSnapshot(snapshot) {
     const next = graphLib.withContent(state.graph, snapshot);
+    OCD.inspector.warnApprovalChanges(state.graph, next, state.results, { repeat: true });
     state.graph = next;
     for (const node of next.nodes) reserveId(node.id);
     canvas.render(next);
@@ -2762,6 +2764,7 @@
       reorder: reorderInput,
       orderMenu: (nodeId, portId, edgeId, x, y) => ui.menu(x, y, orderMenuItems(nodeId, portId, edgeId))
     });
+    OCD.inspector.installApprovalGuard(OCD.api, () => state);
     runController = OCD.run.createController({ OCD });
     inspector = OCD.inspector.createInspector({
       host: dom.inspectorScroll,

@@ -611,7 +611,44 @@
     return viewerOpen;
   }
 
+  // All values use the same safe media/text renderers as the node cards.
+  function comparisonPanel(entries, { selected, approved, onSelect, onApprove, costText, busy } = {}) {
+    const panel = el('div', { class: 'nv-compare-grid' });
+    for (const { entry, variant, index } of entries) {
+      const matches = (ref) => ref && ref.entry === entry.id && ref.variant === index;
+      const card = el('section', { class: 'nv-compare-card' });
+      card.append(el('h4', { text: T('nodes.compare.variant', { n: index + 1 }) }));
+      const preview = el('div', { class: 'nv-compare-preview' });
+      renderCardPreview(preview, Object.entries(variant).map(([port, value]) => ({ port, value })));
+      card.append(preview);
+      const params = entry.params || {};
+      const details = el('dl', { class: 'nv-compare-details' });
+      const row = (label, value) => details.append(el('dt', { text: label }), el('dd', { text: value }));
+      const unknown = T('nodes.compare.unknown');
+      const values = Object.values(variant).flatMap((value) => leaves(value));
+      const recorded = (key) => [...new Set(values.map((value) => value?.[key]).filter((value) => typeof value === 'string' && value.trim()))].join('\n');
+      row(T('nodes.compare.prompt'), recorded('prompt') || T('nodes.compare.promptUnknown'));
+      row(T('nodes.compare.model'), recorded('model') || entry.cost?.model || entry.model || unknown);
+      const when = new Date(entry.createdAt);
+      row(T('nodes.compare.time'), entry.createdAt && !Number.isNaN(when.getTime()) ? when.toLocaleString() : unknown);
+      const zeroCost = [];
+      if (entry.cost?.usd === 0) zeroCost.push('USD 0');
+      if (entry.cost?.credits === 0) zeroCost.push(T('nodes.cost.credits', { credits: 0 }));
+      row(T('nodes.compare.cost'), (entry.cost && costText && costText(entry.cost)) || zeroCost.join(' · ') || unknown);
+      row(T('nodes.compare.params'), Object.entries(params).map(([key, value]) => `${ui.paramLabel(key)}: ${typeof value === 'object' ? JSON.stringify(value) : value}`).join('\n') || unknown);
+      card.append(details);
+      const choose = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: busy || matches(selected), text: T(matches(selected) ? 'nodes.history.selected' : 'nodes.compare.select') });
+      choose.addEventListener('click', () => onSelect(entry.id, index));
+      const approve = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-approve', disabled: busy, title: T(matches(approved) ? 'nodes.compare.unapprove' : 'nodes.compare.approve'), 'aria-pressed': matches(approved) ? 'true' : 'false', text: T(matches(approved) ? 'nodes.compare.approved' : 'nodes.compare.approve') });
+      approve.addEventListener('click', () => onApprove(entry.id, index, !matches(approved)));
+      card.append(el('div', { class: 'nv-insp-buttons' }, choose, approve));
+      panel.append(card);
+    }
+    return panel;
+  }
+
   OCD.preview = {
+    comparisonPanel,
     isMedia,
     alphaHint,
     isViewable,

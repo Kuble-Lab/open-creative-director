@@ -6,6 +6,27 @@
 // Dynamic content (Higgsfield model names and parameters, LLM model ids, voices) is shown raw.
 (function (global) {
   const rows = [
+    /* variant review */
+    ['nodes.compare.unapprove', 'Freigabe aufheben', 'Remove approval', 'Quitar aprobación'],
+    ['nodes.compare.selectionHelp', 'Die Freigabe markiert den Prüfstatus. Nachgelagerte Schritte verwenden die ausgewählte Variante.', 'Approval records review status. Downstream steps use the selected variant.', 'La aprobación indica el estado de revisión. Los pasos posteriores usan la variante seleccionada.'],
+    ['nodes.compare.open', 'Varianten vergleichen', 'Compare variants', 'Comparar variantes'],
+    ['nodes.compare.variant', 'Variante {n}', 'Variant {n}', 'Variante {n}'],
+    ['nodes.compare.promptUnknown', 'Ausführungsprompt nicht gespeichert; Parameter können lokale Entwürfe enthalten.', 'Execution prompt not recorded; parameters may contain local drafts.', 'Prompt de ejecución no registrado; los parámetros pueden contener borradores locales.'],
+    ['nodes.compare.unknown', 'Nicht gespeichert', 'Not recorded', 'No registrado'],
+    ['nodes.compare.prompt', 'Prompt', 'Prompt', 'Prompt'],
+    ['nodes.compare.model', 'Modell', 'Model', 'Modelo'],
+    ['nodes.compare.time', 'Zeitpunkt', 'Created', 'Fecha'],
+    ['nodes.compare.cost', 'Kosten des gesamten Laufergebnisses', 'Cost of the entire history entry', 'Coste de toda la entrada del historial'],
+    ['nodes.compare.params', 'Parameter', 'Parameters', 'Parámetros'],
+    ['nodes.compare.select', 'Auswählen', 'Select', 'Seleccionar'],
+    ['nodes.compare.approve', 'Freigeben', 'Approve', 'Aprobar'],
+    ['nodes.compare.approved', 'Freigegeben', 'Approved', 'Aprobada'],
+    ['nodes.compare.runWarning', 'Dieser Lauf kann die Auswahl freigegebener Varianten ersetzen oder Schritte mit Freigaben neu berechnen: {nodes}. Die Freigaben bleiben in der History erhalten. Fortfahren?', 'This run may replace selected approved variants or recompute steps with approvals: {nodes}. Approvals remain in history. Continue?', 'Esta ejecución puede reemplazar variantes aprobadas seleccionadas o recalcular pasos con aprobaciones: {nodes}. Las aprobaciones permanecen en el historial. ¿Continuar?'],
+    ['nodes.compare.selectionWarning', 'Die Auswahl betrifft eine freigegebene Variante oder nachgelagerte Schritte mit Freigaben. Eine andere Auswahl ändert deren Eingaben. Fortfahren?', 'This selection affects an approved variant or downstream steps with approvals. Changing the selection changes their inputs. Continue?', 'Esta selección afecta a una variante aprobada o a pasos posteriores con aprobaciones. Cambiarla modifica sus entradas. ¿Continuar?'],
+    ['nodes.compare.changeWarning', 'Diese Änderung kann Schritte mit freigegebenen Ergebnissen neu berechnen: {nodes}. Vor dem Lauf wird nochmals darauf hingewiesen.', 'This change may recompute steps with approved results: {nodes}. You will be warned again before running.', 'Este cambio puede recalcular pasos con resultados aprobados: {nodes}. Se mostrará otro aviso antes de ejecutar.'],
+    ['nodes.compare.cancelled', 'Abgebrochen; keine Ausführung oder Auswahl geändert.', 'Cancelled; no execution or selection changed.', 'Cancelado; no se ejecutó ni cambió la selección.'],
+    ['nodes.compare.saveFailed', 'Freigabe nicht gespeichert: {error}', 'Approval not saved: {error}', 'Aprobación no guardada: {error}'],
+
     /* common */
     ['nodes.common.cancel', 'Abbrechen', 'Cancel', 'Cancelar'],
     ['nodes.common.confirm', 'Bestätigen', 'Confirm', 'Confirmar'],
