@@ -503,7 +503,26 @@ function testPortTip() {
   assert.equal(window.OCDNodes.portTip.SHOW_DELAY, 300);
 }
 
+function testApprovalAndAccounting() {
+  const approval = { nodeId: 'a', maxUsd: 1, requiredUsd: 2 };
+  const accounting = { bookedUsd: 1, reservedUsd: 0, openJobs: 1, financiallyComplete: false };
+  let state = run.reduce(run.createRunState(), { type: 'snapshot', activeRun: { runId: 'r', status: 'awaiting_approval', approval, accounting, nodes: { a: 'awaiting_approval' } } });
+  assert.equal(state.status, 'awaiting_approval');
+  assert.equal(state.active, true);
+  assert.deepEqual(state.approval, approval);
+  state = run.reduce(state, { type: 'run_record', record: { id: 'r', status: 'awaiting_approval', approval, accounting, nodes: {} } });
+  assert.equal(state.active, true);
+  state = run.reduce(state, { type: 'run_approval', runId: 'r', approval: null });
+  assert.equal(state.status, 'running');
+  state = run.reduce(state, { type: 'run_finished', runId: 'r', status: 'cancelled', accounting });
+  assert.equal(state.active, false);
+  assert.equal(state.accounting.financiallyComplete, false);
+  state = run.reduce(state, { type: 'run_accounting', runId: 'r', accounting: { ...accounting, openJobs: 0, financiallyComplete: true } });
+  assert.equal(state.accounting.financiallyComplete, true);
+}
+
 const tests = [
+  testApprovalAndAccounting,
   testSnapshot,
   testRunStartedAndNodeStatus,
   testNewRunAndMissedStart,
