@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Interface of the own computers (WP46, public/render-agents-ui.js): the pure helpers, the texts in German, English and
 // Spanish, the wiring in index.html and app.js, the safety rules (no HTML from strings, no native dialogs, nothing in
 // storage, never a token), and the dialog "My computers" and the admin list driven in a small stand-in DOM against a fake
@@ -137,7 +139,7 @@ function testTexts() {
   const known = /KNOWN_ERRORS = \[([^\]]+)\]/.exec(source)[1].match(/[A-Z_]+/g);
   for (const code of known) used.add(`agents.err.${code}`);
   used.add('jobs.nodeWaiting');
-  assert.match(read('public', 'app.js'), /t\('jobs\.nodeWaiting'\)/);
+  assert.match(readAppSource(), /t\('jobs\.nodeWaiting'\)/);
   assert.ok(used.size > 50, `expected many texts, found ${used.size}`);
   for (const lang of ['de', 'en', 'es']) {
     for (const key of used) assert.ok(Object.prototype.hasOwnProperty.call(window.I18N[lang], key), `${lang} lacks ${key}`);
@@ -156,7 +158,7 @@ function testTexts() {
 
 function testWiring() {
   const index = read('public', 'index.html');
-  const app = read('public', 'app.js');
+  const app = readAppSource();
   const source = read('public', 'render-agents-ui.js');
   const ids = new Set([...index.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
   const wanted = [...source.matchAll(/document\.getElementById\('([^']+)'\)/g)].map((match) => match[1]);

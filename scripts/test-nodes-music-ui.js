@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // The surface of the music nodes (WP30), without a browser: the texts the interface builds from codes and values (errors
 // with a line number, the suggestion of ElevenLabs, the reasons of "Use as text"), the words that must agree between help,
 // templates and menu in German, English and Spanish, and the wiring of the pieces that need a DOM. The format itself is
@@ -188,7 +190,7 @@ function testPlanFieldWiring() {
 
 // The cost overview (chat) and the monitoring name the new cost types instead of showing the raw key.
 function testCostTypeNames() {
-  assert.match(read('public/app.js'), /COST_TYPE_KEYS = \{[^}]*speech: 'costs\.speech'[^}]*music: 'costs\.music'[^}]*\}/s);
+  assert.match(readAppSource(), /COST_TYPE_KEYS = \{[^}]*speech: 'costs\.speech'[^}]*music: 'costs\.music'[^}]*\}/s);
   assert.match(read('public/monitoring.js'), /COST_TYPES = \{[^}]*speech: 'costs\.speech'[^}]*music: 'costs\.music'[^}]*\}/s);
   const names = Object.fromEntries(LANGS.map((lang) => [lang, [uis[lang].T('costs.speech'), uis[lang].T('costs.music')]]));
   assert.deepEqual(names.de, ['Sprache', 'Musik']);

@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Price and model on every result of the chat (WP19). A private copy of the app runs in a temp directory (own data
 // folders, ephemeral port). OpenRouter, ElevenLabs, fal.ai and Higgsfield are local doubles and a fetch guard refuses
 // everything except localhost, so nothing is paid and nothing leaves the machine.
@@ -401,7 +403,7 @@ class FakeElement {
 function runClient() {
   const fs = require('fs');
   const root = path.resolve(__dirname, '..');
-  const appSource = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const appSource = readAppSource();
   const i18nSource = fs.readFileSync(path.join(root, 'public', 'i18n.js'), 'utf8');
 
   // texts in all languages

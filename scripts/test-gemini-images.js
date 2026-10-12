@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // The Google image models straight at Google (lib/gemini-images.js), the router in lib/tools.js (createImage), the image nodes with
 // only the Google key, and the texts of the setting (the store itself, name, mask and mirror into the environment, is checked in
 // test-settings.js; the admin-only routes in test-user-management.js). No network and no real key: global fetch is a double that
@@ -593,7 +595,7 @@ class Node {
 
 // renderSettings() and the helpers before it, cut out of public/app.js and run in a language; returns the rows.
 function renderSettings(lang, keys) {
-  const source = read('public', 'app.js');
+  const source = readAppSource();
   const cut = (from, to) => {
     const start = source.indexOf(from);
     const end = source.indexOf(to, start);

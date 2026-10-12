@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // i18n of the node view: de/en/es parity, Swiss spelling, placeholder consistency, coverage of every
 // registry type / category / port / param / option, and of every literal key used by public/nodes/*.js.
 
@@ -347,7 +349,7 @@ function testHtmlWiring() {
   for (const lang of languages) {
     assert.ok(window.I18N[lang]['mode.nodes'] && window.I18N[lang]['mode.nodesTitle'] && window.I18N[lang]['mode.chat'], `${lang} view switch keys`);
   }
-  const appSource = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const appSource = readAppSource();
   assert.ok(!/OCDNodes|nodeApp|nodesBtn/.test(appSource), 'app.js must stay unchanged and independent of the node view');
 }
 

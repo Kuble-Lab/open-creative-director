@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Side menu: projects ordered like chats (by what was worked on last) and open projects that load their own chats.
 // The ordering functions of public/app.js are run against a stub state; the server side (lastActivity of
 // GET /api/folders, the folder filter of GET /api/sessions) is covered by test-api-handlers.js and test-session-meta.js.
@@ -9,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+const source = readAppSource();
 
 function fn(name) {
   const start = source.indexOf(`function ${name}(`);

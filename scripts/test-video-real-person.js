@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // A video provider refuses an image that may show a real person (WP24, part A). Seedance (ByteDance, through OpenRouter)
 // answers HTTP 400 at the start of the job. The chat and the node view must say so in plain words, not show raw JSON.
 //
@@ -257,7 +259,7 @@ function testNodeClient() {
   assert.match(es['nodes.issue.VIDEO_REAL_PERSON'], /persona real/);
 }
 
-const source0 = () => fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
+const source0 = () => readAppSource();
 
 function testChatKeys() {
   const keys = ['videoModel.error.VIDEO_REAL_PERSON', 'videoModel.error.VIDEO_REAL_PERSON_JOB', 'videoModel.error.VIDEO_MODEL_REFUSED', 'videoModel.refusedOption', 'videoModel.refusedLead', 'videoModel.noAlternative', 'videoModel.noAffordable'];
@@ -278,7 +280,7 @@ function testChatKeys() {
   }
   assert.match(source0(), /providerRuleMessage\(job\.errorCode\)/, 'the job card says the known cause in the interface language');
   assert.match(source0(), /choice\.noAffordable \? 'videoModel\.noAffordable'/, 'the card has its own sentence when the others are over the budget');
-  const source = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
+  const source = readAppSource();
   assert.match(source, /function providerRuleMessage\(code\)/);
   assert.equal(/innerHTML\s*=\s*[^;]*(refus|lastError)/i.test(source), false, 'the card writes no data as HTML');
 }

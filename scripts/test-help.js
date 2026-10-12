@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // The help page (public/help.html) and the shared frame of the two views (public/shell.js, header in index.html).
 // No browser, no network: the page is read as text.
 //   - three complete language blocks (de, en, es) with the same sections in the same order
@@ -101,7 +103,7 @@ function dictionaries() {
 function testFrame() {
   const dict = dictionaries();
   const shell = read('public', 'shell.js');
-  const app = read('public', 'app.js');
+  const app = readAppSource();
   const access = read('public', 'access-client.js');
   const nodes = read('public', 'nodes', 'main.js');
   const used = new Set();
@@ -114,7 +116,7 @@ function testFrame() {
   for (const lang of LANGS) for (const key of used) assert.ok(dict[lang][key], `${lang} lacks ${key}`);
 
   const index = read('public', 'index.html');
-  assert.match(index, /<script src="access-client\.js"><\/script>\s*<script src="shell\.js"><\/script>\s*<script src="app\.js"><\/script>/, 'shell.js loads between access-client.js and app.js');
+  assert.match(index, /<script src="access-client\.js"><\/script>\s*<script src="shell\.js"><\/script>\s*<script src="app-core\.js"><\/script>\s*<script src="app-cards\.js"><\/script>\s*<script src="app-messages\.js"><\/script>\s*<script src="app-settings\.js"><\/script>\s*<script src="app-sessions\.js"><\/script>\s*<script src="app-brandings\.js"><\/script>\s*<script src="app-context\.js"><\/script>\s*<script src="app-transport\.js"><\/script>\s*<script src="app\.js"><\/script>/, 'shell.js loads between access-client.js and app.js');
   for (const id of ['nodesBtn', 'chatModeBtn', 'mobileMenuBtn', 'sidebarBackdrop', 'currentProjectName', 'sessionTitle', 'sessionOwner', 'contextBtn', 'shareBtn', 'accountMenu']) {
     assert.ok(index.includes(`id="${id}"`), `header element ${id}`);
   }

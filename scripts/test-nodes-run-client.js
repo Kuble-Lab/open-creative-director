@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Run UX of the node view: the pure part of public/nodes/run.js (SSE reducer for every event type,
 // results helpers, cost formatting, plan description, displayed status) and static checks of the
 // browser wiring (preview.js and run.js are loaded, the pure module also runs without a DOM).
@@ -429,7 +431,7 @@ function testWiring() {
   assert.equal(typeof run.createController, 'function');
 
   // the app chat script and the styles of the chat stay untouched by the node view
-  const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const app = readAppSource();
   assert.ok(!/OCDNodes|nv-run|outputs\.zip/.test(app));
 
   // WP30: "Use as text" is offered in the menu and in the inspector, and main.js provides what they call
