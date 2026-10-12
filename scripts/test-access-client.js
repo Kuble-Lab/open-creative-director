@@ -1,6 +1,7 @@
 'use strict';
 
 const { readAppSource } = require('./support/app-source');
+const { readNodeMainSource } = require('./support/node-main-source');
 
 // Browser side of the user management (public/access-client.js, monitoring page, wiring in index.html):
 // the pure helpers, the sharing requests, the text coverage and the safety rules (no innerHTML, no native dialogs).
@@ -233,7 +234,7 @@ function testTexts() {
   };
   const app = readAppSource() + read('public', 'shell.js');
   const access = read('public', 'access-client.js');
-  const nodes = ['main.js', 'app-mode.js', 'workflow-list.js'].map((file) => read('public', 'nodes', file)).join('\n');
+  const nodes = ['main.js', 'app-mode.js', 'workflow-list.js'].map((file) => file === 'main.js' ? readNodeMainSource() : read('public', 'nodes', file)).join('\n');
   const monitoring = read('public', 'monitoring.js');
   const teamsUi = read('public', 'teams-ui.js');
   for (const source of [app, access, nodes, teamsUi]) {

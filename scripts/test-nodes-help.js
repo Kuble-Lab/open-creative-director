@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Help for node types (public/nodes/node-help.js, WP23): the texts written by hand (nodes.type.<type>.help / .example /
 // .tip.1 to .tip.4 in public/nodes/i18n-nodes.js), the parts generated from the registry (ports, cost, availability),
 // the fix for an incomplete node, and static checks of the wiring (no innerHTML, every CSS class defined, every
@@ -244,7 +246,7 @@ function testWiring() {
   const palette = read('public/nodes/palette.js');
   const inspector = read('public/nodes/inspector.js');
   const nodeUi = read('public/nodes/node-ui.js');
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   const runClient = read('public/nodes/run.js');
   const css = read('public/nodes/nodes.css');
   const html = read('public/index.html');

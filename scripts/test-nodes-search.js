@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Search of the node palette (WP21): "golden queries" against the real registry and the real texts of the node view
 // (labels and synonyms in German, English and Spanish), as participants (no Higgsfield) and as admin (with Higgsfield
 // models). The palette entries are built the way palette.js builds them (graph.paletteEntry / paletteModelEntry with
@@ -493,7 +495,7 @@ async function testRegistryWatcher() {
 }
 
 function testRegistryWatcherIsWired() {
-  const main = fs.readFileSync(path.join(root, 'public', 'nodes', 'main.js'), 'utf8');
+  const main = readNodeMainSource();
   assert.match(main, /graphLib\.createRegistryWatcher\(/, 'main.js creates the watcher');
   assert.match(main, /registryWatcher\.prime\(payload\)/);
   assert.match(main, /document\.addEventListener\('visibilitychange'[\s\S]{0,400}recheckRegistry\(\)/, 'a tab that becomes visible looks again');

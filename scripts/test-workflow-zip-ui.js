@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Export and import with files in the browser (public/nodes/archive-ui.js, main.js, workflow-list.js, api.js), WP29.
 // No browser and no server: the logic without a DOM runs in a vm in three languages, the workflow list menu runs with a
 // small fake DOM, and the wiring is checked as text.
@@ -353,7 +355,7 @@ function stripComments(source) {
 
 function testWiring() {
   const archiveSource = read('public/nodes/archive-ui.js');
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   const list = read('public/nodes/workflow-list.js');
   const apiSource = read('public/nodes/api.js');
 
@@ -423,7 +425,7 @@ function testWiring() {
 }
 
 function testKeys() {
-  const source = read('public/nodes/archive-ui.js') + read('public/nodes/main.js') + read('public/nodes/workflow-list.js');
+  const source = read('public/nodes/archive-ui.js') + readNodeMainSource() + read('public/nodes/workflow-list.js');
   const keys = new Set([...source.matchAll(/(?:\bT|ui\.T)\('(nodes\.(?:import|export|list\.exportZip|toast\.(?:exportFailed|import)[A-Za-z]*)[A-Za-z.]*)'/g)].map((match) => match[1]));
   for (const match of read('public/nodes/archive-ui.js').matchAll(/'(nodes\.import\.[A-Za-z.]+)'/g)) keys.add(match[1]);
   assert.ok(keys.size >= 40, `keys found: ${keys.size}`);

@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 const assert = require('assert/strict');
 const fs = require('fs/promises');
 const os = require('os');
@@ -316,7 +318,7 @@ function testMetadata() {
 async function testUndoRedoWarnings() {
   const vm = require('vm');
   const { OCD } = loadPage('en', { scripts: ['node-ui', 'inspector'] });
-  const source = await fs.readFile(path.join(__dirname, '../public/nodes/main.js'), 'utf8');
+  const source = readNodeMainSource();
   const functions = ['undo', 'redo', 'restoreSnapshot'].map((name) => {
     const match = source.match(new RegExp('  function ' + name + '[(][^]*?\n  [}]'));
     assert.ok(match, name);
@@ -330,7 +332,7 @@ async function testUndoRedoWarnings() {
   let warnings = 0;
   OCD.ui.toast = () => { warnings++; };
   const noop = () => {};
-  const context = { OCD, state, graphLib: { withContent: (_graph, snapshot) => clone(snapshot) }, canvas: { render: noop }, bus: { emit: noop } };
+  const context = { OCD, state, graphLib: { withContent: (_graph, snapshot) => clone(snapshot) }, runtime: { canvas: { render: noop } }, bus: { emit: noop } };
   for (const name of ['reserveId', 'syncAppRemaps', 'pruneApp', 'markDirty', 'updateUndoButtons', 'refreshInspector', 'scheduleAppMarks', 'updateStart']) context[name] = noop;
   vm.runInNewContext(functions + ';undo();redo();', context);
   assert.equal(warnings, 2, 'both editor callbacks warn even when the approval was already warned about');

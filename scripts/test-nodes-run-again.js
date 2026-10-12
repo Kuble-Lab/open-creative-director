@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // "Run all again" in the node view (WP38g) and the cards that follow a changed branding:
 //   - the entry in the workflow menu (desktop and phone share it), disabled while a run is active, and the button of the inspector
 //   - every node runs: the plan is asked with { mode: 'all', force: true }, the question shows the total cost and says which nodes have
@@ -360,13 +362,13 @@ function testWiring() {
   assert.match(runSource, /bus\.on\('run:allAgain'/);
   const inspector = read('public/nodes/inspector.js');
   assert.match(inspector, /cb\.run\.runAllAgain\(\)/, 'the inspector has the button');
-  const main = read('public/nodes/main.js');
-  assert.match(main, /runAllAgain: \(\) => runController\.runAllAgain\(\)/);
+  const main = readNodeMainSource();
+  assert.match(main, /runAllAgain: \(\) => runtime\.runController\.runAllAgain\(\)/);
   // the plan is asked again when the page comes back (a branding changed in the chat or in another tab)
   assert.match(main, /function recheckPlan\(\)/);
   assert.match(main, /document\.addEventListener\('visibilitychange', \(\) => \{\s*if \(document\.visibilityState === 'visible'\) recheckPlan\(\);/);
   assert.match(main, /global\.addEventListener\('focus', recheckPlan\)/);
-  assert.match(main, /function recheckPlan\(\) \{\s*if \(!state\.active \|\| !state\.workflow \|\| !runController\) return;/, 'nothing while the view is not shown');
+  assert.match(main, /function recheckPlan\(\) \{\s*if \(!state\.active \|\| !state\.workflow \|\| !runtime\.runController\) return;/, 'nothing while the view is not shown');
 }
 
 function testWording() {

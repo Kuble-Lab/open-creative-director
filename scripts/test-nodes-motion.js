@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // "Motion graphics from HTML" clarity (WP13): the HTML heuristic (public/nodes/motion-html.js), the validation of the
 // video.motion_graphics node before a run (codes not_html / composition_size, plan reasonCode / reasonData), the
 // German tool errors of render_motion_graphics, the translated issue texts and the one-step conversion of an
@@ -468,7 +470,7 @@ function testWiring() {
   assert.equal(typeof browser.window.OCDNodes.graph.convertMotionHtmlToWriter, 'function');
   assert.equal(browser.window.OCDNodes.motionHtml.looksLikeHtml('<div></div>'), true);
   // the card action and the inspector button are wired
-  const main = fs.readFileSync(path.join(root, 'public', 'nodes', 'main.js'), 'utf8');
+  const main = readNodeMainSource();
   assert.match(main, /convertMotionHtmlToWriter/);
   assert.match(main, /fixId === 'motion-html'/);
   assert.match(main, /onConvertMotionHtml: convertMotionHtml/);
@@ -485,7 +487,7 @@ function testWiring() {
   assert.match(run, /fix: null,/, 'the slot resets the remedy (canvas.setSlot merges patches)');
   // no innerHTML, no native dialogs in the new code
   for (const file of ['motion-html.js', 'graph.js', 'node-ui.js', 'run.js', 'main.js', 'inspector.js']) {
-    const text = fs.readFileSync(path.join(root, 'public', 'nodes', file), 'utf8');
+    const text = (file === 'main.js' ? readNodeMainSource() : fs.readFileSync(path.join(root, 'public', 'nodes', file), 'utf8'));
     assert.doesNotMatch(text, /innerHTML|\balert\(|\bconfirm\(|\bprompt\(/, `${file} uses no innerHTML or native dialogs`);
   }
 }

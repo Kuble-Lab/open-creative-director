@@ -1,6 +1,7 @@
 'use strict';
 
 const { readAppSource } = require('./support/app-source');
+const { readNodeMainSource } = require('./support/node-main-source');
 
 // Assistant of the node view, the panel (WP25, part 2: public/nodes/assistant-ui.js).
 //
@@ -1127,7 +1128,7 @@ function testWiring() {
   assert.ok(at('assistant-ui.js') > at('run.js') && at('assistant-ui.js') > at('node-help.js') && at('assistant-ui.js') < at('main.js'), 'assistant-ui.js loads after run.js and node-help.js, before main.js');
 
   const source = read('public/nodes/assistant-ui.js');
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   for (const [file, code] of [['assistant-ui.js', source], ['main.js', main]]) {
     assert.doesNotMatch(code, /innerHTML|insertAdjacentHTML|outerHTML/, `${file}: no HTML from strings`);
     assert.doesNotMatch(code, /\b(?:alert|confirm|prompt)\(/, `${file}: no native dialogs`);

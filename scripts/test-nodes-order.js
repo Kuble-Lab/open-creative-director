@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Order of the connections of a multi-input (WP36): the geometry of the number badges on the edges (public/nodes/edge-geometry.js),
 // the pure reordering and the numbering in public/nodes/graph.js, and the wiring of the order row, the menus and the texts.
 // The engine side (the new order reaches the node and makes it stale) is tested in test-nodes-engine.js.
@@ -691,7 +693,7 @@ function testWiring() {
   const nodeUi = read('public/nodes/node-ui.js');
   assert.ok(/function applyOrder\(/.test(nodeUi) && /cardActions\.reorder/.test(nodeUi) && /cardActions\.orderMenu/.test(nodeUi));
   for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) assert.ok(nodeUi.includes(key), `keyboard: ${key}`);
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   assert.ok(/graphLib\.moveInputEdge\(/.test(main) && /history: 'reorder-inputs'/.test(main), 'one undo step through the graph function');
   assert.ok(/orderMenuItems\(edge\.to\.node, edge\.to\.port, edge\.id\)/.test(main), 'the menu of an edge offers the order');
   const css = read('public/nodes/nodes.css');

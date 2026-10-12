@@ -1,6 +1,7 @@
 'use strict';
 
 const { readAppSource } = require('./support/app-source');
+const { readNodeMainSource } = require('./support/node-main-source');
 
 // The help page (public/help.html) and the shared frame of the two views (public/shell.js, header in index.html).
 // No browser, no network: the page is read as text.
@@ -105,7 +106,7 @@ function testFrame() {
   const shell = read('public', 'shell.js');
   const app = readAppSource();
   const access = read('public', 'access-client.js');
-  const nodes = read('public', 'nodes', 'main.js');
+  const nodes = readNodeMainSource();
   const used = new Set();
   const pattern = /\b(?:tr|t|ui\.T|T|global\.t|setStatusI18n)\(\s*['`]((?:menu|mode|location|context\.owner|topbar|settings\.tab|settings\.sections|common\.networkError|sharing\.buttonSharedWithYou|account)[\w.]*)['`]/g;
   for (const source of [shell, app, access, nodes]) for (const m of source.matchAll(pattern)) used.add(m[1]);

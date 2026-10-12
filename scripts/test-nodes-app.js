@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Design App of the node view (SPEC §14, WP7): logic of the frontend modules that runs without a DOM
 // (batch counter parity with the server's list parser), server-side validation of the app section,
 // a free local flow with an exposed text list that runs as a batch through the engine (overrides,
@@ -198,7 +200,7 @@ async function testBatch(tmpDir, created) {
 
 // workflow.app as the node view keeps it in the browser (public/nodes/main.js): the function is cut out of the source
 function extractClientNormalizeApp() {
-  const match = read('public/nodes/main.js').match(/function normalizeApp\(raw\) \{[\s\S]*?\n  \}\n/);
+  const match = readNodeMainSource().match(/function normalizeApp\(raw\) \{[\s\S]*?\n  \}\n/);
   assert.ok(match, 'main.js has normalizeApp');
   return new Function(`${match[0]}; return normalizeApp;`)();
 }
@@ -208,7 +210,7 @@ const WRONG_MARKS = ['yes', 'true', 'TRUE', '1', '2', 0, 6, 1.5, 2.5, -1, NaN, I
 
 // The step of a mark as the node view reads it (public/nodes/main.js): cut out of the source like normalizeApp
 function extractApproveStepOf() {
-  const match = read('public/nodes/main.js').match(/function approveStepOf\(entry\) \{[\s\S]*?\n  \}\n/);
+  const match = readNodeMainSource().match(/function approveStepOf\(entry\) \{[\s\S]*?\n  \}\n/);
   assert.ok(match, 'main.js has approveStepOf');
   return new Function(`${match[0]}; return approveStepOf;`)();
 }
@@ -882,7 +884,7 @@ function testStatic() {
   assert.deepEqual(order, order.slice().sort((a, b) => a - b), 'node scripts are in dependency order');
 
   // hash routing knows the app view
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   assert.match(main, /#app=|app=/);
   assert.match(main, /is-appview/);
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const { readAppSource } = require('./support/app-source');
+const { readNodeMainSource } = require('./support/node-main-source');
 
 // Run UX of the node view: the pure part of public/nodes/run.js (SSE reducer for every event type,
 // results helpers, cost formatting, plan description, displayed status) and static checks of the
@@ -436,7 +437,7 @@ function testWiring() {
 
   // WP30: "Use as text" is offered in the menu and in the inspector, and main.js provides what they call
   const runSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'run.js'), 'utf8');
-  const mainSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'main.js'), 'utf8');
+  const mainSource = readNodeMainSource();
   const inspectorSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'inspector.js'), 'utf8');
   assert.ok(/OCD\.editor\.adoptTextResult\(/.test(runSource) && /adoptTextResult,/.test(mainSource), 'run.js calls the function main.js exports');
   assert.ok(/nodes\.run\.menu\.useAsText/.test(runSource) && /nodes\.run\.menu\.useAsText/.test(inspectorSource), 'menu and inspector offer the command');

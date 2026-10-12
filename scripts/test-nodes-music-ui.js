@@ -1,6 +1,7 @@
 'use strict';
 
 const { readAppSource } = require('./support/app-source');
+const { readNodeMainSource } = require('./support/node-main-source');
 
 // The surface of the music nodes (WP30), without a browser: the texts the interface builds from codes and values (errors
 // with a line number, the suggestion of ElevenLabs, the reasons of "Use as text"), the words that must agree between help,
@@ -200,7 +201,7 @@ function testCostTypeNames() {
 
 // "Use as text" warns when Design App inputs no longer reach an app output, and the app panel marks such inputs.
 function testAppCutOffWiring() {
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   assert.match(main, /graphLib\.appInputsCutOff\(state\.graph, result\.graph, currentApp\(\)\)/);
   assert.match(main, /nodes\.adopt\.appCutOff/);
   const inspector = read('public/nodes/inspector.js');

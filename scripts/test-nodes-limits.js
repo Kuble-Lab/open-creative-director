@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Limits of inputs that follow a param (WP31): the model of a Higgsfield node decides how many reference images and audio
 // tracks its inputs take. Pure graph part (public/nodes/graph.js: ports with a limit, refused connections, "n/max",
 // port description, a model change keeps the connections), the texts and helpers of public/nodes/node-ui.js (run in
@@ -612,7 +614,7 @@ async function testCapabilityStore() {
 /* ---------- wiring ---------- */
 
 function testWiring() {
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   assert.equal((main.match(/indexRegistry\(payload, \{ limitsFor: ui\.limitsFor \}\)/g) || []).length, 2, 'both places that index the registry pass the limits');
   assert.ok(/ui\.onModelChange\(onModelCapabilities\)/.test(main), 'a model description refreshes cards and plan');
   assert.ok(/canvas\.refreshLimits\(\)/.test(main) && /runController\.refreshPlan\(\)/.test(main));
@@ -629,7 +631,7 @@ function testWiring() {
   const graphSource = read('public/nodes/graph.js');
   assert.ok(!/require\('\.\/(node-ui|api)/.test(graphSource) && !/\bfetch\(|document\./.test(graphSource), 'graph.js stays pure');
   for (const file of ['node-ui.js', 'inspector.js', 'port-tip.js', 'main.js', 'canvas.js']) {
-    assert.ok(!/innerHTML/.test(read(`public/nodes/${file}`).replace(/\/\/.*$/gm, '')), `${file}: no innerHTML`);
+    assert.ok(!/innerHTML/.test((file === 'main.js' ? readNodeMainSource() : read(`public/nodes/${file}`)).replace(/\/\/.*$/gm, '')), `${file}: no innerHTML`);
   }
   const css = read('public/nodes/nodes.css');
   for (const rule of ['.nv-port-count.is-over', '.nv-porttip-facts li.is-error', '.nv-select option[data-misfit]', '.nv-model-misfit', '.nv-model-takes']) assert.ok(css.includes(rule), `CSS rule ${rule}`);
