@@ -6,7 +6,6 @@
 
 const assert = require('assert/strict');
 const fs = require('fs');
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const fsp = require('fs/promises');
 const os = require('os');
 const path = require('path');
@@ -374,7 +373,9 @@ async function testErrorJournalFlood() {
   const file = path.join(directory, 'errors.json');
   const clock = Date.parse('2026-09-30T12:00:00.000Z');
   try {
-    const monitor = monitoring.createMonitor({ file, now: () => clock, flushMs: 40 });
+    let fireTimer;
+    const monitor = monitoring.createMonitor({ file, now: () => clock, flushMs: 40,
+      setTimer: (fn) => { fireTimer = fn; return 1; }, clearTimer: () => { fireTimer = null; } });
     const fail = (user, i) => {
       const listeners = {};
       const res = { statusCode: 404, once: (event, fn) => { listeners[event] = fn; }, writableFinished: true };
@@ -389,7 +390,7 @@ async function testErrorJournalFlood() {
     assert.equal(monitor.runtime().failedRequests, 2000, 'all failures are still counted');
     // other people are not crowded out by the flood
     fail('bob@example.com', 1);
-    await sleep(200); // the timer flushes on its own
+    await fireTimer(); // fire the scheduled callback without racing wall-clock I/O
     const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.equal(rows.length, 51);
     assert.equal(rows.filter((row) => row.user === 'bob@example.com').length, 1);
@@ -400,6 +401,14 @@ async function testErrorJournalFlood() {
     }
     assert.ok(JSON.parse(fs.readFileSync(file, 'utf8')).length <= 1000);
     assert.equal(fs.readdirSync(directory).length, 1, 'no temporary files are left behind');
+    let finished;
+    const timerFinished = new Promise((resolve) => { finished = resolve; });
+    const timed = monitoring.createMonitor({ file, now: () => clock, flushMs: 1,
+      setTimer: (fn, ms) => ({ native: setTimeout(async () => { await fn(); finished(); }, ms) }),
+      clearTimer: (timer) => clearTimeout(timer.native) });
+    timed.recordError({ ts: new Date(clock).toISOString(), user: 'timer@example.com' });
+    await timerFinished;
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).at(-1).user, 'timer@example.com', 'the real timer persists without an explicit flush');
   } finally {
     await fsp.rm(directory, { recursive: true, force: true });
   }

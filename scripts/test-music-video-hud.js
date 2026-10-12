@@ -1376,7 +1376,9 @@ async function testFfmpegPostPass(binaries) {
 
 /* ---------- the node ---------- */
 
-async function testNode(binaries) {
+// Separate runner entries keep independent real-ffmpeg scenarios within the per-file hang guard.
+async function testNode(binaries, group) {
+  assert.ok(['validation', 'render', 'style', 'options'].includes(group), `unknown node test group: ${group}`);
   const store = require('../lib/store');
   const assets = require('../lib/nodes/assets');
   const registryModule = require('../lib/nodes/registry');
@@ -1512,7 +1514,7 @@ async function testNode(binaries) {
 
   try {
     /* the inputs are checked before anything is sent */
-    {
+    if (group === 'validation') {
       const video = await baseVideo(12);
       const before = (await ledgerNow()).length;
       for (const [text, code] of [['', 'HUD_GRAPHICS_INVALID'], ['{"cuts": []}', 'HUD_GRAPHICS_INVALID'], ['[1,2]', 'HUD_GRAPHICS_INVALID'], ['no json', 'HUD_GRAPHICS_INVALID']]) {
@@ -1533,7 +1535,7 @@ async function testNode(binaries) {
     }
 
     /* no render node online: the dispatcher says so, the node says it in a code */
-    {
+    if (group === 'validation') {
       reset();
       const video = await baseVideo(12);
       const before = (await ledgerNow()).length;
@@ -1557,7 +1559,7 @@ async function testNode(binaries) {
     }
 
     /* a chunk that fails twice ends the node; a render node that is gone is not asked again */
-    {
+    if (group === 'validation') {
       reset();
       const video = await baseVideo(12);
       const before = (await ledgerNow()).length;
@@ -1585,7 +1587,7 @@ async function testNode(binaries) {
     }
 
     /* the whole run: two chunks, the first of them is returned too short and drawn again, the second one fails once */
-    {
+    if (group === 'render') {
       reset();
       const seconds = 26;
       const video = await baseVideo(seconds + 2);
@@ -1659,12 +1661,20 @@ async function testNode(binaries) {
       const after = await ledgerNow();
       assert.equal(after.length, before + 2, `two new assets, got ${after.length - before}`);
       assert.deepEqual((await fsp.readdir(sessionDir)).filter((name) => name.startsWith('.nodes-')), [], 'no scratch folder is left');
-      assert.ok(elapsed < 150, `the run took ${elapsed} s`);
+      // A fixed two-second 1080p encode samples CPU contention in this run. The full 26-second
+      // film includes retries and several decode/filter/encode passes: allow 75 reference encodes,
+      // retaining the 150 s laptop budget and a 600 s hang guard even on an overloaded machine.
+      const referenceStart = performance.now();
+      await ff(['-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=24', '-frames:v', '48',
+        '-vf', 'noise=alls=20:allf=t+u', '-c:v', 'libx264', '-preset', 'medium', '-threads', '2', '-f', 'null', '-']);
+      const referenceSeconds = (performance.now() - referenceStart) / 1000;
+      const renderBudget = Math.min(600, Math.max(150, referenceSeconds * 75));
+      assert.ok(elapsed < renderBudget, `the run took ${elapsed} s; reference ${referenceSeconds.toFixed(2)} s, budget ${renderBudget.toFixed(1)} s`);
       console.log(`   node run: ${expected.length} chunks, ${filmFrames} frames, ${elapsed.toFixed(1)} s with ffmpeg`);
     }
 
     /* the style: the parameter reaches the page, the post-pass and the log; it wins over the field of the plan (as the accent does) */
-    {
+    if (group === 'style') {
       reset();
       const video = await baseVideo(10);
       const ctx = makeCtx();
@@ -1702,7 +1712,7 @@ async function testNode(binaries) {
     }
 
     /* the karaoke switch and the end card switch reach the page */
-    {
+    if (group === 'options') {
       reset();
       const video = await baseVideo(14);
       const ctx = makeCtx();
@@ -2625,7 +2635,7 @@ async function main() {
     await testFfmpegPostPass(binaries);
     console.log('ok testFfmpegPostPass');
     passed += 1;
-    await testNode(binaries);
+    await testNode(binaries, 'validation');
     console.log('ok testNode');
     passed += 1;
   } else {
@@ -2635,7 +2645,9 @@ async function main() {
   console.log('test-music-video-hud.js: ok');
 }
 
-main().catch((err) => {
+if (require.main === module) main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+module.exports = { testNode };
