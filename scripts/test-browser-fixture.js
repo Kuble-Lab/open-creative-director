@@ -6,9 +6,21 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createFixture } = require('./support/browser-fixture');
-const { waitFor } = require('./support/browser');
+const { initializeBrowserDocument, waitFor } = require('./support/browser');
+const vm = require('node:vm');
 
 async function main() {
+  const script = `(${initializeBrowserDocument.toString()})()`;
+  const window = {};
+  window.top = window;
+  const writes = [];
+  vm.runInNewContext(script, { window, localStorage: { setItem: (...args) => writes.push(args) } });
+  assert.deepEqual(writes, [['vcd-lang', 'en']], 'the app document starts in English');
+  const sandbox = { window: { top: window } };
+  Object.defineProperty(sandbox, 'localStorage', { get() { throw new Error('Opaque frame storage is inaccessible'); } });
+  assert.doesNotThrow(() => vm.runInNewContext(script, sandbox), 'preview frames never access storage');
+  assert.throws(() => vm.runInNewContext(script, { window, localStorage: { setItem() { throw new Error('Storage failure'); } } }),
+    /Storage failure/, 'real app initialization failures remain visible');
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'ocd-browser-fixture-'));
   let fixture;
   try {
@@ -41,6 +53,16 @@ async function main() {
     assert.equal(failed.cost.usd, 1.25);
     assert.match(failed.nodes.gate.message, /Synthetic reconnect failure/);
     assert.equal((await store.readRun(failedId, failedRun)).status, 'failed');
+    const cardId = await workflow({ cards: true });
+    const cardStep = { mode: 'node', nodeIds: ['board'] };
+    const cardPlan = await engine.plan(cardId, cardStep);
+    assert.equal(cardPlan.valid, true, JSON.stringify(cardPlan.issues));
+    const cardRun = await engine.start(cardId, cardStep);
+    assert.equal((await engine.whenFinished(cardId, cardRun)).status, 'completed');
+    const saved = await store.getWorkflow(cardId);
+    const source = require('../lib/event-video/card-preview').previewSource(saved.workflow, saved.results, 'render');
+    assert.equal(require('../lib/event-video/card-preview').buildPreviews(source.graphics).previews.length, 3);
+    assert.deepEqual(calls.slice(-1), ['card-plan'], 'approval fixture never executes the render');
   } finally {
     if (fixture) await fixture.close();
     await fs.rm(temp, { recursive: true, force: true });

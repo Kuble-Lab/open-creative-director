@@ -7930,3 +7930,15 @@ button.nv-scene-preview:focus-visible {
 .nv-appresume p {
   margin: 6px 0;
 }
+
+/* Static approval cards inherit the exact render layout inside isolated frames. */
+.nv-cardpreview { margin-top: 24px; }
+.nv-cardpreview-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.nv-cardpreview-controls [aria-pressed='true'] { border-color: currentColor; font-weight: 600; }
+.nv-cardpreview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.nv-cardpreview-grid figure { margin: 0; min-width: 0; }
+.nv-cardpreview-grid figcaption { margin-bottom: 6px; color: var(--text-dim); font-size: 12px; }
+.nv-cardpreview-grid iframe { display: block; width: 100%; height: auto; border: 0; background: #111214; }
+@media (max-width: 640px) {
+  .nv-cardpreview-grid { grid-template-columns: minmax(0, 1fr); }
+}

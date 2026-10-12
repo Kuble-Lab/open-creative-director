@@ -60,6 +60,13 @@ async function createFixture(temp, { listen = true } = {}) {
   registry.register({ type: 'test.after', category: 'text', label: 'Following step',
     inputs: [{ id: 'in', type: 'text' }], outputs: [{ id: 'out', type: 'text' }],
     execute: async (_ctx, inputs) => { calls.push('after'); return { variants: [{ out: inputs.in }] }; } });
+  const cardGraphics = JSON.parse(await fs.readFile(path.join(__dirname, 'event-video/graphics-60.json'), 'utf8'));
+  registry.register({ type: 'event_video.plan', category: 'text', label: 'Card plan',
+    inputs: [{ id: 'brief', type: 'text' }], outputs: [{ id: 'board', type: 'text' }, { id: 'graphics', type: 'text' }], params: [],
+    execute: async () => { calls.push('card-plan'); return { variants: [{ board: textValue('Card approval'), graphics: textValue(JSON.stringify(cardGraphics)) }] }; } });
+  registry.register({ type: 'event_video.render', category: 'text', label: 'Card render',
+    inputs: [{ id: 'graphics', type: 'text' }], outputs: [{ id: 'out', type: 'text' }], params: [{ id: 'text_overrides', kind: 'text', default: '' }],
+    execute: async () => { throw new Error('Card preview must never execute a render'); } });
   const events = createEventBus();
   const store = createWorkflowsStore({ dir: path.join(temp, 'workflows'), registry, events });
   const engine = createEngine({ store, registry, events, getConfig: () => ({}) });
@@ -79,7 +86,15 @@ async function createFixture(temp, { listen = true } = {}) {
   const url = server ? `http://127.0.0.1:${server.address().port}` : null;
   const node = (id, type, params = {}) => ({ id, type, typeVersion: 1, x: 0, y: 0, params });
   const edge = (from, port, to, input = 'in') => ({ id: `${from}-${to}`, from: { node: from, port }, to: { node: to, port: input } });
-  async function workflow({ approval = false, uploads = false, key = 'gate' } = {}) {
+  async function workflow({ approval = false, uploads = false, cards = false, key = 'gate' } = {}) {
+    if (cards) {
+      const result = await store.createWorkflow({ name: 'Card preview fixture', graph: {
+        nodes: [node('brief', 'input.text', { text: 'Event' }), node('planner', 'event_video.plan'), node('render', 'event_video.render'), node('board', 'output.result'), node('final', 'output.result')],
+        edges: [edge('brief', 'text', 'planner', 'brief'), edge('planner', 'board', 'board', 'inputs'), edge('planner', 'graphics', 'render', 'graphics'), edge('render', 'out', 'final', 'inputs')]
+      }, app: { enabled: true, inputs: [{ node: 'brief', param: 'text' }], outputs: [{ node: 'board', approve: true }, { node: 'final' }] } });
+      workflowIds.push(result.workflow.id);
+      return result.workflow.id;
+    }
     const nodes = [node('brief', 'input.text', { text: 'Initial brief' }), node('preview', 'test.preview'), node('gate', 'test.gate', { key }), node('after', 'test.after'), node('preview-out', 'output.result'), node('final', 'output.result')];
     if (uploads) nodes.push(node('photo', 'input.image'), node('audio', 'input.audio'));
     const result = await store.createWorkflow({ name: 'Browser fixture',

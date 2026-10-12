@@ -43,6 +43,12 @@ function browserRuntime({ root = ROOT, cache = path.join(os.homedir(), '.cache/p
   return candidates.length ? { puppeteer, executablePath: candidates[0] } : { skip: `no cached Chrome compatible with ${platform}/${arch}; set OCD_TEST_BROWSER to an executable` };
 }
 
+function initializeBrowserDocument() {
+  // Puppeteer also injects this into opaque preview frames, which cannot use storage.
+  if (window !== window.top) return;
+  localStorage.setItem('vcd-lang', 'en');
+}
+
 async function runBrowserTest(filename, test) {
   const runtime = browserRuntime();
   if (runtime.skip) {
@@ -65,7 +71,7 @@ async function runBrowserTest(filename, test) {
     const page = await browser.newPage();
     page.setDefaultTimeout(10000);
     page.setDefaultNavigationTimeout(15000);
-    await page.evaluateOnNewDocument(() => localStorage.setItem('vcd-lang', 'en'));
+    await page.evaluateOnNewDocument(initializeBrowserDocument);
     const errors = [];
     let disconnected = false;
     page.on('pageerror', error => errors.push(error.message));
@@ -112,4 +118,4 @@ async function waitFor(predicate, label) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
-module.exports = { browserRuntime, runBrowserTest, status, ready, waitFor };
+module.exports = { browserRuntime, initializeBrowserDocument, runBrowserTest, status, ready, waitFor };

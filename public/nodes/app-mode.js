@@ -359,6 +359,7 @@
     }
 
     function close() {
+      for (const panel of s?.switchPanels || []) panel.dispose?.();
       token += 1;
       stopTimers();
       closeEvents();
@@ -419,6 +420,7 @@
         events: null,
         refs: null,
         sseBroken: false,
+        cardSections: new Map(),
         switches: new Map() // the switches of an output (WP55): `${node}.${param}` -> { base, value }
       };
       if (payload.activeRun) s.run = { ...runLib.createRunState(), runId: typeof payload.activeRun === 'string' ? payload.activeRun : payload.activeRun.runId, active: true, status: 'running' };
@@ -947,10 +949,73 @@
       } catch (_) { return null; }
     }
 
+    function cardPreviewPanel(target, data) {
+      const current = s;
+      const box = el('div', { class: 'nv-cardpreview' });
+      const controls = el('div', { class: 'nv-cardpreview-controls', role: 'group', 'aria-label': T('nodes.app.cardPreview') });
+      const status = el('p', { class: 'nv-hint', role: 'status', 'aria-live': 'polite' });
+      const grid = el('div', { class: 'nv-cardpreview-grid' });
+      const sections = ['title', 'endcard'].filter((key) => data.fields.some((field) => field.path.startsWith(`${key}.`)));
+      const savedSection = current.cardSections.get(target.render.id);
+      let section = sections.includes(savedSection) ? savedSection : sections.includes('endcard') ? 'endcard' : sections[0];
+      let previews = [], timer = null, revision = 0, disposed = false;
+      const buttons = [];
+      const show = () => {
+        grid.textContent = '';
+        for (const { key, button } of buttons) button.setAttribute('aria-pressed', String(key === section));
+        for (const item of previews) {
+          if (!item[section]) continue;
+          const frame = el('iframe', { sandbox: '', title: `${T(`nodes.app.text.${section}`)} ${item.format}`, referrerpolicy: 'no-referrer', tabindex: '-1' });
+          frame.srcdoc = item[section];
+          frame.style.aspectRatio = `${item.width} / ${item.height}`;
+          grid.append(el('figure', {}, el('figcaption', { text: item.format }), frame));
+        }
+      };
+      for (const key of sections) {
+        const button = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', text: T(`nodes.app.text.${key}`), 'aria-pressed': String(key === section) });
+        button.addEventListener('click', () => { section = key; current.cardSections.set(target.render.id, key); show(); });
+        buttons.push({ key, button });
+        controls.append(button);
+      }
+      const schedule = (delay = 400) => {
+        clearTimeout(timer);
+        const request = ++revision;
+        previews = [];
+        show();
+        const invalid = data.fields.some((field) => eventTextError(field, data.fields, data.state.values));
+        status.textContent = T(!sections.length ? 'nodes.app.cardPreviewEmpty' : invalid ? 'nodes.app.cardPreviewInvalid' : 'nodes.app.cardPreviewLoading');
+        box.setAttribute('aria-busy', String(!invalid && sections.length > 0));
+        if (invalid || !sections.length) return;
+        timer = setTimeout(async () => {
+          if (disposed || s !== current) return;
+          try {
+            const result = await api.cardPreview(current.id, target.render.id, JSON.stringify({ plan: data.state.plan, base: data.state.base, values: data.state.values }));
+            if (disposed || s !== current || request !== revision) return;
+            // fonts and logo come once per answer; each document has a slot for them (lib/event-video/card-preview.js)
+            const fill = (doc) => (doc && result.slots ? doc.replace(result.slots.fonts, () => result.fonts || '').replace(result.slots.logo, () => result.logo || '') : doc);
+            previews = result.previews.map((item) => ({ ...item, title: fill(item.title), endcard: fill(item.endcard) }));
+            show();
+            status.textContent = T('nodes.app.cardPreviewHint');
+          } catch (_) {
+            if (disposed || s !== current || request !== revision) return;
+            status.textContent = T('nodes.app.cardPreviewError');
+          }
+          box.setAttribute('aria-busy', 'false');
+        }, delay);
+      };
+      const retry = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', text: T('nodes.app.cardPreviewRefresh') });
+      retry.addEventListener('click', () => schedule(0));
+      controls.append(retry);
+      box.append(el('h4', { text: T('nodes.app.cardPreview') }), controls, status, grid);
+      schedule(0);
+      return { el: box, schedule, dispose: () => { disposed = true; ++revision; clearTimeout(timer); } };
+    }
+
     function textPanel(target) {
       const data = textState(target);
       if (!data) return null;
       const panel = el('section', { class: 'nv-apptexts' }, el('h4', { text: T('nodes.app.editTexts') }), el('p', { class: 'nv-hint', text: T('nodes.app.editTextsHint') }));
+      const preview = cardPreviewPanel(target, data);
       const inputs = [];
       const checks = [];
       const validate = () => checks.forEach(({ field, input, error }) => {
@@ -969,6 +1034,7 @@
           if (input.value === field.value) delete data.state.values[field.path];
           else data.state.values[field.path] = input.value;
           validate();
+          preview.schedule();
           writeStored();
           schedulePlan();
         });
@@ -976,10 +1042,11 @@
         inputs.push(input);
         panel.append(el('label', {}, el('span', { text: label }), input, error));
       }
+      panel.append(preview.el);
       validate();
       const lock = () => { for (const input of inputs) input.disabled = !switchesEditable(target.stage); };
       lock();
-      return { el: panel, lock };
+      return { el: panel, lock, dispose: preview.dispose };
     }
 
     function replanTarget() {
@@ -1687,6 +1754,7 @@
       stages.forEach((ids, index) => ids.forEach((id) => stepOf.set(id, index + 1)));
       // the switches of an output (WP55) stand under its result
       const switchesOf = new Map(switchOutputs().map((item) => [item.entry.node, item]));
+      for (const panel of s.switchPanels || []) panel.dispose?.();
       s.switchPanels = [];
       const textTargets = eventTextTargets();
       for (const entry of app.outputs) {
