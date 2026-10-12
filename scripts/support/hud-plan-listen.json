@@ -3,10 +3,6 @@
     "sha256": "3a53a5e1d3ca9723994aeec41553c71e2d4dbc84cedc61d7873f51725e889ab1",
     "length": 17379
   },
-  "planner.a.board": {
-    "sha256": "4c3fc5a702ee15e690815df24ab5e97ca6799710a43dacf2eaaf94b56afc23f3",
-    "length": 6387
-  },
   "planner.a.cost": {
     "sha256": "2a4d971762b53085c65dff478f442fde2cc5e70700a1e63ce4021d35adf8b1db",
     "length": 189
@@ -19,10 +15,6 @@
     "sha256": "e7bad847f9813c3be687bcdb9e743a5e7858ebb5f89bb8e1e267ae8fcb5b8f66",
     "length": 53428
   },
-  "planner.b.board": {
-    "sha256": "d8760de34473d17c72e734cea1b00dd72bdd31e863dce676fcc9a94ed8346068",
-    "length": 8295
-  },
   "planner.b.cost": {
     "sha256": "1a0d670d3b71981f3ddf965b2cab969d6200024b0a1fe1df590a862a9d4540c4",
     "length": 189
@@ -34,10 +26,6 @@
   "planner.c.requests": {
     "sha256": "a4896f3274291b089aa47c20604941c7494b41813ddba7da16ab3910c5ca8335",
     "length": 39316
-  },
-  "planner.c.board": {
-    "sha256": "9600acc05022dc11c6afe0408782922ce7831a7ba5f5bbba8cb1f0b9ba00afee",
-    "length": 11647
   },
   "planner.c.cost": {
     "sha256": "42322652e7e785e6708e6e85abf30fb259e62dcbd5609ab410347f9f6f701f13",

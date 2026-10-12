@@ -37,7 +37,7 @@ const BEFORE_WP48 = require('./support/hud-plan-before-wp48.json');
 // limit of the requests, the board with the line MODEL, the estimate with the thinking) and with them the plans of the three runs; these are the prints of now.
 // Everything else (the timing, the grids, the briefs, the voices) stays the one of before WP48, byte for byte.
 const WP52A = require('./support/hud-plan-wp52a.json');
-// Finished briefs now need 80 words; snapshots cover those explicit fixture changes and source/density reporting.
+// A supplied brief now needs 80 words (a shorter one is an idea that is expanded): the fixtures use full briefs, which changes their requests, costs and shots.
 const LISTEN = require('./support/hud-plan-listen.json');
 
 const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
@@ -121,7 +121,7 @@ async function testGolden() {
     ...['hud', 'kuble'].flatMap((theme) => ['de', 'en', 'es'].map((lang) => `system.${theme}.${lang}`)),
     'system.needShort', 'user.a', 'user.a.retry'
   ].sort(), 'WP52a changes the planner, its prompts and its estimate, nothing else');
-  // Supplied-brief fixtures, their costs and board reporting changed; all other snapshots remain byte-for-byte checks.
+  // The fixtures with full briefs have their own requests, costs and shots; the boards and all other snapshots stay byte for byte.
   const emptyRetryBoard = { sha256: 'fd6831b59014f05e69ec26322467eafbd05d5d54f354f015483a008c7c18bbb9', length: 11594 };
   for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], LISTEN[name] || (name === 'planner.c.board' ? emptyRetryBoard : null) || WP52A[name] || WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte (or of WP52a)`);
   // the additions are in the prompt of every run of the planner
