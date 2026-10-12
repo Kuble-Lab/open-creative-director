@@ -28,7 +28,7 @@ const root = path.resolve(__dirname, '..');
 const planLib = require('../lib/music-video-plan');
 const hudPlan = require('../lib/music-video-hud/plan');
 const graphicsLib = require('../lib/music-video-hud/graphics');
-const { FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
+const { fullBrief, FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
 
 const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
 const errorOf = async (promise) => {
@@ -79,7 +79,7 @@ async function plan(name, steps, extra = {}) {
   const result = await hudPlan.runPlanner({
     analysis: song.analysis,
     timing: song.timing,
-    brief: 'A made-up film about a light that stays on',
+    brief: fullBrief('A made-up film about a light that stays on'),
     figureText: extra.figureText || FIGURE_TEXT,
     style: extra.style || '',
     theme: extra.theme || 'hud',
@@ -93,7 +93,9 @@ async function plan(name, steps, extra = {}) {
     ...(extra.allowPlain ? { allowPlain: true } : {}),
     ...(extra.brollShare !== undefined ? { brollShare: extra.brollShare } : {})
   });
-  return { result, model, logs, song };
+  assert.ok(logs.includes(`Cuts per minute: ${result.grid.settings.cutsPerMinute} (slider).`));
+  assert.ok(logs.includes('Brief source: person.'));
+  return { result, model, logs: logs.filter((line) => !/^(Cuts per minute|Brief source):/.test(line)), song };
 }
 const answerFor = (name, mutate, figureText = FIGURE_TEXT) => {
   const { grid } = gridOf(name);
@@ -736,7 +738,7 @@ async function testPlanner() {
     assert.equal(request.reasoningEffort, 'medium');
     assert.equal(hudPlan.PLAN_REASONING_EFFORT, 'medium');
     assert.equal(request.system, hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false }));
-    assert.equal(request.prompt, hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }));
+    assert.equal(request.prompt, hudPlan.userPrompt({ brief: fullBrief('A made-up film about a light that stays on'), style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }));
     assert.match(request.prompt, /\| b-roll$/m, 'the suggestion of the code goes to the model');
     assert.deepEqual(result.broll, [...hudPlan.suggestBroll(grid)].sort((a, b) => a - b));
     assert.equal(result.plain, false);
@@ -1244,7 +1246,7 @@ async function testReviewRepairs() {
   let calls = 0;
   const logs = [];
   const result = await hudPlan.runPlanner({ analysis: songOf('s72').analysis, timing: songOf('s72').timing,
-    options: MIXED, brief: idea, figureText: FIGURE_TEXT,
+    options: MIXED, brief: fullBrief(idea), figureText: FIGURE_TEXT,
     ask: async () => { calls += 1; assert.equal(calls, 1); return { text: JSON.stringify(soft), usd: 0 }; },
     log: (message) => logs.push(message) });
   assert.equal(calls, 1);
@@ -1277,7 +1279,7 @@ async function testReviewRepairs() {
   }
   let patternCalls = 0;
   const patterned = await hudPlan.runPlanner({ analysis: longSong.analysis, timing: longSong.timing,
-    options: SONGS.long.options, brief: idea, figureText: FIGURE_TEXT,
+    options: SONGS.long.options, brief: fullBrief(idea), figureText: FIGURE_TEXT,
     ask: async () => { patternCalls += 1; assert.equal(patternCalls, 1, 'the live pattern must not ask again'); return { text: JSON.stringify(livePattern), usd: 0 }; } });
   assert.ok(patterned.leftOut.filter((device) => device.type === 'chart').length >= 5, 'a handful of six oversized charts are omitted');
   assert.equal(patterned.notes.filter((note) => /has no lexical match/.test(note)).length, 4);
@@ -1304,7 +1306,7 @@ function testBrollWithoutLines() {
   const figure = figureOf();
   const answer = goodAnswer(grid, figure);
   assert.ok(answer.units.every((unit) => unit.with_figure !== false));
-  assert.deepEqual(hudPlan.readAnswer(JSON.stringify(answer), { grid, figure, brief: 'A made-up film about a light that stays on' }).problems, []);
+  assert.deepEqual(hudPlan.readAnswer(JSON.stringify(answer), { grid, figure, brief: fullBrief('A made-up film about a light that stays on') }).problems, []);
 }
 
 // A song sung without pauses (the real song of WP52a had 5 windows in 33 s of 76 s asked): long lines with tiny gaps between them, a gap of 0.14 to 0.2 s after
@@ -1655,7 +1657,7 @@ async function testPrice() {
       for (const name of ['s60', 's72', 'slow', 'fast', 'long']) {
         const { song, grid } = gridOf(name, options);
         const figure = figureOf();
-        const chars = hudPlan.systemPrompt({ theme: 'hud' }).length + hudPlan.userPrompt({ brief: 'A made-up film about a light that stays on', style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }).length;
+        const chars = hudPlan.systemPrompt({ theme: 'hud' }).length + hudPlan.userPrompt({ brief: fullBrief('A made-up film about a light that stays on'), style: '', figure, grid, broll: hudPlan.suggestBroll(grid) }).length;
         const cost = hudPlan.estimateCost({ grid, settings: grid.settings, prices: real, promptChars: chars });
         assert.notEqual(cost.total, null, name);
         rows.push({ name, seconds: song.seconds, cost });
@@ -1771,7 +1773,7 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
+    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, listen: true, cuts_from_song: true, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
   });
   // WP52a: the share of B-roll and the switch for a plain plan, both added after plans were saved: at their defaults no part of the key
   const brollParam = def.params.find((param) => param.id === 'broll_share');
@@ -1825,7 +1827,7 @@ async function testDefinition() {
     const inputs = (extra = {}) => ({
       analysis: { type: 'text', value: JSON.stringify(song.analysis) },
       timing: { type: 'text', value: JSON.stringify(song.timing) },
-      brief: { type: 'text', value: 'A made-up film about a light that stays on' },
+      brief: { type: 'text', value: fullBrief('A made-up film about a light that stays on') },
       figure: { type: 'text', value: FIGURE_TEXT },
       ...extra
     });
@@ -2038,7 +2040,7 @@ async function testNode() {
     const inputs = (extra = {}) => ({
       analysis: textValue(JSON.stringify(song.analysis)),
       timing: textValue(JSON.stringify(song.timing)),
-      brief: textValue('A made-up film about a light that stays on'),
+      brief: textValue(fullBrief('A made-up film about a light that stays on')),
       figure: textValue(FIGURE_TEXT),
       song: songValue,
       ...extra
@@ -2082,7 +2084,7 @@ async function testNode() {
       assert.equal(graphics.cuts.length, grid.cuts.length);
       assert.match(out.board.value, /^TREATMENT\n/);
       assert.equal(out.sheet_prompt.value, hudPlan.sheetPrompt(figure));
-      assert.equal(out.brief.value, 'A made-up film about a light that stays on', 'the output "brief" is the idea that was given');
+      assert.equal(out.brief.value, fullBrief('A made-up film about a light that stays on'), 'the output "brief" is the idea that was given');
       assert.ok(!ctx.logs.some((line) => /^The brief \(output/.test(line)), 'no brief was written');
       // the price of the film on the board is the one of the table, and the log says what was made
       assert.match(out.board.value, /^NUMBERS .* estimate 3\.73 USD$/m);
@@ -2117,7 +2119,7 @@ async function testNode() {
       near(result.cost.usd, 2 * LLM_USD, 1e-9);
       assert.match(out.board.value, /^BRIEF {6}written by the language model from the lyrics/);
       assert.match(out.board.value, /^ESTIMATE .* \+ brief [\d.]+ = [\d.]+ USD/m);
-      assert.ok(ctx.logs.some((line) => /^The field "Idea" is empty: the language model wrote the brief from the lyrics \(\d+ words\)\.$/.test(line)), ctx.logs.join(' | '));
+      assert.ok(ctx.logs.some((line) => /^Brief from song: the language model wrote the brief from the lyrics \(\d+ words\)\.$/.test(line)), ctx.logs.join(' | '));
       assert.ok(ctx.logs.some((line) => /^The brief \(output "brief"\): anthropic\/claude-opus-5\.5, 0\.2500 USD; copy it into the field "Idea" to change it\.$/.test(line)), ctx.logs.join(' | '));
       // a brief that does not come: the error has a code, what was paid is counted, no plan is asked for
       reset([new Error('the service is busy'), 'Too short.']);
@@ -2160,7 +2162,7 @@ async function testNode() {
       assert.equal((await officialLedger()).length, 3);
       // the plan again (another idea): the same assets, no second copy, so the sheet behind it keeps its key
       reset([goodAnswer(grid, claudia)]);
-      result = await exec(makeCtx(), inputs({ figure: textValue(claudiaText), brief: textValue('Another idea') }), { official_images: true });
+      result = await exec(makeCtx(), inputs({ figure: textValue(claudiaText), brief: textValue(fullBrief('Another idea')) }), { official_images: true });
       assert.deepEqual(result.variants[0].sheet_refs.items.map((item) => item.assetId), first);
       assert.equal((await officialLedger()).length, 3, 'the images are in the workflow once');
       // a file of the workflow that is gone is copied in again

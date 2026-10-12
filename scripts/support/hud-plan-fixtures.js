@@ -281,4 +281,9 @@ function scriptedModel(steps, { usd = 0.25 } = {}) {
   return { ask, calls };
 }
 
-module.exports = { FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel, NARROW, WIDE, CLOSE, POOLS };
+// A supplied, finished brief for tests that exercise direction rather than brief generation.
+function fullBrief(idea) {
+  return `${idea} The singer walks through a quiet city at night, carrying the same small lamp from the opening shot to the final frame. Keep the story grounded in ordinary streets, windows and reflections. The first verse introduces the light, the chorus opens the space, and the second verse returns to the same places with a different mood. Use warm practical lighting against cool shadows, simple clothes and clear compositions. The HUD follows the lyrics with readable counters and diagrams. End with the lamp still glowing. Avoid logos and unrelated people.`;
+}
+
+module.exports = { fullBrief, FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel, NARROW, WIDE, CLOSE, POOLS };

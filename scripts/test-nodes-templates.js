@@ -429,7 +429,7 @@ async function main() {
       assert.deepEqual(hudNode('n30').params, { label: 'Brief' });
       const labelOf = (lang, node, param) => templates.resolveTemplate('music-video-hud', { lang }).app.inputs.find((entry) => entry.node === node && entry.param === param).label;
       // WP48: the idea may stay empty (the field says so), the lyrics say how a choir is marked, the brief is a result of its own
-      assert.deepEqual(['en', 'de', 'es'].map((lang) => labelOf(lang, 'n4', 'brief')), ['Idea for the video (leave empty: from the lyrics)', 'Idee für das Video (leer lassen: aus dem Songtext)', 'Idea para el vídeo (déjala vacía: a partir de la letra)']);
+      assert.deepEqual(['en', 'de', 'es'].map((lang) => labelOf(lang, 'n4', 'brief')), ['Idea for the video (a few words are enough; empty: from the song)', 'Idee fürs Video (ein paar Worte reichen; leer: aus dem Song)', 'Idea para el vídeo (bastan unas palabras; vacío: desde la canción)']);
       assert.deepEqual(['en', 'de', 'es'].map((lang) => labelOf(lang, 'n3', 'lyrics')), ['Song lyrics (optional; mark a choir with [Choir])', 'Songtext (optional; Chor mit [Chor] markieren)', 'Letra de la canción (opcional; marca los coros con [Coros])']);
       assert.deepEqual(['en', 'de', 'es'].map((lang) => templates.resolveTemplate('music-video-hud', { lang }).app.outputs.find((entry) => entry.node === 'n30').label), ['Brief', 'Briefing', 'Brief']);
       for (const lang of ['en', 'de', 'es']) {

@@ -116,6 +116,8 @@
           "hud_language": "en",
           "brief_language": "en",
           "official_images": true,
+          "listen": true,
+          "cuts_from_song": true,
           "cuts_per_minute": 24,
           "max_units": 50,
           "lipsync_seconds_per_minute": 22,

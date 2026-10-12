@@ -3,7 +3,7 @@
 const assert = require('assert/strict');
 const hud = require('../lib/music-video-hud/plan');
 const plan = require('../lib/music-video-plan');
-const { FIGURE_TEXT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
+const { fullBrief, FIGURE_TEXT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
 
 function cut(answer, index) {
   const text = JSON.stringify(answer, null, 2);
@@ -69,7 +69,7 @@ async function main() {
     cut({ units: full.units.slice(40) }, 60),
     { units: full.units.slice(60), lines: full.lines, endcard: full.endcard }
   ]);
-  const input = { ...song, figureText: FIGURE_TEXT, brief: 'A city of light and glass', brollShare: 0, options };
+  const input = { ...song, figureText: FIGURE_TEXT, brief: fullBrief('A city of light and glass'), brollShare: 0, options };
   const result = await hud.runPlanner({ ...input, ask: model.ask });
   assert.equal(model.calls.length, 4);
   assert.equal(result.fallbacks.units.length, 0);
