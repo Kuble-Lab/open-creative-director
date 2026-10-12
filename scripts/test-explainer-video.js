@@ -311,12 +311,12 @@ async function run(iso, { eleven, setVoiceBytes }) {
 
   {
     const estimate = (params, context = {}) => sceneDef.cost.estimate(real.normalizeParams(sceneDef, params), { config: {}, ...context });
-    assert.deepEqual(estimate({}), { usd: 0.1 }, 'a scene costs 0.10 USD (Opus 5.5)');
-    assert.deepEqual(estimate({ vision_check: false }), { usd: 0.07 }, 'without the look: writing and render only');
-    assert.deepEqual(estimate({ model: 'anthropic/claude-sonnet-5.5' }), { usd: 0.05 }, 'Sonnet costs half');
+    assert.deepEqual(estimate({}), { usd: 0.25 }, 'a scene costs 0.25 USD (GPT-6 Astra)');
+    assert.deepEqual(estimate({ vision_check: false }), { usd: 0.175 }, 'without the look: writing and render only');
+    assert.deepEqual(estimate({ model: 'anthropic/claude-sonnet-5.5' }), { usd: 0.05 }, 'Sonnet costs half the Opus calibration');
     assert.equal(estimate({ model: 'vendor/unknown-model' }), null, 'the price of an unknown model is not known');
     assert.equal(estimate({}, { config: { restrictedBrainModels: ['vendor/default-brain'] } }), null, 'the model of a restricted account is not known');
-    assert.deepEqual(estimate({}, { config: { restrictedBrainModels: ['anthropic/claude-opus-5.5'] } }), { usd: 0.1 });
+    assert.deepEqual(estimate({}, { config: { restrictedBrainModels: ['openai/gpt-6-astra'] } }), { usd: 0.25 });
 
     // the voice: all characters of all scenes, per scene (the engine multiplies the estimate by the number of scenes)
     const texts = ['Eins zwei drei.', 'Ein deutlich längerer Satz mit mehr Zeichen darin.', ''];
@@ -564,9 +564,9 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.equal(writerCalls().length, 1);
     assert.equal(checkCalls().length, 1);
     assert.equal(renders.length, 1);
-    // the model: Opus 5.5, with room for a long document
+    // the model: GPT-6 Astra, with room for a long document
     const writer = writerCalls()[0].options;
-    assert.equal(writer.model, 'anthropic/claude-opus-5.5');
+    assert.equal(writer.model, 'openai/gpt-6-astra');
     assert.equal(writer.maxTokens, 9000);
     assert.match(writer.system, new RegExp(`data-duration="5.866"`));
     assert.match(writer.system, /NORMAL FLOW/);
@@ -1023,14 +1023,14 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.ok(sceneDef.timeoutMs >= 45 * 60 * 1000, 'time for a long film at one render in about 30 s');
   }
 
-  /* ---------- the model of an account: Opus, or the model of the list ---------- */
+  /* ---------- the model of an account: GPT-6 Astra, or the model of the list ---------- */
 
   {
     reset();
     const ctx = makeCtx({ user: P1, config: { restrictedBrainModels: ['vendor/default-brain'], defaultBrain: 'vendor/default-brain' } });
     await exec('explainer.scene', ctx, baseInputs(0), {});
-    assert.equal(writerCalls()[0].options.model, 'vendor/default-brain', 'a participant whose list has no Opus gets the model of the list');
-    assert.ok(ctx.logs.some((line) => /anthropic\/claude-opus-5\.5 is not available for your account: vendor\/default-brain is used instead/.test(line)));
+    assert.equal(writerCalls()[0].options.model, 'vendor/default-brain', 'a participant whose list has no Astra gets the model of the list');
+    assert.ok(ctx.logs.some((line) => /openai\/gpt-6-astra is not available for your account: vendor\/default-brain is used instead/.test(line)));
     reset();
     await exec('explainer.scene', makeCtx(), baseInputs(0), { model: 'anthropic/claude-sonnet-5.5' });
     assert.equal(writerCalls()[0].options.model, 'anthropic/claude-sonnet-5.5', 'a model chosen by hand');
@@ -1242,7 +1242,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.ok(Buffer.byteLength(html) < 2 * 1024 * 1024);
     // a participant has no brandings: the system font, with a log
     reset();
-    const guest = makeCtx({ user: P1, config: { restrictedBrainModels: ['anthropic/claude-opus-5.5'] } });
+    const guest = makeCtx({ user: P1, config: { restrictedBrainModels: ['openai/gpt-6-astra'] } });
     await exec('explainer.scene', guest, baseInputs(0, { brand: brandText }), { vision_check: false });
     assert.ok(guest.logs.some((line) => /Brandings are not available for your account: the system font is used/.test(line)));
     assert.ok(!renders[0].html.includes('@font-face'));

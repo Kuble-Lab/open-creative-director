@@ -165,7 +165,7 @@ async function run(iso, eleven) {
       const params = JSON.parse(JSON.stringify(node.params));
       assert.deepEqual(real.normalizeParams(def, params), params, `${id}.${node.id} (${node.type}): the params are those of the node`);
     }
-    // the planner ships empty (phase one), Opus 5.5 by decision of the account, the model of the scenes too
+    // the planner ships empty (phase one), GPT-6 Astra by decision of the account, the model of the scenes too
     const plan = template.graph.nodes.find((node) => node.type === 'explainer.plan');
     assert.equal(plan.params.script, '', 'the script ships empty');
     assert.equal(plan.params.model, '');
@@ -248,7 +248,7 @@ async function run(iso, eleven) {
       assert.match(doc.graph.notes[0].text, lang === 'de' ? /Skript \(bearbeitet\)/ : lang === 'es' ? /Guion \(editado\)/ : /Edited script/, `${lang}: the note names the field of the second step as the node calls it`);
       assert.match(doc.description, lang === 'de' ? /Starte zuerst nur den Planer/ : lang === 'es' ? /Ejecuta primero solo el planificador/ : /Run the planner first/);
       assert.match(doc.description, lang === 'de' ? /Bestätigung/ : lang === 'es' ? /confirmes/ : /confirmation/);
-      assert.match(doc.description, /Opus 5\.5/);
+      assert.match(doc.description, /GPT-6 Astra/);
       assert.equal(doc.app.enabled, true);
       assert.ok(doc.app.title && doc.app.description);
       for (const text of [doc.name, doc.description, doc.app.title, doc.app.description, doc.graph.notes[0].text, ...doc.graph.nodes.map((node) => node.title || '')]) assert.equal(String(text).includes('ß'), false, `${id}.${lang}: no sharp s`);
@@ -256,8 +256,8 @@ async function run(iso, eleven) {
       for (const node of doc.graph.nodes.filter((item) => item.title)) assert.ok(node.title.length > 1);
     }
   }
-  // the cost range is named (music of 0.40 included): PDF 2.50 to 3.50 dollars, topic 2 to 3, presenter 4 to 5, in every language
-  for (const [id, low, high] of [['explainer-video', '2[.,]5', '3[.,]5'], ['explainer-video-topic', '2', '3'], ['explainer-video-presenter', '4', '5']]) {
+  // the cost range is named (music of 0.40 included): PDF 5.00 to 6.50 dollars, topic 4.5 to 5.5, presenter 6 to 7, in every language
+  for (const [id, low, high] of [['explainer-video', '5[.,]0', '6[.,]5'], ['explainer-video-topic', '4[.,]5', '5[.,]5'], ['explainer-video-presenter', '6', '7']]) {
     for (const lang of ['en', 'de', 'es']) {
       const text = resolved(id, lang).description;
       assert.match(text, new RegExp(`${low}0? (to|bis|a) ${high}0?`), `${id}.${lang}: the cost range`);
@@ -271,17 +271,17 @@ async function run(iso, eleven) {
   assert.match(resolved('explainer-video-presenter', 'de').description, /Einwilligung/);
   // the cost of the script part is the one the script templates name, and the planner's own estimate stays within it
   {
-    const own = (pages, chars) => planLib.estimateUsd({ model: 'anthropic/claude-opus-5.5', pdfPages: pages, textChars: chars, verify: true });
-    assert.ok(own(20, 20000) >= 0.5 && own(20, 60000) <= 0.9);
-    // 12 scenes: the scenes cost 0.10 each, the voice by its characters; the named range is not below that
+    const own = (pages, chars) => planLib.estimateUsd({ model: 'openai/gpt-6-astra', pdfPages: pages, textChars: chars, verify: true });
+    assert.ok(own(20, 20000) >= 1.25 && own(20, 60000) <= 2.25);
+    // 12 scenes: the scenes cost 0.25 each, the voice by its characters; the named range is not below that
     const voice = tools.speechEstimateUsd('x'.repeat(1700), 'eleven_v4');
-    const scenes = 13 * 0.1;
+    const scenes = 13 * 0.25;
     const music = tools.musicEstimateUsd(120 * 1000);
     near(music, 0.4, 1e-9, 'two minutes of music');
     // mix mode: at most 35 % of the 13 scenes are stills, a few cents each (the notes say so)
     const stills = 4 * 0.04;
-    assert.ok(own(20, 40000) + voice + scenes + music + stills <= 3.5, 'PDF: a 20 page PDF and 2 minutes (with the music and the stills) stay within the named 3.50 dollars');
-    assert.ok(own(20, 40000) + voice + scenes + music + stills >= 2.5, 'and are not below the named 2.50 dollars');
+    assert.ok(own(20, 40000) + voice + scenes + music + stills <= 6.5, 'PDF: a 20 page PDF and 2 minutes (with the music and the stills) stay within the named 6.50 dollars');
+    assert.ok(own(20, 40000) + voice + scenes + music + stills >= 5, 'and are not below the named 5.00 dollars');
   }
 
   /* ---------- gallery data ---------- */
@@ -579,7 +579,7 @@ async function run(iso, eleven) {
     const planScenes = await engine.plan(id, { mode: 'all', user: STAFF, overrides: { n8: { quality: 'high' } } });
     assert.equal(planScenes.valid, true, JSON.stringify(planScenes.issues));
     assert.equal(planScenes.nodes.n8.executions, 13, 'one scene model call for every scene');
-    near(planScenes.nodes.n8.estimate.usd, 0.1, 1e-9, '0.10 USD per scene');
+    near(planScenes.nodes.n8.estimate.usd, 0.25, 1e-9, '0.25 USD per scene');
     const planVoice = await engine.plan(id, { mode: 'all', user: STAFF, overrides: { n5: { model_id: 'eleven_flash_v2_5' } } });
     assert.equal(planVoice.nodes.n5.executions, 13);
     const flashTotal = texts.filter(Boolean).reduce((sum, text) => sum + tools.speechEstimateUsd(text, 'eleven_flash_v2_5'), 0);

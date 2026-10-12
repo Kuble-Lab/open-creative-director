@@ -1212,11 +1212,11 @@ async function run(iso, eleven) {
     const base = sceneDef.cost.estimate({ model: '', vision_check: true }, { config: { defaultBrain: 'vendor/default-brain' }, inputs: {} });
     const typo = sceneDef.cost.estimate({ model: '', vision_check: true }, { config: { defaultBrain: 'vendor/default-brain' }, inputs: { shots: textValue(JSON.stringify({ visual_mode: 'typography' })) } });
     const mix = sceneDef.cost.estimate({ model: '', vision_check: true }, { config: { defaultBrain: 'vendor/default-brain' }, inputs: { shots: textValue(JSON.stringify({ visual_mode: 'mix' })) } });
-    near(base.usd, 0.1, 1e-9);
+    near(base.usd, 0.25, 1e-9);
     assert.deepEqual(mix, base, 'the other modes: the same price as before');
-    near(typo.usd, 0.28, 1e-9, 'a typography scene is 0.28 USD (measured in a live test on 2026-10-04, with the look)');
+    near(typo.usd, 0.7, 1e-9, 'a typography scene is 0.70 USD (Opus measurement scaled to Astra)');
     const typoNoCheck = sceneDef.cost.estimate({ model: '', vision_check: false }, { config: { defaultBrain: 'vendor/default-brain' }, inputs: { shots: textValue(JSON.stringify({ visual_mode: 'typography' })) } });
-    near(typoNoCheck.usd, 0.25, 1e-9, 'without the look: 0.03 USD less');
+    near(typoNoCheck.usd, 0.625, 1e-9, 'without the look: 0.075 USD less');
 
     // the key of the cache: the style is in it, the font of the app is in the stamp (and only for the style)
     const stampTypo = await sceneDef.cacheStamp({}, { inputs: { shots: textValue(JSON.stringify({ visual_mode: 'typography' })) } });
@@ -1475,11 +1475,11 @@ async function run(iso, eleven) {
     assert.equal(journal.filter((entry) => /image|picture|fal|clip/i.test(String(entry.type))).length, 0, 'no picture or clip is booked');
     const sceneCost = (await resultOf(id, 'n8')).cost;
     near(sceneCost.usd, 6 * (USD.writer + USD.check), 1e-9);
-    // the plan after the run: a scene costs 0.28 once the shot list says typography
+    // the plan after the run: a scene costs 0.70 once the shot list says typography
     const priced = await engine.plan(id, { mode: 'all', user: STAFF, overrides: { n8: { quality: 'high' } } });
     assert.equal(priced.valid, true, JSON.stringify(priced.issues));
     assert.equal(priced.nodes.n8.executions, 6);
-    near(priced.nodes.n8.estimate.usd, 0.28, 1e-9, '0.28 USD per scene in the style');
+    near(priced.nodes.n8.estimate.usd, 0.7, 1e-9, '0.70 USD per scene in the style');
     assert.deepEqual(await fsp.readdir(store.sessionAssetDir(created.sessionId)).then((names) => names.filter((name) => name.startsWith('.nodes-'))), [], 'no scratch folder is left');
   }
 

@@ -483,7 +483,7 @@ async function main() {
       assert.equal(templates.resolveTemplate('music-video-hud-elevenlabs', { lang: 'en' }).name, 'Music video in the HUD style (song by ElevenLabs)');
     }
 
-    // suno-song-pack: idea and singer -> one request -> Claude Opus 5.5 with the system prompt of the pack (word for word in
+    // suno-song-pack: idea and singer -> one request -> GPT-6 Astra with the system prompt of the pack (word for word in
     // test-music-video-hud-template.js) -> a text to copy into Suno. Nothing to approve, no film: the description says where the song goes next
     assert.deepEqual(types('suno-song-pack'), ['input.prompt', 'input.text', 'text.template', 'llm.chat', 'output.result']);
     assert.deepEqual(byId['suno-song-pack'].requires, ['openrouter']);
@@ -497,7 +497,7 @@ async function main() {
         for (const [key, value] of Object.entries(node.params)) assert.deepEqual(normalized[key], value, `${node.id} (${node.type}): ${key} is a param of the node, with a valid value`);
       }
       assert.deepEqual(Object.keys(sunoNode('n4').params), ['model', 'system', 'prompt']);
-      assert.equal(sunoNode('n4').params.model, 'anthropic/claude-opus-5.5');
+      assert.equal(sunoNode('n4').params.model, 'openai/gpt-6-astra');
       assert.match(sunoNode('n2').params.text, /^Claudia, an adult AI pop singer/, 'the default singer is the persona of Claudia, an adult');
       assert.equal(sunoNode('n1').params.prompt, '', 'the idea is the one input only the person can give');
       assert.deepEqual(sunoDoc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n2.text']);
