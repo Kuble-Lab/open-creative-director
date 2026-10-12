@@ -1908,7 +1908,7 @@ const HUD_GOLDEN = {
     style: 'f9f10ce017878a08df9b051ba0d87d35d2a568d5620e2ac57fce5cb07dbbd186'
   },
   post: {
-    args: 'a472d472f97af8797487d882a469a0ca738deee2a0bce3c26ce0f22ee84a1f4f',
+    args: 'd31ac9055719d4bcb05ef20d50559a317ebf81e0b732ff9e4a1a96bc4f72f95b',
     others: '55b9132b58a9d772649bdbf1df15740fba8d04ec2261fadd77bc2cab7270fa0e'
   }
 };
