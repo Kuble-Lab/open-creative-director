@@ -4,7 +4,7 @@
 // (input.branding) and "Plan explainer video" (explainer.plan), with the language model replaced.
 //   - llm.research: ports and parameters, the web plugin with its domains, links to numbers [n], the list of sources, no sources
 //   - input.branding: with and without a branding, the logo, the rights of participants and guests, the options of the list
-//   - explainer.plan: the model (Opus 5.5, the person's default for restricted accounts, a model chosen by hand that is refused),
+//   - explainer.plan: the model (GPT-6 Astra, the person's default for restricted accounts, a model chosen by hand that is refused),
 //     the PDFs as files and the text with page marks, the documents as data, one repair, the check pass, the price and its booking,
 //     the descent without an image model or fal, the share of stills, the edited script without a model call, the outputs
 // A private copy of the app runs in a temp directory. Nothing is paid and nothing leaves the machine (fetch guard).
@@ -276,7 +276,7 @@ async function run(iso) {
     const ctx = makeCtx();
     const result = await exec('llm.research', ctx, { topic: text('Heat pumps'), focus: text('Switzerland') }, { language: 'en', max_results: 5, include_domains: 'https://www.Example.org/path, other.ch', exclude_domains: 'spam.test' });
     const call = calls[0].options;
-    assert.equal(call.model, 'anthropic/claude-opus-5.5', 'the model of a person who may use it');
+    assert.equal(call.model, 'openai/gpt-6-astra', 'the model of a person who may use it');
     assert.deepEqual(call.plugins, [{ id: 'web', max_results: 5, include_domains: ['example.org', 'other.ch'], exclude_domains: ['spam.test'] }]);
     assert.match(call.system, /careful research assistant/);
     assert.match(call.system, /Numbers only with a source/);
@@ -335,25 +335,25 @@ async function run(iso) {
 
   {
     reset();
-    // a person who may use Opus: Opus
+    // a person who may use Astra: Astra
     const staff = makeCtx({ user: STAFF });
-    assert.equal(explainerNodes.chooseModel(staff, { model: '' }), 'anthropic/claude-opus-5.5');
+    assert.equal(explainerNodes.chooseModel(staff, { model: '' }), 'openai/gpt-6-astra');
     assert.deepEqual(staff.logs, []);
     // a model named in the node is used as it is
     assert.equal(explainerNodes.chooseModel(staff, { model: 'vendor/x' }), 'vendor/x');
-    // restricted accounts (participants and guests) with a list that lacks Opus: the default of their list, and the log says so
+    // restricted accounts (participants and guests) with a list that lacks Astra: the default of their list, and the log says so
     const restricted = makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed', 'vendor/other'], defaultBrain: 'vendor/allowed' } });
     assert.ok(access.isRestricted(access.viewerOf({ kubleUser: GUEST })), 'the guest is restricted');
     assert.equal(explainerNodes.chooseModel(restricted, { model: '' }), 'vendor/allowed');
     assert.equal(restricted.logs.length, 1);
-    assert.match(restricted.logs[0], /anthropic\/claude-opus-5\.5 is not available for your account: vendor\/allowed is used instead/);
+    assert.match(restricted.logs[0], /openai\/gpt-6-astra is not available for your account: vendor\/allowed is used instead/);
     // the default of their list when it is not the configured default
     const other = makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/first', 'vendor/second'], defaultBrain: 'vendor/not-in-list' } });
     assert.equal(explainerNodes.chooseModel(other, { model: '' }), 'vendor/first');
-    // a list with Opus on it: Opus
-    const withOpus = makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed', 'anthropic/claude-opus-5.5'] } });
-    assert.equal(explainerNodes.chooseModel(withOpus, { model: '' }), 'anthropic/claude-opus-5.5');
-    assert.deepEqual(withOpus.logs, []);
+    // a list with Astra on it: Astra
+    const withAstra = makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed', 'openai/gpt-6-astra'] } });
+    assert.equal(explainerNodes.chooseModel(withAstra, { model: '' }), 'openai/gpt-6-astra');
+    assert.deepEqual(withAstra.logs, []);
 
     // through the nodes: the restricted person's call carries the allowed model
     answers.research.push({ __result: { text: 'x', citations: [], citationSpans: [] } });
@@ -363,7 +363,7 @@ async function run(iso) {
     await exec('explainer.plan', makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed'], defaultBrain: 'vendor/allowed' } }), { text: text(DOCUMENT_TEXT) }, { language: 'de', verify: false });
     assert.equal(calls.at(-1).options.model, 'vendor/allowed');
 
-    // only the ChatGPT subscription is connected (no OpenRouter key): the default of the app, not Opus, and the log says so
+    // only the ChatGPT subscription is connected (no OpenRouter key): the default of the app, not Astra, and the log says so
     {
       const keyOn = or.hasKey;
       or.hasKey = () => false;
@@ -371,11 +371,11 @@ async function run(iso) {
         const subscription = makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } });
         assert.equal(explainerNodes.chooseModel(subscription, { model: '' }), 'chatgpt/gpt-5.6-sol');
         assert.equal(subscription.logs.length, 1);
-        assert.match(subscription.logs[0], /OPENROUTER_API_KEY is not set, so anthropic\/claude-opus-5\.5 cannot be used: chatgpt\/gpt-5\.6-sol is used instead/);
+        assert.match(subscription.logs[0], /OPENROUTER_API_KEY is not set, so openai\/gpt-6-astra cannot be used: chatgpt\/gpt-5\.6-sol is used instead/);
         // a model named by hand is not touched
         assert.equal(explainerNodes.chooseModel(makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } }), { model: 'vendor/x' }), 'vendor/x');
-        // without any default: Opus, and the call fails with the message of the provider
-        assert.equal(explainerNodes.chooseModel(makeCtx({ config: { defaultBrain: '' } }), { model: '' }), 'anthropic/claude-opus-5.5');
+        // without any default: Astra, and the call fails with the message of the provider
+        assert.equal(explainerNodes.chooseModel(makeCtx({ config: { defaultBrain: '' } }), { model: '' }), 'openai/gpt-6-astra');
         // through the nodes
         reset();
         const viaCtx = makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } });
@@ -517,7 +517,7 @@ async function run(iso) {
     const { out, ctx, result } = await planWith({ documents: docs, text: text(DOCUMENT_TEXT), brief: text('For the town council') }, { audience: 'Citizens', length_seconds: 120 });
     assert.deepEqual(calls.map((call) => call.kind), ['plan', 'verify']);
     const planCall = calls[0].options;
-    assert.equal(planCall.model, 'anthropic/claude-opus-5.5');
+    assert.equal(planCall.model, 'openai/gpt-6-astra');
     assert.equal(planCall.json, true);
     assert.equal(planCall.tools, undefined, 'the model has no tools');
     assert.deepEqual(planCall.files.map((file) => file.filename), ['bericht.pdf']);
@@ -534,7 +534,7 @@ async function run(iso) {
     assert.match(planCall.prompt, /Documents: D1 = bericht\.pdf \(12 pages\)\. The PDF files are attached as well/);
     assert.match(planCall.prompt, /audience: Citizens/);
     const verifyCall = calls[1].options;
-    assert.equal(verifyCall.model, 'anthropic/claude-opus-5.5');
+    assert.equal(verifyCall.model, 'openai/gpt-6-astra');
     assert.match(verifyCall.prompt, /Script to check:/);
     assert.match(verifyCall.prompt, /Die Förderung läuft bis 2030/, 'the check pass reads the text');
     assert.equal(verifyCall.files, undefined, 'the check pass uses the text');
@@ -909,13 +909,13 @@ async function run(iso) {
     assert.deepEqual(estimate({ script: '{"scenes":[]}' }), { usd: 0 });
     // a PDF of 20 pages (2300 tokens a page) and the text of it
     const priced = estimate({}, { inputs: { ...docsOf(20), text: text('x'.repeat(30000)) }, connected: new Set(['documents', 'text']) });
-    assert.ok(priced.usd > 0.3 && priced.usd < 0.9, `20 pages: ${priced.usd}`);
-    assert.equal(priced.usd, planLib.estimateUsd({ model: 'anthropic/claude-opus-5.5', pdfPages: 20, textChars: 30000, verify: true }));
+    assert.ok(priced.usd > 0.75 && priced.usd < 2.25, `20 pages: ${priced.usd}`);
+    assert.equal(priced.usd, planLib.estimateUsd({ model: 'openai/gpt-6-astra', pdfPages: 20, textChars: 30000, verify: true }));
     assert.ok(estimate({ verify: false }, { inputs: { ...docsOf(20), text: text('x'.repeat(30000)) }, connected: new Set(['documents', 'text']) }).usd < priced.usd);
     assert.ok(estimate({}, { inputs: docsOf(80), connected: new Set(['documents']) }).usd > estimate({}, { inputs: docsOf(20), connected: new Set(['documents']) }).usd);
     // Sonnet is cheaper
     assert.ok(estimate({ model: 'anthropic/claude-sonnet-5.5' }, { inputs: docsOf(20), connected: new Set(['documents']) }).usd < estimate({}, { inputs: docsOf(20), connected: new Set(['documents']) }).usd);
-    // unknown: a model without a price, a PDF without a page count, an input that has not run, a restricted list without Opus
+    // unknown: a model without a price, a PDF without a page count, an input that has not run, a restricted list without Astra
     assert.equal(estimate({ model: 'vendor/x' }, { inputs: docsOf(20), connected: new Set(['documents']) }), null);
     assert.equal(estimate({}, { inputs: docsOf(undefined), connected: new Set(['documents']) }), null);
     assert.equal(estimate({}, { inputs: {}, connected: new Set(['text']) }), null);
@@ -940,10 +940,10 @@ async function run(iso) {
       or.postJson = postJson;
       discovery.brainSupportsImages = imagesOk;
     }
-    assert.equal(posted[0].model, 'anthropic/claude-opus-5.5');
+    assert.equal(posted[0].model, 'openai/gpt-6-astra');
     assert.equal(posted[0].response_format.type, 'json_object');
     assert.equal(booked.result.cost.usd, 0.25);
-    assert.deepEqual(journal.filter((entry) => entry.type === 'brain').map((entry) => [entry.model, entry.cost, entry.sessionId]), [['anthropic/claude-opus-5.5', 0.25, sessionId]]);
+    assert.deepEqual(journal.filter((entry) => entry.type === 'brain').map((entry) => [entry.model, entry.cost, entry.sessionId]), [['openai/gpt-6-astra', 0.25, sessionId]]);
   }
 
   // nothing is left behind

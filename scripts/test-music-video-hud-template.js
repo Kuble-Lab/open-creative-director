@@ -6,7 +6,7 @@
 // languages, the order and the prices of the gallery) is checked in test-nodes-templates.js; this test runs them. What is covered:
 //   - the two texts that must not drift: the figure Claudia (the default of the field "Figure") and the system prompt of the Suno song
 //     pack are the canon texts word for word; the prices in the descriptions are what the price tables of the planner say (a song of 60, 90
-//     and 120 seconds; step 1 costs about 1 USD a minute of song), and the music of the second template costs what it says
+//     and 120 seconds; step 1 costs about 1.6 USD a minute of song), and the music of the second template costs what it says
 //   - "Music video in the HUD style (your song)" through the real engine, with the real planner, the real cut, the real parallax node and
 //     the real render node (HUD page and finishing): doubles only for what costs money or needs the network (the times of the lyrics,
 //     the analysis of the song, the images, the lip sync, the video clips, the depth maps, the language model and the render node itself).
@@ -209,28 +209,28 @@ async function run(iso) {
     assert.ok(/28-year-old/.test(figure.full) && /late twenties/.test(figure.short), 'an adult in both forms');
     // the system prompt of the pack: word for word, with the four blocks the description promises
     assert.equal(nodeOf(suno, 'n4').params.system, SUNO_SYSTEM);
-    assert.equal(nodeOf(suno, 'n4').params.model, 'anthropic/claude-opus-5.5');
+    assert.equal(nodeOf(suno, 'n4').params.model, 'openai/gpt-6-astra');
     for (const block of ['TITLE', 'STYLE', 'EXCLUDE', 'LYRICS']) assert.match(SUNO_SYSTEM, new RegExp(`^${block}\\n<`, 'm'), `${block} is a block of the answer`);
     for (const lang of ['en', 'de', 'es']) {
       const description = resolved('suno-song-pack', lang).description;
       for (const block of ['TITLE', 'STYLE', 'EXCLUDE', 'LYRICS']) assert.match(description, new RegExp(block), `${lang}: the description names ${block}`);
       assert.match(description, /Suno/);
-      assert.match(description, lang === 'en' ? /3 US cents/ : lang === 'de' ? /3 US-Cent/ : /3 centavos/, `${lang}: the price of a pack`);
+      assert.match(description, lang === 'en' ? /7 US cents/ : lang === 'de' ? /7 US-Cent/ : /7 centavos/, `${lang}: the price of a pack`);
       assert.match(description, lang === 'en' ? /your song/ : lang === 'de' ? /eigener Song/ : /tu propia canción/, `${lang}: it says where the finished song goes`);
     }
-    // 3 cents: the system prompt and the request (idea and singer, some 600 characters) are about 650 tokens in, the answer (a title, a style line
-    // of at most 900 characters and lyrics of 1800 to 2400) some 1,300 out; Opus 5.5 costs 4 and 20 USD per million tokens
+    // 7 cents: the system prompt and the request (idea and singer, some 600 characters) are about 650 tokens in, the answer (a title, a style line
+    // of at most 900 characters and lyrics of 1800 to 2400) some 1,300 out; GPT-6 Astra costs 10 and 50 USD per million tokens
     {
-      const [inPrice, outPrice] = iso.load('lib/explainer-plan').PRICES_PER_MILLION['anthropic/claude-opus-5.5'];
+      const [inPrice, outPrice] = iso.load('lib/explainer-plan').PRICES_PER_MILLION['openai/gpt-6-astra'];
       const tokensIn = Math.ceil((SUNO_SYSTEM.length + 600) / 3.6);
       const usd = (tokensIn * inPrice + 1300 * outPrice) / 1e6;
-      assert.ok(usd > 0.02 && usd < 0.04, `a pack costs about 3 US cents (${usd})`);
+      assert.ok(usd > 0.065 && usd < 0.08, `a pack costs about 7 US cents (${usd})`);
     }
 
     // the prices of the descriptions are the prices of the planner at the settings of the templates (every unit that is not sung is a clip, at most
-    // 50 units): 6 USD a minute of song, 9 for 90 seconds, 12 for two minutes (WP52a: more lip sync and the thinking of the planner); step 1 (the
-    // character sheet, one picture per unit, the planner) about 1 USD a minute
-    const prices = hudNodes.hudPrices('anthropic/claude-opus-5.5');
+    // 50 units): 6.5 USD a minute of song, 10 for 90 seconds, 13 for two minutes (WP52a: more lip sync and the thinking of the planner); step 1 (the
+    // character sheet, one picture per unit, the planner) about 1.6 USD a minute (1.9 for 60 s, 1.5 for 120 s: the prompt of the planner is the same)
+    const prices = hudNodes.hudPrices('openai/gpt-6-astra');
     const system = hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false });
     const priced = (seconds, seed) => {
       const song = makeSong({ seconds, seed });
@@ -243,32 +243,32 @@ async function run(iso) {
       const params = nodeOf(resolved(name, 'en'), 'n4').params;
       assert.deepEqual([params.motion_share, params.max_units], [1, 50], `${name}: every unit moves, at most 50 units (the defaults of the planner)`);
     }
-    for (const [seconds, seed, low, high] of [[60, 3, 5.6, 6.4], [90, 3, 8.5, 9.3], [90, 7, 8.5, 9.3], [120, 3, 11.4, 12.4], [120, 7, 11.4, 12.4]]) {
+    for (const [seconds, seed, low, high] of [[60, 3, 6.3, 7.1], [90, 3, 9.3, 10.1], [90, 7, 9.3, 10.1], [120, 3, 12.4, 13.4], [120, 7, 12.4, 13.4]]) {
       const { cost, stepOne } = priced(seconds, seed);
       assert.ok(cost.total >= low && cost.total <= high, `${seconds} s (seed ${seed}) cost ${cost.total}, the descriptions say between ${low} and ${high}`);
       assert.equal(cost.parts.depth, 0, `${seconds} s: no still, no depth map`);
-      near(cost.total / (seconds / 60), 6, 0.3, `${seconds} s: about 6 USD a minute`);
-      near(stepOne / (seconds / 60), 1.05, 0.2, `${seconds} s: step 1 costs about 1 USD a minute`);
+      near(cost.total / (seconds / 60), 6.5, 0.3, `${seconds} s: about 6.5 USD a minute`);
+      near(stepOne / (seconds / 60), 1.6, 0.3, `${seconds} s: step 1 costs about 1.6 USD a minute`);
     }
-    // the music of the second template: 90 seconds at 0.20 USD a minute, about 9 USD in all with the film
+    // the music of the second template: 90 seconds at 0.20 USD a minute, about 10 USD in all with the film
     {
       const music = iso.load('lib/tools').musicEstimateUsd(90 * 1000);
       near(music, 0.3, 1e-9, '90 seconds of music cost 0.30 USD');
       assert.equal(nodeOf(eleven, 'n28').params.length, 90, 'the song is 90 seconds by default');
       for (const seed of [3, 7, 11]) {
         const { cost, stepOne } = priced(90, seed);
-        assert.ok(cost.total + music > 8.4 && cost.total + music < 9.4, `film and music (seed ${seed}): ${cost.total + music}, the descriptions say about 9`);
-        // step 1 of this template holds the song too: about 1.2 USD a minute of song
-        near((stepOne + music) / 1.5, 1.25, 0.15, `step 1 with the song (seed ${seed}) is about 1.2 USD a minute`);
+        assert.ok(cost.total + music > 9.4 && cost.total + music < 10.4, `film and music (seed ${seed}): ${cost.total + music}, the descriptions say about 9`);
+        // step 1 of this template holds the song too: about 1.8 USD a minute of song
+        near((stepOne + music) / 1.5, 1.8, 0.15, `step 1 with the song (seed ${seed}) is about 1.8 USD a minute`);
       }
     }
     for (const lang of ['en', 'de', 'es']) {
       const a = resolved('music-video-hud', lang).description;
       const b = resolved('music-video-hud-elevenlabs', lang).description;
       const rx = (en, de, es) => (lang === 'en' ? en : lang === 'de' ? de : es);
-      assert.match(a, rx(/6 US dollars per minute of song/, /6 US-Dollar pro Minute Song/, /6 dólares por minuto de canción/), `${lang}: A names the price per minute`);
-      assert.match(b, rx(/6 US dollars per minute of song/, /6 US-Dollar pro Minute Song/, /6 dólares por minuto de canción/), `${lang}: B names the price per minute`);
-      assert.match(b, rx(/about 9 US dollars in all/, /zusammen etwa 9 US-Dollar/, /unos 9 dólares en total/), `${lang}: B names the price with the music`);
+      assert.match(a, rx(/6\.5 US dollars per minute of song/, /6\.5 US-Dollar pro Minute Song/, /6,5 dólares por minuto de canción/), `${lang}: A names the price per minute`);
+      assert.match(b, rx(/6\.5 US dollars per minute of song/, /6\.5 US-Dollar pro Minute Song/, /6,5 dólares por minuto de canción/), `${lang}: B names the price per minute`);
+      assert.match(b, rx(/about 10 US dollars in all/, /zusammen etwa 10 US-Dollar/, /unos 10 dólares en total/), `${lang}: B names the price with the music`);
       assert.match(b, rx(/0\.20 US dollars per minute/, /0\.20 US-Dollar pro Minute/, /0,20 dólares por minuto/), `${lang}: B names the price of the music`);
       assert.match(b, rx(/90 seconds/, /90 Sekunden/, /90 segundos/), `${lang}: B names the default length`);
       for (const text of [a, b]) {
@@ -289,7 +289,7 @@ async function run(iso) {
       const doc = resolved('music-video-hud-suno', lang);
       assert.equal(nodeOf(doc, 'n4').params.figure, CLAUDIA, `${lang}: the figure`);
       assert.equal(nodeOf(doc, 'n28').params.system, SUNO_SYSTEM, `${lang}: the system prompt of the pack`);
-      assert.equal(nodeOf(doc, 'n28').params.model, 'anthropic/claude-opus-5.5');
+      assert.equal(nodeOf(doc, 'n28').params.model, 'openai/gpt-6-astra');
       assert.equal(nodeOf(doc, 'n26').params.text, nodeOf(suno, 'n2').params.text, `${lang}: the singer of the pack`);
       assert.equal(nodeOf(doc, 'n27').params.template, nodeOf(suno, 'n3').params.template, `${lang}: the request of the pack`);
       const own = resolved('music-video-hud', lang).description;
@@ -301,13 +301,13 @@ async function run(iso) {
         return found[0];
       };
       const kept = [
-        sentence(rx(/About 6 US dollars per minute of song according to the planner \([^)]*\)\./, /Rund 6 US-Dollar pro Minute Song laut Planer \([^)]*\)\./, /Unos 6 dólares por minuto de canción según el planificador \([^)]*\)\./)),
+        sentence(rx(/About 6\.5 US dollars per minute of song according to the planner \([^)]*\)\./, /Rund 6\.5 US-Dollar pro Minute Song laut Planer \([^)]*\)\./, /Unos 6,5 dólares por minuto de canción según el planificador \([^)]*\)\./)),
         sentence(rx(/Before each start [^.]*confirm\./, /Vor jedem Start [^.]*berechnet\./, /Antes de cada inicio [^.]*confirmes\./)),
         sentence(rx(/The end card [^.]*figure\./, /Die Endkarte [^.]*Credit\./, /La tarjeta final [^.]*figura\./)),
         sentence(rx(/Step 1 makes the board[^;]*; you approve them before step 2 makes the expensive rest\./, /Schritt 1 macht das Board[^;]*; du gibst sie frei, bevor Schritt 2 den teuren Rest macht\./, /El paso 1 crea el tablero[^;]*; tú los apruebas antes de que el paso 2 haga el resto, que es lo caro\./)).replace(/(Step|step|Schritt|paso) ([12])\b/g, (_match, word, number) => `${word} ${Number(number) + 1}`)
       ];
       for (const part of kept) assert.ok(text.includes(part), `${lang}: the description says word for word: ${part}`);
-      assert.match(text, rx(/3 US cents/, /3 US-Cent/, /3 centavos/), `${lang}: the price of the pack`);
+      assert.match(text, rx(/7 US cents/, /7 US-Cent/, /7 centavos/), `${lang}: the price of the pack`);
       for (const block of ['TITLE', 'STYLE', 'EXCLUDE', 'LYRICS']) assert.match(text, new RegExp(block), `${lang}: the description names ${block}`);
       assert.match(text, /Nano Banana 2\.1/);
       assert.match(text, rx(/your song/, /eigener Song/, /tu propia canción/), `${lang}: it names the template it takes the film from`);
@@ -880,7 +880,7 @@ async function run(iso) {
     await finish(workflow, { mode: 'all' });
     assert.equal(llmCalls.length, 1);
     assert.equal(llmCalls[0].system, SUNO_SYSTEM, 'the system prompt reaches the model word for word');
-    assert.equal(llmCalls[0].model, 'anthropic/claude-opus-5.5');
+    assert.equal(llmCalls[0].model, 'openai/gpt-6-astra');
     assert.match(llmCalls[0].prompt, /^IDEA\nA song about a light that stays on\n\nSINGER \(voice and persona\)\nClaudia, an adult AI pop singer/);
     const [pack, ...more] = await shown(workflow, 'n5');
     assert.deepEqual([pack.type, more.length], ['text', 0]);
@@ -925,7 +925,7 @@ async function run(iso) {
     assert.deepEqual(statuses(first), { n25: 'done', n26: 'done', n27: 'done', n28: 'done', n29: 'done' });
     assert.equal(llmCalls.length, 1, 'one answer of the language model');
     assert.equal(llmCalls[0].system, SUNO_SYSTEM, 'the system prompt of the pack, word for word');
-    assert.equal(llmCalls[0].model, 'anthropic/claude-opus-5.5');
+    assert.equal(llmCalls[0].model, 'openai/gpt-6-astra');
     assert.match(llmCalls[0].prompt, new RegExp(`^IDEA\\n${IDEA.replace(/[.]/g, '\\.')}\\n\\nSINGER \\(voice and persona\\)\\nClaudia, an adult AI pop singer`), 'the idea and the singer');
     const [packValue, ...morePacks] = await shown(workflow, 'n29');
     assert.deepEqual([packValue.type, packValue.value, morePacks.length], ['text', SUNO_PACK, 0], 'the pack is the result of step 1');

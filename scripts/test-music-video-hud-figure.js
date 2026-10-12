@@ -175,7 +175,10 @@ function keysOf(doc) {
 function asOnMain(doc) {
   const copy = JSON.parse(JSON.stringify(doc));
   copy.graph.edges = copy.graph.edges.filter((edge) => edge.from.port !== 'sheet_refs');
-  for (const node of copy.graph.nodes) if (node.type === 'music_video.hud_plan') delete node.params.official_images;
+  for (const node of copy.graph.nodes) {
+    if (node.type === 'music_video.hud_plan') delete node.params.official_images;
+    if (node.type === 'llm.chat' && node.params.model === 'openai/gpt-6-astra') node.params.model = 'anthropic/claude-opus-5.5';
+  }
   return copy;
 }
 
@@ -202,7 +205,8 @@ function testKeys() {
     // a new workflow from the template of now: the planner (the switch) and the sheet (the images) are new, everything else would follow from their results
     const now = keysOf(doc);
     const changed = Object.keys(now).filter((nodeId) => now[nodeId] !== MAIN_KEYS[id][nodeId]);
-    assert.deepEqual(changed, ['n4', 'n5'], `${id}: only the planner and the sheet differ`);
+    assert.deepEqual(changed, id === 'music-video-hud-suno' ? ['n28', 'n4', 'n5'] : ['n4', 'n5'], `${id}: the planner, sheet and Astra song pack differ`);
+    if (id === 'music-video-hud-suno') assert.notEqual(now.n28, MAIN_KEYS_WP52[id].n28, 'the Astra song pack has a new key');
   }
   // the switch at its default is no part of the key; on, it is
   const def = registry.get('music_video.hud_plan');
@@ -211,7 +215,11 @@ function testKeys() {
   assert.equal(keyOf(saved), keyOf({ ...saved, official_images: false }));
   assert.notEqual(keyOf(saved), keyOf({ ...saved, official_images: true }));
   // WP52a: every key of the templates as on main before WP52a, and the two new settings at their defaults are no part of a key; changed, they are
-  for (const id of HUD_TEMPLATES) assert.deepEqual(keysOf(templateDoc(id)), MAIN_KEYS_WP52[id], `${id}: the keys of main before WP52a`);
+  for (const id of HUD_TEMPLATES) {
+    const doc = JSON.parse(JSON.stringify(templateDoc(id)));
+    for (const node of doc.graph.nodes) if (node.type === 'llm.chat' && node.params.model === 'openai/gpt-6-astra') node.params.model = 'anthropic/claude-opus-5.5';
+    assert.deepEqual(keysOf(doc), MAIN_KEYS_WP52[id], `${id}: only the explicit Astra model changes keys since WP52a`);
+  }
   assert.equal(keyOf(saved), keyOf({ ...saved, broll_share: 0.35, allow_plain: false }));
   assert.notEqual(keyOf(saved), keyOf({ ...saved, broll_share: 0.5 }));
   assert.notEqual(keyOf(saved), keyOf({ ...saved, allow_plain: true }));

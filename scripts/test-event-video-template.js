@@ -192,7 +192,7 @@ function testSteps() {
 /* ---------- the prices of the description ---------- */
 
 function testCostText() {
-  const prices = eventNodes.planPrices('anthropic/claude-opus-5.5');
+  const prices = eventNodes.planPrices('openai/gpt-6-astra');
   const cpm = styles.derive(styles.combineStyle({})).cpm;
   const voiceChars = { 30: 360, 60: 720, 90: 1000 };
   const one = (value) => Math.round(value * 10) / 10;
@@ -216,14 +216,14 @@ function testCostText() {
     const code = p.vision + p.speech + p.music + p.llm + p.depth;
     const row = { code: one(code), ai: one(p.ai), voice: Math.round(p.voice * 100) / 100, stepOne: one(p.vision + p.speech + p.music + p.llm), max: one(code + p.ai + p.voice + p.llm) };
     if (length === 60) Object.assign(rows60, row);
-    assert.equal(row.code, { 30: 0.5, 60: 0.7, 90: 0.8 }[length], `${length} s with the code motion: ${code}`);
+    assert.equal(row.code, { 30: 0.7, 60: 0.9, 90: 1.1 }[length], `${length} s with the code motion: ${code}`);
     assert.equal(row.ai, { 30: 0.4, 60: 0.8, 90: 1.2 }[length], `${length} s: the AI clips add ${p.ai}`);
   }
-  assert.deepEqual(rows60, { code: 0.7, ai: 0.8, voice: 0.06, stepOne: 0.6, max: 1.7 }, 'the numbers of 60 seconds');
+  assert.deepEqual(rows60, { code: 0.9, ai: 0.8, voice: 0.06, stepOne: 0.8, max: 2.1 }, 'the numbers of 60 seconds');
   const say = {
-    en: [/about 0\.5 US dollars for 30 seconds, 0\.7 for 60 and 0\.8 for 90 seconds/, /adds about 0\.4, 0\.8 or 1\.2/, /voice-over about 0\.06/, /about 0\.6 for 60 seconds/, /At most about 1\.7 for 60 seconds/],
-    de: [/etwa 0\.5 US-Dollar für 30 Sekunden, 0\.7 für 60 und 0\.8 für 90 Sekunden/, /etwa 0\.4, 0\.8 oder 1\.2 mehr/, /Sprecherstimme etwa 0\.06/, /etwa 0\.6 für 60 Sekunden/, /Höchstens etwa 1\.7 für 60 Sekunden/],
-    es: [/unos 0\.5 dólares para 30 segundos, 0\.7 para 60 y 0\.8 para 90 segundos/, /añade unos 0\.4, 0\.8 o 1\.2/, /voz en off unos 0\.06/, /unos 0\.6 para 60 segundos/, /Como máximo unos 1\.7 para 60 segundos/]
+    en: [/about 0\.7 US dollars for 30 seconds, 0\.9 for 60 and 1\.1 for 90 seconds/, /adds about 0\.4, 0\.8 or 1\.2/, /voice-over about 0\.06/, /about 0\.8 for 60 seconds/, /At most about 2\.1 for 60 seconds/],
+    de: [/etwa 0\.7 US-Dollar für 30 Sekunden, 0\.9 für 60 und 1\.1 für 90 Sekunden/, /etwa 0\.4, 0\.8 oder 1\.2 mehr/, /Sprecherstimme etwa 0\.06/, /etwa 0\.8 für 60 Sekunden/, /Höchstens etwa 2\.1 für 60 Sekunden/],
+    es: [/unos 0\.7 dólares para 30 segundos, 0\.9 para 60 y 1\.1 para 90 segundos/, /añade unos 0\.4, 0\.8 o 1\.2/, /voz en off unos 0\.06/, /unos 0\.8 para 60 segundos/, /Como máximo unos 2\.1 para 60 segundos/]
   };
   for (const lang of LANGS) {
     const text = resolved(lang).description;
@@ -313,17 +313,23 @@ function testOtherCacheKeys() {
   // every node of every other template in every language: type, version and parameters as main has them (WP52a, ac87528). The digest was
   // computed with the code of main; a change here means a node of an existing template would run again
   const lines = [];
+  const calibratedLines = [];
   for (const other of templates.loadTemplates()) {
     if (other.id === 'event-video') continue;
     for (const lang of LANGS) {
       for (const node of templates.resolveTemplate(other.id, { lang }).graph.nodes) {
         const def = registry.get(node.type);
         lines.push(`${other.id}/${lang}/${node.id}: ${engine.computeCacheKey(def, registry.normalizeParams(def, node.params || {}), {})}`);
+        const previous = { ...node.params };
+        if (['suno-song-pack', 'music-video-hud-suno'].includes(other.id) && node.type === 'llm.chat' && previous.model === 'openai/gpt-6-astra') previous.model = 'anthropic/claude-opus-5.5';
+        calibratedLines.push(`${other.id}/${lang}/${node.id}: ${engine.computeCacheKey(def, registry.normalizeParams(def, previous), {})}`);
       }
     }
   }
   assert.equal(lines.length, 927);
-  assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), 'b1fa95d24bed7fc4fc58116bf4721ad7c5573e5b2d7e718683fada926fc5ac9f');
+  assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), '4ef027c3cc9a886ed88a61e713da66575eaba95ecdac866d34f7450426595922');
+  // Only the two Suno pack model parameters change existing template keys.
+  assert.equal(crypto.createHash('sha256').update(calibratedLines.join('\n')).digest('hex'), 'b1fa95d24bed7fc4fc58116bf4721ad7c5573e5b2d7e718683fada926fc5ac9f');
 }
 
 // The nodes of this template in every language and the planner with AI: the keys of main (3a4c45b), before the field "AI clips" had its list. A saved

@@ -229,7 +229,8 @@ async function main() {
     assert.deepEqual(names, expected, `${nodeId} ${JSON.stringify(params).slice(0, 80)}: the scenes that ran`);
     assert.equal(plan.nodes.sc.executions, expected.length, 'the plan counts the scenes that run');
     assert.equal(plan.nodes.sc.reusedItems || 0, 5 - expected.length);
-    if (expected.length) assert.equal(Math.round(plan.totals.usd * 1000) / 1000, Math.round(expected.length * 0.1 * 1000) / 1000, 'the plan prices only the scenes that run');
+    // a scene with the default model (GPT-6 Astra) is priced at 0.25 USD: the Opus calibration of 0.1 times the dearer token price
+    if (expected.length) assert.equal(Math.round(plan.totals.usd * 1000) / 1000, Math.round(expected.length * 0.25 * 1000) / 1000, 'the plan prices only the scenes that run');
     else assert.equal(plan.totals.usd || 0, 0);
     return finished;
   }
@@ -418,7 +419,7 @@ async function main() {
       const plan = await engine.plan(old.id, { mode: 'items', nodeId: 'sc', items: [2] });
       assert.equal(plan.nodes.sc.executions, 1, 'the plan counts the one scene');
       assert.equal(plan.nodes.sc.reusedItems, 4);
-      assert.equal(Math.round(plan.totals.usd * 1000) / 1000, 0.1, 'the plan prices the one scene');
+      assert.equal(Math.round(plan.totals.usd * 1000) / 1000, 0.25, 'the plan prices the one scene (with the default model)');
       const record = await run(old.id, { mode: 'items', nodeId: 'sc', items: [2] });
       assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
       assert.deepEqual(ran('sc'), ['s3'], 'only the asked scene runs');

@@ -133,9 +133,9 @@ function testCleanup() {
   }
   assert.equal(seen.size, keys.length * 3, 'written in each language');
   const defaultConfig = require('../lib/config').DEFAULT_CONFIG;
-  // WP37a: Claude Opus 5.5 leads the list and is the default, Sonnet 5.5 follows; the other models stay (the Gemini id is the one of the public list)
-  assert.deepEqual(defaultConfig.brainModels, ['anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-4.6', 'openai/gpt-5.2', 'google/gemini-3.1-pro-preview'], 'D2: the default models');
-  assert.equal(defaultConfig.defaultBrain, 'anthropic/claude-opus-5.5');
+  // WP37a: GPT-6 Astra leads the list and is the default, Opus 5.5 and Sonnet 5.5 follow; the other models stay (the Gemini id is the one of the public list)
+  assert.deepEqual(defaultConfig.brainModels, ['openai/gpt-6-astra', 'anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-4.6', 'openai/gpt-5.2', 'google/gemini-3.1-pro-preview'], 'D2: the default models');
+  assert.equal(defaultConfig.defaultBrain, 'openai/gpt-6-astra');
   assert.equal('restrictedBrainModels' in defaultConfig, false, 'D2: the default config does not change');
 }
 

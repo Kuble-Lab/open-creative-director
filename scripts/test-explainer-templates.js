@@ -125,7 +125,7 @@ async function run(iso) {
   assert.deepEqual(topicTemplate.requires, ['openrouter']);
   for (const template of [pdfTemplate, topicTemplate]) {
     const plan = template.graph.nodes.find((node) => node.type === 'explainer.plan');
-    assert.equal(plan.params.model, '', 'Opus 5.5 by default: the node decides by the account');
+    assert.equal(plan.params.model, '', 'GPT-6 Astra by default: the node decides by the account');
     assert.equal(plan.params.verify, true);
     assert.equal(plan.params.script, '', 'the script ships empty: phase one');
     assert.equal(plan.params.visual_mode, 'mix');
@@ -155,19 +155,19 @@ async function run(iso) {
   assert.match(resolved('explainer-script-topic', 'es').name, /^Vídeo explicativo: guion sobre un tema/);
   // the named cost is not below the own estimate of the planner (too high is better than too low)
   {
-    const own = (pdfPages, textChars) => planLib.estimateUsd({ model: 'anthropic/claude-opus-5.5', pdfPages, textChars, verify: true });
+    const own = (pdfPages, textChars) => planLib.estimateUsd({ model: 'openai/gpt-6-astra', pdfPages, textChars, verify: true });
     const low = own(20, 20000);
     const high = own(20, 60000);
-    assert.ok(low >= 0.5 && high <= 0.9, `the estimate for 20 pages (${low} to ${high} USD) stays within the named 0.50 to 0.90`);
+    assert.ok(low >= 1.25 && high <= 2.25, `the estimate for 20 pages (${low} to ${high} USD) stays within the named 1.25 to 2.25`);
   }
   for (const lang of ['en', 'de', 'es']) {
     const pdf = resolved('explainer-script', lang);
     const topic = resolved('explainer-script-topic', lang);
-    assert.match(pdf.description, /0[.,]50/, `${lang}: the cost of the PDF version is named`);
-    assert.match(pdf.description, /0[.,]90/);
-    assert.match(topic.description, /0[.,]30/, `${lang}: and that of the topic version`);
-    assert.match(topic.description, /0[.,]50/);
-    assert.match(pdf.description, /Opus 5\.5/);
+    assert.match(pdf.description, /1[.,]25/, `${lang}: the cost of the PDF version is named`);
+    assert.match(pdf.description, /2[.,]25/);
+    assert.match(topic.description, /0[.,]75/, `${lang}: and that of the topic version`);
+    assert.match(topic.description, /1[.,]25/);
+    assert.match(pdf.description, /GPT-6 Astra/);
     // WP38d: the language follows the input in every language of the interface (it used to be the language of the interface)
     assert.equal(pdf.graph.nodes.find((node) => node.id === 'n3').params.language, 'auto', `${lang}: the script follows the language of the input`);
     assert.equal(topic.graph.nodes.find((node) => node.id === 'n2').params.language, 'auto');
@@ -335,7 +335,7 @@ async function run(iso) {
     assert.equal(info.total_pages, 2);
     assert.deepEqual(calls.map((call) => call.kind), ['plan', 'verify']);
     const planCall = calls[0].options;
-    assert.equal(planCall.model, 'anthropic/claude-opus-5.5');
+    assert.equal(planCall.model, 'openai/gpt-6-astra');
     assert.match(planCall.prompt, /Die Förderung deckt einen Teil der Kosten/);
     assert.match(planCall.prompt, /D1 = Marktbericht\.pdf \(2 pages\)/);
     assert.equal(planCall.files.length, 1);
@@ -354,7 +354,7 @@ async function run(iso) {
     const after = await engine.plan(created.id, { mode: 'node', nodeIds: ['n3'], user: STAFF, force: true });
     if (!hasInfo) assert.equal(after.nodes.n3.estimate, null, 'without a page count the price stays unknown');
     else assert.ok(after.nodes.n3.estimate && after.nodes.n3.estimate.usd > 0, 'the PDF is known now: the planner has a price');
-    if (hasInfo) assert.equal(after.nodes.n3.estimate.usd, planLib.estimateUsd({ model: 'anthropic/claude-opus-5.5', pdfPages: 2, textChars: (await resultOf(created.id, 'n2')).variants[0].text.value.length, verify: true }));
+    if (hasInfo) assert.equal(after.nodes.n3.estimate.usd, planLib.estimateUsd({ model: 'openai/gpt-6-astra', pdfPages: 2, textChars: (await resultOf(created.id, 'n2')).variants[0].text.value.length, verify: true }));
     // phase two: the edited script is only checked, no model call, no cost
     calls.length = 0;
     const edited = { ...planned };

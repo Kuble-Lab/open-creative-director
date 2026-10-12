@@ -93,7 +93,7 @@ function scripted(steps) {
     const step = steps.length > 1 ? steps.shift() : steps[0];
     const value = typeof step === 'function' ? step(request) : step;
     if (value instanceof Error) throw value;
-    return { text: typeof value === 'string' ? value : JSON.stringify(value), usd: 0.3, model: 'anthropic/claude-opus-5.5', usage: { completion_tokens: 9000, completion_tokens_details: { reasoning_tokens: 5000 } } };
+    return { text: typeof value === 'string' ? value : JSON.stringify(value), usd: 0.3, model: 'openai/gpt-6-astra', usage: { completion_tokens: 9000, completion_tokens_details: { reasoning_tokens: 5000 } } };
   };
   return { ask, calls };
 }
@@ -676,7 +676,7 @@ async function testRun() {
     assert.match(model.calls[1].prompt, /YOUR LAST ANSWER HAD THESE PROBLEMS/);
     assert.match(model.calls[1].prompt, /hook pick 0: "v99#0" is not in the material/);
     assert.equal(result.tries.length, 2);
-    assert.match(result.board, /MODEL {6}anthropic\/claude-opus-5\.5 · try 1: effort medium, 9,000 of 32,000 tokens \(thinking 5,000, text 4,000\), complete, 1 of \d+ picks replaced, 0\.30 USD · try 2: .*0 of \d+ picks replaced/);
+    assert.match(result.board, /MODEL {6}openai\/gpt-6-astra · try 1: effort medium, 9,000 of 32,000 tokens \(thinking 5,000, text 4,000\), complete, 1 of \d+ picks replaced, 0\.30 USD · try 2: .*0 of \d+ picks replaced/);
     assert.equal(result.content.acts.hook[0].unit.ref, 'v1#0');
   }
   // soft points never ask again: they are notes on the board
@@ -1022,7 +1022,7 @@ async function testNodeDefinition() {
   try {
     openrouter.hasKey = () => true;
     const typical = def.cost.estimate(registry.normalizeParams(def, {}), { inputs: {} });
-    assert.equal(Math.round(typical.usd * 100) / 100, 0.11);
+    assert.equal(Math.round(typical.usd * 100) / 100, 0.28);
     const { textValue, listValue } = require('../lib/nodes/types');
     const style = textValue(JSON.stringify(styleFixture));
     const inputs = {
@@ -1033,7 +1033,7 @@ async function testNodeDefinition() {
       photo_info: listValue('text', material60.photos.map((info) => textValue(JSON.stringify(info))))
     };
     const known = def.cost.estimate(registry.normalizeParams(def, {}), { inputs });
-    assert.ok(known.usd > 0.06 && known.usd < 0.12, `estimate ${known.usd}`);
+    assert.ok(known.usd > 0.15 && known.usd < 0.30, `estimate ${known.usd}`);
     assert.equal(def.cost.estimate(registry.normalizeParams(def, { model: 'vendor/unknown' }), { inputs }), null);
   } finally {
     openrouter.hasKey = savedKey;
@@ -1163,7 +1163,7 @@ async function testNode() {
     assert.deepEqual(out.ai_photos.items.map((item) => item.assetId), [photoValues[1].assetId]);
     assert.deepEqual(out.ai_prompts.items.map((item) => item.value), ['Slow push-in.']);
     assert.deepEqual([out.parallax_photos.items, out.vo_lines.items], [[], []]);
-    assert.deepEqual(result.cost, { usd: 0.31 });
+    assert.deepEqual(result.cost, { usd: 0.31, model: 'anthropic/claude-opus-5.5' });
     assert.ok(logs.some((line) => /^Language model, request 1: effort medium/.test(line)));
     // the analyses must belong to the lists
     const err = await errorOf(def.execute(ctx, { ...inputs, photo_info: listValue('text', []) }, params));
