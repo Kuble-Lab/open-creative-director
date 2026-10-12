@@ -76,13 +76,22 @@ async function testUI(lang) {
     planner: { selected: { entry: 'plan-a' }, history: [{ id: 'plan-a', variants: [variant] }] },
     board: { selected: { entry: 'board-a' }, history: [{ id: 'board-a', variants: [{ result: { type: 'text', value: 'Storyboard' } }] }] }
   } };
-  const requests = [], started = [], confirmations = [];
+  const requests = [], started = [], confirmations = [], previews = [];
+  let eventHandlers;
+  let deferPreview = false;
+  const waitingPreviews = [];
+  const previewResponse = (raw) => ({ previews: ['16:9', '1:1', '9:16'].map((format) => ({ format, width: 1080, height: 1080, title: raw, endcard: raw })) });
   // the status of the last run (null: none yet); only a run that did not end well is offered for continuing
   let changed = false, complete = false, partial = false, staleOutput = false, lastRun = null;
   const page = loadPage(lang, { api: {
     getWorkflow: async () => ({ workflow: clone(workflow), results: clone(results) }),
+    cardPreview: async (_id, nodeId, raw) => {
+      previews.push({ nodeId, raw });
+      if (deferPreview) return new Promise((resolve, reject) => waitingPreviews.push({ resolve, reject, raw }));
+      return previewResponse(raw);
+    },
     assets: async () => ({ assets: [] }), outputsZipUrl: () => '/test.zip',
-    openEvents: () => ({ close() {} }), listRuns: async () => ({ runs: lastRun ? [{ id: 'last' }] : [] }),
+    openEvents: (_id, handlers) => { eventHandlers = handlers; return { close() {} }; }, listRuns: async () => ({ runs: lastRun ? [{ id: 'last' }] : [] }),
     getRun: async () => ({ id: 'last', status: lastRun, mode: 'all', nodes: {}, cost: { usd: 0, credits: 0 } }),
     startRun: async (_id, request) => { started.push(clone(request)); return { runId: 'run' }; },
     plan: async (_id, request) => {
@@ -106,6 +115,46 @@ async function testUI(lang) {
   const open = async () => { await app.open('event', reg); await tick(); };
   const fields = () => find('nv-apptexts').find((node) => node.tagName === 'INPUT');
   await open();
+  const frames = () => find('nv-cardpreview').find((node) => node.tagName === 'IFRAME');
+  assert.equal(frames().length, 3);
+  assert.ok(frames().every((frame) => frame.getAttribute('sandbox') === ''), 'no scripts or same-origin in preview frames');
+  assert.equal(previews.at(-1).nodeId, 'render');
+  const titleButton = () => find('nv-cardpreview-controls').children[0];
+  titleButton().fire('click');
+  assert.equal(titleButton().getAttribute('aria-pressed'), 'true');
+  for (const refresh of [() => eventHandlers.onEvent({ type: 'results_changed' }), () => { eventHandlers.onError(); eventHandlers.onOpen(); }]) {
+    const oldPanel = find('nv-cardpreview');
+    refresh(); await tick(); await tick();
+    assert.notEqual(find('nv-cardpreview'), oldPanel, 'refresh rebuilds the preview panel');
+    assert.equal(titleButton().getAttribute('aria-pressed'), 'true', 'title selection survives results refresh and reconnect');
+    assert.equal(frames().length, 3);
+  }
+  const previewCount = previews.length;
+  fields()[0].value = 'First draft'; fields()[0].fire('input');
+  fields()[0].value = 'Second draft'; fields()[0].fire('input');
+  await tick();
+  assert.equal(previews.length, previewCount, 'rapid typing is debounced');
+  assert.equal(frames().length, 0, 'old previews are hidden as soon as text changes');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.equal(previews.length, previewCount + 1);
+  assert.equal(JSON.parse(previews.at(-1).raw).values['title.text'], 'Second draft');
+  deferPreview = true;
+  fields()[0].value = 'Older response'; fields()[0].fire('input');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  fields()[0].value = 'Newer response'; fields()[0].fire('input');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  waitingPreviews[1].resolve(previewResponse(waitingPreviews[1].raw)); await tick();
+  const latest = frames()[0].srcdoc;
+  waitingPreviews[0].resolve(previewResponse(waitingPreviews[0].raw)); await tick();
+  assert.equal(frames()[0].srcdoc, latest, 'late responses cannot overwrite the current draft');
+  fields()[0].value = 'Failure'; fields()[0].fire('input');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  waitingPreviews[2].reject(new Error('Unavailable')); await tick();
+  assert.ok(find('nv-cardpreview').textContent.includes(page.window.I18N[lang]['nodes.app.cardPreviewError']));
+  deferPreview = false;
+  fields()[0].value = graphics.title.text; fields()[0].fire('input');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.equal(frames().length, 3, 'editing recovers from an error');
   assert.deepEqual(clone(page.OCD.appMode.eventTextFields(graphics)).map(({ path, value, max }) => ({ path, value, max })), textFields(graphics));
   assert.equal(find('nv-appreplan').classes.has('hidden'), false);
   assert.equal(find('nv-appresume').textContent, '', 'a step that waits for its approval is not an interrupted run');

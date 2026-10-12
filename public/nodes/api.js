@@ -152,6 +152,7 @@
     startRun: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs`, body || {}),
     getRun: (id, runId) => request('GET', `/api/workflows/${enc(id)}/runs/${enc(runId)}`),
     listRuns: (id, limit) => request('GET', `/api/workflows/${enc(id)}/runs${limit ? `?limit=${enc(limit)}` : ''}`),
+    cardPreview: (id, nodeId, text_overrides) => request('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/card-preview`, { text_overrides }),
     resumeRun: (id, runId, body) => request('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/resume`, body),
     cancelRun: (id, runId) => request('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/cancel`, {}),
     selectVariant: (id, nodeId, entry, variant) => request('PATCH', `/api/workflows/${enc(id)}/results/${enc(nodeId)}`, { entry, variant }),
