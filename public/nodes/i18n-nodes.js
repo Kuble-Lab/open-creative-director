@@ -751,7 +751,6 @@
     ['nodes.port.svg', 'SVG', 'SVG', 'SVG'],
     ['nodes.port.reference_audio', 'Referenzstimme', 'Reference voice', 'Voz de referencia'],
     ['nodes.port.motion', 'Bewegung', 'Motion', 'Movimiento'],
-    ['nodes.port.last_frame', 'Letztes Bild', 'Last frame', 'Último fotograma'],
     ['nodes.port.videos', 'Videos', 'Videos', 'Vídeos'],
     ['nodes.port.audios', 'Audios', 'Audios', 'Audios'],
     ['nodes.port.expanded_prompt', 'Erweiterter Prompt', 'Expanded prompt', 'Prompt ampliado'],
