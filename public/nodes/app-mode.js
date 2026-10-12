@@ -95,6 +95,37 @@
     return nodes.length > 0 && nodes.every((node) => node.status === 'cached');
   }
 
+  function eventTextFields(graphics) {
+    const fields = [];
+    const add = (prefix, item, keys, label) => {
+      if (!item) return;
+      for (const [key, max] of keys) fields.push({ path: `${prefix}.${key}`, value: item[key] || '', max, label, key });
+    };
+    add('title', graphics.title, [['text', 28], ['sub', 40]], 'title');
+    (graphics.intertitles || []).forEach((item, i) => add(`intertitles.${i}`, item, [['text', 32]], 'intertitle'));
+    (graphics.lower_thirds || []).forEach((item, i) => add(`lower_thirds.${i}`, item, [['name', 40], ['role', 40], ['label', 32]], 'lowerThird'));
+    add('endcard', graphics.endcard, [['line', 40], ['sub', 40], ['url', 60]], 'endcard');
+    return fields;
+  }
+
+  function eventTextError(field, fields, values) {
+    const value = values[field.path] ?? field.value;
+    if (Array.from(value).length > field.max) return 'long';
+    if (['text', 'line'].includes(field.key) && !value.trim()) return 'empty';
+    if (field.path.startsWith('lower_thirds.')) {
+      const group = field.path.split('.').slice(0, 2).join('.') + '.';
+      if (!fields.some((item) => item.path.startsWith(group) && (values[item.path] ?? item.value).trim())) return 'group';
+    }
+    return null;
+  }
+
+  function resumeSummary(plan) {
+    const kept = [];
+    const pending = [];
+    for (const [id, node] of Object.entries(plan?.nodes || {})) (node.status === 'cached' ? kept : pending).push(id);
+    return { kept, pending };
+  }
+
   /* ---------- optional approval steps ---------- */
 
   // The builder can mark outputs of the app "show first for approval" (workflow.app.outputs[].approve, SPEC §14): `true` is step 1,
@@ -163,13 +194,13 @@
   // that is due itself), and `index` is that stage.
   // `stageOverrides` (optional, WP55): the form values of the request of each stage, where they differ from `overrides` (the switches of an approval
   // count only for the steps after it); `overrides` is then what the last step sends.
-  function stageFlow({ stages, overrides, stageOverrides = null, previews = [], all = null, hasResult = () => true, redo = false }) {
+  function stageFlow({ stages, overrides, stageOverrides = null, previews = [], all = null, hasResult = () => true, ready = (id, nodes) => nodes[id]?.status === 'cached', redo = false }) {
     if (!Array.isArray(stages) || !stages.length || stages.some((targets) => !Array.isArray(targets) || !targets.length)) return null;
     const total = stages.length + 1;
     const planOf = (index) => (Array.isArray(previews) && previews[index]) || null;
     const current = (index) => {
       const nodes = (planOf(index) && planOf(index).nodes) || {};
-      return stages[index].every((id) => nodes[id] && nodes[id].status === 'cached' && hasResult(id));
+      return stages[index].every((id) => ready(id, nodes) && hasResult(id));
     };
     // `force` holds for the targets only: a forced stage lists every node it needs (`order` of its plan, see previewRequest)
     const overridesOf = (index) => (Array.isArray(stageOverrides) && stageOverrides[index]) || overrides;
@@ -516,7 +547,7 @@
     function currentFlow() {
       const stages = approveStages();
       if (!stages.length || !s.plans) return null;
-      return stageFlow({ stages, previews: s.plans.previews, all: s.plans.all, hasResult });
+      return stageFlow({ stages, previews: s.plans.previews, all: s.plans.all, hasResult, ready: approvalReady });
     }
 
     // The plans that say which step is due (stageFlow): the plan of every stage, not forced, and the plan of everything, asked at once. `overridesOf(step)`
@@ -547,6 +578,7 @@
         if (field.marks) out[field.marks.key] = s.values.get(field.marks.key);
       }
       out._switches = Object.fromEntries(s.switches);
+      out._texts = s.texts || readStored()._texts || {};
       lsSet(storageKey(), JSON.stringify(out));
     }
 
@@ -585,7 +617,10 @@
       const hint = el('div', { class: 'nv-apphint', role: 'status' });
       const redoBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-appredo hidden' }, icon('refresh', 13), el('span', { text: T('nodes.app.approveRedo', { step: 1 }) }));
       redoBtn.addEventListener('click', () => startRun({ redo: true }));
-      actions.append(stepLine, el('div', { class: 'nv-appactions-row' }, runBtn, cancelBtn), hint, redoBtn);
+      const replanBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-appreplan hidden', text: T('nodes.app.replan') });
+      replanBtn.addEventListener('click', () => startRun({ replan: true }));
+      const resumeBox = el('div', { class: 'nv-appresume', role: 'status' });
+      actions.append(stepLine, el('div', { class: 'nv-appactions-row' }, runBtn, cancelBtn), hint, resumeBox, replanBtn, redoBtn);
       formCard.append(actions);
       const statusBox = el('div', { class: 'nv-appstatus hidden', role: 'status' });
       formCard.append(statusBox);
@@ -597,7 +632,7 @@
 
       grid.append(formCard, results);
       wrap.append(grid);
-      s.refs = { fieldsBox, runBtn, cancelBtn, hint, stepLine, redoBtn, statusBox, resultsHead, outputsBox };
+      s.refs = { fieldsBox, runBtn, cancelBtn, hint, stepLine, redoBtn, replanBtn, resumeBox, statusBox, resultsHead, outputsBox };
       refreshVisibility();
       renderRunButton();
       renderStatus();
@@ -870,6 +905,89 @@
       return Boolean(flow) && (flow.done || flow.index > stage);
     }
 
+    function eventTextTargets() {
+      const targets = [];
+      const stages = approveStages();
+      const graph = s.workflow.graph;
+      for (const node of graph.nodes.filter((item) => item.type === 'event_video.plan')) {
+        const reaches = (id, seen = new Set()) => {
+          if (id === node.id) return true;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return graph.edges.some((edge) => edge.to.node === id && reaches(edge.from.node, seen));
+        };
+        const stage = stages.findIndex((ids) => ids.some((id) => reaches(id)));
+        if (stage < 0) continue;
+        for (const edge of graph.edges.filter((item) => item.from.node === node.id && item.from.port === 'graphics' && item.to.port === 'graphics')) {
+          const render = nodeOf(edge.to.node);
+          if (render?.type === 'event_video.render') targets.push({ node, render, stage, output: stages[stage].find((id) => reaches(id)) });
+        }
+      }
+      return targets;
+    }
+
+    function textState(target) {
+      const result = s.results?.nodes?.[target.node.id];
+      const entry = result?.history?.find((item) => item.id === result.selected?.entry);
+      const variant = entry?.variants?.[result.selected?.variant || 0];
+      try {
+        const fields = eventTextFields(JSON.parse(variant.graphics.value));
+        const base = JSON.stringify(fields.map(({ path, value }) => [path, value]));
+        const plan = switchPayload(variant.ai_switches?.value)?.base || entry.id;
+        if (!s.texts) s.texts = readStored()._texts || {};
+        let state = s.texts[target.render.id];
+        if (!state) {
+          let restored = null;
+          try { restored = JSON.parse(restoredParam(s.results, target.render, 'text_overrides', target.render.params.text_overrides) || 'null'); } catch (_) { /* no saved corrections */ }
+          state = { plan, base, values: restored?.base === base && (!restored.plan || restored.plan === plan) ? restored.values : {} };
+        }
+        if (state.plan !== plan || state.base !== base) state = { plan, base, values: {} };
+        s.texts[target.render.id] = state;
+        return { state, fields };
+      } catch (_) { return null; }
+    }
+
+    function textPanel(target) {
+      const data = textState(target);
+      if (!data) return null;
+      const panel = el('section', { class: 'nv-apptexts' }, el('h4', { text: T('nodes.app.editTexts') }), el('p', { class: 'nv-hint', text: T('nodes.app.editTextsHint') }));
+      const inputs = [];
+      const checks = [];
+      const validate = () => checks.forEach(({ field, input, error }) => {
+        const reason = eventTextError(field, data.fields, data.state.values);
+        input.setAttribute('aria-invalid', reason ? 'true' : 'false');
+        error.textContent = !reason ? '' : reason === 'long' ? T('nodes.app.textTooLong', { max: field.max }) : reason === 'group' ? T('nodes.app.lowerThirdEmpty') : T('nodes.app.textInvalid');
+      });
+      for (const field of data.fields) {
+        const index = field.path.split('.').length === 3 ? ` ${Number(field.path.split('.')[1]) + 1}` : '';
+        const label = `${T(`nodes.app.text.${field.label}`)}${index} · ${T(`nodes.app.text.${field.key}`)}`;
+        const input = el('input', { type: 'text', class: 'nv-input', 'aria-label': label });
+        input.value = data.state.values[field.path] ?? field.value;
+        const error = el('span', { class: 'nv-hint', role: 'status' });
+        input.addEventListener('input', () => {
+          if (!switchesEditable(target.stage)) return;
+          if (input.value === field.value) delete data.state.values[field.path];
+          else data.state.values[field.path] = input.value;
+          validate();
+          writeStored();
+          schedulePlan();
+        });
+        checks.push({ field, input, error });
+        inputs.push(input);
+        panel.append(el('label', {}, el('span', { text: label }), input, error));
+      }
+      validate();
+      const lock = () => { for (const input of inputs) input.disabled = !switchesEditable(target.stage); };
+      lock();
+      return { el: panel, lock };
+    }
+
+    function replanTarget() {
+      const order = s.plans?.previews?.[0]?.order || [];
+      const nodes = s.workflow.graph.nodes.filter((node) => node.type === 'event_video.plan' && order.includes(node.id));
+      return nodes.length === 1 ? nodes[0].id : null;
+    }
+
     /* ---------- overrides, validation ---------- */
 
     // `step` (an app with approval steps, counted from 0): the switches of an output count only for the steps after its stage (WP55); without it, all.
@@ -894,6 +1012,10 @@
         const payload = switchesPayloadOf(item.ref);
         const state = payload ? switchState(item.ref, payload) : null;
         if (item.stage < step && state && Object.keys(state.value).length) set(item.ref.node.id, item.ref.param.id, { ...state.value });
+      }
+      for (const target of eventTextTargets()) {
+        const data = textState(target);
+        if (target.stage < step && data) set(target.render.id, 'text_overrides', Object.keys(data.state.values).length ? JSON.stringify({ plan: data.state.plan, base: data.state.base, values: data.state.values }) : '');
       }
       return overrides;
     }
@@ -1000,7 +1122,7 @@
 
     function renderRunButton() {
       if (!s || !s.refs) return;
-      const { runBtn, cancelBtn, hint, stepLine, redoBtn } = s.refs;
+      const { runBtn, cancelBtn, hint, stepLine, redoBtn, replanBtn, resumeBox } = s.refs;
       const active = s.run.active || s.starting;
       // An app with outputs marked for approval runs in steps (stageFlow); flow is null for any other app. The plan shown is the one of
       // the step that is due: what is left to run, so the hint and the costs name only that.
@@ -1008,13 +1130,23 @@
       const flow = currentFlow();
       for (const panel of s.switchPanels || []) panel.lock();
       const plan = flow ? (flow.index < stages.length && !flow.done ? s.plans.previews[flow.index] : s.plans.all) : s.plan;
+      const summary = resumeSummary(plan);
+      // only a run that did not end well (cancelled, failed, cut off by a restart) is continued; a step that ended and waits for its
+      // approval, or a finished run with changed values, keeps its own label
+      const resumable = !active && Boolean(s.run.runId) && ['cancelled', 'failed', 'interrupted'].includes(s.run.status) && summary.pending.length > 0;
+      if (!active) s.resumeIntent = resumable;
+      resumeBox.textContent = '';
+      if (!active && resumable) {
+        resumeBox.append(el('p', { text: T('nodes.app.resumeKept', { nodes: summary.kept.map(titleOf).join(', ') || T('nodes.app.noneKept') }) }), el('p', { text: T('nodes.app.resumePending', { nodes: summary.pending.map(titleOf).join(', ') }) }));
+      }
+      replanBtn.classList.toggle('hidden', active || !flow || flow.index !== 1 || flow.done || !replanTarget());
       const rerun = !active && (flow ? flow.done : allCached(plan));
       runBtn.disabled = active;
       const working = s.run.active || (s.starting && !s.asking);
       runBtn.classList.toggle('is-working', working);
       // (until the plans are there an app with marked outputs says "Start step 1": the first step is what a click would find first)
       const label = stages.length ? stepButtonLabel(flow ? flow.index : 0, stages.length) : T('nodes.app.run');
-      runBtn.querySelector('.nv-apprun-label').textContent = working ? T('nodes.app.running') : rerun ? T('nodes.app.runAgain') : label;
+      runBtn.querySelector('.nv-apprun-label').textContent = working ? T('nodes.app.running') : rerun ? T('nodes.app.runAgain') : resumable ? T('nodes.app.resume') : label;
       cancelBtn.classList.toggle('hidden', !s.run.active);
       // "make step n again" while stage n stands for approval
       const redoable = !active && Boolean(flow) && !flow.done && flow.index > 0;
@@ -1155,15 +1287,21 @@
     }
 
     // `redo`: "make step n again" of an app with outputs marked for approval (see stageFlow).
-    async function startRun({ redo = false } = {}) {
+    async function startRun({ redo = false, replan = false } = {}) {
       if (!s || s.starting || s.run.active) return;
       const stages = approveStages();
       // The whole form is checked first, as always. An app with several stages of approval checks the fields of the step that starts
       // instead, once the plans have said which step that is (below): a song that only a later step needs does not stop the first one.
-      const scoped = stages.length > 1;
+      const scoped = replan || stages.length > 1;
       if (!scoped && !checkForm()) return;
-      const id = s.id;
       const shown = currentFlow();
+      if (!replan && !redo && eventTextTargets().some((target) => {
+        if (!shown || (!shown.done && shown.index <= target.stage)) return false;
+        const data = textState(target);
+        return data && data.fields.some((field) => eventTextError(field, data.fields, data.state.values));
+      })) { ui.toast(T('nodes.app.textInvalid'), { kind: 'warn' }); return; }
+      const resumeIntent = !redo && !replan && s.resumeIntent;
+      const id = s.id;
       s.starting = true;
       renderRunButton();
       try {
@@ -1175,15 +1313,27 @@
         let request;
         let planned = null;
         try {
-          if (stages.length) {
+          if (replan) {
+            const nodeId = replanTarget();
+            if (!nodeId || shown?.index !== 1 || shown.done) return;
+            request = { mode: 'node', nodeIds: [nodeId], force: true, overrides: buildOverrides(0) };
+            request.overrides[nodeId] = { ...request.overrides[nodeId], ai_choice: {} };
+            planned = await api.plan(id, request);
+            if (!s || s.id !== id) return;
+            if (Object.entries(planned.nodes || {}).some(([key, node]) => key !== nodeId && node.status !== 'cached')) {
+              ui.toast(T('nodes.app.replanChanged'), { kind: 'warn' });
+              await refreshPlan(0);
+              return;
+            }
+          } else if (stages.length) {
             const asked = await askPlans(id, stages, (step) => buildOverrides(step));
             if (!s || s.id !== id) return;
-            const flow = stageFlow({ stages, overrides, stageOverrides: stages.map((_, step) => buildOverrides(step)), previews: asked.previews, all: asked.all, hasResult, redo });
+            const flow = stageFlow({ stages, overrides, stageOverrides: stages.map((_, step) => buildOverrides(step)), previews: asked.previews, all: asked.all, hasResult, ready: approvalReady, redo });
             // A later step makes more, and the last one the expensive part. If the button did not say so (a result came from another tab,
             // a field went back to an earlier value), nothing starts: the button and the results show how things stand now, and the next
             // click decides. The same for "make step n again" when another stage stands for approval now.
             const shownIndex = shown ? shown.index : 0;
-            if (redo ? flow.index !== Math.max(0, shownIndex - 1) : !flow.done && flow.index > shownIndex) {
+            if ((!redo && shown && !shown.done && flow.done) || (redo ? flow.index !== Math.max(0, shownIndex - 1) : !flow.done && flow.index > shownIndex)) {
               s.plans = asked;
               s.plan = null;
               s.planError = null;
@@ -1196,8 +1346,14 @@
             // a request that is not forced is the one of a plan just asked (a stage, or everything); a forced one needs a plan of its own
             if (!request.force) planned = stepPlan;
           } else {
-            const force = allCached(await api.plan(id, { mode: 'all', force: false, overrides }));
+            const fresh = await api.plan(id, { mode: 'all', force: false, overrides });
             if (!s || s.id !== id) return;
+            const force = allCached(fresh);
+            if (resumeIntent && force) {
+              s.plan = fresh;
+              s.planError = null;
+              return;
+            }
             request = { mode: 'all', force, overrides };
           }
           if (!planned) planned = await api.plan(id, request);
@@ -1219,7 +1375,7 @@
         if (info.needsConfirm) {
           s.asking = true;
           renderRunButton();
-          const confirmed = await confirmPaid(info);
+          const confirmed = await confirmPaid(replan ? { ...info, followup: [] } : info);
           if (s) s.asking = false;
           if (!confirmed) return;
         }
@@ -1319,6 +1475,7 @@
         renderResults();
         renderStatus();
         renderRunButton(); // the step that is due also depends on whether a result is there to show
+        if (!s.run.active) refreshPlan(0);
       } catch (_) {
         /* the next event or reconnect refreshes again */
       }
@@ -1438,7 +1595,36 @@
 
     /* ---------- results ---------- */
 
+    // A planner-only run has not copied its new board into the passive output nodes yet.
+    // Show the planner's values directly and accept those cached sources for approval.
+    function eventApprovalValue(nodeId, nodes = null) {
+      if (nodeOf(nodeId)?.type !== 'output.result' || !approveStages().some((ids) => ids.includes(nodeId))) return null;
+      const edges = s.workflow.graph.edges.filter((edge) => edge.to.node === nodeId);
+      if (!edges.length || edges.some((edge) => nodeOf(edge.from.node)?.type !== 'event_video.plan')) return null;
+      const items = [];
+      let entry;
+      for (const edge of edges) {
+        if (nodes && nodes[edge.from.node]?.status !== 'cached') return null;
+        const result = s.results?.nodes?.[edge.from.node];
+        entry = result?.history?.find((item) => item.id === result.selected?.entry);
+        const value = entry?.variants?.[result.selected?.variant || 0]?.[edge.from.port];
+        if (!value) return null;
+        items.push(value);
+      }
+      const result = s.results?.nodes?.[nodeId];
+      const saved = result?.history?.find((item) => item.id === result.selected?.entry);
+      const value = saved?.variants?.[result.selected?.variant || 0]?.result;
+      if (!nodes && JSON.stringify(value?.type === 'list' ? value.items : [value]) === JSON.stringify(items)) return null;
+      return { value: { type: 'list', items }, entry, projected: true };
+    }
+
+    function approvalReady(nodeId, nodes) {
+      return nodes[nodeId]?.status === 'cached' || Boolean(eventApprovalValue(nodeId, nodes));
+    }
+
     function outputValue(nodeId) {
+      const projected = eventApprovalValue(nodeId);
+      if (projected) return projected;
       const result = s.results && s.results.nodes && s.results.nodes[nodeId];
       if (!result || !result.selected) return null;
       const entry = (result.history || []).find((item) => item.id === result.selected.entry);
@@ -1494,6 +1680,7 @@
       resultsHead.textContent = '';
       resultsHead.append(el('h2', { class: 'nv-appresults-title', text: T('nodes.app.results') }));
       let any = false;
+      let projected = false;
       // with outputs marked for approval, the step each output comes in: its stage, the last step for an output without a mark
       const stages = approveStages();
       const stepOf = new Map();
@@ -1501,6 +1688,7 @@
       // the switches of an output (WP55) stand under its result
       const switchesOf = new Map(switchOutputs().map((item) => [item.entry.node, item]));
       s.switchPanels = [];
+      const textTargets = eventTextTargets();
       for (const entry of app.outputs) {
         const node = nodeOf(entry.node);
         if (!node) continue;
@@ -1517,13 +1705,14 @@
           continue;
         }
         any = true;
+        projected = projected || Boolean(found.projected);
         const leaves = leafList(found.value).filter((leaf) => OCD.preview.isViewable(leaf));
         const meta = [formatDate(found.entry.createdAt), found.entry.user].filter(Boolean).join(' · ');
         const tools = el('div', { class: 'nv-appout-tools' });
         if (leaves.length > 1) tools.append(el('span', { class: 'nv-badge is-batch', text: T('nodes.app.batchCount', { count: leaves.length }) }));
         const send = el('button', { type: 'button', class: 'nv-btn nv-btn-sm' }, icon('send', 13), el('span', { text: T('nodes.send.button') }));
         send.addEventListener('click', () => OCD.assetPicker.sendToChat({ workflowId: s.id, nodeId: entry.node }));
-        tools.append(send);
+        if (!found.projected) tools.append(send);
         head.append(tools);
         card.append(head);
         if (meta) card.append(el('div', { class: 'nv-appout-meta', text: T('nodes.app.resultFrom', { info: meta }) }));
@@ -1535,14 +1724,19 @@
           body.append(cell);
         });
         card.append(body);
+        if (found.projected) card.append(el('p', { class: 'nv-hint', text: T('nodes.app.projectedPlan') }));
         const panel = switchesOf.has(entry.node) ? switchPanel(switchesOf.get(entry.node)) : null;
         if (panel) {
           card.append(panel.el);
           s.switchPanels.push(panel);
         }
+        for (const target of textTargets.filter((item) => item.output === entry.node)) {
+          const texts = textPanel(target);
+          if (texts) { card.append(texts.el); s.switchPanels.push(texts); }
+        }
         outputsBox.append(card);
       }
-      if (any) {
+      if (any && !projected) {
         const zip = el('a', { class: 'nv-btn nv-btn-sm', href: api.outputsZipUrl(s.id), download: '' }, icon('zip', 13), el('span', { text: T('nodes.run.menu.zip') }));
         resultsHead.append(zip);
       }
@@ -1574,6 +1768,8 @@
     fieldOfIssue,
     // WP55: marks per file and switches per item
     restoredParam,
+    eventTextFields,
+    resumeSummary,
     marksOfItems,
     switchPayload,
     switchesFromItems,
