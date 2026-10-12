@@ -125,7 +125,7 @@ function testConstants() {
   assert.equal(contract.LIMITS.videoSeconds, 1800);
   assert.equal(contract.LIMITS.minUsable, 5);
   // the render nodes know these formats (render_motion_graphics in lib/tools.js)
-  assert.match(source('lib/tools.js'), /enum: \['landscape', 'portrait', 'square'\]/);
+  assert.match(require('./support/tools-source').toolsSource(), /enum: \['landscape', 'portrait', 'square'\]/);
   assert.deepEqual(Object.values(contract.FORMAT_SIZES).map((size) => size.renderFormat), ['landscape', 'portrait', 'square']);
 
   // what shots and graphics know of the transitions of the style (D5): whip and strobe are not drawn yet
