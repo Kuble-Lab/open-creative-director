@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // The AI clip per photo of the event video (WP55): the marks of the photos in the order (the form of the app: "auto", "never AI", "always AI") and
 // the switches of the approval after step 1 (every photo of the film, its AI clip on or off). lib/event-video/plan.js, the node event_video.plan,
 // the param kind `marks`, the app format (marks of an input, switches of an output), the widgets and the whole flow through the real engine. No
@@ -657,7 +659,7 @@ function testFormat() {
   }
 
   // the app section in the browser (public/nodes/main.js): the same fields
-  const match = read('public/nodes/main.js').match(/function normalizeApp\(raw\) \{[\s\S]*?\n  \}\n/);
+  const match = readNodeMainSource().match(/function normalizeApp\(raw\) \{[\s\S]*?\n  \}\n/);
   assert.ok(match, 'main.js has normalizeApp');
   const client = new Function(`${match[0]}; return normalizeApp;`)();
   const back = client(JSON.parse(JSON.stringify(doc.app)));

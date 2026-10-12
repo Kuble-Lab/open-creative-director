@@ -806,7 +806,15 @@ Client uses `EventSource` (auto-reconnect); after a reconnect it calls `GET /api
 | `public/nodes/preview.js` (WP6) | Media previews in nodes, media viewer overlay (image zoom, video, audio), downloads. |
 | `public/nodes/asset-picker.js` (WP7) | Upload / "from chats" / "this workflow" picker. |
 | `public/nodes/app-mode.js` (WP7) | Design App builder panel and `#app=` view. |
-| `public/nodes/main.js` | Bootstrap: hash routing, view mount/unmount, state container, autosave, keyboard shortcuts, wiring of all modules. |
+| `public/nodes/main-state.js` | Shared state, event bus, selection, graph mutations, autosave and workflow list loading. |
+| `public/nodes/main-design-app.js` | Design App builder, exposures and card marks. |
+| `public/nodes/main-workflow.js` | Registry refresh, hash routing, workflow lifecycle and chrome state. |
+| `public/nodes/main-editing.js` | Node operations, clipboard, undo/redo, palette and uploads. |
+| `public/nodes/main-library.js` | Workflow operations, import/export, templates, sharing, project assignment and chat bridge. |
+| `public/nodes/main-chrome.js` | Menus, keyboard shortcuts and page chrome. |
+| `public/nodes/main.js` | Entry point: connect the parts, expose the editor API and boot the view. |
+
+The `main-*.js` parts load in the order above, followed by `main.js`. They use `OCDNodes.main` for shared bindings. Mutable UI references live only in `main-state.js`, exposed through accessors; other parts access them through `runtime`. Each part registers its functions before `main.js` connects cross-part references and boots. No part invokes a later part while loading. Source-inspection tests read the complete entry point through `scripts/support/node-main-source.js`. Historical `main.js` references below include these extracted parts.
 
 `public/index.html` changes (WP5): a sidebar button `<button id="nodesBtn" class="sidebar-brandings" type="button" data-i18n="sidebar.nodes" data-i18n-title="sidebar.nodesTitle">🧩 Nodes</button>` above Brandings; `<div id="nodeApp" class="nv-app hidden"></div>` before the lightbox; `<link rel="stylesheet" href="nodes/nodes.css">`; scripts after `app.js` in dependency order. The keys `sidebar.nodes`, `sidebar.nodesTitle` go into `public/i18n.js` (de/en/es) because `scripts/test-i18n.js` checks `index.html` keys there. `public/app.js` is **not** modified.
 

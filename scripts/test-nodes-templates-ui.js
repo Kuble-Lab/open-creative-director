@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Starter templates in the browser (public/nodes/templates-ui.js, the "Templates" tab of palette.js, the start of an
 // empty workflow in main.js): the logic that runs without a DOM (reading line, cost text, search, the store with its
 // cache) in three languages, and static checks of the wiring (script order, no innerHTML, every CSS class defined,
@@ -187,7 +189,7 @@ function testWiring() {
       for (const name of match[1].match(/nv-[a-z0-9-]+/g)) classes.add(name);
     }
   }
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   for (const match of main.matchAll(/class: '([^']*\bnv-(?:start|tpl)[^']*)'/g)) for (const name of match[1].match(/nv-[a-z0-9-]+/g)) classes.add(name);
   assert.ok(classes.has('nv-start-card') && classes.has('nv-tpl-flow') && classes.has('nv-pal-desc'), 'the new classes were found');
   const missing = [...classes].filter((name) => !name.endsWith('-')).filter((name) => !new RegExp(`\\.${name}(?![a-z0-9-])`).test(css)); // `nv-port-` and the like are completed at run time
@@ -203,7 +205,7 @@ function testWiring() {
   vm.runInNewContext(read('public/i18n.js'), { window });
   vm.runInNewContext(read('public/nodes/i18n-nodes.js'), { window });
   for (const file of ['public/nodes/templates-ui.js', 'public/nodes/palette.js', 'public/nodes/main.js']) {
-    for (const match of read(file).matchAll(/'(nodes\.(?:template|start|insert)\.[A-Za-z0-9_.]+)'/g)) {
+    for (const match of (file === 'public/nodes/main.js' ? readNodeMainSource() : read(file)).matchAll(/'(nodes\.(?:template|start|insert)\.[A-Za-z0-9_.]+)'/g)) {
       for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][match[1]], `${lang}: ${match[1]} (${file})`);
     }
   }

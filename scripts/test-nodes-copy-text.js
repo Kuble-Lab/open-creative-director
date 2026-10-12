@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // Text selected outside the canvas is copied as text. A node stays selected on the canvas while the person marks a
 // sentence in an answer of the assistant and presses Cmd+C: the browser has to copy that sentence, not the node as
 // clipboard JSON. Cut and delete leave the node alone as well. A press on the canvas ends the text selection, and
@@ -31,7 +33,7 @@ const ANSWER = [
 /* ---------- 1. wiring ---------- */
 
 function testWiring() {
-  const source = read('public/nodes/main.js');
+  const source = readNodeMainSource();
   assert.match(source, /function textSelectedOutsideCanvas\(\)/, 'helper for a text selection outside the canvas');
   const keyDown = source.slice(source.indexOf('function onKeyDown('), source.indexOf('function onKeyUp('));
   assert.ok(keyDown.length > 100, 'onKeyDown found');

@@ -1,5 +1,7 @@
 'use strict';
 
+const { readNodeMainSource } = require('./support/node-main-source');
+
 // The length of a song made visible: the line of "Generate music" that says where the length comes from (it replaces the
 // hidden "Length" field), the length and range on "Song text and structure", the tips and the label of the song template.
 // The logic is pure (public/nodes/music-plan.js and run.js), the wording is checked in German, English and Spanish, the
@@ -199,7 +201,7 @@ function testWiring() {
   const inspector = read('public/nodes/inspector.js');
   assert.match(inspector, /param\.id === 'length' && node\.type === 'audio\.music'/, 'the inspector explains the hidden length');
   assert.match(inspector, /node\.type === 'audio\.music_plan'\) fieldEl\.append/, 'and shows the range of the song text');
-  const main = read('public/nodes/main.js');
+  const main = readNodeMainSource();
   assert.match(main, /select: selectNodeById/);
   assert.match(main, /selectNode: selectNodeById/);
   assert.match(read('public/nodes/nodes.css'), /\.nv-node-note\.is-empty\s*{[^}]*display:\s*none/);
