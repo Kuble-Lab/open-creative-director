@@ -1127,16 +1127,16 @@
     async function confirmPaid(info, { all = false, resume = false } = {}) {
       const body = el('div', { class: 'nv-confirm' });
       body.append(el('p', { class: 'nv-confirm-intro', text: T(resume ? 'nodes.run.resumeIntro' : all ? 'nodes.run.confirmAll.intro' : 'nodes.run.previewIntro') }));
-      const changes = el('ul', { class: 'nv-confirm-list' });
+      const changes = el('ul', { class: 'nv-confirm-list is-changes' });
       for (const row of info.changes || []) changes.append(el('li', { text: `${row.title}: ${T(`nodes.run.change.${row.reason}`)}${row.params.length ? ' (' + row.params.join(', ') + ')' : ''}` }));
-      body.append(changes);
+      if (info.changes && info.changes.length) body.append(changes);
       const limitLabel = el('label', { class: 'nv-field', text: T('nodes.run.maxUsd') });
       const suggested = Math.ceil((Math.max(info.totals.usd * 1.25, info.totals.usd + 0.10) - 1e-9) * 20) / 20;
       const limit = el('input', { type: 'number', class: 'nv-input', min: '0', step: '0.0001', value: String(suggested) });
       limit.value = String(suggested);
       limitLabel.append(limit);
       body.append(limitLabel);
-      const knownLabel = el('label', { class: 'nv-field', text: T('nodes.run.knownPrices') });
+      const knownLabel = el('label', { class: 'nv-field is-inline', text: T('nodes.run.knownPrices') });
       const known = el('input', { type: 'checkbox' });
       const unknown = info.paid.filter((row) => row.unknown);
       known.checked = !unknown.length && !info.totals.unknownNodes;
@@ -1153,7 +1153,7 @@
         item.append(el('span', { class: `nv-confirm-cost ${row.unknown ? 'is-unknown' : ''}`.trim(), text: amount }));
         list.append(item);
       }
-      body.append(list);
+      if (info.paid.length) body.append(list);
       for (const row of info.followup || []) {
         body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.aiFollowup', {
           count: row.count, amount: row.usd === null ? T('nodes.run.confirm.unknown') : costText({ usd: row.usd }, { estimate: true })
