@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Interface of the agent access (public/mcp-ui.js): the pure helpers, the texts in German, English and Spanish, the wiring
 // in index.html and app.js and the safety rules (no HTML from strings, no native dialogs, no secret in storage).
 // The dialog itself is checked in a real browser against an isolated app copy; this test needs no browser and no network.
@@ -101,7 +103,7 @@ function testTexts() {
 
 function testWiring() {
   const index = read('public', 'index.html');
-  const app = read('public', 'app.js');
+  const app = readAppSource();
   const source = read('public', 'mcp-ui.js');
   const ids = new Set([...index.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
   const wanted = [...source.matchAll(/document\.getElementById\('([^']+)'\)/g)].map((match) => match[1]);

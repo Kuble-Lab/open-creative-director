@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Send to chat, client side (WP17): the chat shows results from the node view as one card (new `origin` messages and
 // the older plain-text notes), videos of user messages as a player, and the send dialog of the node view lists what is
 // sent. No browser and no network: the chat functions are cut out of public/app.js and run against a tiny fake DOM;
@@ -12,7 +14,7 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
-const appSource = read('public', 'app.js');
+const appSource = readAppSource();
 
 /* ---------- tiny DOM ---------- */
 

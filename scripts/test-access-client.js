@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Browser side of the user management (public/access-client.js, monitoring page, wiring in index.html):
 // the pure helpers, the sharing requests, the text coverage and the safety rules (no innerHTML, no native dialogs).
 // The dialogs themselves are checked in a real browser against an isolated app copy (see the README of WP14 notes);
@@ -229,7 +231,7 @@ function testTexts() {
   const collect = (source, pattern, prefix = '') => {
     for (const match of source.matchAll(pattern)) used.add(`${prefix}${match[1]}`);
   };
-  const app = read('public', 'app.js') + read('public', 'shell.js');
+  const app = readAppSource() + read('public', 'shell.js');
   const access = read('public', 'access-client.js');
   const nodes = ['main.js', 'app-mode.js', 'workflow-list.js'].map((file) => read('public', 'nodes', file)).join('\n');
   const monitoring = read('public', 'monitoring.js');
@@ -260,12 +262,12 @@ function testTexts() {
 
 function testHtmlWiring() {
   const index = read('public', 'index.html');
-  const app = read('public', 'app.js');
+  const app = readAppSource();
   const ids = new Set([...index.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
   const wanted = [...app.matchAll(/document\.getElementById\('([^']+)'\)/g)].map((match) => match[1]);
   const missing = wanted.filter((id) => !ids.has(id));
   assert.deepEqual(missing, [], `app.js reads ids that index.html does not have: ${missing.join(', ')}`);
-  assert.match(index, /<script src="access-client\.js"><\/script>\s*<script src="shell\.js"><\/script>\s*<script src="app\.js"><\/script>/, 'access-client.js and shell.js load before app.js');
+  assert.match(index, /<script src="access-client\.js"><\/script>\s*<script src="shell\.js"><\/script>\s*<script src="app-core\.js"><\/script>\s*<script src="app-cards\.js"><\/script>\s*<script src="app-messages\.js"><\/script>\s*<script src="app-settings\.js"><\/script>\s*<script src="app-sessions\.js"><\/script>\s*<script src="app-brandings\.js"><\/script>\s*<script src="app-context\.js"><\/script>\s*<script src="app-transport\.js"><\/script>\s*<script src="app\.js"><\/script>/, 'access-client.js and shell.js load before app.js');
   assert.match(index, /<script src="email-list\.js"><\/script>\s*<script src="teams-ui\.js"><\/script>\s*<script src="access-client\.js">/, 'the paste parser and the teams interface load before the access client and app.js');
   for (const id of ['budgetBanner', 'usersPasteSlot', 'settingsTeamsSlot']) assert.ok(ids.has(id), `index.html has #${id}`);
   const teamsUi = read('public', 'teams-ui.js');
@@ -287,7 +289,7 @@ function testSafety() {
     assert.doesNotMatch(source, /innerHTML|insertAdjacentHTML|outerHTML/, `${file}: no HTML from strings`);
     assert.doesNotMatch(source, /\b(?:window\.)?(?:confirm|alert|prompt)\(/, `${file}: no native dialogs`);
   }
-  const usersBlock = read('public', 'app.js');
+  const usersBlock = readAppSource();
   const start = usersBlock.indexOf('user management (only with AUTH_WHOAMI_URL');
   const end = usersBlock.indexOf('/* ---------- sessions ---------- */');
   assert.ok(start > 0 && end > start);

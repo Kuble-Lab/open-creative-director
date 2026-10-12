@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Assistant of the node view, the panel (WP25, part 2: public/nodes/assistant-ui.js).
 //
 //   P   the pure part: the canvas as data, the history, the proposal -> a sub graph, the notes about adjusted values, the
@@ -1155,7 +1157,7 @@ function testWiring() {
   assert.match(main, /plan: \(\) => api\.plan\(state\.workflow\.id/);
   // the model list: the models, names and default come from the chat (app.js offers them, filtered for the role); the saved
   // choice goes through the guarded storage helpers of main.js, never straight to localStorage
-  const app = read('public/app.js');
+  const app = readAppSource();
   assert.match(app, /window\.OCBrain = \{\s*choices: \(\) => \(\{\s*models: offeredBrainModels\(\),\s*defaultModel: String\(state\.config\?\.defaultBrain \|\| ''\),\s*labelOf: \(model\) => brainLabel\(model\)\.shortName/);
   assert.match(main, /getModelChoices: \(\) => \(global\.OCBrain \? global\.OCBrain\.choices\(\) : null\)/);
   assert.match(main, /modelStore: \{ read: \(\) => lsGet\(LS_ASSISTANT_MODEL\) \|\| '', write: \(model\) => lsSet\(LS_ASSISTANT_MODEL, model\) \}/);

@@ -1,5 +1,7 @@
 'use strict';
 
+const { appScriptFiles } = require('./support/app-source');
+
 // Expensive brain models stay away from participants and guests (WP24, parts C and D1).
 //
 //   C1  config.restrictedBrainModels: when set, participants and guests see and use only these brain models (chat menu,
@@ -113,7 +115,7 @@ function testUnits() {
 function testCleanup() {
   const source = fs.readFileSync(path.join(root, 'public/i18n.js'), 'utf8');
   assert.equal(/model\.codex/.test(source), false, 'no model.codex* key is left');
-  for (const file of ['public/app.js', 'public/index.html', 'public/shell.js', 'public/access-client.js']) {
+  for (const file of [...appScriptFiles(), 'public/index.html', 'public/shell.js', 'public/access-client.js']) {
     assert.equal(/model\.codex/.test(fs.readFileSync(path.join(root, file), 'utf8')), false, `${file} does not use them`);
   }
   const keys = ['chat.notice.BRAIN_MODEL_REPLACED', 'role.feature.models'];

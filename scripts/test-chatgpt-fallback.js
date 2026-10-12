@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // When the ChatGPT subscription fails, one model call of the Director (and of an LLM node) is repeated through OpenRouter
 // (WP24, part B). Everything is a local double: the subscription is a real client with a scripted fetch, OpenRouter is a
 // replaced function, and a fetch guard refuses everything that is not localhost, so nothing is paid and nothing leaves
@@ -651,7 +653,7 @@ async function run(iso, guard, logged) {
   assert.equal(texts.size, 6, 'every sentence is written in each language');
   assert.match(loadUi('de')['chat.notice.CHATGPT_REPLACED'], /ChatGPT-Abo nicht erreichbar.*OpenRouter.*berechnet/);
   assert.equal(loadUi('de')['chat.error.CHATGPT_UNAVAILABLE'], fb.MESSAGE_DE, 'the German fallback of the server is the German text');
-  const clientSource = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
+  const clientSource = readAppSource();
   assert.match(clientSource, /event\.type === 'notice'/);
   assert.match(clientSource, /message\.subscriptionFallback/);
   assert.equal(/innerHTML\s*=\s*[^;]*notice/i.test(clientSource), false, 'the notice is written as text');

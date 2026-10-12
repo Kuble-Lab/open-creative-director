@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // Chats and workflows grouped by team (WP22), admins only: where an entry belongs (stored team, team at the time of
 // creation, archived and deleted teams, removed members, no owner), the group heads and the paged items of the API,
 // the confidentiality for everybody who is not an admin, the team of new chats and workflows (set by the server only),
@@ -927,7 +929,7 @@ async function testGroupPages() {
 
 function createChatClient() {
   const root = path.resolve(__dirname, '..');
-  const source = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const source = readAppSource();
   const start = source.indexOf('/* ---------- team view (admins) ---------- */');
   const end = source.indexOf('async function createSession(');
   assert.ok(start > 0 && end > start, 'the team view section is in public/app.js');
@@ -1228,7 +1230,7 @@ function testSources() {
   assert.equal(/\.innerHTML\s*=/.test(helper), false, 'no innerHTML in the helper');
   assert.equal(/\b(alert|confirm|prompt)\(/.test(helper), false, 'no native dialogs');
   // the parts of the other client files that came with the grouping: no HTML built from data
-  const appSource = read('public', 'app.js');
+  const appSource = readAppSource();
   const between = (from, to) => appSource.slice(appSource.indexOf(from), appSource.indexOf(to));
   const clientParts = {
     'app.js team view': between('/* ---------- team view (admins) ---------- */', 'async function createSession('),

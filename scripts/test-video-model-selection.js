@@ -1,5 +1,7 @@
 'use strict';
 
+const { readAppSource } = require('./support/app-source');
+
 // The video model picker of the chat (WP18): generate_video stores a pending choice, shows a card and ends the turn;
 // only the click starts the paid job. A private copy of the app runs in a temp directory (own data folders, ephemeral
 // port, whoami stub). OpenRouter is a local double (model list, createVideo, chat stream) and a fetch guard refuses
@@ -609,7 +611,7 @@ async function run(iso) {
   assert.match(rememberedPrompt, /Higgsfield\) only when the user explicitly asks/);
 
   // (c) the hint above the input follows the admin switch (client source)
-  const appSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const appSource = readAppSource();
   assert.match(appSource, /const asking = state\.config\?\.askVideoModel !== false;\s+const preference = state\.currentId && asking/);
 
   // (d) the limits of a curated default model hold on the card as on the payload; the node view keeps its own

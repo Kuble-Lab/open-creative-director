@@ -1,5 +1,7 @@
 'use strict';
 
+const { appScriptFiles, readAppSource } = require('./support/app-source');
+
 // Workflow runs of the Director (WP26, parts 2 and 3: lib/workflow-runs.js, the tools list_workflows and run_workflow, the
 // card of the chat). A private copy of the app runs in a temp directory (own data folders, ephemeral port, whoami stub). The
 // Director model is a scripted double, the nodes are doubles in a private registry (no provider is contacted, nothing is
@@ -1113,7 +1115,7 @@ async function run(iso) {
 
   /* ============ K: the client ============ */
 
-  const appSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const appSource = readAppSource();
   const i18nSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'i18n.js'), 'utf8');
   const cardSource = appSource.slice(appSource.indexOf('/* ---------- Workflow runs (card of the Director'), appSource.indexOf('function chip(label, spinning, isError)'));
   assert.ok(cardSource.length > 4000, 'the card code is there');
@@ -1159,7 +1161,7 @@ async function run(iso) {
     }
   }
   // no internal names in the new files of the open-source repository
-  for (const file of ['lib/workflow-runs.js', 'lib/nodes/run-service.js', 'lib/tools.js', 'public/app.js', 'public/i18n.js', 'public/styles.css']) {
+  for (const file of ['lib/workflow-runs.js', 'lib/nodes/run-service.js', 'lib/tools.js', ...appScriptFiles(), 'public/i18n.js', 'public/styles.css']) {
     const text = file === 'lib/tools.js' ? require('./support/tools-source').toolsSource() : fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
     assert.ok(!/kuble\.com|\.internal\b|\b10\.\d+\.\d+\.\d+\b|\/Users\/[a-z]/i.test(text), `${file} has no internal names or addresses`);
   }
