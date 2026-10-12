@@ -3532,6 +3532,9 @@
   align-items: flex-start;
   padding: 16vh 16px 16px;
   background: rgba(5, 6, 7, 0.72);
+  /* a dialog taller than the window scrolls, so that its buttons stay reachable */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .nv-dialog {
@@ -4883,6 +4886,12 @@ button.nv-scene-preview:focus-visible {
   background: rgba(255, 255, 255, 0.025);
   font-size: 12.5px;
   overflow-wrap: anywhere;
+}
+
+/* the planned steps of a large workflow scroll in their own box, so that the limit, the costs and the buttons stay in view */
+.nv-confirm-list.is-changes {
+  max-height: min(30vh, 280px);
+  overflow-y: auto;
 }
 
 .nv-confirm-list.is-issues {
