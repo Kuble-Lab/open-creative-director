@@ -682,7 +682,8 @@ async function testTool(sessionId, otherSessionId) {
   assert.equal(calls.submit.length, 0);
   assert.equal((await store.readLedger(sessionId)).length, ledgerAfter);
   assert.equal((await store.readSession(sessionId)).jobs.length, jobsBefore);
-  // A run aborting during submit still records the returned id and sends one queue cancellation.
+  // A run aborting during submit still records the returned id and sends one queue cancellation. fal only accepts it
+  // (202): a request that already runs may still finish and is charged, so the job stays open for the poller.
   const race = new AbortController();
   let cancellations = 0;
   patch(fal, 'submit', async () => {
@@ -696,10 +697,12 @@ async function testTool(sessionId, otherSessionId) {
     assert.match(job.cancelUrl, /abort-in-flight\/cancel$/);
     return { status: 'CANCELLATION_REQUESTED' };
   });
-  await rejects(tools.executeTool({ ...ctx, nodeId: 'race', signal: race.signal, runSignal: race.signal }, 'fal_generate', base), null,
-    (err) => assert.equal(err.name, 'AbortError'));
+  const raced = await tools.executeTool({ ...ctx, nodeId: 'race', signal: race.signal, runSignal: race.signal }, 'fal_generate', base);
+  await require('../lib/fal-run').drain(race.signal);
   assert.equal(cancellations, 1);
-  assert.equal(store.findSessionJob((await store.readSession(sessionId)).jobs, { jobId: 'abort-in-flight' }).status, 'failed', 'an accepted cancellation closes the job like a failed one');
+  assert.equal(raced.job.jobId, 'abort-in-flight');
+  const racedJob = store.findSessionJob((await store.readSession(sessionId)).jobs, { jobId: 'abort-in-flight' });
+  assert.equal(racedJob.status, 'pending', 'an accepted cancellation leaves the job to the poller, which books what fal did');
   void video;
 }
 
@@ -953,6 +956,17 @@ async function testPoller(sessionId) {
   const denyResultDone = await jobOf(sessionId, denyResult.assetId);
   assert.equal(denyResultDone.status, 'failed');
   assert.match(denyResultDone.error, /Field required/);
+  // a request that fal stopped after a cancellation: COMPLETED, and its result answers HTTP 499 (live check
+  // 2026-10-12); failed with the cancellation text, nothing booked
+  const stopped = await addFalJob(sessionId);
+  const journalBeforeStop = journal.length;
+  resultError = new fal.FalError('fal.ai-Ergebnis fehlgeschlagen (HTTP 499): Request cancelled by the client.', 499, { retryable: false });
+  await poller.pollOnce();
+  const stoppedDone = await jobOf(sessionId, stopped.assetId);
+  assert.equal(stoppedDone.status, 'failed');
+  assert.equal(stoppedDone.error, 'Der Lauf wurde abgebrochen, fal.ai hat den Auftrag gestoppt.');
+  assert.equal(stoppedDone.cost, null);
+  assert.equal(journal.length, journalBeforeStop, 'a stopped request books nothing');
   resultError = null;
 
   // timeout: 90 minutes, also for a job without timeoutAt

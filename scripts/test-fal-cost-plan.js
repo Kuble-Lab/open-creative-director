@@ -56,7 +56,8 @@ async function testQueue() {
   store.readSession = async () => ({ jobs: records });
   store.mutateSession = async (_id, fn) => fn({ jobs: records });
   budget.releaseJob = (job) => released.push(job.assetId);
-  // an accepted cancellation closes the job the way of a failed one (the poller releases the budget there)
+  // cancelJob never closes a job itself: even an accepted cancellation leaves it to the poller (a running request may
+  // still finish and is charged), so this must stay unused
   poller.handleFailed = async (_sessionId, job) => { const target = records.find((item) => item.assetId === job.assetId); if (target) target.status = 'failed'; budget.releaseJob(job); };
   fal.cancelJob = async (job) => {
     cancelled.push(job.assetId);
@@ -90,7 +91,9 @@ async function testQueue() {
     await queue.drain(controller.signal);
     assert.equal(result[8].name, 'AbortError', 'Queued work never submits after cancellation');
     assert.deepEqual(cancelled.sort(), ['a5', 'a7', 'a8']);
-    assert.deepEqual(released, ['a5']);
+    assert.deepEqual(released, [], 'No budget is released before fal reports the outcome');
+    assert.equal(records.find((job) => job.assetId === 'a5').status, 'pending', 'An accepted cancellation keeps the job pollable and billable');
+    assert.ok(logs.some((line) => /a5: cancellation requested.*charged/.test(line)));
     assert.equal(records.find((job) => job.assetId === 'a7').status, 'pending', 'A running job stays pollable and billable');
     assert.ok(logs.some((line) => /IN_PROGRESS.*charged/.test(line)));
     assert.ok(logs.some((line) => /HTTP 400.*charged/.test(line)));
@@ -98,15 +101,18 @@ async function testQueue() {
     await queue.cancelJob(ctx, records.find((job) => job.assetId === 'a5'));
     assert.equal(cancelled.filter((id) => id === 'a5').length, 1, 'Cancellation is idempotent within a run');
 
-    // Abort during submit: preserve its returned id, cancel it, and do not return a successful submission.
+    // Abort during submit: preserve its returned id and cancel it; the accepted cancellation returns the job with its
+    // tool budget grant, like an unconfirmed one, until the poller sees what fal did with the request.
     const race = new AbortController();
-    await assert.rejects(queue.run({ ...ctx, signal: race.signal }, async () => {
+    const raced = await queue.run({ ...ctx, signal: race.signal }, async () => {
       race.abort();
       const job = { jobId: 'race', assetId: 'race', source: 'fal', status: 'pending' };
       records.push(job);
       return { job };
-    }), { name: 'AbortError' });
+    });
+    await queue.drain(race.signal);
     assert.ok(cancelled.includes('race'));
+    assert.equal(raced.job.status, 'pending');
     const refused = new AbortController();
     const pending = await queue.run({ ...ctx, signal: refused.signal }, async () => {
       refused.abort();
