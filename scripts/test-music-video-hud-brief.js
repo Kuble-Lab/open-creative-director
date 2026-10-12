@@ -30,13 +30,15 @@ const planLib = require('../lib/music-video-plan');
 const hudPlan = require('../lib/music-video-hud/plan');
 const voiceDetect = require('../lib/voice-detect');
 const captionsAss = require('../lib/captions-ass');
-const { FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
+const { fullBrief, FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
 const promptCases = require('./support/hud-plan-prompt-cases');
 const BEFORE_WP48 = require('./support/hud-plan-before-wp48.json');
 // WP52a changed the texts of the planner on purpose (the system prompt with B-roll and [FIGURE], the user prompt with the marks of B-roll, the effort and the
 // limit of the requests, the board with the line MODEL, the estimate with the thinking) and with them the plans of the three runs; these are the prints of now.
 // Everything else (the timing, the grids, the briefs, the voices) stays the one of before WP48, byte for byte.
 const WP52A = require('./support/hud-plan-wp52a.json');
+// A supplied brief now needs 80 words (a shorter one is an idea that is expanded): the fixtures use full briefs, which changes their requests, costs and shots.
+const LISTEN = require('./support/hud-plan-listen.json');
 
 const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
 const errorOf = async (promise) => {
@@ -119,9 +121,9 @@ async function testGolden() {
     ...['hud', 'kuble'].flatMap((theme) => ['de', 'en', 'es'].map((lang) => `system.${theme}.${lang}`)),
     'system.needShort', 'user.a', 'user.a.retry'
   ].sort(), 'WP52a changes the planner, its prompts and its estimate, nothing else');
-  // Only the retry label changed; every other golden, including the paid requests, stays byte-for-byte checked.
+  // The fixtures with full briefs have their own requests, costs and shots; the boards and all other snapshots stay byte for byte.
   const emptyRetryBoard = { sha256: 'fd6831b59014f05e69ec26322467eafbd05d5d54f354f015483a008c7c18bbb9', length: 11594 };
-  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], (name === 'planner.c.board' ? emptyRetryBoard : null) || WP52A[name] || WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte (or of WP52a)`);
+  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], LISTEN[name] || (name === 'planner.c.board' ? emptyRetryBoard : null) || WP52A[name] || WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte (or of WP52a)`);
   // the additions are in the prompt of every run of the planner
   for (const name of ['a', 'b', 'c']) for (const added of WP51_ADDED) assert.ok(texts[`planner.${name}.requests`].includes(JSON.stringify(added).slice(1, -1)), `${name}: the target of a tag is asked for`);
   // the three runs with a given idea: one request each (the second run and the third ask twice for the answer, as before), never one for a brief
@@ -283,13 +285,13 @@ async function testChoirPrompts() {
   const figure = hudPlan.parseFigure(FIGURE_TEXT);
   const grid = hudPlan.planGrid(song.analysis, withChoir(song.timing), {});
   const plainGrid = hudPlan.planGrid(song.analysis, song.timing, {});
-  const prompt = hudPlan.userPrompt({ brief: 'A made-up film', style: '', figure, grid });
+  const prompt = hudPlan.userPrompt({ brief: fullBrief('A made-up film'), style: '', figure, grid });
   const rows = prompt.split('\n').filter((row) => /^\d+ \| [\d.]+-[\d.]+ s \| /.test(row) && / \| \d+:/.test(row));
   assert.equal(rows.length, grid.lines.length);
   assert.deepEqual(rows.map((row) => row.endsWith(' | choir')), grid.lines.map((line) => line.voice === 'choir'), 'the rows of the choir end with "choir"');
   assert.match(prompt, /\nCHOIR LINES \(marked "choir" above\): 0, 1, 4 to 7\nA choir or backing voices sing these lines, not the figure\. No sung unit lies on them; in the units on them \([^)]+\) the figure does not sing: the mouth closed, listening, or other singers sing, as the idea suggests\. These lines get their graphics like every other line\.\n\nUNITS /);
   // the prompt of a song without a choir has neither
-  const plainPrompt = hudPlan.userPrompt({ brief: 'A made-up film', style: '', figure, grid: plainGrid });
+  const plainPrompt = hudPlan.userPrompt({ brief: fullBrief('A made-up film'), style: '', figure, grid: plainGrid });
   assert.doesNotMatch(plainPrompt, /choir/i);
   assert.equal(prompt.replace(/ \| choir$/gm, '').replace(/\n\nCHOIR LINES[^]*?(?=\n\nUNITS)/, '').split('\nUNITS')[0], plainPrompt.split('\nUNITS')[0], 'apart from the choir the same lines');
   // the brief names the passages of the choir in its arc
@@ -302,7 +304,7 @@ async function testChoirPrompts() {
   const boardOf = async (timing) => {
     const own = hudPlan.planGrid(song.analysis, timing, {});
     const model = scriptedModel([goodAnswer(own, figure)]);
-    const result = await hudPlan.runPlanner({ analysis: song.analysis, timing, brief: 'A made-up film', figureText: FIGURE_TEXT, ask: model.ask, prices: {} });
+    const result = await hudPlan.runPlanner({ analysis: song.analysis, timing, brief: fullBrief('A made-up film'), figureText: FIGURE_TEXT, ask: model.ask, prices: {} });
     assert.equal(model.calls.length, 1);
     return result.board.split('\n').filter((row) => row.startsWith('CHOIR '));
   };
@@ -364,7 +366,7 @@ async function testBrief() {
     assert.deepEqual(result.costs, [0.25, 0.25], 'both calls are paid');
     assert.equal(result.attempts, 1);
     assert.match(result.board, /^BRIEF {6}written by the language model from the lyrics, since the field "Idea" was empty \(the result "Brief": copy it, change it and put it into the field to plan with it\)\n\nTREATMENT\n/);
-    assert.ok(logs.some((line) => /^The field "Idea" is empty: the language model wrote the brief from the lyrics \(\d+ words\)\.$/.test(line)), logs.join(' | '));
+    assert.ok(logs.some((line) => /^Brief from song: the language model wrote the brief from the lyrics \(\d+ words\)\.$/.test(line)), logs.join(' | '));
     // the estimate has a part for the brief, and the board names it
     assert.ok(result.cost.parts.brief > 0.005 && result.cost.parts.brief < 0.05, `${result.cost.parts.brief}`);
     assert.match(result.board, /^ESTIMATE .* \+ language model [\d.]+ \+ brief [\d.]+ = [\d.]+ USD/m);
@@ -378,13 +380,15 @@ async function testBrief() {
     near(result.cost.total - typed.result.cost.total, result.cost.parts.brief, 1e-9, 'the total grows by the brief');
   }
 
-  // a given field: one call, the brief is the field
+  // A short idea is expanded and retained as binding context in both prompts.
   {
-    const { result, calls } = await run([goodAnswer(grid, figure)], { brief: '  A woman and a light that stays on.  ' });
-    assert.equal(calls.length, 1);
-    assert.deepEqual([result.brief, result.briefWritten, result.briefInfo], ['A woman and a light that stays on.', false, null]);
-    assert.doesNotMatch(result.board, /^BRIEF/);
-    assert.equal(result.cost.parts.brief, undefined);
+    const { result, calls } = await run([BRIEF, goodAnswer(grid, figure)], { brief: '  A woman and a light that stays on.  ' });
+    assert.equal(calls.length, 2);
+    assert.equal(result.brief, BRIEF);
+    assert.equal(result.briefWritten, true);
+    for (const call of calls) assert.match(call.prompt, /IDEA \(binding;.*A woman and a light that stays on\./);
+    assert.match(result.board, /^BRIEF {6}written by the language model from the song and the binding idea/m);
+    assert.ok(result.cost.parts.brief > 0);
   }
 
   // a song without lyrics (an instrumental, an empty transcript): the brief comes from the parts, their energy and the figure, the board says so
@@ -402,7 +406,7 @@ async function testBrief() {
     assert.equal(result.attempts, 1, 'the plan of a song without lines is complete at once');
     assert.ok(logs.some((line) => /no sung line/.test(line)));
     // with a given idea the board says in one sentence that there are no lines
-    const given = await run([goodAnswer(bare, figure)], { timing: empty, brief: 'A film without words' });
+    const given = await run([goodAnswer(bare, figure)], { timing: empty, brief: fullBrief('A film without words') });
     assert.match(given.result.board, /^LYRICS {5}the song has no sung line \(instrumental, or no words were recognised\): no lip sync and no graphics for lines\n\nTREATMENT/);
     // a timing that cannot be read is still an error
     for (const bad of ['nothing', '{"words": []}', '']) {
@@ -501,7 +505,7 @@ function testEstimate() {
   const params = { ...registryModule.registry.normalizeParams(def, {}), model: 'anthropic/claude-opus-5.5', figure: FIGURE_TEXT };
   const inputs = { analysis: textValue(JSON.stringify(song.analysis)), timing: textValue(JSON.stringify(song.timing)) };
   const connected = new Set(['analysis', 'timing']);
-  const given = hudNodes.hudPlanEstimate({ ...params, brief: 'A woman and a light that stays on.' }, { inputs, connected });
+  const given = hudNodes.hudPlanEstimate({ ...params, brief: fullBrief('A woman and a light that stays on.') }, { inputs, connected });
   const written = hudNodes.hudPlanEstimate({ ...params, brief: '' }, { inputs, connected });
   assert.ok(given && written, 'both are known');
   // the brief: its prompt and its answer at the price of the model, and the plan reads a brief of the usual length
@@ -516,7 +520,7 @@ function testEstimate() {
   near(written.usd, Math.round((((planTokens.input + briefTokens.input) * inPrice + (planTokens.output + briefTokens.output) * outPrice) / 1e6) * 10000) / 10000, 1e-9);
   assert.ok(written.usd - given.usd > 0.02 && written.usd - given.usd < 0.08, `the brief adds a few cents: ${given.usd} -> ${written.usd}`);
   // an idea that comes through a connection is no call for a brief: known when it is there, unknown while the node before has not run
-  assert.deepEqual(hudNodes.hudPlanEstimate({ ...params, brief: '' }, { inputs: { ...inputs, brief: textValue('A woman and a light that stays on.') }, connected: new Set([...connected, 'brief']) }), given);
+  assert.deepEqual(hudNodes.hudPlanEstimate({ ...params, brief: '' }, { inputs: { ...inputs, brief: textValue(fullBrief('A woman and a light that stays on.')) }, connected: new Set([...connected, 'brief']) }), given);
   assert.equal(hudNodes.hudPlanEstimate({ ...params, brief: '' }, { inputs, connected: new Set([...connected, 'brief']) }), null);
   // the language of the brief changes its prompt only a little
   const german = hudNodes.hudPlanEstimate({ ...params, brief: '', brief_language: 'de' }, { inputs, connected });
@@ -791,6 +795,11 @@ function testTexts() {
   const dictionaries = loadTexts();
   const keys = [
     'nodes.param.brief_language',
+    'nodes.param.listen',
+    'nodes.param.cuts_from_song',
+    'nodes.paramhint.music_video.hud_plan.brief',
+    'nodes.paramhint.music_video.hud_plan.listen',
+    'nodes.paramhint.music_video.hud_plan.cuts_from_song',
     'nodes.param.voices',
     'nodes.option.voices.auto',
     'nodes.option.voices.off',
@@ -812,7 +821,9 @@ function testTexts() {
     const hint = dictionaries[lang]['nodes.paramhint.audio.lyrics_timing.lyrics'];
     for (const part of [lang === 'de' ? '[Chor]' : lang === 'en' ? '[Choir]' : '[Coros]', '[Backing Vocals]', lang === 'de' ? '«Chor:»' : lang === 'en' ? '“Choir:”' : '«Coros:»', '(Claudia, Claudia)', '[Chorus]', '[Refrain]', '[Hook]']) assert.ok(hint.includes(part), `${lang}: the hint names ${part}`);
     assert.ok(dictionaries[lang]['nodes.app.fieldEmpty'].includes('{field}'));
-    assert.match(dictionaries[lang]['nodes.type.music_video.hud_plan.help'], lang === 'de' ? /Briefing aus dem Songtext/ : lang === 'en' ? /brief from the lyrics/ : /brief de la letra/);
+    assert.match(dictionaries[lang]['nodes.type.music_video.hud_plan.help'], /80/);
+    assert.match(dictionaries[lang]['nodes.type.music_video.hud_plan.help'], /Gemini/);
+    assert.match(dictionaries[lang]['nodes.paramhint.music_video.hud_plan.brief'], /80/);
   }
   assert.match(dictionaries.de['nodes.app.fieldEmpty'], /^Das Feld «\{field\}» ist leer\./);
 }

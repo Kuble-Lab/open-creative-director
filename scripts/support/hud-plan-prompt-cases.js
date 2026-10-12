@@ -12,7 +12,7 @@ const crypto = require('crypto');
 const planLib = require('../../lib/music-video-plan');
 const hudPlan = require('../../lib/music-video-hud/plan');
 const lyricsTiming = require('../../lib/lyrics-timing');
-const { FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./hud-plan-fixtures');
+const { fullBrief, FIGURE_TEXT, FIGURE_NO_SHORT, makeSong, goodAnswer, scriptedModel } = require('./hud-plan-fixtures');
 
 const sha = (text) => crypto.createHash('sha256').update(String(text)).digest('hex');
 
@@ -33,6 +33,7 @@ const BRIEFS = {
 
 // A planner run with a given idea: the requests to the model, the board, the sheet prompt and the estimate.
 async function plannerCase({ song, figureText, theme, hudLanguage, style, brief, steps }) {
+  brief = fullBrief(brief);
   const figure = hudPlan.parseFigure(figureText);
   const grid = hudPlan.planGrid(song.analysis, song.timing);
   const model = scriptedModel(steps(grid, figure));

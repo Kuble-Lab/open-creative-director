@@ -601,11 +601,12 @@ async function run(iso) {
   /* ---------- "Music video in the HUD style (your song)" ---------- */
 
   {
+    const IDEA = 'A woman and a light that stays on.';
     const workflow = await startWorkflow('music-video-hud', async ({ set, workflow: wf }) => {
       const upload = await seedAsset(toneWav(SONG.seconds + 2, 330), '.wav', wf.sessionId);
       set('n1', { asset: refOf(upload, wf.sessionId) });
       set('n3', { lyrics: LYRICS });
-      set('n4', { brief: 'A woman and a light that stays on.' });
+      set('n4', { brief: IDEA });
     });
     assert.deepEqual(approveTargets(workflow), ['n30', 'n20', 'n21', 'n22', 'n23', 'n24'], 'the brief, the board, the character sheet and the three picture lists are shown first');
     const owner = workflow.sessionId;
@@ -629,20 +630,25 @@ async function run(iso) {
       assert.equal(seen.timing[0].lyrics, LYRICS, 'the lyrics of the form reach the times');
       assert.equal(seen.timing[0].method, 'auto');
       assert.equal(seen.timing[0].voices, 'auto', 'the choir is detected where the lyrics mark none (WP48)');
-      assert.equal(llmCalls.length, 1, 'one request to the planner: the idea is given, no brief is written');
-      assert.equal(llmCalls[0].system, hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false }), 'HUD Blue is the style of the template');
-      assert.match(llmCalls[0].prompt, /A woman and a light that stays on\./, 'the idea reaches the planner');
-      assert.match(llmCalls[0].prompt, /glossy black blunt/, 'and the figure Claudia, the default');
+      // the idea is short (under 80 words): the brief is written from it and the song first, then the plan
+      assert.equal(llmCalls.length, 2, 'two requests: the brief from the idea and the song, then the plan');
+      assert.equal(llmCalls[0].system, hudPlan.briefSystemPrompt({ theme: 'hud', hudLanguage: 'en', briefLanguage: 'en', idea: IDEA }), 'the brief keeps the idea');
+      assert.ok(llmCalls[0].prompt.startsWith(`IDEA (binding; preserve every detail; takes precedence over everything except RULES): ${IDEA}\n`), 'the idea reaches the brief');
+      assert.ok(llmCalls[1].system.startsWith(hudPlan.systemPrompt({ theme: 'hud', hudLanguage: 'en', needShort: false })), 'HUD Blue is the style of the template');
+      assert.match(llmCalls[1].system, /\nThe ORIGINAL IDEA is binding/, 'the planner keeps the idea too');
+      assert.ok(llmCalls[1].prompt.startsWith(`ORIGINAL IDEA (binding; preserve every detail; takes precedence over everything except RULES): ${IDEA}\n`), 'the idea itself reaches the planner');
+      assert.ok(llmCalls[1].prompt.includes(`\n\nIDEA\n${BRIEF_TEXT}\n\nSTYLE\n`), 'the written brief is the idea of the plan');
+      assert.match(llmCalls[1].prompt, /glossy black blunt/, 'and the figure Claudia, the default');
       // nothing expensive ran: no lip sync, no clip, no depth map, no cut, no render
       assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, seen.edit.length, seen.render.length, submits.length], [0, 0, 0, 0, 0, 0], 'step 1 stops before the expensive part');
       // the board with the estimate of the whole film
       const [boardValue] = await shown(workflow, 'n20');
       assert.equal(boardValue.type, 'text');
       const board = boardValue.value;
-      assert.match(board, /^TREATMENT\n/);
+      assert.match(board, /^BRIEF {6}written by the language model from the song and the binding idea \(see output Brief\)\n\nTREATMENT\n/, 'the board says first how the brief was made');
       assert.match(board, /estimate \d+\.\d\d USD$/m, 'the estimate is on the board');
-      // the result "Brief" is the idea of the form
-      assert.deepEqual((await shown(workflow, 'n30')).map((item) => [item.type, item.value]), [['text', 'A woman and a light that stays on.']]);
+      // the result "Brief" is the brief written from the idea
+      assert.deepEqual((await shown(workflow, 'n30')).map((item) => [item.type, item.value]), [['text', BRIEF_TEXT]]);
       // the character sheet: the sheet prompt of the planner, a portrait, Nano Banana 2.1
       assert.equal(seen.sheet.length, 1);
       assert.deepEqual([seen.sheet[0].prompt, seen.sheet[0].model, seen.sheet[0].aspect, seen.sheet[0].count], [hudPlan.sheetPrompt(FIGURE, 'claudia'), NANO_BANANA, '3:4', 1]);
@@ -703,8 +709,9 @@ async function run(iso) {
       const pictures = seen.image.n9.length + seen.image.n10.length + seen.image.n11.length;
       llmCalls.length = 0;
       await step1(workflow, { n4: { theme: 'kuble' } });
-      assert.equal(llmCalls.length, 1, 'the planner asks again for the other style');
-      assert.equal(llmCalls[0].system, hudPlan.systemPrompt({ theme: 'kuble', hudLanguage: 'en', needShort: false }), 'the planner is told the style');
+      assert.equal(llmCalls.length, 2, 'the brief and the plan are asked again for the other style');
+      assert.equal(llmCalls[0].system, hudPlan.briefSystemPrompt({ theme: 'kuble', hudLanguage: 'en', briefLanguage: 'en', idea: IDEA }), 'the brief is told the style');
+      assert.ok(llmCalls[1].system.startsWith(hudPlan.systemPrompt({ theme: 'kuble', hudLanguage: 'en', needShort: false })), 'the planner is told the style');
       const kuble = JSON.parse((await outputOf(workflow, 'n4', 'graphics')).value);
       assert.equal(kuble.theme, 'kuble', 'the style lands in the plan');
       assert.equal(seen.sheet.length, sheets, 'the character sheet is not made again');
@@ -844,9 +851,9 @@ async function run(iso) {
     assert.equal(seen.music[0].plan, SONG_PLAN);
     assert.equal(seen.beats[0].plan, SONG_PLAN);
     assert.equal(seen.timing[0].lyrics, SONG_PLAN);
-    // the idea feeds the planner too
-    assert.equal(llmCalls.length, 1);
-    assert.match(llmCalls[0].prompt, new RegExp(IDEA.replace(/[.]/g, '\\.')));
+    // the idea feeds the planner too: the brief is written from it and the song, the plan keeps it
+    assert.equal(llmCalls.length, 2);
+    for (const call of llmCalls) assert.ok(call.prompt.includes(IDEA), 'the idea reaches the brief and the plan');
     // the song is a result of step 1, the film is not started
     assert.deepEqual((await shown(workflow, 'n29')).map((item) => item.type), ['audio'], 'the song');
     assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, seen.edit.length, seen.render.length], [0, 0, 0, 0, 0]);
@@ -943,15 +950,15 @@ async function run(iso) {
     clearSeen();
     const second = await finish(workflow, state.flow.request);
     assert.equal(second.nodes.n28, undefined, 'the pack is not part of step 2');
-    assert.equal(llmCalls.length, 1, 'one request: the planner, not the pack again');
-    assert.notEqual(llmCalls[0].system, SUNO_SYSTEM);
-    assert.match(llmCalls[0].prompt, new RegExp(IDEA.replace(/[.]/g, '\\.')), 'the idea reaches the planner');
+    assert.equal(llmCalls.length, 2, 'two requests: the brief from the idea, then the planner; not the pack again');
+    assert.ok(llmCalls.every((call) => call.system !== SUNO_SYSTEM));
+    for (const call of llmCalls) assert.ok(call.prompt.includes(IDEA), 'the idea reaches the brief and the planner');
     assert.equal(seen.timing.length, 1);
     assert.ok([null, ''].includes(seen.timing[0].lyrics), 'the pack does not go to the lyric times (Suno may change words)');
     assert.equal(seen.sheet.length, 1);
     assert.equal(seen.image.n9.length + seen.image.n10.length + seen.image.n11.length, STATS.sung + STATS.story + STATS.still);
     assert.deepEqual([seen.lipsync.length, seen.video.length, seen.depth.length, seen.edit.length, seen.render.length, submits.length], [0, 0, 0, 0, 0, 0], 'step 2 stops before the expensive part');
-    assert.match((await shown(workflow, 'n20'))[0].value, /^TREATMENT\n/, 'the board');
+    assert.match((await shown(workflow, 'n20'))[0].value, /^BRIEF {6}written by the language model from the song and the binding idea[^\n]*\n\nTREATMENT\n/, 'the board');
 
     // 4. step 3 ("Approve and finish"): the rest. The plan counts only what is left: the pack and the planner are not paid again
     state = await decide(withSong);

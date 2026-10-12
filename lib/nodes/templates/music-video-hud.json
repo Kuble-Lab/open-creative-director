@@ -60,6 +60,8 @@
           "hud_language": "en",
           "brief_language": "en",
           "official_images": true,
+          "listen": true,
+          "cuts_from_song": true,
           "cuts_per_minute": 24,
           "max_units": 50,
           "lipsync_seconds_per_minute": 22,
@@ -800,7 +802,7 @@
       {
         "node": "n4",
         "param": "brief",
-        "label": "Idea for the video (leave empty: from the lyrics)"
+        "label": "Idea for the video (a few words are enough; empty: from the song)"
       },
       {
         "node": "n4",
@@ -896,7 +898,7 @@
       "app.title": "Musikvideo im HUD-Stil (eigener Song)",
       "app.description": "Lade deinen Song hoch, schreibe die Idee (oder lass sie leer: Dann entsteht das Briefing aus dem Songtext) und erhalte ein Musikvideo im HUD-Stil: eine fotorealistische KI-Sängerin mit Lippensync, Schnitte im Takt und eine Grafik für jede Textzeile. Zuerst gibst du das Briefing, das Board, das Figurenblatt und die Bilder frei (Schritt 1), dann entsteht der Rest. Vor jedem Start siehst du die bezahlten Schritte und ihre Schätzung.",
       "app.input.n1.asset": "Song",
-      "app.input.n4.brief": "Idee für das Video (leer lassen: aus dem Songtext)",
+      "app.input.n4.brief": "Idee fürs Video (ein paar Worte reichen; leer: aus dem Song)",
       "app.input.n4.figure": "Figur (optional, Standard: Claudia)",
       "app.input.n4.theme": "Stil",
       "app.input.n3.lyrics": "Songtext (optional; Chor mit [Chor] markieren)",
@@ -942,7 +944,7 @@
       "app.title": "Videoclip en estilo HUD (tu propia canción)",
       "app.description": "Sube tu canción, escribe la idea (o déjala vacía: el brief sale entonces de la letra) y recibe un videoclip en estilo HUD: una cantante de IA fotorrealista con sincronización labial, cortes al ritmo y un gráfico para cada línea de la letra. Primero apruebas el brief, el tablero, la hoja del personaje y las imágenes (paso 1), después se crea el resto. Antes de cada inicio ves los pasos de pago y su estimación.",
       "app.input.n1.asset": "Canción",
-      "app.input.n4.brief": "Idea para el vídeo (déjala vacía: a partir de la letra)",
+      "app.input.n4.brief": "Idea para el vídeo (bastan unas palabras; vacío: desde la canción)",
       "app.input.n4.figure": "Figura (opcional, por defecto: Claudia)",
       "app.input.n4.theme": "Estilo",
       "app.input.n3.lyrics": "Letra de la canción (opcional; marca los coros con [Coros])",

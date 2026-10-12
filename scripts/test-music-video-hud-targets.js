@@ -32,7 +32,7 @@ const state = require('../lib/music-video-hud/state');
 const view = require('../lib/music-video-hud/view');
 const hudPlan = require('../lib/music-video-hud/plan');
 const hudNodes = require('../lib/nodes/nodes-music-video-hud');
-const { FIGURE_TEXT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
+const { fullBrief, FIGURE_TEXT, makeSong, goodAnswer, scriptedModel } = require('./support/hud-plan-fixtures');
 
 const FPS = 24;
 const near = (actual, expected, tolerance, message = '') => assert.ok(Math.abs(actual - expected) <= tolerance, `${message} ${actual} !== ${expected} (±${tolerance})`.trim());
@@ -130,7 +130,7 @@ async function testPrompt() {
   });
   assert.ok(!read.problems.some((problem) => /target/.test(problem)), 'a target is never a problem');
   const model = scriptedModel([answer]);
-  const result = await hudPlan.runPlanner({ analysis: song.analysis, timing: song.timing, brief: 'A light that stays on', figureText: FIGURE_TEXT, options, ask: model.ask, prices: {} });
+  const result = await hudPlan.runPlanner({ analysis: song.analysis, timing: song.timing, brief: fullBrief('A light that stays on'), figureText: FIGURE_TEXT, options, ask: model.ask, prices: {} });
   assert.equal(model.calls.length, 1, 'one answer of the model is enough');
   const planned = result.plan.graphics.graphics.filter((d) => d.type === 'tag');
   assert.ok(planned.some((d) => d.target === 'mouth'), 'the plan keeps the target');
