@@ -269,7 +269,8 @@ function testGridErrors() {
   })();
   assert.ok(tooLong, 'a song of 300 s does not fit into 50 units of 5 s');
   assert.equal(tooLong.code, 'HUDPLAN_TOO_LONG');
-  assert.deepEqual(Object.keys(tooLong.data).sort(), ['clip', 'needed', 'seconds', 'units']);
+  assert.deepEqual(Object.keys(tooLong.data).sort(), ['clip', 'limit', 'needed', 'seconds', 'units']);
+  assert.equal(tooLong.data.limit, hudPlan.RANGES.maxUnits[1]);
   assert.equal(tooLong.data.seconds, 300);
   assert.equal(tooLong.data.units, 50);
   assert.equal(tooLong.data.clip, 5);
@@ -1930,7 +1931,7 @@ function testI18n() {
   } catch (caught) {
     err = caught;
   }
-  assert.deepEqual(Object.keys(err.data).sort(), ['clip', 'needed', 'seconds', 'units']);
+  assert.deepEqual(Object.keys(err.data).sort(), ['clip', 'limit', 'needed', 'seconds', 'units']);
   // the language of the graphics is a setting with three languages whose names exist in all of them
   for (const lang of ['de', 'en', 'es']) for (const option of ['en', 'de', 'es']) assert.ok(window.I18N[lang][`nodes.option.${option}`]);
   // the tip of the renderer names the new option of the style
@@ -2328,7 +2329,7 @@ async function testNode() {
       const long = makeSong({ seconds: 300, seed: 4 });
       const tooLong = await errorOf(exec(makeCtx(), inputs({ analysis: textValue(JSON.stringify(long.analysis)), timing: textValue(JSON.stringify(long.timing)) })));
       assert.equal(tooLong?.code, 'HUDPLAN_TOO_LONG');
-      assert.deepEqual(Object.keys(tooLong.data).sort(), ['clip', 'needed', 'seconds', 'units']);
+      assert.deepEqual(Object.keys(tooLong.data).sort(), ['clip', 'limit', 'needed', 'seconds', 'units']);
       assert.equal(calls.length, 0, 'the model was not asked');
       assert.deepEqual(await scratchLeft(), []);
     }
