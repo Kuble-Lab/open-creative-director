@@ -675,7 +675,7 @@ If a non-list input port receives a `T[]`, the node maps over the items: one exe
 
 ### 9.7 Cancel
 
-`cancel()` aborts the run's `AbortController`. Pending nodes → `cancelled`; running local ffmpeg processes are killed (WP4 adds `signal` to `runProcess`); waiting nodes stop waiting. Unfinished fal jobs receive a queue cancellation request; an accepted cancellation closes the local job, while rejected or unconfirmed requests remain pollable and may still be billed. Other submitted provider jobs keep running remotely; their assets still arrive in the backing session ledger (visible in the asset picker) but are not attached to a history entry. The UI warns about this before cancelling when async nodes are running.
+`cancel()` aborts the run's `AbortController`. Pending nodes → `cancelled`; running local ffmpeg processes are killed (WP4 adds `signal` to `runProcess`); waiting nodes stop waiting. Unfinished fal jobs receive a queue cancellation request. fal only accepts it (HTTP 202): a request that still waits is dropped, one that already runs may finish and is billed (seen in a live check on 2026-10-12). So the local job stays pollable in every case: the poller books a delivered result and fails a stopped request (its result answers HTTP 499), which releases its budget. Other submitted provider jobs keep running remotely; their assets still arrive in the backing session ledger (visible in the asset picker) but are not attached to a history entry. The UI warns about this before cancelling when async nodes are running.
 
 ### 9.8 Concurrency and limits
 
