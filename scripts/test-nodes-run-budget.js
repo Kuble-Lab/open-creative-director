@@ -289,6 +289,37 @@ async function main() {
       assert.equal(result.accounting.financiallyComplete, true);
 
     } finally { sessionStore.readSession = originalRead; }
+
+    // The reservation of a run ends before the run can be seen as finished: no record with a final status is written
+    // (neither by a progress write still queued nor by the last write) while the run still holds its budget.
+    // (only a person with a budget gets a run reservation)
+    const accessLib = require('../lib/access');
+    const budgetLib = require('../lib/budget');
+    const originalRestricted = accessLib.isRestricted;
+    const originalBegin = budgetLib.beginRun;
+    accessLib.isRestricted = () => true;
+    let held = false;
+    budgetLib.beginRun = async () => {
+      held = true;
+      return { applies: true, key: 'run-key', jobKey: 'run-key', reservedUsd: 2, release() { held = false; }, settle() {} };
+    };
+    try {
+      const ordered = fixture({ count: 2 });
+      const writeRun = ordered.store.writeRun;
+      const finalWhileHeld = [];
+      ordered.store.writeRun = async (id, run) => {
+        if (!['running', 'awaiting_approval'].includes(run.status) && held) finalWhileHeld.push(run.status);
+        return writeRun(id, run);
+      };
+      await ordered.engine.start('w');
+      const done = await ordered.engine.whenFinished('w', 'r');
+      assert.equal(done.status, 'completed');
+      assert.equal(held, false);
+      assert.deepEqual(finalWhileHeld, [], 'a finished run is never written while its reservation is still held');
+    } finally {
+      budgetLib.beginRun = originalBegin;
+      accessLib.isRestricted = originalRestricted;
+    }
   } finally { clearTimeout(watchdog); }
   console.log('test-nodes-run-budget.js: ok');
 }
