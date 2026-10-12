@@ -61,7 +61,7 @@ async function main() {
     assert.equal((await engine.whenFinished(cardId, cardRun)).status, 'completed');
     const saved = await store.getWorkflow(cardId);
     const source = require('../lib/event-video/card-preview').previewSource(saved.workflow, saved.results, 'render');
-    assert.equal(require('../lib/event-video/card-preview').buildPreviews(source.graphics).length, 3);
+    assert.equal(require('../lib/event-video/card-preview').buildPreviews(source.graphics).previews.length, 3);
     assert.deepEqual(calls.slice(-1), ['card-plan'], 'approval fixture never executes the render');
   } finally {
     if (fixture) await fixture.close();
