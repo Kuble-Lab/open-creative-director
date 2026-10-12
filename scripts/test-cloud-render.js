@@ -726,6 +726,46 @@ async function testReconcile() {
   }
 }
 
+async function testExpiryAfterStateLoss() {
+  const env = await setup();
+  const { api, queue, clock } = env;
+  try {
+    await enqueue(queue);
+    await env.manager.tick();
+    const ours = lastServer(api);
+    assert.equal(Number(ours.labels['ocd-expires']), Math.ceil((clock.now + 3 * 60 * MINUTE) / 1000));
+    assert.match(ours.labels['ocd-origin'], /^[a-f0-9]{32}$/);
+    const future = { ...ours, id: 5001, server_type: { name: 'cpx42', prices: [] }, labels: { ...ours.labels, 'ocd-server': 'cr-0000000000bb', 'ocd-expires': String(Math.ceil(clock.now / 1000) + 24 * 3600) } };
+    const foreign = { ...ours, id: 5002, labels: { ...ours.labels, 'ocd-origin': 'f'.repeat(32), 'ocd-instance': 'f'.repeat(12) } };
+    api.servers.set(future.id, future);
+    api.servers.set(foreign.id, foreign);
+    env.manager.stop();
+    for (const name of ['state.json', 'instance.json', 'ledger.json']) fs.rmSync(path.join(env.dir, 'cloud-render', name), { force: true });
+    env.restart();
+    await env.manager.reconcile();
+    assert.ok(api.servers.has(ours.id), 'recovered origin is left running before expiry');
+    const recovered = await env.manager.status();
+    assert.ok(recovered.servers.some((server) => server.serverId === ours.id), 'recovered servers count towards capacity');
+    const recoveredLedger = JSON.parse(fs.readFileSync(path.join(env.dir, 'cloud-render', 'ledger.json')));
+    assert.ok(recoveredLedger.entries.some((entry) => entry.serverId === ours.id), 'recovered server costs are booked');
+    assert.equal(recovered.month.spentEur, null, 'missing recovered price must not become zero');
+    assert.equal(recovered.month.unknown, true);
+    assert.equal(recovered.lastError.code, 'budget_data');
+    const before = api.nextId;
+    await env.manager.tick();
+    assert.equal(api.nextId, before, 'unknown recovered costs block additional starts');
+    clock.now += 3 * 60 * MINUTE;
+    await env.manager.reconcile();
+    assert.ok(!api.servers.has(ours.id), 'expired origin is reclaimed without state, instance or ledger');
+    assert.ok(api.servers.has(future.id), 'unexpired server remains');
+    assert.ok(api.servers.has(foreign.id), 'foreign origin remains even when expired');
+  } finally {
+    env.manager.stop();
+    queue.stop();
+    await api.close();
+  }
+}
+
 async function testRestart() {
   const env = await setup();
   const { api, queue, clock } = env;
@@ -1165,7 +1205,7 @@ async function testInstanceId() {
     assert.ok(!api.servers.has(second.id), 'found by the id of the ledger and deleted');
     assert.equal(read('instance.json').instanceId, id);
     assert.ok(env.lines.some((line) => /aus dem Kassenbuch/.test(line)), env.lines.join('\n'));
-    // everything lost: a new id; the server of the old one is not deleted (it could belong to another installation) but shown
+    // Everything lost: a new id, but the origin still identifies our server for accounting.
     await manager.tick();
     const third = lastServer(api);
     for (const name of ['state.json', 'instance.json', 'ledger.json']) fs.rmSync(path.join(dir, name));
@@ -1173,9 +1213,11 @@ async function testInstanceId() {
     await manager.reconcile();
     assert.notEqual(read('instance.json').instanceId, id);
     assert.ok(api.servers.has(third.id), 'not deleted');
-    const foreign = manager.status().foreign;
-    assert.deepEqual(foreign.map((item) => [item.name, item.serverId, item.instance]), [[third.name, third.id, id]]);
-    assert.ok(foreign[0].ageSeconds >= 0);
+    const recovered = manager.status();
+    assert.deepEqual(recovered.foreign, []);
+    assert.ok(recovered.servers.some((item) => item.serverId === third.id));
+    assert.ok(recovered.month.spentEur > 0);
+    assert.ok(read('ledger.json').entries.some((entry) => entry.serverId === third.id));
   } finally {
     await api.close();
   }
@@ -1377,6 +1419,7 @@ async function main() {
   await testBootTimeoutAndPause();
   await testRefusalsAndBackoff();
   await testReconcile();
+  await testExpiryAfterStateLoss();
   await testRestart();
   await testRestartWithoutCode();
   await testFirewall();

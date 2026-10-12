@@ -20,6 +20,7 @@ printed and never passed in the arguments of a process; an error text that would
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -152,7 +153,9 @@ class Builder:
             'location': options.location,
             'ssh_keys': [key],
             'start_after_create': True,
-            'labels': {'ocd-render': 'build', 'ocd-build': self.build_id},
+            'labels': {'ocd-render': 'build', 'ocd-build': self.build_id,
+                       'ocd-expires': str(int(time.time()) + 3 * 3600),
+                       'ocd-origin': hashlib.sha256(options.server.rstrip('/').encode()).hexdigest()[:32]},
         })
         server = answer.get('server') or {}
         if not server.get('id'):

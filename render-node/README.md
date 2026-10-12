@@ -122,3 +122,29 @@ OCD_CODE=XXXX-XXXX python3 render-node/cloud-snapshot.py --ssh-key <name or id> 
 4. Waits until the server is off, takes the snapshot (description with the versions; labels `ocd-render=image`, `ocd-hyperframes`, `ocd-node`), waits until it is available, deletes the server and prints the new snapshot id. Enter it in the settings of the app; delete the old snapshot in the Hetzner Console when no server uses it any more.
 
 The API token comes from a file: `--token-file`, else `HETZNER_TOKEN_FILE`, else `~/.config/hetzner/render-token` (one line, mode 600). It is never printed and never part of the arguments of a process. `--dry-run` only lists the steps; it reads no token and calls nothing. A build costs about one hour of the server type.
+
+
+### Independent cleanup and cancellation
+
+New render and build servers carry an `ocd-expires` label (Unix seconds, three hours
+by default) and an `ocd-origin` fingerprint of the public app address. The app can
+reclaim expired servers with this origin even if its local state was lost.
+
+`cloud-cleanup.py` uses the same token-file convention as `cloud-snapshot.py`.
+Its default dry run **reads the API** and lists expired labelled servers, without
+creating or deleting anything. Missing or invalid expiry labels are left alone.
+
+```sh
+python3 render-node/cloud-cleanup.py --dry-run
+python3 render-node/cloud-cleanup.py --delete --server https://app.example.com
+```
+
+Without `--server`, the scope is all render/build servers with a valid expired
+label in the token's project. Schedule the script independently (for example,
+every five minutes with cron) if cleanup must also run while the app is offline.
+Changing the public app address changes its fingerprint; use the old address or
+the project-wide cleanup for servers created before that change.
+
+Workflow cancellation invalidates agent leases. Updated push services also accept
+an authenticated `POST /jobs/:id/cancel` and stop the renderer process tree. Older
+push services can finish their work, but the app discards their cancelled results.

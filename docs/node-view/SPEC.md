@@ -1251,3 +1251,28 @@ state across temporary request failures. Unknown costs alone do not trigger poll
 Without a ceiling, reservations do not read sessions or publish additional accounting
 writes. With a ceiling, reservation reconciliation reads only unresolved provider
 references; finalisation and status reads still reconcile provider accounting.
+
+### Render cancellation and independent cloud cleanup (2026-10-11)
+
+Render submissions carry the executor's abort signal without changing parameters or cache keys.
+Aborting a run cancels all its pending and running render jobs; agent leases become invalid,
+and push services receive an authenticated `POST /jobs/:id/cancel`. Older push services may
+finish remotely, but their results are discarded. Cancellation is persisted in the queue
+and exposed as a terminal failed status with `code: CANCELLED` for existing pollers.
+Closing or losing a chat response stream does not abort the chat turn or its renders. Independent chat and MCP render jobs without an execution scope remain resumable after restart.
+Signal-bound jobs persist an execution scope and are cancelled on recovery: their owning
+execution and abort signal cannot resume after an app restart. Independent legacy jobs
+retain their lease recovery. Failed push cancellation requests persist the node and remote
+job IDs and retry up to eight times with bounded backoff, including after restart;
+unsupported endpoints and exhausted retries remain distinguishable in the job record.
+
+New cloud render and snapshot-build servers carry `ocd-expires` (Unix seconds) and
+`ocd-origin` (a SHA-256 fingerprint of the public app URL without trailing slashes).
+Reconciliation can delete expired servers of this origin even after local state loss;
+foreign origins are not reclaimed. Recovered servers count towards capacity and the cost
+ledger before new starts; unavailable prices produce an unknown budget and block starts.
+`python3 render-node/cloud-cleanup.py` independently
+lists expired labelled servers in the token's project; `--delete` requests deletion,
+`--server <public-app-url>` restricts it to one origin. It uses the snapshot tool's token
+file convention, leaves missing/invalid expiry labels alone, and paginates before deleting.
+This script must be scheduled externally to run while the application is offline.

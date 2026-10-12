@@ -89,6 +89,7 @@ function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, r
     if (resolution) args.push('--resolution', resolution);
     const child = spawn(process.execPath, args, {
       cwd: base,
+      detached: process.platform !== 'win32',
       env: renderEnv(),
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -105,13 +106,23 @@ function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, r
     };
     child.stdout.on('data', keepTail);
     child.stderr.on('data', keepTail);
-    const killer = setTimeout(() => child.kill('SIGKILL'), RENDER_TIMEOUT_MS);
+    const kill = (signal) => {
+      try {
+        if (process.platform === 'win32') {
+          const taskkill = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+          taskkill.on('error', () => child.kill(signal));
+        } else process.kill(-child.pid, signal);
+      } catch (err) {
+        if (err.code !== 'ESRCH') child.kill(signal);
+      }
+    };
+    const killer = setTimeout(() => kill('SIGKILL'), RENDER_TIMEOUT_MS);
     killer.unref?.();
     let stopper = null;
     const onAbort = () => {
-      child.kill('SIGTERM');
-      stopper = setTimeout(() => child.kill('SIGKILL'), 5000);
-      stopper.unref?.();
+      kill('SIGTERM');
+      stopper = setTimeout(() => kill('SIGKILL'), 5000);
+      // Keep the process alive until descendants have received the escalation.
     };
     if (signal) {
       if (signal.aborted) onAbort();
@@ -119,15 +130,17 @@ function defaultRenderExecutor({ base, hyperframesBin, dir, out, quality, fps, r
     }
     child.on('error', (error) => {
       clearTimeout(killer);
-      clearTimeout(stopper);
+      // Escalation belongs to the process group, which may outlive its leader.
+      if (!signal?.aborted) clearTimeout(stopper);
       signal?.removeEventListener('abort', onAbort);
       reject(error);
     });
     child.on('close', (code) => {
       clearTimeout(killer);
-      clearTimeout(stopper);
+      // Escalation belongs to the process group, which may outlive its leader.
+      if (!signal?.aborted) clearTimeout(stopper);
       signal?.removeEventListener('abort', onAbort);
-      if (code === 0 && fs.existsSync(out)) return resolve();
+      if (!signal?.aborted && code === 0 && fs.existsSync(out)) return resolve();
       const detail = tail.split('\n').filter(Boolean).slice(-6).join(' | ').slice(0, 800);
       reject(new Error(`Render-Exit ${code}: ${detail}`));
     });
@@ -146,6 +159,7 @@ function createRenderService(options = {}) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 
   const jobs = new Map();
+  const controllers = new Map();
   const queue = [];
   const uploadLocks = new Map();
   const activeUploads = new Set();
@@ -339,19 +353,28 @@ function createRenderService(options = {}) {
     running = true;
     await pruneUploads();
     const job = jobs.get(next);
+    if (job.status === 'cancelled') {
+      running = false;
+      return runNext();
+    }
+    const controller = new AbortController();
+    controllers.set(next, controller);
     job.status = 'running';
     job.startedAt = new Date().toISOString();
     const dir = path.join(jobsDir, next);
     const out = path.join(dir, 'out.mp4');
     try {
-      await renderExecutor({ base, hyperframesBin, dir, out, quality: job.quality, fps: job.fps, resolution: job.resolution });
+      await renderExecutor({ base, hyperframesBin, dir, out, quality: job.quality, fps: job.fps, resolution: job.resolution, signal: controller.signal });
+      controller.signal.throwIfAborted();
       if (!fs.existsSync(out)) throw new Error('Render lieferte keine Ausgabedatei');
       job.status = 'completed';
       job.file = out;
     } catch (error) {
-      job.status = 'failed';
+      job.status = controller.signal.aborted ? 'cancelled' : 'failed';
       job.error = String(error.message || error).slice(0, 800);
     } finally {
+      controllers.delete(next);
+      if (controller.signal.aborted) await fsp.rm(out, { force: true }).catch(() => {});
       job.finishedAt = new Date().toISOString();
       await fsp.writeFile(path.join(dir, 'job.json'), JSON.stringify(job));
       running = false;
@@ -416,7 +439,7 @@ function createRenderService(options = {}) {
   async function handle(req, res) {
     const url = new URL(req.url, 'http://render-node.local');
     if (req.method === 'GET' && url.pathname === '/health') {
-      return json(res, 200, { ok: true, queue: queue.length, running, streamingUploads: true });
+      return json(res, 200, { ok: true, queue: queue.length, running, streamingUploads: true, cancellation: true });
     }
     if (!authorized(req)) return json(res, 401, { error: 'Unauthorized' });
 
@@ -432,6 +455,22 @@ function createRenderService(options = {}) {
       if (req.method === 'POST' && url.pathname === '/render') {
         const id = await createJob(await readJson(req, MAX_RENDER_BODY_BYTES));
         return json(res, 202, { jobId: id, status: 'pending' });
+      }
+      const cancelMatch = /^\/jobs\/([a-z0-9-]+)\/cancel$/.exec(url.pathname);
+      if (req.method === 'POST' && cancelMatch) {
+        const id = cancelMatch[1];
+        const job = jobs.get(id);
+        if (!job) return json(res, 404, { error: 'Job not found' });
+        if (['pending', 'running'].includes(job.status)) {
+          job.status = 'cancelled';
+          job.error = 'Render cancelled.';
+          job.finishedAt = new Date().toISOString();
+          const index = queue.indexOf(id);
+          if (index >= 0) queue.splice(index, 1);
+          controllers.get(id)?.abort();
+          await fsp.writeFile(path.join(jobsDir, id, 'job.json'), JSON.stringify(job));
+        }
+        return json(res, 200, { jobId: id, status: job.status });
       }
       const jobMatch = /^\/jobs\/([a-z0-9-]+)(\/file)?$/.exec(url.pathname);
       if (req.method === 'GET' && jobMatch) {
