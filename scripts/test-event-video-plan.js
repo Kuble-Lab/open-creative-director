@@ -701,6 +701,15 @@ async function testRun() {
     assert.deepEqual(result.costs, [0.02, 0.02, 0.3]);
     assert.match(result.board, /request 2 \(empty before, again\): .*empty, 0\.02 USD · request 3 \(empty before, again after a pause\): .*complete/);
   }
+  // the run ends during the pause: no third request (and nothing more paid); the costs of the empty answers stay with the error
+  {
+    const model = scripted([emptyError(), emptyError(), answerOk]);
+    let stopped = false;
+    const err = await errorOf(run({ ask: model.ask, fatal: () => stopped, sleep: async () => { stopped = true; } }));
+    assert.equal(err.name, 'AbortError');
+    assert.equal(model.calls.length, 2, 'no request after the run ended in the pause');
+    assert.deepEqual(err.costs, [0.02, 0.02]);
+  }
   // three empty answers: EVENTPLAN_MODEL_FAILED, or the plain plan with allow_plain
   {
     const model = scripted([emptyError()]);
