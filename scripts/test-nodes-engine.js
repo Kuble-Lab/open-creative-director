@@ -643,10 +643,14 @@ async function main() {
       assert.equal(bad.nodes.z.status, 'error');
       assert.match(bad.nodes.z.message, /different lengths/);
 
-      const tooMany = await makeWorkflow([node('a', 't.list', { n: 51 }), node('u', 't.upper')], edges('a.items>u.in'));
+      const full = await makeWorkflow([node('a', 't.list', { n: 120 }), node('u', 't.upper')], edges('a.items>u.in'));
+      assert.equal((await run(engine, full.id, { mode: 'all' })).status, 'completed');
+      assert.equal((await selectedValue(full.id, 'u', 'out')).items.length, 120);
+
+      const tooMany = await makeWorkflow([node('a', 't.list', { n: 121 }), node('u', 't.upper')], edges('a.items>u.in'));
       const big = await run(engine, tooMany.id, { mode: 'all' });
       assert.equal(big.nodes.u.status, 'error');
-      assert.match(big.nodes.u.message, /limit is 50/);
+      assert.match(big.nodes.u.message, /limit is 120/);
     }
 
     /* ----- a failing list item fails the node ----- */

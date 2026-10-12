@@ -302,12 +302,12 @@ function testWiring() {
   assert.match(page, /La inserción se deshace en un solo paso\. «Nuevo workflow» crea un workflow propio/);
 }
 
-// The tips about list sizes say what the engine does: a list of more than 50 entries on a single input stops the run
+// The tips about list sizes say what the engine does: a list of more than 120 entries on a single input stops the run
 // (it is not cut), a router index outside 0..connections-1 stops it, ChatGPT models run without OpenRouter cost.
 async function testTextsMatchBehaviour() {
   const engineLib = require('../lib/nodes/engine');
   const limit = engineLib.resolveLimits().maxListItems;
-  assert.equal(limit, 50, 'the texts say 50');
+  assert.equal(limit, 120, 'the texts say 120');
   const list = { type: 'list', itemType: 'text', items: Array.from({ length: limit + 1 }, (_, index) => ({ type: 'text', value: `x${index}` })) };
   const resolve = (items) =>
     engineLib.resolveNodeInputs({
@@ -318,7 +318,7 @@ async function testTextsMatchBehaviour() {
       outputsOf: () => ({ items }),
       maxListItems: limit
     });
-  assert.throws(() => resolve(list), /limit is 50/, 'more than 50 items on a single input stop the run, they are not cut');
+  assert.throws(() => resolve(list), /limit is 120/, 'more than 120 items on a single input stop the run, they are not cut');
   assert.equal(resolve({ ...list, items: list.items.slice(0, limit) }).mapLength, limit);
 
   const tipsAbout = [['input.text_list', 2], ['text.split', 2], ['input.media_list', 3]];
@@ -326,7 +326,7 @@ async function testTextsMatchBehaviour() {
     const dict = dictionaries[lang];
     for (const [type, number] of tipsAbout) {
       const tip = dict[`nodes.type.${type}.tip.${number}`];
-      assert.match(tip, /\b50\b/, `${lang} ${type}.tip.${number}: names the limit`);
+      assert.match(tip, type === 'input.media_list' ? /\b50\b/ : /\b120\b/, `${lang} ${type}.tip.${number}: names the limit`);
       assert.doesNotMatch(tip, /schon vorher|even earlier|aún antes|ohnehin|anyway|de todos modos/, `${lang} ${type}.tip.${number}: the engine does not cut the list for a single input`);
     }
     assert.match(dict['nodes.type.input.text_list.tip.2'], /stopp|stop|detien/, `${lang}: a longer list stops the run`);

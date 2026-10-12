@@ -219,7 +219,7 @@ function testGrid() {
   const song = songOf('s72');
   const read = (options) => hudPlan.normalizeSettings(options);
   assert.deepEqual(read({}), { cutsPerMinute: 24, maxUnits: 50, lipsyncSecondsPerMinute: 22, motionShare: 1, clipSeconds: 5 });
-  assert.deepEqual(read({ cutsPerMinute: 5, maxUnits: 99, lipsyncSecondsPerMinute: 99, motionShare: 2, clipSeconds: 1 }), { cutsPerMinute: 14, maxUnits: 50, lipsyncSecondsPerMinute: 60, motionShare: 1, clipSeconds: 2 });
+  assert.deepEqual(read({ cutsPerMinute: 5, maxUnits: 999, lipsyncSecondsPerMinute: 99, motionShare: 2, clipSeconds: 1 }), { cutsPerMinute: 14, maxUnits: 120, lipsyncSecondsPerMinute: 60, motionShare: 1, clipSeconds: 2 });
   assert.deepEqual(read({ cutsPerMinute: 99, maxUnits: 1, motionShare: -1, clipSeconds: 99 }), { cutsPerMinute: 40, maxUnits: 6, lipsyncSecondsPerMinute: 22, motionShare: 0, clipSeconds: 10 });
   assert.equal(read({ cutsPerMinute: 'x', maxUnits: null }).cutsPerMinute, 24, 'a setting that is no number is the default');
   const fast = hudPlan.planGrid(song.analysis, song.timing, { cutsPerMinute: 40 });
@@ -274,7 +274,7 @@ function testGridErrors() {
   assert.equal(tooLong.data.units, 50);
   assert.equal(tooLong.data.clip, 5);
   assert.ok(tooLong.data.needed > 50, `${tooLong.data.needed} units are needed`);
-  assert.match(tooLong.message, /300 s long.*5 s.*about \d+ units.*at most 50/);
+  assert.match(tooLong.message, /300 s long.*5 s.*\d+ units.*at most 50/);
   // more units or longer clips make it
   const bigger = hudPlan.planGrid(longSong.analysis, longSong.timing, { maxUnits: 50, clipSeconds: 10 });
   assert.ok(bigger.units.length <= 50);
@@ -1778,8 +1778,8 @@ async function testDefinition() {
   const plainParam = def.params.find((param) => param.id === 'allow_plain');
   assert.deepEqual([plainParam.kind, plainParam.default, plainParam.cacheOmitDefault], ['boolean', false, true]);
   assert.deepEqual(def.params.find((param) => param.id === 'brief_language').options, ['en', 'de', 'es']);
-  assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 99, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
-    ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 50, lipsync_seconds_per_minute: 0, motion_share: 1, clip_seconds: 2
+  assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 999, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
+    ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 120, lipsync_seconds_per_minute: 0, motion_share: 1, clip_seconds: 2
   });
   assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['hud', 'kuble'], 'the planner writes one of the two styles (auto is for the renderer)');
   assert.deepEqual(def.params.find((param) => param.id === 'hud_language').options, ['en', 'de', 'es']);

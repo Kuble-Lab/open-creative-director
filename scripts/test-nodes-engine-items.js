@@ -524,7 +524,12 @@ async function main() {
       await bad({ mode: 'items', nodeId: 'zzz', items: [0] });
       await bad({ mode: 'items', items: [0] });
       assert.equal((await wfStore.listRuns(wf.id)).length, runsBefore, 'a refused request leaves no run record');
-      await assert.rejects(engine.start(wf.id, { mode: 'items', nodeId: 'm', items: Array.from({ length: 51 }, (_v, i) => i) }), { code: 'INVALID_REQUEST' });
+      await assert.rejects(engine.start(wf.id, { mode: 'items', nodeId: 'm', items: Array.from({ length: 121 }, (_v, i) => i) }), { code: 'INVALID_REQUEST' });
+
+      const large = await makeWorkflow([node('l', 't.words', { items: Array.from({ length: 120 }, (_, i) => `item${i}`).join(',') }), node('m', 't.scene')], edges('l.items>m.in'));
+      assert.equal((await run(large.id, { mode: 'all' })).status, 'completed');
+      assert.equal((await run(large.id, { mode: 'items', nodeId: 'm', items: Array.from({ length: 120 }, (_, i) => i) })).status, 'completed');
+      assert.equal((await selectedList(large.id, 'm')).length, 120);
 
       // a node that was never run has no list to take the other items from
       const fresh = await makeWorkflow([node('l', 't.words', { items: 'a,b' }), node('m', 't.scene')], edges('l.items>m.in'));

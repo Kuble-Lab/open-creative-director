@@ -173,7 +173,7 @@ function testTexts({ planLib, editLib, tools }) {
     assert.match(need(lang, 'nodes.type.music_video.plan.help'), new RegExp(`\\b${planLib.MAX_SCENES}\\b`), `${lang}: the limit of scenes`);
     assert.match(need(lang, 'nodes.type.music_video.edit.help'), new RegExp(`\\b${String(editLib.MIN_SPEED).replace('.', '[.,]')}\\b`), `${lang}: the slowest speed`);
     assert.match(need(lang, 'nodes.type.audio.lyrics_timing.tip.3'), new RegExp(`\\b${tools.TIMING_MAX_SECONDS / 60}\\b`), `${lang}: the longest song`);
-    assert.match(need(lang, 'nodes.type.music_video.edit.tip.3'), new RegExp(`\\b${planLib.MAX_SCENES}\\b`), `${lang}: the number of clips`);
+    assert.match(need(lang, 'nodes.type.music_video.edit.tip.3'), new RegExp(`\\b${planLib.MAX_SHOTS}\\b`), `${lang}: the number of clips`);
     assert.match(need(lang, 'nodes.type.music_video.edit.tip.3'), new RegExp(`\\b${editLib.BATCH_SCENES}\\b`), `${lang}: the scenes of a batch`);
   }
   // the names people search for
@@ -235,9 +235,9 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib, vo
   assert.deepEqual(ports(edit.inputs), [
     ['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true], ['still_clips', 'video', false, true], ['captions', 'text', false, false]
   ]);
-  assert.equal(edit.inputs.find((port) => port.id === 'story').max, planLib.MAX_SCENES);
-  assert.equal(edit.inputs.find((port) => port.id === 'performance').max, planLib.MAX_SCENES);
-  assert.equal(edit.inputs.find((port) => port.id === 'still_clips').max, planLib.MAX_SCENES, 'WP44: the clips of the stills, as many as there are scenes at most');
+  assert.equal(edit.inputs.find((port) => port.id === 'story').max, planLib.MAX_SHOTS);
+  assert.equal(edit.inputs.find((port) => port.id === 'performance').max, planLib.MAX_SHOTS);
+  assert.equal(edit.inputs.find((port) => port.id === 'still_clips').max, planLib.MAX_SHOTS, 'WP44: the clips of the stills, as many as there are scenes at most');
   assert.deepEqual(ports(edit.outputs), [['video', 'video', false, false]]);
   assert.deepEqual(edit.params.find((param) => param.id === 'transition').options, editLib.TRANSITIONS);
   assert.deepEqual(edit.params.find((param) => param.id === 'resolution').options, editLib.RESOLUTIONS);

@@ -60,6 +60,20 @@ const NEW_KEYS = [
   'nodes.help.cost.freecall'
 ];
 
+function testHudCapacityMessages() {
+  for (const lang of LANGS) {
+    for (const variant of [undefined, 'app']) {
+      const issue = { code: 'HUDPLAN_TOO_LONG', data: { seconds: 286, clip: 5, units: 50, needed: 67, limit: 120 } };
+      const enough = uis[lang].issueText(issue, variant);
+      assert.match(enough, /67/);
+      assert.doesNotMatch(enough, /\{\w+\}/);
+      const impossible = uis[lang].issueText({ ...issue, data: { ...issue.data, needed: 140 } }, variant);
+      assert.match(impossible, /120/);
+      assert.doesNotMatch(impossible, /140|Stelle die Höchstzahl|Set maximum units|Ajusta el máximo/);
+    }
+  }
+}
+
 function testTextsInThreeLanguages() {
   const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort().join(',');
   for (const key of NEW_KEYS) {
@@ -213,7 +227,7 @@ function testAppCutOffWiring() {
   }
 }
 
-const tests = [testTextsInThreeLanguages, testErrorTextsWithValues, testWordsAgree, testCostHints, testMenuHintMarkup, testPlanFieldWiring, testCostTypeNames, testAppCutOffWiring];
+const tests = [testHudCapacityMessages, testTextsInThreeLanguages, testErrorTextsWithValues, testWordsAgree, testCostHints, testMenuHintMarkup, testPlanFieldWiring, testCostTypeNames, testAppCutOffWiring];
 for (const test of tests) {
   test();
   console.log(`ok ${test.name}`);
