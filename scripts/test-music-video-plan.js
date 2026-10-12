@@ -446,7 +446,7 @@ function testShots() {
   refuse(bad((copy) => { copy.shots[3].clip = copy.shots[2].clip; copy.shots[3].kind = copy.shots[2].kind; }), /valid clip number/);
   refuse(bad((copy) => { copy.shots[1].end = copy.shots[1].start; }), /usable times/);
   refuse(bad((copy) => { copy.shots[0].clip = 7; copy.shots[0].kind = 'story'; copy.shots.forEach((shot, index) => { if (index && shot.kind === 'story') shot.clip = index + 100; }); }), /not numbered 0 to/);
-  refuse(bad((copy) => { copy.shots = Array.from({ length: 51 }, (_unused, index) => ({ start: index, end: index + 1, kind: 'story', clip: index })); }), /At most 50/);
+  refuse(bad((copy) => { copy.shots = Array.from({ length: 121 }, (_unused, index) => ({ start: index, end: index + 1, kind: 'story', clip: index })); }), /At most 120/);
   // the object itself is accepted too
   assert.equal(plan.parseShots(shots).shots.length, shots.shots.length);
   // all scenes for the singer, or none: the counts are right
