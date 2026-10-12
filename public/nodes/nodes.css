@@ -2960,6 +2960,20 @@
   justify-content: space-between;
 }
 
+/* a switch with a hint: the label takes the rest of the first line next to the switch, the hint takes a line of its own below both */
+.nv-field.is-inline.has-hint {
+  flex-wrap: wrap;
+}
+
+.nv-field.is-inline.has-hint > .nv-field-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nv-field.is-inline.has-hint > .nv-field-hint {
+  flex-basis: 100%;
+}
+
 .nv-field-hint {
   font-size: 11px;
   color: var(--text-faint);

@@ -1379,7 +1379,7 @@
   // Labelled field wrapper used by the inspector (and reusable elsewhere).
   // options.expose = { active, title, onToggle() }: small "Design App" toggle next to the label (inspector).
   function field(labelText, widgetEl, options = {}) {
-    const wrap = el('div', { class: `nv-field ${options.inline ? 'is-inline' : ''}`.trim() });
+    const wrap = el('div', { class: `nv-field${options.inline ? ' is-inline' : ''}${options.inline && options.hint ? ' has-hint' : ''}` });
     if (labelText) {
       const label = el('label', { class: 'nv-field-label', text: labelText });
       if (options.labelId) {
