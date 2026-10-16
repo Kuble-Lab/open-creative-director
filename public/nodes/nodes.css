@@ -7963,6 +7963,10 @@ button.nv-scene-preview:focus-visible {
   align-items: center;
   gap: 8px;
 }
+/* the badge «will be made again» shows only for a scene with a note (.nv-badge sets display) */
+.nv-appfeedback-head .nv-badge[hidden] {
+  display: none;
+}
 .nv-appfeedback-text {
   margin: 6px 0 0;
   color: var(--text-dim);
