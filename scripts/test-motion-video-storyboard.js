@@ -159,11 +159,11 @@ async function run(iso, eleven) {
   ]) assert.ok(wires.includes(wire), `${wire} is wired`);
   assert.equal(wires.length, 23);
   assert.equal(wires.some((wire) => /\.(image_prompts|sources)>/.test(wire)), false, 'no research and no stills of the planner');
-  assert.deepEqual(nodeOf('n4').params, { model: '', topic: '', brief: '', length_seconds: 45, language: 'auto', audience: '', tone: 'factual', visual_mode: 'motion', format: 'landscape', max_still_share: 0.35, clips: false, presenter: 'off', verify: true, script: '' });
+  assert.deepEqual(nodeOf('n4').params, { model: '', topic: '', brief: '', length_seconds: 45, language: 'auto', audience: '', tone: 'factual', visual_mode: 'motion', format: 'landscape', max_still_share: 0.35, clips: false, presenter: 'off', verify: true, script: '', feedback: {} });
   assert.equal(nodeOf('n7').params.model, 'google/gemini-nano-banana-2.1');
   assert.equal(nodeOf('n7').params.aspect_ratio, '16:9');
   assert.equal(nodeOf('n7').params.count, 1);
-  assert.deepEqual(nodeOf('n9').params, { model: '', format: 'landscape', quality: 'standard', vision_check: true, max_retries: 2, fallback: true });
+  assert.deepEqual(nodeOf('n9').params, { model: '', format: 'landscape', quality: 'standard', vision_check: true, max_retries: 2, fallback: true, feedback: {} });
   assert.equal(nodeOf('n14').params.length, 45);
   assert.match(nodeOf('n6').params.template, /\{\{a\}\}/);
   assert.match(nodeOf('n6').params.template, /\{\{b\}\}/);

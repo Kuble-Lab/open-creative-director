@@ -276,7 +276,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
   assert.deepEqual(portsOf(voiceDef.inputs), [['narration', 'text', true, false], ['context', 'text', false, false], ['voice', 'text', false, false]]); // WP38f: the optional voice input
   assert.deepEqual(portsOf(voiceDef.outputs), [['audio', 'audio', false, false], ['timing', 'text', false, false], ['duration', 'number', false, false]]);
   const voiceDefaults = real.normalizeParams(voiceDef, {});
-  assert.deepEqual(voiceDefaults, { voice_id: tools.DEFAULT_ELEVENLABS_VOICE_ID, model_id: 'eleven_v4', use_context: true });
+  assert.deepEqual(voiceDefaults, { voice_id: tools.DEFAULT_ELEVENLABS_VOICE_ID, model_id: 'eleven_v4', use_context: true, feedback: {} }); // WP56: the feedback per scene
   assert.equal(voiceDef.params.find((param) => param.id === 'voice_id').optionsSource, 'elevenlabs-voices');
   assert.equal(voiceDef.params.find((param) => param.id === 'model_id').optionsSource, 'elevenlabs-tts-models');
   assert.equal(real.availability(voiceDef), haveFfmpeg ? true : real.availability(voiceDef));
@@ -293,7 +293,7 @@ async function run(iso, { eleven, setVoiceBytes }) {
     ['reference', 'image', false, false] // WP43: the optional storyboard frame
   ]);
   assert.deepEqual(portsOf(sceneDef.outputs), [['video', 'video', false, false]]);
-  assert.deepEqual(real.normalizeParams(sceneDef, {}), { model: '', format: 'landscape', quality: 'standard', vision_check: true, max_retries: 2, fallback: true });
+  assert.deepEqual(real.normalizeParams(sceneDef, {}), { model: '', format: 'landscape', quality: 'standard', vision_check: true, max_retries: 2, fallback: true, feedback: {} }); // WP56: the feedback per scene
   assert.deepEqual(sceneDef.params.find((param) => param.id === 'format').options, ['landscape', 'portrait']);
   assert.deepEqual(sceneDef.params.find((param) => param.id === 'quality').options, ['draft', 'standard', 'high']);
   assert.equal(real.normalizeParams(sceneDef, { max_retries: 99 }).max_retries, 4);
