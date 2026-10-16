@@ -56,6 +56,26 @@ try:
     raise AssertionError('expected pagination rejection')
 except m._snapshot.BuildError:
     pass
+# The token can come from the app's cloud settings instead of a token file.
+import json, os, tempfile
+folder = tempfile.mkdtemp()
+def settings(content):
+    target = os.path.join(folder, 'settings.json')
+    with open(target, 'w') as handle:
+        handle.write(content)
+    return target
+assert m.read_settings_token(settings(json.dumps({'enabled': True, 'token': ' ' + 'a' * 64 + '\n'}))) == 'a' * 64
+for bad in ('{"token": "short"}', '{"token": 5}', '[]', 'not json', '{}'):
+    try:
+        m.read_settings_token(settings(bad))
+        raise AssertionError('expected rejection of ' + bad)
+    except m._snapshot.BuildError as err:
+        assert 'a' * 20 not in str(err)
+try:
+    m.read_settings_token(os.path.join(folder, 'missing.json'))
+    raise AssertionError('expected missing file')
+except m._snapshot.BuildError:
+    pass
 print('cleanup fake API: ok')
 `;
 const result = spawnSync('python3', ['-B', '-c', harness, path.resolve(__dirname, '../render-node/cloud-cleanup.py')], { encoding: 'utf8' });

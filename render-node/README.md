@@ -137,7 +137,15 @@ creating or deleting anything. Missing or invalid expiry labels are left alone.
 ```sh
 python3 render-node/cloud-cleanup.py --dry-run
 python3 render-node/cloud-cleanup.py --delete --server https://app.example.com
+python3 render-node/cloud-cleanup.py --delete --server https://app.example.com \
+  --settings-file data/cloud-render/settings.json
 ```
+
+`--settings-file` reads the token the app keeps in its cloud settings, so a
+scheduled run on the app server needs no second copy of it. `cloud-cleanup.service`
+and `cloud-cleanup.timer` in this folder run it every 15 minutes with systemd
+(edit the paths and the address, copy both to `/etc/systemd/system/`, then
+`systemctl enable --now cloud-cleanup.timer`).
 
 Without `--server`, the scope is all render/build servers with a valid expired
 label in the token's project. Schedule the script independently (for example,

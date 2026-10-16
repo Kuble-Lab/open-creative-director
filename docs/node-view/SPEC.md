@@ -1284,8 +1284,10 @@ ledger before new starts; unavailable prices produce an unknown budget and block
 `python3 render-node/cloud-cleanup.py` independently
 lists expired labelled servers in the token's project; `--delete` requests deletion,
 `--server <public-app-url>` restricts it to one origin. It uses the snapshot tool's token
-file convention, leaves missing/invalid expiry labels alone, and paginates before deleting.
-This script must be scheduled externally to run while the application is offline.
+file convention (or `--settings-file data/cloud-render/settings.json`, the token the app
+keeps in its cloud settings), leaves missing/invalid expiry labels alone, and paginates
+before deleting. This script must be scheduled externally to run while the application is
+offline; `render-node/cloud-cleanup.service` and `.timer` run it every 15 minutes with systemd.
 ### Event-video approval and recovery
 
 The app offers **Replan only** while the first event-video stage stands for approval. It requests only the event planner with `force: true`, clears its approval switches and retains the current input overrides. A fresh plan must show every ancestor as cached; otherwise the app stops and asks the user to run the displayed step. The cost confirmation contains only the planner, without the later AI-clip preview. The planner's new selected answer replaces old switch drafts. Passive approval outputs can display the new planner values directly before their saved copies are updated on continuation; sending those stale copies and the combined ZIP are unavailable during that interval.
