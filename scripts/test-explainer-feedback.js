@@ -625,3 +625,9 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+// The badge «will be made again» must hide without a note: .nv-badge sets display, so [hidden] needs its own rule.
+{
+  const css = require('fs').readFileSync(require('path').join(__dirname, '../public/nodes/nodes.css'), 'utf8');
+  require('assert/strict').match(css, /\.nv-appfeedback-head \.nv-badge\[hidden\]\s*\{\s*display:\s*none;/);
+}
