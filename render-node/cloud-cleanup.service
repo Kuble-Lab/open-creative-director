@@ -1,0 +1,12 @@
+# Deletes expired render and build servers of this app, also while the app is offline.
+# Edit WorkingDirectory and --server for your installation; see README.md.
+[Unit]
+Description=Open Creative Director: delete expired cloud render servers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/open-creative-director
+ExecStart=/usr/bin/python3 -B render-node/cloud-cleanup.py --delete --server https://app.example.com --settings-file data/cloud-render/settings.json
+TimeoutStartSec=300

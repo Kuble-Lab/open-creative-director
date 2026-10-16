@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """List expired render/build servers; delete only with --delete.
 
-Uses the same token file as cloud-snapshot.py. The default dry run reads the
+Uses the same token file as cloud-snapshot.py, or with --settings-file the
+token in the app's cloud settings (data/cloud-render/settings.json), so a
+scheduled run needs no second copy of it. The default dry run reads the
 cloud API but never changes it. --server limits cleanup to an app's origin;
 without it, all explicitly labelled, expired servers in the token's project
 are eligible. Legacy servers without a valid expiry label are left alone.
@@ -10,6 +12,7 @@ are eligible. Legacy servers without a valid expiry label are left alone.
 import argparse
 import hashlib
 import importlib.util
+import json
 import os
 import re
 import sys
@@ -72,17 +75,34 @@ def cleanup(api, delete=False, server=None, now=None, out=print):
     return 1 if failed else 0
 
 
+def read_settings_token(path):
+    """The API token from the app's cloud settings file (a JSON object with "token")."""
+    try:
+        with open(os.path.expanduser(path), encoding='utf-8') as handle:
+            settings = json.load(handle)
+    except OSError as err:
+        raise _snapshot.BuildError(f'The settings file cannot be read ({err.strerror}).') from None
+    except ValueError:
+        raise _snapshot.BuildError('The settings file is not valid JSON.') from None
+    token = settings.get('token') if isinstance(settings, dict) else None
+    if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{20,128}', token.strip()):
+        raise _snapshot.BuildError('The settings file does not hold a Hetzner API token.')
+    return token.strip()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--dry-run', action='store_true', help='list only (default)')
     mode.add_argument('--delete', action='store_true', help='delete expired labelled servers')
     parser.add_argument('--server', help='limit to this public app address (same as snapshot --server)')
-    parser.add_argument('--token-file', default=os.environ.get('HETZNER_TOKEN_FILE') or _snapshot.DEFAULT_TOKEN_FILE)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument('--token-file', default=os.environ.get('HETZNER_TOKEN_FILE') or _snapshot.DEFAULT_TOKEN_FILE)
+    source.add_argument('--settings-file', help="read the token from the app's cloud settings (data/cloud-render/settings.json)")
     options = parser.parse_args(argv)
     token = None
     try:
-        token = _snapshot.read_token(options.token_file)
+        token = read_settings_token(options.settings_file) if options.settings_file else _snapshot.read_token(options.token_file)
         return cleanup(_snapshot.make_api(token), delete=options.delete, server=options.server)
     except (Exception, KeyboardInterrupt) as err:
         message = str(err).replace(token, '[token]') if token else str(err)
