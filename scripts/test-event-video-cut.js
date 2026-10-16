@@ -270,7 +270,7 @@ function testJpeg() {
   assert.deepEqual(cutLib.orientationFilters(1), []);
   const still = cutLib.stillArgs({ inputFile: 'in.jpg', outFile: 'out.png', orientation: 6, format: '16:9', fit: 'blur', width: 4284, height: 5712 });
   assert.deepEqual(still.size, { width: 1620, height: 2160 });
-  assert.deepEqual(still.args.slice(4, 9), ['-noautorotate', '-i', 'in.jpg', '-vf', 'transpose=clock,scale=1620:2160:flags=lanczos,format=rgb24']);
+  assert.deepEqual(still.args.slice(4, 9), ['-noautorotate', '-i', 'in.jpg', '-vf', 'transpose=clock,sidedata=mode=delete,scale=1620:2160:flags=lanczos,format=rgb24']);
 }
 
 /* ---------- with ffmpeg ---------- */
@@ -291,6 +291,23 @@ async function testReal() {
     const tall = await clip('tall.mp4', '360x640', 25, 660);
     const photo = path.join(work, 'photo.jpg');
     await ff(['-f', 'lavfi', '-i', 'testsrc=s=600x800', '-frames:v', '1', '-q:v', '3', photo]);
+    // A phone photo stored wide with EXIF 6: the still is upright and carries no orientation of its own
+    // (ffmpeg 9 wrote the EXIF into the PNG, a later decode turned it a second time).
+    const stored = path.join(work, 'stored.jpg');
+    await ff(['-f', 'lavfi', '-i', 'testsrc=s=800x600', '-frames:v', '1', '-q:v', '3', stored]);
+    const header = jpegWith(6, 800, 600);
+    const app1 = header.subarray(2, header.length - 19);
+    const rotated = path.join(work, 'rotated.jpg');
+    await fsp.writeFile(rotated, Buffer.concat([Buffer.from([0xff, 0xd8]), app1, (await fsp.readFile(stored)).subarray(2)]));
+    const stillOut = path.join(work, 'still.png');
+    const rotatedStill = cutLib.stillArgs({ inputFile: rotated, outFile: stillOut, orientation: 6, format: '9:16', fit: 'crop', width: 600, height: 800 });
+    await ff(rotatedStill.args.slice(4));
+    const stillBytes = await fsp.readFile(stillOut);
+    assert.ok(!stillBytes.includes(Buffer.from('eXIf')), 'the still PNG has no EXIF chunk');
+    const redecoded = path.join(work, 'still-again.png');
+    await ff(['-i', stillOut, '-frames:v', '1', redecoded]);
+    const again = await probe(redecoded);
+    assert.ok(again.video.height > again.video.width, `the still stays upright when decoded again: ${again.video.width}x${again.video.height}`);
     // 20 s: a wide clip, a soundbite, the upright clip, the upright photo (blur in 16:9), slow motion
     const plan = {
       version: 1,
