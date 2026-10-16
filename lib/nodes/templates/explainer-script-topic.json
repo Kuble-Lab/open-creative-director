@@ -58,7 +58,8 @@
           "clips": true,
           "presenter": "off",
           "verify": true,
-          "script": ""
+          "script": "",
+          "feedback": {}
         }
       },
       {

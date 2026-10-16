@@ -7945,6 +7945,48 @@ button.nv-scene-preview:focus-visible {
 .nv-apptexts [aria-invalid='true'] {
   border-color: var(--danger);
 }
+/* Feedback per scene of the explainer video (WP56). */
+.nv-appfeedback {
+  padding: 16px;
+  border-top: 1px solid var(--line);
+}
+.nv-appfeedback h4 {
+  margin: 0 0 8px;
+}
+.nv-appfeedback-scene,
+.nv-appfeedback-whole {
+  margin-top: 14px;
+}
+.nv-appfeedback-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.nv-appfeedback-text {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.nv-appfeedback-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.nv-appfeedback label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.nv-appfeedback .nv-input {
+  width: 100%;
+  min-width: 0;
+}
+.nv-appfeedback > .nv-btn {
+  margin-top: 14px;
+}
 .nv-appresume {
   color: var(--text-dim);
   font-size: 12px;

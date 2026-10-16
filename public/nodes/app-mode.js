@@ -298,6 +298,52 @@
     return flow && { step: flow.index === 0 ? 'first' : 'approve', done: flow.done, request: flow.request };
   }
 
+  /* ---------- feedback per scene (WP56) ---------- */
+
+  // A node with a param of kind `notes` and `source` (the explainer planner) lists scenes at that output; a node with a param of notes and
+  // `items` (voice, scene) takes one item per scene when that input comes straight from one of the listed outputs (`lists`). The notes go by
+  // scene id ({ s3: 'shorter', all: '...' }); a scene with a note is made again, the others come from the cache. The functions below are pure.
+
+  // The groups of notes in a graph: [{ node, param, kind: 'script', followers: [{ node, param }] }]. `defOf(type)` gives the definition.
+  function feedbackTargets(graph, defOf) {
+    const out = [];
+    const notesOf = (node) => (defOf(node.type)?.params || []).filter((param) => param.kind === 'notes');
+    for (const node of graph.nodes || []) {
+      const param = notesOf(node).find((item) => item.source);
+      if (!param) continue;
+      const lists = new Set(param.lists || []);
+      const followers = [];
+      for (const edge of graph.edges || []) {
+        if (edge.from.node !== node.id || !lists.has(edge.from.port)) continue;
+        const next = (graph.nodes || []).find((item) => item.id === edge.to.node);
+        const follower = next && notesOf(next).find((item) => item.items === edge.to.port);
+        if (follower && !followers.some((item) => item.node.id === next.id)) followers.push({ node: next, param: follower });
+      }
+      out.push({ node, param, followers });
+    }
+    return out;
+  }
+
+  // The scenes of a script (JSON text of the planner): [{ id, title, narration }]; [] for a text that is not one.
+  function feedbackScenes(text) {
+    let script = null;
+    try { script = JSON.parse(text); } catch (_) { return []; }
+    const scenes = Array.isArray(script?.scenes) ? script.scenes : [];
+    return scenes
+      .filter((scene) => scene && typeof scene.id === 'string' && scene.id)
+      .map((scene) => ({ id: scene.id, title: String(scene.on_screen?.title || scene.title || ''), narration: String(scene.narration || '') }));
+  }
+
+  // The notes that are sent for one node: the non-empty ones of the ids that exist (the scenes, and `all` where the param has it).
+  function notesOfScenes(notes, ids, whole) {
+    const out = {};
+    if (!notes || typeof notes !== 'object' || Array.isArray(notes)) return out;
+    for (const id of whole ? [...ids, 'all'] : ids) {
+      if (typeof notes[id] === 'string' && notes[id].trim()) out[id] = notes[id].trim();
+    }
+    return out;
+  }
+
   function createAppView({ host, callbacks }) {
     const cb = callbacks || {};
     let reg = null;
@@ -581,6 +627,7 @@
       }
       out._switches = Object.fromEntries(s.switches);
       out._texts = s.texts || readStored()._texts || {};
+      out._feedback = s.feedback || readStored()._feedback || {};
       lsSet(storageKey(), JSON.stringify(out));
     }
 
@@ -1049,6 +1096,86 @@
       return { el: panel, lock, dispose: preview.dispose };
     }
 
+    /* ---------- feedback per scene (WP56) ---------- */
+
+    function feedbackGroups() {
+      return feedbackTargets(s.workflow.graph, (type) => reg.types.get(type));
+    }
+
+    // The script the planner made last (its output `source`), or null.
+    function feedbackScript(group) {
+      const result = s.results?.nodes?.[group.node.id];
+      const entry = result?.history?.find((item) => item.id === result.selected?.entry);
+      const variant = entry?.variants?.[result.selected?.variant || 0];
+      const text = variant?.[group.param.source]?.value;
+      return typeof text === 'string' ? text : null;
+    }
+
+    // The notes of one node as the form holds them: kept in the browser, else those of its last run, else its saved param.
+    function feedbackNotes(node, param) {
+      if (!s.feedback) s.feedback = readStored()._feedback || {};
+      if (!s.feedback[node.id]) {
+        const restored = restoredParam(s.results, node, param.id, node.params[param.id]);
+        s.feedback[node.id] = restored && typeof restored === 'object' && !Array.isArray(restored) ? { ...restored } : {};
+      }
+      return s.feedback[node.id];
+    }
+
+    function feedbackPanel(group) {
+      const scenes = feedbackScenes(feedbackScript(group));
+      if (!scenes.length) return null;
+      const panel = el('section', { class: 'nv-appfeedback' }, el('h4', { text: T('nodes.app.feedback') }), el('p', { class: 'nv-hint', text: T('nodes.app.feedbackHint') }));
+      const columns = [{ node: group.node, param: group.param, label: T('nodes.app.feedbackScript') }, ...group.followers.map((item) => ({
+        ...item,
+        label: item.node.type === 'explainer.voice' ? T('nodes.app.feedbackVoice') : item.node.type === 'explainer.scene' ? T('nodes.app.feedbackPicture') : titleOf(item.node.id)
+      }))];
+      const inputs = [];
+      const area = (column, id, label, onChange) => {
+        const notes = feedbackNotes(column.node, column.param);
+        const input = el('textarea', { class: 'nv-input nv-textarea', rows: 2, 'aria-label': label, placeholder: column.label });
+        input.value = notes[id] || '';
+        input.addEventListener('input', () => {
+          if (s.run.active || s.starting) return;
+          if (input.value.trim()) notes[id] = input.value;
+          else delete notes[id];
+          onChange();
+          writeStored();
+          schedulePlan();
+        });
+        inputs.push(input);
+        return el('label', {}, el('span', { text: column.label }), input);
+      };
+      if (group.param.whole) {
+        panel.append(el('div', { class: 'nv-appfeedback-whole' }, area({ ...columns[0], label: T('nodes.app.feedbackWhole') }, 'all', T('nodes.app.feedbackWhole'), () => {})));
+      }
+      scenes.forEach((scene, index) => {
+        const badge = el('span', { class: 'nv-badge is-redo', text: T('nodes.app.feedbackRedo') });
+        const mark = () => {
+          badge.hidden = !columns.some((column) => (feedbackNotes(column.node, column.param)[scene.id] || '').trim());
+        };
+        const head = el('div', { class: 'nv-appfeedback-head' }, el('strong', { text: `${index + 1}. ${scene.title || scene.id}` }), badge);
+        const box = el('div', { class: 'nv-appfeedback-scene', dataset: { scene: scene.id } }, head);
+        if (scene.narration) box.append(el('p', { class: 'nv-appfeedback-text', text: scene.narration }));
+        const fields = el('div', { class: 'nv-appfeedback-fields' });
+        for (const column of columns) fields.append(area(column, scene.id, `${scene.id} · ${column.label}`, mark));
+        box.append(fields);
+        mark();
+        panel.append(box);
+      });
+      const clear = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', text: T('nodes.app.feedbackClear') });
+      clear.addEventListener('click', () => {
+        if (s.run.active || s.starting) return;
+        for (const column of columns) s.feedback[column.node.id] = {};
+        writeStored();
+        schedulePlan();
+        renderResults();
+      });
+      panel.append(clear);
+      const lock = () => { for (const input of [...inputs, clear]) input.disabled = Boolean(s.run.active || s.starting); };
+      lock();
+      return { el: panel, lock };
+    }
+
     function replanTarget() {
       const order = s.plans?.previews?.[0]?.order || [];
       const nodes = s.workflow.graph.nodes.filter((node) => node.type === 'event_video.plan' && order.includes(node.id));
@@ -1079,6 +1206,15 @@
         const payload = switchesPayloadOf(item.ref);
         const state = payload ? switchState(item.ref, payload) : null;
         if (item.stage < step && state && Object.keys(state.value).length) set(item.ref.node.id, item.ref.param.id, { ...state.value });
+      }
+      // the feedback per scene (WP56): only for the scenes of the script there is now, and nothing when there is no script yet
+      for (const group of feedbackGroups()) {
+        const ids = feedbackScenes(feedbackScript(group)).map((scene) => scene.id);
+        if (!ids.length) continue;
+        for (const item of [group, ...group.followers]) {
+          const notes = notesOfScenes(feedbackNotes(item.node, item.param), ids, item.param.whole);
+          if (Object.keys(notes).length || Object.keys(item.node.params[item.param.id] || {}).length) set(item.node.id, item.param.id, notes);
+        }
       }
       for (const target of eventTextTargets()) {
         const data = textState(target);
@@ -1804,6 +1940,10 @@
         }
         outputsBox.append(card);
       }
+      for (const group of feedbackGroups()) {
+        const panel = feedbackPanel(group);
+        if (panel) { outputsBox.append(panel.el); s.switchPanels.push(panel); }
+      }
       if (any && !projected) {
         const zip = el('a', { class: 'nv-btn nv-btn-sm', href: api.outputsZipUrl(s.id), download: '' }, icon('zip', 13), el('span', { text: T('nodes.run.menu.zip') }));
         resultsHead.append(zip);
@@ -1842,6 +1982,10 @@
     switchPayload,
     switchesFromItems,
     switchView,
-    toggleSwitch
+    toggleSwitch,
+    // WP56: feedback per scene
+    feedbackTargets,
+    feedbackScenes,
+    notesOfScenes
   };
 })(window);

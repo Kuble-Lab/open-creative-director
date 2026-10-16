@@ -808,7 +808,7 @@ async function run(iso, eleven) {
   // the mode is a choice in the same field: the sliders of the other modes are hidden for it
   assert.deepEqual(planDef.params.find((param) => param.id === 'max_still_share').showIf, { param: 'visual_mode', equals: 'mix' });
   assert.deepEqual(planDef.params.find((param) => param.id === 'clips').showIf, { param: 'visual_mode', in: ['mix', 'ai_video'] });
-  assert.deepEqual(planDef.params.map((param) => param.id), ['model', 'topic', 'brief', 'length_seconds', 'language', 'audience', 'tone', 'visual_mode', 'format', 'max_still_share', 'clips', 'presenter', 'verify', 'script'], 'no parameter was added: an own text is an input');
+  assert.deepEqual(planDef.params.map((param) => param.id), ['model', 'topic', 'brief', 'length_seconds', 'language', 'audience', 'tone', 'visual_mode', 'format', 'max_still_share', 'clips', 'presenter', 'verify', 'script', 'feedback'], 'no parameter was added for an own text: it is an input (WP56 added the feedback per scene)');
   // the validation: an own text is material
   assert.deepEqual(planDef.validate({ script: '', topic: '' }, { own_text: { connected: true } }), []);
   assert.equal(planDef.validate({ script: '', topic: '' }, {}).length, 1);

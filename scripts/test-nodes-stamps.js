@@ -215,7 +215,9 @@ async function main() {
     assert.equal(keyOf('audio.tts', { text: textValue('Hallo Welt.') }), 'sha256:41c0002e34b949c35a9a7ea0121bf807a965bc97f1aa22d9f194a2614f10d06f');
     for (const [type, inputs] of [['llm.chat', { prompt: textValue('Hi') }], ['input.branding', {}], ['explainer.scene', {}], ['image.generate', { prompt: textValue('A cat') }]]) {
       const realDef = real.registry.get(type);
-      const params = real.registry.normalizeParams(realDef, {});
+      // a param that says cacheOmitDefault was not there before (WP56: `feedback` of explainer.scene) and is left out while it holds its default
+      const omitted = new Set(realDef.params.filter((param) => param.cacheOmitDefault).map((param) => param.id));
+      const params = Object.fromEntries(Object.entries(real.registry.normalizeParams(realDef, {})).filter(([id]) => !omitted.has(id)));
       const bare = keyOf(type, inputs);
       assert.equal(bare, oldKey(realDef, params, inputs), `${type}: without a stamp the key is the old one`);
     }

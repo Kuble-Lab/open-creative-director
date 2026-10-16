@@ -62,6 +62,15 @@
     ['nodes.app.cardPreviewRefresh', 'Vorschau aktualisieren', 'Refresh preview', 'Actualizar vista previa'],
     ['nodes.app.editTexts', 'Texte korrigieren', 'Correct texts', 'Corregir textos'],
     ['nodes.app.editTextsHint', 'Wird beim Rendern übernommen, ohne neuen Modellaufruf. Ein neuer Plan verwirft diese Korrekturen.', 'Applied when rendering, without another model call. A new plan discards these corrections.', 'Se aplica al renderizar, sin otra llamada al modelo. Un nuevo plan descarta estas correcciones.'],
+    // WP56: feedback per scene of the explainer video
+    ['nodes.app.feedback', 'Rückmeldung pro Szene', 'Feedback per scene', 'Comentarios por escena'],
+    ['nodes.app.feedbackHint', 'Schreib zu einer Szene, was anders werden soll. Beim nächsten Lauf werden nur Szenen mit Rückmeldung neu gemacht, der Rest kommt aus dem Cache.', 'Write what should change in a scene. The next run makes only the scenes with feedback again; the rest comes from the cache.', 'Escribe qué debe cambiar en una escena. La próxima ejecución rehace solo las escenas con comentarios; el resto sale de la caché.'],
+    ['nodes.app.feedbackScript', 'Skript', 'Script', 'Guion'],
+    ['nodes.app.feedbackVoice', 'Stimme', 'Voice', 'Voz'],
+    ['nodes.app.feedbackPicture', 'Bild', 'Picture', 'Imagen'],
+    ['nodes.app.feedbackWhole', 'Ganzes Skript', 'Whole script', 'Guion completo'],
+    ['nodes.app.feedbackRedo', 'wird neu gemacht', 'will be made again', 'se rehará'],
+    ['nodes.app.feedbackClear', 'Alle Rückmeldungen entfernen', 'Remove all feedback', 'Quitar todos los comentarios'],
     ['nodes.app.textTooLong', 'Höchstens {max} Zeichen.', 'At most {max} characters.', 'Máximo {max} caracteres.'],
     ['nodes.app.textInvalid', 'Bitte die markierten Texte korrigieren.', 'Please correct the marked texts.', 'Corrige los textos marcados.'],
     ['nodes.app.text.title', 'Titel', 'Title', 'Título'],
@@ -1181,6 +1190,8 @@
     ['nodes.app.switchesHint', 'Die Schalter gelten für den nächsten Schritt und kosten keine neue Planung.', 'The switches count for the next step and cost no new planning.', 'Los interruptores cuentan para el paso siguiente y no cuestan una nueva planificación.'],
     ['nodes.marks.none', 'Keine Markierungen (im App-Formular pro Datei wählbar)', 'No marks (chosen per file in the app form)', 'Sin marcas (se eligen por archivo en el formulario de la app)'],
     ['nodes.marks.clear', 'Alle entfernen', 'Remove all', 'Quitar todas'],
+    ['nodes.notes.placeholder', 'Eine Zeile pro Szene, z.B. «s3: kürzer und ruhiger»', 'One line per scene, e.g. “s3: shorter and calmer”', 'Una línea por escena, p. ej. «s3: más corta y tranquila»'],
+    ['nodes.notes.placeholderWhole', 'Eine Zeile pro Szene, z.B. «s3: kürzer»; «all: …» für das ganze Skript', 'One line per scene, e.g. “s3: shorter”; “all: …” for the whole script', 'Una línea por escena, p. ej. «s3: más corta»; «all: …» para todo el guion'],
 
     /* port hover help: tooltip chrome and facts (nodes.porttip.*), then the descriptions (nodes.portdesc.*).
        Lookup for a port, first hit wins: nodes.portdesc.<nodeType>.<portId>.<in|out>, nodes.portdesc.<nodeType>.<portId>,
@@ -2591,6 +2602,7 @@
     ['nodes.param.clips', 'KI-Videoclips erlauben', 'Allow AI video clips', 'Permitir clips de vídeo con IA'],
     ['nodes.param.verify', 'Aussagen prüfen', 'Check statements', 'Comprobar afirmaciones'],
     ['nodes.param.script', 'Skript (bearbeitet)', 'Script (edited)', 'Guion (editado)'],
+    ['nodes.param.feedback', 'Rückmeldung pro Szene', 'Feedback per scene', 'Comentarios por escena'],
     ['nodes.option.factual', 'Sachlich', 'Factual', 'Objetivo'],
     ['nodes.option.friendly', 'Freundlich', 'Friendly', 'Amistoso'],
     ['nodes.option.promotional', 'Werblich', 'Promotional', 'Promocional'],

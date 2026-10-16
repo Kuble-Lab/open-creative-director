@@ -1361,6 +1361,42 @@
       return { el: wrap, set: show, get: () => current };
     }
 
+    // Notes per item of a list (WP56: the feedback per scene of the explainer video): the app view writes them scene by scene; here one line
+    // per note, "s3: shorter" ("all: ..." for the whole where the param has it). A line that does not start with an id goes on the note before.
+    if (kind === 'notes') {
+      const area = el('textarea', { class: 'nv-input nv-textarea nv-nodrag', rows: 3, spellcheck: 'true', 'aria-label': paramLabel(param.id), placeholder: T(param.whole ? 'nodes.notes.placeholderWhole' : 'nodes.notes.placeholder') });
+      const format = (notes) =>
+        Object.entries(notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {})
+          .filter(([, note]) => typeof note === 'string' && note.trim())
+          .map(([id, note]) => `${id}: ${note.trim()}`)
+          .join('\n');
+      const parse = () => {
+        const out = {};
+        let last = '';
+        for (const line of area.value.split('\n')) {
+          const match = /^\s*([A-Za-z0-9_-]{1,64})\s*:\s?(.*)$/.exec(line);
+          if (match) {
+            last = match[1];
+            out[last] = out[last] ? `${out[last]}\n${match[2]}` : match[2];
+          } else if (last && line.trim()) out[last] = `${out[last]}\n${line}`;
+        }
+        for (const id of Object.keys(out)) if (!out[id].trim()) delete out[id];
+        return out;
+      };
+      area.value = format(value);
+      area.addEventListener('change', () => ctx.onChange(parse(), { commit: true }));
+      area.addEventListener('wheel', (event) => {
+        if (area.scrollHeight > area.clientHeight && !event.ctrlKey && !event.metaKey) event.stopPropagation();
+      });
+      return {
+        el: area,
+        set(next) {
+          if (document.activeElement !== area) area.value = format(next);
+        },
+        get: parse
+      };
+    }
+
     if (kind === 'tags') {
       const input = el('input', { class: 'nv-input nv-nodrag', type: 'text', 'aria-label': paramLabel(param.id) });
       const show = (tags) => {

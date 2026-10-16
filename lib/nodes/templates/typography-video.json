@@ -83,7 +83,8 @@
           "clips": false,
           "presenter": "off",
           "verify": true,
-          "script": ""
+          "script": "",
+          "feedback": {}
         }
       },
       {
@@ -96,7 +97,8 @@
         "params": {
           "voice_id": "",
           "model_id": "eleven_v4",
-          "use_context": true
+          "use_context": true,
+          "feedback": {}
         }
       },
       {
@@ -112,7 +114,8 @@
           "quality": "standard",
           "vision_check": true,
           "max_retries": 2,
-          "fallback": true
+          "fallback": true,
+          "feedback": {}
         }
       },
       {
