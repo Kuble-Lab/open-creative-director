@@ -296,7 +296,7 @@ async function testRenderSuccessResetsStreak() {
 }
 
 async function testOnlineClearsBootError() {
-  for (const code of ['boot_timeout', 'network', 'resource_unavailable', 'invalid_answer', 'cap_reached', 'unauthorized', 'server_not_visible']) {
+  for (const code of ['boot_timeout', 'network', 'resource_unavailable', 'invalid_answer', 'unavailable', 'service_error', 'cap_reached', 'unauthorized', 'server_not_visible']) {
     const env = await setup({ inProcess: true });
     try {
       await enqueue(env.queue);
@@ -312,7 +312,7 @@ async function testOnlineClearsBootError() {
       await env.manager.tick();
       assert.equal(env.manager.status().servers[0].status, 'online');
       assert.equal(env.manager.status().lastError?.code || null,
-        ['boot_timeout', 'network', 'resource_unavailable', 'invalid_answer'].includes(code) ? null : code,
+        ['boot_timeout', 'network', 'resource_unavailable', 'invalid_answer', 'unavailable', 'service_error'].includes(code) ? null : code,
         `online clears only start errors: ${code}`);
     } finally {
       env.queue.stop();
