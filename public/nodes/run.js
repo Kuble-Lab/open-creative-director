@@ -70,7 +70,7 @@
     for (const [nodeId, status] of Object.entries(active.nodes || {})) {
       const previous = nodes[nodeId] || {};
       const startedAt = previous.startedAt || (status === 'running' || status === 'waiting_job' ? now : undefined);
-      nodes[nodeId] = { ...previous, status, ...(startedAt ? { startedAt } : {}), ...(isFinal(status) && !previous.endedAt ? { endedAt: now } : {}) };
+      nodes[nodeId] = { ...previous, ...(active.nodeRenders ? { render: active.nodeRenders[nodeId] || null } : {}), status, ...(startedAt ? { startedAt } : {}), ...(isFinal(status) && !previous.endedAt ? { endedAt: now } : {}) };
     }
     return { ...base, active: true, status: active.status || 'running', approval: active.approval || null, accounting: active.accounting || base.accounting, mode: active.mode || base.mode, nodes, resync: false };
   }
@@ -81,6 +81,8 @@
     const previous = base.nodes[event.nodeId] || {};
     const status = event.status;
     const next = { ...previous, status };
+    if ('render' in event) next.render = event.render;
+    if (['error', 'cancelled', 'skipped', 'cached'].includes(status)) delete next.render;
     if ((status === 'running' || status === 'waiting_job') && !previous.startedAt) next.startedAt = now;
     if (isFinal(status)) next.endedAt = now;
     else delete next.endedAt;
@@ -161,6 +163,13 @@
       active: ['running', 'awaiting_approval'].includes(record.status), accounting: record.accounting, approval: record.approval, status: record.status, nodes, cost: record.cost || { usd: 0, credits: 0 },
       error: record.error || null, startedAt: record.startedAt ? new Date(record.startedAt).getTime() : null,
       finishedAt: record.finishedAt ? new Date(record.finishedAt).getTime() : null };
+  }
+
+  function renderText(render, T) {
+    if (!render || !['rendering', 'completed'].includes(render.phase)) return '';
+    const names = Array.isArray(render.names) ? render.names : Array.from({ length: Math.min(100, render.count || 0) }, (_, i) => T('nodes.render.computer', { n: i + 1 }));
+    if (!names.length) return '';
+    return T(`nodes.render.${render.phase}`, { name: names.join(', ') });
   }
 
   function clearResync(state) {
@@ -527,6 +536,7 @@
     reduce,
     clearResync,
     restoreRun,
+    renderText,
     activeNodeIds,
     progressOf,
     inFlightNodes,
@@ -743,6 +753,9 @@
         slot.message = queueText(run.queue, T);
         slot.tooltip = T('nodes.statusHint.renderQueue');
       }
+
+      const renderedOn = run && ['running', 'waiting_job', 'done'].includes(status) ? renderText(run.render, T) : '';
+      if (renderedOn) slot.message = [slot.message, renderedOn].filter(Boolean).join(' · ');
 
       // preview of the selected result (inputs already show their asset in the widget)
       let items = [];
@@ -1546,6 +1559,7 @@
           status: shown.status,
           message: (invalid ? invalid.message : shown.message) || null,
           fix: invalid ? invalid.fix : null,
+          renderText: run && ['running', 'waiting_job', 'done'].includes(shown.status) ? renderText(run.render, T) : '',
           run: run || null,
           log: runState.logs[nodeId] || [],
           plan: planNode,

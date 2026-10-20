@@ -214,6 +214,7 @@
       if (!info || !info.def) return;
       const body = el('div', { class: 'nv-run-body' });
       body.append(statusLine(info));
+      if (info.renderText) body.append(el('div', { class: 'nv-field-hint', text: info.renderText }));
       const buttons = el('div', { class: 'nv-insp-buttons' });
       const runBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-btn-primary', disabled: info.busy || !info.canRun }, ui.icon('play', 12), el('span', { text: ui.T('nodes.run.node') }));
       runBtn.addEventListener('click', () => cb.run.runNode(nodeId));

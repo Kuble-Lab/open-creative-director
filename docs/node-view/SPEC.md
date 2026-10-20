@@ -760,6 +760,8 @@ All routes live in `lib/nodes/routes.js` as `registerNodeRoutes(app, { runtime, 
 
 ### 11.4 Runs and events
 
+Queue-backed renders carry optional per-node `render: { phase: 'rendering' | 'completed', names: string[] } | null` in `node_status` events and run records. The initial SSE snapshot carries the same values in `activeRun.nodeRenders[nodeId]`. Local mode, admins and internal viewers receive display names; participants and guests receive `{ phase, count }` instead. The card and inspector translate this to “rendering on …” / “rendered on …”, using neutral numbered computer labels when names are withheld. The queue pushes status transitions through the executor context; this adds no polling. Attribution belongs to the current run, covers its chunks and mapped items, and records successful workers after completion. Older records need no migration.
+
 | Method | Route | Notes |
 | --- | --- | --- |
 | POST | `/api/workflows/:id/runs/plan` | run request (§9.1) → plan (§9.4) |
