@@ -820,6 +820,15 @@ async function run(iso, { eleven, setVoiceBytes }) {
     // what the writer was asked for: the limit of tokens and the thinking (undefined is the model's own)
     const asked = () => writerCalls().map((call) => [call.options.maxTokens, call.options.reasoningEffort]);
 
+    // A filter refusal stops before retrying or rendering a fixed scene.
+    reset();
+    queue.writer.push(emptyError('content_filter', 0.13));
+    const filtered = await exec('explainer.scene', makeCtx(), baseInputs(0), {}).catch((err) => err);
+    assert.equal(filtered.code, 'PLANNER_CONTENT_FILTER');
+    assert.equal(writerCalls().length, 1);
+    assert.equal(renders.length, 0);
+    assert.deepEqual(filtered.costs, [0.13]);
+
     // empty at the limit: the failed try is paid, the log names why, the next try thinks less (same limit), and a good scene follows
     reset();
     queue.writer.push(emptyError('length'));

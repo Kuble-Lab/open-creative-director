@@ -1571,7 +1571,8 @@ async function testShots() {
       const unit = grid.units[index];
       assert.deepEqual([shot.index, shot.start, shot.end, shot.kind, shot.section], [index, unit.start, unit.end, unit.kind, unit.section]);
       const plate = result.content.units[index].plate;
-      assert.equal(shot.prompt, result.content.units[index].withFigure ? plate : `${plate.replace(/[\s.]+$/, '')}. ${hudPlan.NO_FIGURE_NOTE}`);
+      const composition = unit.kind === 'performance' && ['left', 'right'].includes(shot.subject) ? ` Composition: the singer stands in the ${shot.subject} third of the frame, the other half is calm background.` : '';
+      assert.equal(shot.prompt, result.content.units[index].withFigure ? plate + composition : `${plate.replace(/[\s.]+$/, '')}. ${hudPlan.NO_FIGURE_NOTE}`);
       assert.equal(shot.motion, result.content.units[index].motion);
       assert.equal(shot.framing, result.content.units[index].framing);
       assert.equal(shot.cuts, unit.cuts.length);
@@ -1922,6 +1923,7 @@ function testI18n() {
     const text = window.I18N[lang]['nodes.issue.HUDPLAN_MODEL_FAILED'];
     assert.deepEqual([...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort(), failedData.slice().sort(), `${lang}: the placeholders of HUDPLAN_MODEL_FAILED`);
   }
+  for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang]['nodes.issue.PLANNER_CONTENT_FILTER'], `${lang}: refusal message`);
   // the Design App shows a failed node with the text of its code as the editor does, not with the English message of the engine
   const appSource = fs.readFileSync(path.join(root, 'public', 'nodes', 'app-mode.js'), 'utf8');
   assert.match(appSource, /info\.code && ui\.hasIssueText\(info\.code\) \? ui\.issueText\(\{ code: info\.code, data: info\.data, message: info\.message \}, 'app'\)/);
@@ -1942,7 +1944,52 @@ function testI18n() {
 
 module.exports = { checkGrid };
 
+async function testPromptGuardsAndRefusal() {
+  const grid = { units: ['performance', 'performance', 'story', 'story'].map((kind, index) => ({ index, kind, start: index * 6, end: (index + 1) * 6, duration: 6, lines: [], cuts: [] })), lines: [], duration: 24, bpm: 120 };
+  const content = { units: ['left', 'right', 'left', 'right'].map((subject, at) => ({ plate: 'An adult singer on stage.', motion: 'Slow dolly.', withFigure: at !== 3, subject, framing: 'medium' })) };
+  const build = (figureText, brief = '') => hudPlan.buildPlan({ grid, content, figure: figureOf(figureText), brief, looped: { graphics: {}, check: { leftOut: [], other: [] } } });
+  const plain = build('An adult male singer.');
+  for (const [at, side] of ['left', 'right'].entries()) {
+    assert.match(plain.performance[at].prompt, new RegExp(`the singer stands in the ${side} third`));
+    assert.match(plain.performance[at].prompt, /the other half is calm background/);
+  }
+  for (const shot of plain.shots.shots) assert.doesNotMatch(`${shot.prompt} ${shot.motion}`, /headset|microphone|Nothing morphs/);
+  for (const result of [build('An adult singer wearing a headset.'), build('An adult singer.', 'The singer wears a headset.')]) {
+    for (const shot of result.shots.shots.slice(0, 3)) {
+      assert.match(shot.prompt, /only the headset microphone; their hands hold no microphone/);
+      assert.match(shot.motion, /Nothing morphs, no new microphone appears/);
+    }
+    assert.doesNotMatch(result.shots.shots[3].prompt + result.shots.shots[3].motion, /headset|microphone/);
+  }
+  let briefCalls = 0;
+  const briefError = await errorOf(hudPlan.writeBrief({ grid: gridOf('s72').grid, figure: figureOf(), ask: async () => {
+    briefCalls += 1;
+    throw Object.assign(new Error('filtered'), { finishReason: 'content_filter', usd: 0.13, emptyAnswer: true });
+  } }));
+  assert.equal(briefCalls, 1);
+  assert.equal(briefError.code, 'PLANNER_CONTENT_FILTER');
+  assert.deepEqual(briefError.costs, [0.13]);
+  content.units[2].plate += ' A headset microphone.';
+  const sceneOnly = build('An adult singer.');
+  assert.doesNotMatch(sceneOnly.performance[0].prompt, /headset/);
+  assert.match(sceneOnly.story[0].prompt, /hands hold no microphone/);
+  for (const resultInstead of [false, true]) {
+    let calls = 0;
+    const song = songOf('s72');
+    const err = await errorOf(hudPlan.runPlanner({ ...song, brief: fullBrief('A light on stage'), figureText: FIGURE_TEXT, allowPlain: true, ask: async () => {
+      calls += 1;
+      const answer = { emptyAnswer: true, finishReason: 'content_filter', usd: 0.13 };
+      if (resultInstead) return answer;
+      throw Object.assign(new Error('empty answer'), answer);
+    }, sleep: async () => { throw new Error('must not wait'); } }));
+    assert.equal(calls, 1);
+    assert.equal(err.code, 'PLANNER_CONTENT_FILTER');
+    assert.deepEqual(err.costs, [0.13]);
+  }
+}
+
 async function main() {
+  await testPromptGuardsAndRefusal();
   testGrid();
   testGridErrors();
   testPrompts();
