@@ -620,6 +620,19 @@ async function testVoiceover() {
 /* ---------- the run ---------- */
 
 async function testRun() {
+  for (const returned of [false, true]) {
+    let calls = 0;
+    const err = await errorOf(run({ options: { ...AI_OPTIONS, allowPlain: true }, ask: async () => {
+      calls += 1;
+      const result = { finishReason: 'content_filter', emptyAnswer: true, usd: 0.13 };
+      if (returned) return result;
+      throw Object.assign(new Error('filtered'), result);
+    }, sleep: async () => { throw new Error('must not wait'); } }));
+    assert.equal(calls, 1);
+    assert.equal(err.code, 'PLANNER_CONTENT_FILTER');
+    assert.deepEqual(err.costs, [0.13]);
+  }
+
   // a good answer: one request with the settings of WP52a, a plan that passes the contract
   {
     const model = scripted([answerOk]);

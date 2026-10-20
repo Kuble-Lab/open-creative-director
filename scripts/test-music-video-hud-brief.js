@@ -100,7 +100,9 @@ const WP51_ADDED = [
   '\n- A tag draws a line to the place on the figure its words name: give every tag a "target" (face, eyes, mouth, hair, hands, outfit, object or none), e.g. "LIP GLOSS ON" → mouth, "EYELINER 2 MM" → eyes, "NEW BOB" → hair. The line finds the face, the eyes, the mouth, the hair and the clothes; hands, an object and none get no line.',
   ', "target": "face | eyes | mouth | hair | hands | outfit | object | none"'
 ];
-const withoutWp51 = (text) => WP51_ADDED.reduce((out, added) => out.split(added).join('').split(JSON.stringify(added).slice(1, -1)).join(''), String(text));
+// Composition is asserted in test-music-video-hud-plan; remove only that new suffix for the historical snapshots.
+const withoutComposition = (text) => String(text).replace(/ Composition: the singer stands in the (?:left|right) third of the frame, the other half is calm background\./g, '');
+const withoutWp51 = (text) => WP51_ADDED.reduce((out, added) => out.split(added).join('').split(JSON.stringify(added).slice(1, -1)).join(''), withoutComposition(text));
 // The estimates read the length of the prompt: with the additions (403 characters, about 134 tokens of input) the language model costs some 0.0005 USD
 // more; these four are the ones of WP51.
 const WP51_ESTIMATES = {
