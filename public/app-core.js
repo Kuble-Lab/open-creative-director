@@ -87,6 +87,8 @@ const el = {
   sendBtn: document.getElementById('sendBtn'),
   jobStatusBar: document.getElementById('jobStatusBar'),
   videoModelHint: document.getElementById('videoModelHint'),
+  higgsfieldRate: document.getElementById('higgsfieldRate'),
+  higgsfieldRateForm: document.getElementById('higgsfieldRateForm'),
   videoAskToggle: document.getElementById('videoAskToggle'),
   jobStatusList: document.getElementById('jobStatusList'),
   statusLine: document.getElementById('statusLine'),

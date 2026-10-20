@@ -555,7 +555,7 @@ function assetsWithUrls(session, ledger) {
     const own = resultMeta.describe(entry);
     const meta = own.model ? own : resultMeta.describe(job);
     const billing = resultMeta.billingOf(job);
-    return { ...entry, ...meta, ...(billing ? { billing } : {}), url: store.assetUrl(session.id, entry.file) };
+    return { ...entry, ...meta, ...(job?.costEstimated && job.assetId === entry.id ? { costEstimated: true } : {}), ...(billing ? { billing } : {}), url: store.assetUrl(session.id, entry.file) };
   });
 }
 
@@ -787,14 +787,16 @@ app.get('/api/settings', (req, res) => {
   res.json({ keys: settings.listSettingsStatus(), preferences: settings.listPreferences() });
 });
 
-// Plain on/off switches of the services tab (no secrets): GET /api/settings lists them, this changes one.
+// Non-secret preferences of the services tab: GET /api/settings lists them, this changes one.
 app.put('/api/settings/preferences', (req, res) => {
   if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   if (typeof body.name !== 'string' || !settings.PREFERENCE_NAMES.includes(body.name)) {
     return fail(res, 400, 'Diese Einstellung ist nicht erlaubt.');
   }
-  if (typeof body.value !== 'boolean') return fail(res, 400, 'Der Wert muss true oder false sein.');
+  if (body.name === 'higgsfieldUsdPerCredit'
+    ? body.value !== null && !(typeof body.value === 'number' && Number.isFinite(body.value) && body.value > 0)
+    : typeof body.value !== 'boolean') return fail(res, 400, 'Invalid preference value.');
   try {
     res.json({ preferences: settings.setPreference(body.name, body.value) });
   } catch (err) {

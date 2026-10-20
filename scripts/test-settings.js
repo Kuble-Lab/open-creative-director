@@ -104,11 +104,11 @@ async function main() {
 
     // plain on/off switches: a default, a whitelist, stored under "preferences", never in the key list
     assert.equal(settings.getPreference('askVideoModel'), true, 'the video model is asked by default');
-    assert.deepEqual(settings.listPreferences(), { askVideoModel: true });
+    assert.deepEqual(settings.listPreferences(), { askVideoModel: true, higgsfieldUsdPerCredit: null });
     assert.throws(() => settings.getPreference('other'), /nicht erlaubt/);
     assert.throws(() => settings.setPreference('other', true), /nicht erlaubt/);
     assert.throws(() => settings.setPreference('askVideoModel', 'no'), /true oder false/);
-    assert.deepEqual(settings.setPreference('askVideoModel', false), { askVideoModel: false });
+    assert.deepEqual(settings.setPreference('askVideoModel', false), { askVideoModel: false, higgsfieldUsdPerCredit: null });
     assert.deepEqual(JSON.parse(await fsp.readFile(file, 'utf8')), { preferences: { askVideoModel: false } });
     assert.equal(fs.statSync(file).mode & 0o777, 0o600);
     settings.setSetting('GTS_BASE_URL', 'https://knowledge.example.test/api/');
@@ -117,7 +117,7 @@ async function main() {
     assert.equal(settings.getPreference('askVideoModel'), false, 'survives a reload');
     assert.equal(settings.listSettingsStatus().some((entry) => entry.name === 'preferences'), false);
     settings.setSetting('GTS_BASE_URL', '');
-    assert.deepEqual(settings.setPreference('askVideoModel', true), { askVideoModel: true });
+    assert.deepEqual(settings.setPreference('askVideoModel', true), { askVideoModel: true, higgsfieldUsdPerCredit: null });
     assert.deepEqual(JSON.parse(await fsp.readFile(file, 'utf8')), {}, 'the default is not stored');
 
     console.log('Settings: Whitelist, Maskierung, Set/Get/Delete, Env-Fallback, Spiegelung und Dateirechte sind korrekt.');

@@ -61,7 +61,7 @@ const EXPECTED = [
   'video-to-post',
   'video-with-music'
 ];
-// the ones that work without Higgsfield (credits): what participants and guests get
+// Without an admin credit rate, participants (and all guests) get templates without Higgsfield.
 const FOR_PARTICIPANTS = EXPECTED.filter((id) => id !== 'dub-clip');
 const FREE = ['image-formats', 'photo-slideshow', 'text-on-video'];
 

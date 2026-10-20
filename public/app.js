@@ -62,6 +62,10 @@ el.settingsTabs.addEventListener('keydown', (event) => {
   next.focus();
 });
 el.settingsClose.addEventListener('click', () => closeSettingsModal());
+el.higgsfieldRateForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveHiggsfieldRate();
+});
 el.videoAskToggle.addEventListener('change', () => saveVideoAskToggle());
 el.adminForm.addEventListener('submit', (event) => {
   event.preventDefault();

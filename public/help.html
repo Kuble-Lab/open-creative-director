@@ -98,7 +98,7 @@
 <li><strong>Dateien anhängen:</strong> Büroklammer, Einfügen aus der Zwischenablage oder Ablegen ins Fenster. Möglich sind Bilder, Audio, Video, Schriften und Textdateien (<code>.md</code>, <code>.txt</code>). Nicht unterstützte Dateien werden übersprungen und gemeldet.</li>
 <li><strong>Live-Status:</strong> laufende Video-Jobs erscheinen in einer Statusleiste mit Laufzeit. Der Director meldet Ergebnisse und Fehler selbst im Chat. Die Statuszeile unter dem Eingabefeld zeigt, was gerade passiert.</li>
 <li><strong>Kosten:</strong> jede Generierung zeigt ihre Kosten. Die Übersicht öffnest du im Menü unter «Kosten».</li>
-<li><strong>Preis und Modell am Ergebnis:</strong> unter jedem Bild, Video und Audio steht eine Zeile wie «vid-002 · $0.84 · Kling v3.0»: die ID, der Preis und das Modell, das es erzeugt hat (die volle Modell-ID erscheint beim Darüberfahren). Ein «ca.» vor dem Preis heisst, dass es eine Schätzung ist: bei einem laufenden Video der Preis aus der Modellwahl, bei fertigen fal-Ergebnissen der Listenpreis und bei Sprache von ElevenLabs ein Pauschalsatz pro Zeichen. Ohne «ca.» ist es der Preis, den der Anbieter berechnet hat. Higgsfield rechnet in Credits und zeigt deshalb keinen Dollarbetrag, kostenlose lokale Ergebnisse (zum Beispiel ein Zusammenschnitt) zeigen keinen Preis. Ältere Ergebnisse ohne gespeichertes Modell zeigen nur den Preis.</li>
+<li><strong>Preis und Modell am Ergebnis:</strong> unter jedem Bild, Video und Audio steht eine Zeile wie «vid-002 · $0.84 · Kling v3.0»: die ID, der Preis und das Modell, das es erzeugt hat (die volle Modell-ID erscheint beim Darüberfahren). Ein «ca.» vor dem Preis heisst, dass es eine Schätzung ist: bei einem laufenden Video der Preis aus der Modellwahl, bei fertigen fal-Ergebnissen der Listenpreis und bei Sprache von ElevenLabs ein Pauschalsatz pro Zeichen. Ohne «ca.» ist es der Preis, den der Anbieter berechnet hat. Higgsfield rechnet für Interne in Credits; bei Team-Teilnehmenden werden die Credits zum gespeicherten Kurs in USD umgerechnet, kostenlose lokale Ergebnisse (zum Beispiel ein Zusammenschnitt) zeigen keinen Preis. Ältere Ergebnisse ohne gespeichertes Modell zeigen nur den Preis.</li>
 <li><strong>Werkzeuge:</strong> der Director erzeugt und bearbeitet Bilder, startet Videos (nach deiner Modellwahl), spricht Texte (ElevenLabs), setzt Clips zusammen und rendert Motion Graphics auf einem Render-Node. Mit verbundenem Higgsfield-Konto stehen über 30 weitere Modelle bereit.</li>
 <li><strong>Verbindungsabbruch:</strong> reisst die Verbindung ab, steht ein verständlicher Satz da; prüfe das Netz und sende nochmals.</li>
 </ul>
@@ -116,7 +116,7 @@
 <li><strong>Mit Budget:</strong> Die Karte zeigt dein Restbudget. Modelle über dem Rest sind deaktiviert und nennen den Grund. Der Server prüft das beim Klick noch einmal und reserviert den geschätzten Preis des gewählten Modells.</li>
 <li><strong>In diesem Chat nicht mehr fragen:</strong> Mit dem Kästchen merkt sich der Chat dein Modell, nur für dich: In einem geteilten Chat bekommen die anderen weiterhin die Karte. Weitere Videos starten dann ohne Karte, solange das Modell zum Auftrag und in dein Budget passt; der Director nennt Modell und geschätzten Preis. Passt es nicht, erscheint die Karte wieder und sagt, warum. Über dem Eingabefeld steht «Video: Modell · ändern»; «ändern» setzt die Wahl zurück.</li>
 <li><strong>Admins:</strong> In den Einstellungen, Bereich «Dienste», schaltet «Vor jedem Video nach dem Modell fragen» die Karte aus. Dann startet das Standardmodell sofort.</li>
-<li><strong>Higgsfield:</strong> Higgsfield-Videos gibt es nur auf ausdrücklichen Wunsch, und nicht für Personen in einer Schulung.</li>
+<li><strong>Higgsfield:</strong> Higgsfield-Videos gibt es nur auf ausdrücklichen Wunsch. Aktive Team-Teilnehmende können Higgsfield über ihr USD-Budget nutzen, sobald ein Admin unter Dienste → Higgsfield einen positiven Kurs «USD pro Higgsfield-Credit» gesetzt hat und Higgsfield verbunden ist. Preis ÷ Credits deines Plans ergibt den Kurs. Ohne Kurs oder Verbindung bleibt der Zugang gesperrt; Gäste bleiben gesperrt.</li>
 </ul></section>
       <section class="card" id="de-projects" data-section="projects"><h2>Projekte und Chats</h2><ul>
 <li><strong>Seitenmenü:</strong> «+ Chat» startet einen Chat, «+ Projekt» ein Projekt. Die Suche findet Chats nach Titel und Inhalt.</li>
@@ -176,7 +176,7 @@
 <h3>Was du siehst</h3>
 <ul>
 <li>Deine eigenen Chats, Workflows und Projekte und alles, was mit deinem Team oder mit dir geteilt ist. Neue Einträge sind zuerst privat.</li>
-<li>Nicht verfügbar sind interne Inhalte und einzelne Dienste: die Wissensbasis, Brandings, Team-Rollen und eigene Vorlagen, die ChatGPT-Modelle und Higgsfield. Die Meldung sagt dir, was fehlt.</li>
+<li>Nicht verfügbar sind interne Inhalte und einzelne Dienste: die Wissensbasis, Brandings, Team-Rollen und eigene Vorlagen, die ChatGPT-Modelle. Higgsfield steht mit gesetztem Admin-Kurs und Verbindung über das USD-Budget zur Verfügung. Die Meldung sagt dir, was fehlt.</li>
 </ul>
 <h3>Dein Budget</h3>
 <ul>
@@ -342,7 +342,7 @@
 <li><strong>Attaching files:</strong> paperclip, paste from the clipboard or drop onto the window. Images, audio, video, fonts and text files (<code>.md</code>, <code>.txt</code>) work. Unsupported files are skipped and reported.</li>
 <li><strong>Live status:</strong> running video jobs show up in a status bar with elapsed time. The Director reports results and failures in the chat by itself. The status line under the input shows what is happening.</li>
 <li><strong>Costs:</strong> every generation shows its cost. Open the overview in the menu under “Costs”.</li>
-<li><strong>Price and model on a result:</strong> under every image, video and audio there is a line such as “vid-002 · $0.84 · Kling v3.0”: the ID, the price and the model that made it (hover for the full model ID). An “about” in front of the price means it is an estimate: for a running video the price from the model choice, for finished fal results the list price, and for ElevenLabs speech a flat rate per character. Without “about” it is the price the provider charged. Higgsfield bills in credits and so shows no dollar amount; free local results (for example an assembled cut) show no price. Older results without a stored model show only the price.</li>
+<li><strong>Price and model on a result:</strong> under every image, video and audio there is a line such as “vid-002 · $0.84 · Kling v3.0”: the ID, the price and the model that made it (hover for the full model ID). An “about” in front of the price means it is an estimate: for a running video the price from the model choice, for finished fal results the list price, and for ElevenLabs speech a flat rate per character. Without “about” it is the price the provider charged. Higgsfield bills internal people in credits; team participants are charged in USD at the saved conversion rate; free local results (for example an assembled cut) show no price. Older results without a stored model show only the price.</li>
 <li><strong>Tools:</strong> the Director creates and edits images, starts videos (after you choose the model), speaks text (ElevenLabs), joins clips and renders motion graphics on a render node. With a connected Higgsfield account over 30 more models are available.</li>
 <li><strong>Lost connection:</strong> if the connection drops you get a plain sentence; check your network and send again.</li>
 </ul>
@@ -360,7 +360,7 @@
 <li><strong>With a budget:</strong> the card shows your remaining budget. Models over what is left are disabled and say why. The server checks this again at the click and reserves the estimated price of the chosen model.</li>
 <li><strong>Do not ask again in this chat:</strong> the tick box makes the chat remember your model, for you only: in a shared chat the others still get the card. Further videos then start without a card as long as the model fits the job and your budget; the Director names the model and the estimated price. If it does not fit, the card comes back and says why. Above the input you see “Video: model · change”; “change” resets the choice.</li>
 <li><strong>Admins:</strong> in the settings, section “Services”, the switch “Ask for the model before every video” turns the card off. The default model then starts right away.</li>
-<li><strong>Higgsfield:</strong> Higgsfield videos only on explicit request, and not for people in a training.</li>
+<li><strong>Higgsfield:</strong> Higgsfield videos only on explicit request. Active team participants can use Higgsfield against their USD budget once an admin sets a positive “USD per Higgsfield credit” rate under Services → Higgsfield and connects Higgsfield. Divide the plan price by its credits to get the rate. Without a rate or connection access stays blocked; guests remain blocked.</li>
 </ul></section>
       <section class="card" id="en-projects" data-section="projects"><h2>Projects and chats</h2><ul>
 <li><strong>Side menu:</strong> “+ Chat” starts a chat, “+ Project” a project. Search finds chats by title and content.</li>
@@ -420,7 +420,7 @@
 <h3>What you see</h3>
 <ul>
 <li>Your own chats, workflows and projects and everything shared with your team or with you. New entries start private.</li>
-<li>Internal content and some services are not available: the knowledge base, brandings, team roles and custom presets, the ChatGPT models and Higgsfield. The message tells you what is missing.</li>
+<li>Internal content and some services are not available: the knowledge base, brandings, team roles and custom presets, the ChatGPT models. Higgsfield is available against the USD budget with the admin rate and connection configured. The message tells you what is missing.</li>
 </ul>
 <h3>Your budget</h3>
 <ul>
@@ -586,7 +586,7 @@
 <li><strong>Adjuntar archivos:</strong> clip, pegar desde el portapapeles o soltar en la ventana. Sirven imágenes, audio, vídeo, fuentes y archivos de texto (<code>.md</code>, <code>.txt</code>). Los archivos no admitidos se omiten y se avisa.</li>
 <li><strong>Estado en vivo:</strong> los trabajos de vídeo en curso aparecen en una barra de estado con el tiempo transcurrido. El Director informa por sí mismo de resultados y errores en el chat. La línea de estado bajo el campo de texto muestra lo que ocurre.</li>
 <li><strong>Costes:</strong> cada generación muestra su coste. El resumen se abre en el menú, en «Costes».</li>
-<li><strong>Precio y modelo en el resultado:</strong> bajo cada imagen, vídeo y audio hay una línea como «vid-002 · $0.84 · Kling v3.0»: el ID, el precio y el modelo que lo creó (al pasar el ratón se ve el ID completo del modelo). Un «aprox.» delante del precio indica una estimación: en un vídeo en curso el precio de la selección de modelo, en los resultados terminados de fal el precio de lista y en la voz de ElevenLabs una tarifa fija por carácter. Sin «aprox.» es el precio que cobró el proveedor. Higgsfield factura en créditos y por eso no muestra importe en dólares; los resultados locales gratuitos (por ejemplo un montaje) no muestran precio. Los resultados antiguos sin modelo guardado solo muestran el precio.</li>
+<li><strong>Precio y modelo en el resultado:</strong> bajo cada imagen, vídeo y audio hay una línea como «vid-002 · $0.84 · Kling v3.0»: el ID, el precio y el modelo que lo creó (al pasar el ratón se ve el ID completo del modelo). Un «aprox.» delante del precio indica una estimación: en un vídeo en curso el precio de la selección de modelo, en los resultados terminados de fal el precio de lista y en la voz de ElevenLabs una tarifa fija por carácter. Sin «aprox.» es el precio que cobró el proveedor. Higgsfield factura a las personas internas en créditos; a los participantes de equipos se les cobra en USD con la tasa guardada; los resultados locales gratuitos (por ejemplo un montaje) no muestran precio. Los resultados antiguos sin modelo guardado solo muestran el precio.</li>
 <li><strong>Herramientas:</strong> el Director crea y edita imágenes, inicia vídeos (con el modelo que elijas), locuta textos (ElevenLabs), une clips y renderiza motion graphics en un nodo de render. Con una cuenta de Higgsfield conectada hay más de 30 modelos adicionales.</li>
 <li><strong>Conexión perdida:</strong> si se corta la conexión aparece una frase clara; comprueba la red y envía de nuevo.</li>
 </ul>
@@ -604,7 +604,7 @@
 <li><strong>Con presupuesto:</strong> la tarjeta muestra tu presupuesto restante. Los modelos que superan lo que queda están desactivados e indican el motivo. El servidor lo comprueba otra vez al hacer clic y reserva el precio estimado del modelo elegido.</li>
 <li><strong>No volver a preguntar en este chat:</strong> con la casilla, el chat recuerda tu modelo, solo para ti: en un chat compartido los demás siguen recibiendo la tarjeta. Los siguientes vídeos empiezan sin tarjeta mientras el modelo encaje con el trabajo y con tu presupuesto; el Director menciona el modelo y el precio estimado. Si no encaja, la tarjeta vuelve y explica por qué. Encima del campo de texto aparece «Vídeo: modelo · cambiar»; «cambiar» restablece la elección.</li>
 <li><strong>Administradores:</strong> en los ajustes, apartado «Servicios», el interruptor «Preguntar por el modelo antes de cada vídeo» desactiva la tarjeta. Entonces el modelo predeterminado empieza de inmediato.</li>
-<li><strong>Higgsfield:</strong> los vídeos de Higgsfield solo si se piden expresamente, y no para las personas de una formación.</li>
+<li><strong>Higgsfield:</strong> los vídeos de Higgsfield solo si se piden expresamente. Los participantes de equipos activos pueden usar Higgsfield con su presupuesto en USD cuando un administrador configura una tasa positiva «USD por crédito de Higgsfield» en Servicios → Higgsfield y conecta Higgsfield. Divide el precio del plan por sus créditos. Sin tasa o conexión el acceso sigue bloqueado; los invitados siempre quedan bloqueados.</li>
 </ul></section>
       <section class="card" id="es-projects" data-section="projects"><h2>Proyectos y chats</h2><ul>
 <li><strong>Menú lateral:</strong> «+ Chat» inicia un chat, «+ Proyecto» un proyecto. La búsqueda encuentra chats por título y contenido.</li>
@@ -664,7 +664,7 @@
 <h3>Qué ves</h3>
 <ul>
 <li>Tus propios chats, workflows y proyectos y todo lo compartido con tu equipo o contigo. Las entradas nuevas empiezan siendo privadas.</li>
-<li>No están disponibles el contenido interno ni algunos servicios: la base de conocimiento, los brandings, los roles del equipo y las plantillas propias, los modelos de ChatGPT y Higgsfield. El mensaje te dice qué falta.</li>
+<li>No están disponibles el contenido interno ni algunos servicios: la base de conocimiento, los brandings, los roles del equipo y las plantillas propias, los modelos de ChatGPT. Higgsfield está disponible con el presupuesto en USD si el administrador configura la tasa y la conexión. El mensaje te dice qué falta.</li>
 </ul>
 <h3>Tu presupuesto</h3>
 <ul>

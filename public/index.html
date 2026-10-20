@@ -208,6 +208,12 @@
                 <button id="higgsfieldDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="higgsfield.disconnect">Trennen</button>
               </div>
             </div>
+            <form id="higgsfieldRateForm" class="settings-row">
+              <label for="higgsfieldRate" class="settings-key-name is-readable" data-i18n="higgsfield.rateLabel">USD pro Higgsfield-Credit</label>
+              <input id="higgsfieldRate" class="settings-input" type="number" min="0" step="any" inputmode="decimal" aria-describedby="higgsfieldRateHint" />
+              <div class="settings-actions"><button class="branding-manager-action" type="submit" data-i18n="common.save">Speichern</button></div>
+              <p id="higgsfieldRateHint" class="settings-hint settings-key-help" data-i18n="higgsfield.rateHint">Aus deinem Higgsfield-Plan: Preis ÷ Credits. Ein positiver Kurs erlaubt allen aktiven Team-Teilnehmenden Higgsfield über ihr USD-Budget. Leer lassen, um den Zugang zu sperren.</p>
+            </form>
           </section>
           <section class="settings-chatgpt" aria-labelledby="chatgptTitle">
             <h3 id="chatgptTitle" class="settings-section-title" data-i18n="chatgpt.title">ChatGPT</h3>
