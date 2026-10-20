@@ -45,6 +45,7 @@
   const AVAILABILITY_REASONS = Object.freeze({
     'OPENROUTER_API_KEY is not set': 'nodes.reason.openrouter',
     'OPENROUTER_API_KEY is not set and ChatGPT is not connected': 'nodes.reason.llm',
+    'Magnific is not connected': 'nodes.reason.magnific',
     'Higgsfield is not connected': 'nodes.reason.higgsfield',
     'FAL_KEY is not set': 'nodes.reason.fal',
     'ELEVENLABS_API_KEY is not set': 'nodes.reason.elevenlabs',

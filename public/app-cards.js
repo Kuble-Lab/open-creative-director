@@ -55,6 +55,7 @@ function mediaCard(asset) {
 // A cost that is only an estimate (fal list price, ElevenLabs flat rate per character) gets the same "about" as the
 // estimate of a running video, so the line never passes an estimate off as the price the provider charged.
 function assetPriceLabel(asset) {
+  if (asset.billing === 'magnific_credits') return t('assets.magnificCredits');
   if (asset.billing === 'credits') return t('assets.credits');
   if (typeof asset.cost !== 'number' || !(asset.cost > 0)) return '';
   return asset.costEstimated === true ? t('jobs.estimate', { amount: formatCost(asset.cost) }) : formatCost(asset.cost);
@@ -125,7 +126,7 @@ function jobCard(job) {
     // "Kling v3.0 · about $0.84 · usually takes 2–5 minutes"; Higgsfield shows its credits instead of a USD estimate.
     const parts = [];
     if (modelName) parts.push(modelName);
-    const price = job.billing === 'credits' ? t('assets.credits') : jobEstimateLabel(job);
+    const price = job.billing === 'magnific_credits' ? t('assets.magnificCredits') : job.billing === 'credits' ? t('assets.credits') : jobEstimateLabel(job);
     if (price) parts.push(price);
     parts.push(t(parts.length ? 'jobs.durationInline' : 'jobs.duration'));
     small.textContent = parts.join(' · ');

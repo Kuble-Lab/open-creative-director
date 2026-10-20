@@ -11,6 +11,7 @@ const TOOL_SOURCE_FILES = [
   'lib/tools/audio.js',
   'lib/tools/render.js',
   'lib/tools/higgsfield.js',
+  'lib/tools/magnific.js',
   'lib/tools/definitions.js',
   'lib/tools.js'
 ];
