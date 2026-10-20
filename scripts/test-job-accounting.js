@@ -45,6 +45,13 @@ async function main() {
     await workflows.deleteWorkflow(workflow.id);
     await store.mutateSession(session.id, (saved) => { saved.jobs = []; });
 
+    // A macOS "._" file next to the sessions must not stop the open-job scan (team list, every paid start).
+    await store.mutateSession(session.id, (saved) => saved.jobs.push({ jobId: 'open', assetId: 'vid-001', status: 'running' }));
+    await fsp.writeFile(path.join(PATHS.projectsDir, `._${session.id}.json`), 'Mac metadata');
+    assert.deepEqual((await store.listOpenJobs()).map((job) => job.sessionId), [session.id]);
+    await fsp.rm(path.join(PATHS.projectsDir, `._${session.id}.json`));
+    await store.mutateSession(session.id, (saved) => { saved.jobs = []; });
+
     // C3: both completion paths persist pending accounting before attempting the journal write.
     or.downloadVideo = async () => Buffer.from('test video');
     fal.downloadToFile = async (_url, file) => {
