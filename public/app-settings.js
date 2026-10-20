@@ -291,6 +291,29 @@ async function deleteSetting(name, row) {
 // "Ask for the video model before every video": a plain switch next to the keys (saved like the other settings).
 function renderVideoAskToggle() {
   el.videoAskToggle.checked = state.preferences.askVideoModel !== false;
+  el.higgsfieldRate.value = state.preferences.higgsfieldUsdPerCredit ?? '';
+}
+
+async function saveHiggsfieldRate() {
+  const raw = el.higgsfieldRate.value.trim();
+  const value = raw === '' ? null : Number(raw);
+  if (value !== null && !(Number.isFinite(value) && value > 0)) {
+    showSettingsFeedback(t('higgsfield.rateInvalid'), { error: true });
+    return;
+  }
+  setSettingsBusy(el.higgsfieldRateForm, true);
+  showSettingsFeedback('');
+  try {
+    const data = await api('/api/settings/preferences', {
+      method: 'PUT', body: JSON.stringify({ name: 'higgsfieldUsdPerCredit', value })
+    });
+    state.preferences = { ...state.preferences, ...data.preferences };
+    showSettingsFeedback(t('higgsfield.rateSaved'));
+  } catch (err) {
+    showSettingsFeedback(t('higgsfield.rateFailed', { error: err.message }), { error: true });
+  } finally {
+    setSettingsBusy(el.higgsfieldRateForm, false);
+  }
 }
 
 async function saveVideoAskToggle() {
