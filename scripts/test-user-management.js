@@ -777,6 +777,8 @@ const ADMIN_ONLY_ROUTES = [
   ['POST', '/api/teams/abc/members', { emails: ['x@example.com'] }],
   ['PATCH', '/api/teams/abc/members/x%40example.com', { resetBudget: true }],
   ['DELETE', '/api/teams/abc/members/x%40example.com'],
+  ['POST', '/api/teams/abc/login-code', { email: 'x@example.com', hours: 24 }],
+  ['DELETE', '/api/teams/abc/login-code', { email: 'x@example.com' }],
   ['GET', '/api/rendernodes'],
   ['POST', '/api/rendernodes', { name: 'x', url: 'https://example.com', token: 'x' }],
   ['PATCH', '/api/rendernodes/abc', { name: 'x' }],

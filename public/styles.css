@@ -5152,6 +5152,77 @@ html.nv-active .mobile-menu-button {
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* Login code from the course lead (public/teams-ui.js codeRow) */
+.team-code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.team-code-panel:focus {
+  outline: none;
+}
+
+.team-code-title {
+  font-weight: 600;
+}
+
+.team-code-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  user-select: all;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-code-expiry {
+  margin: 0;
+  font-weight: 600;
+}
+
+.team-code-panel .settings-hint {
+  margin: 0;
+}
+
+.team-code-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.team-code-choices legend {
+  float: left;
+  margin-right: 8px;
+  padding: 0;
+  color: var(--text-faint);
+}
+
+.team-code-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.team-code-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* The paste box (team members, team list) */
 .paste-box {
   display: flex;

@@ -204,7 +204,9 @@
   };
 
   const uiOf = (id) => {
-    if (!state.ui.has(id)) state.ui.set(id, { open: false, filter: '', editing: null, focusEditor: false });
+    // codeFor: the member whose login code panel is open; shownCode: { email, code, expiresAt } of a code just created
+    // (only in memory, dropped when the panel closes: the server cannot show it again).
+    if (!state.ui.has(id)) state.ui.set(id, { open: false, filter: '', editing: null, focusEditor: false, codeFor: null, shownCode: null });
     return state.ui.get(id);
   };
 
@@ -554,6 +556,7 @@
         if (needle && !member.email.includes(needle)) continue;
         body.append(memberRow(team, member));
         if (view.editing === member.email) body.append(overrideRow(team, member));
+        if (view.codeFor === member.email) body.append(codeRow(team, member));
       }
     }
     fill();
@@ -572,6 +575,7 @@
     const row = h('tr', { class: 'team-row' });
     const person = h('td', { 'data-label': tr('teams.colPerson') }, h('span', { class: 'team-email', text: member.email, title: member.email }));
     if (member.budgetOverrideUsd !== null && member.budgetOverrideUsd !== undefined) person.append(h('span', { class: 'admin-source-badge', text: tr('teams.overrideBadge') }));
+    if (member.loginCode) person.append(h('span', { class: 'admin-source-badge team-code-badge', title: tr('teams.codeActive', { date: formatDate(member.loginCode.expiresAt) }), text: tr('teams.codeBadge') }));
     const remaining = Math.max(0, member.remainingUsd || 0);
     const exhausted = remaining < 0.005;
     const low = !exhausted && member.limitUsd > 0 && remaining / member.limitUsd <= 0.15;
@@ -586,6 +590,19 @@
       view.focusEditor = view.editing !== null;
       renderCard(id, { focus: (card) => [...card.querySelectorAll('[data-act="override"]')].find((node) => node.dataset.email === member.email) });
     });
+    // Login code from the course lead: only with ACCESS_LOGIN_CODES_FILE; for archived teams only to revoke one.
+    let codeBtn = null;
+    if (team.loginCodesEnabled && (!team.archived || member.loginCode)) {
+      codeBtn = actionButton(tr('teams.codeButton'), { title: tr('teams.codeIntro') });
+      codeBtn.dataset.act = 'code';
+      codeBtn.dataset.email = member.email;
+      codeBtn.setAttribute('aria-expanded', String(view.codeFor === member.email));
+      codeBtn.addEventListener('click', () => {
+        view.codeFor = view.codeFor === member.email ? null : member.email;
+        view.shownCode = null;
+        renderCard(id, { focus: (card) => (view.codeFor ? card.querySelector('.team-code-panel') : [...card.querySelectorAll('[data-act="code"]')].find((node) => node.dataset.email === member.email)) });
+      });
+    }
     const resetBtn = actionButton(tr('teams.reset'), { title: tr('teams.resetHint') });
     twoStep(`reset:${id}:${member.email}`, resetBtn, tr('teams.resetConfirm'), () => {
       run(() => request('PATCH', `/api/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(member.email)}`, { resetBudget: true }), {
@@ -611,7 +628,7 @@
       h('td', { class: 'num', 'data-label': tr('teams.colSpent'), text: fmt(member.spentUsd) }),
       left,
       h('td', { class: 'num', 'data-label': tr('teams.colBudget'), text: fmt(member.limitUsd) }),
-      h('td', { class: 'team-actions', 'data-label': tr('teams.colActions') }, overrideBtn, resetBtn, removeBtn)
+      h('td', { class: 'team-actions', 'data-label': tr('teams.colActions') }, codeBtn, overrideBtn, resetBtn, removeBtn)
     );
     return row;
   }
@@ -673,6 +690,138 @@
       queueMicrotask(() => input.focus());
     }
     return h('tr', { class: 'team-override-row' }, cell);
+  }
+
+  /* ---------- login codes from the course lead ---------- */
+
+  // The clipboard API needs a secure context; without it the code element is selected and copied the old way.
+  // Answers 'copied', 'selected' (marked, the person presses Ctrl+C) or 'failed'.
+  async function copyText(text, element) {
+    try {
+      if (global.navigator && global.navigator.clipboard && global.isSecureContext !== false) {
+        await global.navigator.clipboard.writeText(text);
+        return 'copied';
+      }
+    } catch (_) {
+      /* fall through to the selection */
+    }
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = global.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return document.execCommand('copy') === true ? 'copied' : 'selected';
+    } catch (_) {
+      return 'failed';
+    }
+  }
+
+  // Where the participants sign in: this app's own address (e.g. maniak.kuble.com/supercomputer).
+  function loginAddress() {
+    const where = global.location || {};
+    const pathName = String(where.pathname || '/').replace(/\/index\.html$/, '').replace(/\/+$/, '');
+    return `${where.host || ''}${pathName}`;
+  }
+
+  const groupCode = (code) => `${String(code).slice(0, 4)} ${String(code).slice(4)}`;
+
+  function codeRow(team, member) {
+    const id = team.id;
+    const view = uiOf(id);
+    const shown = view.shownCode && view.shownCode.email === member.email ? view.shownCode : null;
+    const panel = h('div', { class: 'team-code-panel', tabindex: '-1', role: 'group', 'aria-label': tr('teams.codeTitle', { email: member.email }) });
+    const cell = h('td', { colspan: '6' }, panel);
+    const focusButton = (card) => [...card.querySelectorAll('[data-act="code"]')].find((node) => node.dataset.email === member.email);
+    const close = () => {
+      view.codeFor = null;
+      view.shownCode = null;
+      renderCard(id, { focus: focusButton });
+    };
+    const closeBtn = actionButton(tr('teams.codeClose'));
+    closeBtn.addEventListener('click', close);
+    panel.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    });
+    panel.append(h('div', { class: 'team-code-title', text: tr('teams.codeTitle', { email: member.email }) }));
+
+    if (shown) {
+      // Just created: the only moment the code can be seen.
+      const value = h('div', { class: 'team-code-value', 'aria-label': shown.code.split('').join(' '), text: groupCode(shown.code) });
+      const copy = actionButton(tr('teams.codeCopy'), { primary: true });
+      let timer = null;
+      copy.addEventListener('click', async () => {
+        const outcome = await copyText(shown.code, value);
+        copy.textContent = outcome === 'copied' ? tr('teams.codeCopied') : outcome === 'selected' ? tr('teams.codeCopyManual') : tr('teams.codeCopyFailed');
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (copy.isConnected) copy.textContent = tr('teams.codeCopy');
+        }, 2000);
+      });
+      panel.append(
+        value,
+        h('p', { class: 'team-code-expiry', text: tr('teams.codeValidUntil', { date: formatDate(shown.expiresAt) }) }),
+        h('p', { class: 'settings-hint team-code-share', text: tr('teams.codeShare', { address: loginAddress() }) }),
+        h('p', { class: 'settings-hint', text: tr('teams.codeOnce') }),
+        h('div', { class: 'team-code-actions' }, copy, closeBtn)
+      );
+      return h('tr', { class: 'team-override-row team-code-row' }, cell);
+    }
+
+    panel.append(h('p', { class: 'settings-hint', text: tr('teams.codeIntro') }));
+    if (member.loginCode) {
+      const revoke = actionButton(tr('teams.codeRevoke'), { danger: true });
+      twoStep(`code:${id}:${member.email}`, revoke, tr('teams.codeRevokeConfirm'), () => {
+        revoke.disabled = true;
+        run(() => request('DELETE', `/api/teams/${encodeURIComponent(id)}/login-code`, { email: member.email }), {
+          onDone: () => {
+            feedback(tr('teams.codeRevoked', { email: member.email }));
+            renderCard(id, { focus: (card) => card.querySelector('.team-code-panel') });
+          }
+        }).finally(() => {
+          revoke.disabled = false;
+        });
+      });
+      panel.append(
+        h('p', { class: 'team-code-expiry', text: tr('teams.codeActive', { date: formatDate(member.loginCode.expiresAt) }) }),
+        h('p', { class: 'settings-hint', text: tr('teams.codeHidden') }),
+        h('div', { class: 'team-code-actions' }, revoke)
+      );
+    }
+    if (team.archived) {
+      panel.append(h('p', { class: 'settings-hint', text: tr('teams.err.TEAM_ARCHIVED') }), h('div', { class: 'team-code-actions' }, closeBtn));
+      return h('tr', { class: 'team-override-row team-code-row' }, cell);
+    }
+
+    const name = `teamCodeHours-${id}-${member.email}`;
+    const option = (hours, label, checked) =>
+      h('label', { class: 'team-code-choice' }, h('input', { type: 'radio', name, value: String(hours), checked }), h('span', { text: label }));
+    const choices = h('fieldset', { class: 'team-code-choices' }, h('legend', { text: tr('teams.codeValidity') }), option(24, tr('teams.code24h'), true), option(168, tr('teams.code7d'), false));
+    const create = actionButton(member.loginCode ? tr('teams.codeReplace') : tr('teams.codeCreate'), { primary: true, type: 'submit' });
+    const form = h('form', { class: 'team-code-form', novalidate: true }, choices, h('div', { class: 'team-code-actions' }, create, closeBtn));
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const picked = form.querySelector('input[type="radio"]:checked');
+      const hours = picked && picked.value === '168' ? 168 : 24;
+      create.disabled = true;
+      run(() => request('POST', `/api/teams/${encodeURIComponent(id)}/login-code`, { email: member.email, hours }), {
+        onDone: (data) => {
+          if (!data || typeof data.code !== 'string') return;
+          view.codeFor = member.email;
+          view.shownCode = { email: member.email, code: data.code, expiresAt: data.expiresAt };
+          feedback(tr('teams.codeCreated', { email: member.email }));
+          renderCard(id, { focus: (card) => card.querySelector('.team-code-panel .branding-manager-action.primary') });
+        }
+      }).finally(() => {
+        create.disabled = false;
+      });
+    });
+    if (member.loginCode) panel.append(h('p', { class: 'settings-hint', text: tr('teams.codeReplaceHint') }));
+    panel.append(form);
+    return h('tr', { class: 'team-override-row team-code-row' }, cell);
   }
 
   /* ---------- the section in the settings ---------- */
