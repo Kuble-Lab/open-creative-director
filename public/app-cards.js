@@ -189,6 +189,7 @@ function chatNoticeText(notice) {
 // The error a failed start left on the card, in the interface language where it is a known rule.
 function videoModelErrorText(choice) {
   if (!choice.lastError) return '';
+  if (choice.lastErrorCode === 'FAL_CONTENT_CHECKER') return t('videoModel.contentChecker');
   const refusal = providerRuleMessage(choice.lastErrorCode);
   if (refusal) return refusal;
   const rule = choice.lastErrorCode ? OCAccess.accountRuleMessage({ code: choice.lastErrorCode }) : null;
@@ -219,7 +220,7 @@ async function submitVideoModelChoice(choice, option, card) {
     // The card may be out of date (budget changed, started elsewhere): show the reason, then read the chat again.
     const rule = OCAccess.accountRuleMessage(error);
     if (rule) OCAccess.refreshMe().catch(() => {});
-    const refusal = providerRuleMessage(error.code);
+    const refusal = error.code === 'FAL_CONTENT_CHECKER' ? t('videoModel.contentChecker') : providerRuleMessage(error.code);
     status.textContent = refusal || t('videoModel.startFailed', { error: rule || error.message });
     status.classList.add('error');
     delete card.dataset.busy;

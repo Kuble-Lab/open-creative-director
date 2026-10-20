@@ -6,6 +6,31 @@
 // Dynamic content (Higgsfield model names and parameters, LLM model ids, voices) is shown raw.
 (function (global) {
   const rows = [
+    ['nodes.option.low', 'Niedrig', 'Low', 'Bajo'],
+    ['nodes.issue.FAL_CONTENT_CHECKER', 'fal.ai hat den Auftrag durch den Inhaltsfilter abgelehnt. Ändere den Prompt oder das Bild.', 'fal.ai rejected the request through its content checker. Change the prompt or image.', 'fal.ai rechazó la solicitud por su filtro de contenido. Cambia el prompt o la imagen.'],
+    ["nodes.param.keyframe_times", "Zeitpunkte in Sekunden", "Times in seconds", "Tiempos en segundos"],
+    ["nodes.param.reasoning_level", "Reasoning-Stufe", "Reasoning level", "Nivel de razonamiento"],
+    ["nodes.param.generate_audio", "Ton erzeugen", "Generate audio", "Generar sonido"],
+    ["nodes.type.fal.flux3max_video.label", "FLUX.3 Max Video", "FLUX.3 Max Video", "FLUX.3 Max Video"],
+    ["nodes.type.fal.flux3max_video.keywords", "Flux, Black Forest Labs, Video, Ton, Keyframes", "Flux, Black Forest Labs, video, audio, keyframes", "Flux, Black Forest Labs, vídeo, sonido, fotogramas clave"],
+    ["nodes.type.fal.flux3max_video.help", "Erzeugt ein Video aus Text oder einem Startbild, optional mit Endbild. 5–20 s, 720p/1080p, Ton optional. Kostet Geld; experimentell.", "Creates a video from text or a start image, optionally with an end image. 5–20 s, 720p/1080p, optional audio. Paid; experimental.", "Crea un vídeo a partir de texto o de una imagen inicial, con imagen final opcional. 5–20 s, 720p/1080p, sonido opcional. De pago; experimental."],
+    ["nodes.type.fal.flux3max_video.example", "Prompt «Eine Kamera fährt durch den Wald», optional ein Foto als Startbild.", "Prompt “A camera moves through the forest”, optionally a photo as the start image.", "Prompt «Una cámara recorre el bosque», con una foto inicial opcional."],
+    ["nodes.type.fal.flux3max_video.tip.1", "Ein Endbild braucht ein Startbild. «auto» nutzt bei Text 16:9 und bei Bildern das Format des ersten Bildes.", "An end image requires a start image. “auto” uses 16:9 for text and follows the first image otherwise.", "Una imagen final requiere una inicial. «auto» usa 16:9 para texto y el formato de la primera imagen en los demás casos."],
+    ["nodes.portdesc.fal.flux3max_video.first_frame", "Optionales Startbild, PNG/JPEG/WebP.", "Optional start image, PNG/JPEG/WebP.", "Imagen inicial opcional, PNG/JPEG/WebP."],
+    ["nodes.portdesc.fal.flux3max_video.last_frame", "Optionales Endbild, nur mit Startbild.", "Optional end image, only with a start image.", "Imagen final opcional, solo con imagen inicial."],
+    ["nodes.portdesc.fal.flux3max_video.prompt", "Beschreibung von Szene, Bewegung und Ton.", "Describe the scene, motion and sound.", "Describe la escena, el movimiento y el sonido."],
+    ["nodes.portdesc.fal.flux3max_video.video", "Erzeugtes Video, mit Ton wenn eingeschaltet.", "Generated video, with audio when enabled.", "Vídeo generado, con sonido si está activado."],
+    ["nodes.type.fal.flux3max_video.tip.2", "Aktionspreis bis 6.11.2026, danach Listenpreis. Ton und Reasoning ändern den Preis nicht.", "Promotional price through 6 Nov 2026, then list price. Audio and reasoning do not change the price.", "Precio promocional hasta el 6/11/2026, después precio normal. Sonido y razonamiento no cambian el precio."],
+    ["nodes.type.fal.flux3max_keyframes.label", "FLUX.3 Max Keyframes", "FLUX.3 Max Keyframes", "FLUX.3 Max Keyframes"],
+    ["nodes.type.fal.flux3max_keyframes.keywords", "Flux, Black Forest Labs, Video, Ton, Keyframes", "Flux, Black Forest Labs, video, audio, keyframes", "Flux, Black Forest Labs, vídeo, sonido, fotogramas clave"],
+    ["nodes.type.fal.flux3max_keyframes.help", "Erzeugt ein Video aus Prompt und 2–10 Bildern in zeitlicher Reihenfolge. 5–20 s, 720p/1080p, Ton optional. Kostet Geld; experimentell.", "Creates a video from a prompt and 2–10 images in time order. 5–20 s, 720p/1080p, optional audio. Paid; experimental.", "Crea un vídeo a partir de un prompt y 2–10 imágenes en orden temporal. 5–20 s, 720p/1080p, sonido opcional. De pago; experimental."],
+    ["nodes.type.fal.flux3max_keyframes.example", "Drei Bilder verbinden, Dauer 5 s, Zeitpunkte «0, 2.5, 5».", "Connect three images, duration 5 s, times “0, 2.5, 5”.", "Conecta tres imágenes, duración 5 s, tiempos «0, 2.5, 5»."],
+    ["nodes.type.fal.flux3max_keyframes.tip.1", "Ohne Zeitpunkte werden die Bilder gleichmässig verteilt. Eigene Zeitpunkte müssen aufsteigen und bei 24 fps eindeutige Frames ergeben.", "Without times the images are evenly spaced. Custom times must increase and produce unique frames at 24 fps.", "Sin tiempos las imágenes se distribuyen uniformemente. Los tiempos deben aumentar y dar fotogramas únicos a 24 fps."],
+    ["nodes.portdesc.fal.flux3max_keyframes.images", "2–10 Bilder (PNG/JPEG/WebP), Reihenfolge = zeitliche Reihenfolge.", "2–10 images (PNG/JPEG/WebP), in time order.", "2–10 imágenes (PNG/JPEG/WebP), en orden temporal."],
+    ["nodes.portdesc.fal.flux3max_keyframes.prompt", "Beschreibung von Szene, Bewegung und Ton.", "Describe the scene, motion and sound.", "Describe la escena, el movimiento y el sonido."],
+    ["nodes.portdesc.fal.flux3max_keyframes.video", "Erzeugtes Video, mit Ton wenn eingeschaltet.", "Generated video, with audio when enabled.", "Vídeo generado, con sonido si está activado."],
+    ["nodes.type.fal.flux3max_keyframes.tip.2", "Aktionspreis bis 6.11.2026, danach Listenpreis. Ton und Reasoning ändern den Preis nicht.", "Promotional price through 6 Nov 2026, then list price. Audio and reasoning do not change the price.", "Precio promocional hasta el 6/11/2026, después precio normal. Sonido y razonamiento no cambian el precio."],
+
     /* variant review */
     ['nodes.compare.unapprove', 'Freigabe aufheben', 'Remove approval', 'Quitar aprobación'],
     ['nodes.compare.selectionHelp', 'Die Freigabe markiert den Prüfstatus. Nachgelagerte Schritte verwenden die ausgewählte Variante.', 'Approval records review status. Downstream steps use the selected variant.', 'La aprobación indica el estado de revisión. Los pasos posteriores usan la variante seleccionada.'],

@@ -669,7 +669,7 @@ function testCardTexts() {
   for (const match of source.matchAll(/key: '([A-Za-z0-9]+)'/g)) profileKeys.add(match[1]);
   assert.ok(profileKeys.has('runwayGen45'));
   assert.ok(profileKeys.has('flux3Video'));
-  assert.equal(profileKeys.size, 8, 'the five, Runway, FLUX.3 Video and the neutral texts');
+  assert.equal(profileKeys.size, 9, 'the five, Runway, FLUX.3 Video, FLUX.3 Max and the neutral texts');
   for (const lang of ['de', 'en', 'es']) {
     for (const key of profileKeys) {
       for (const field of ['summary', 'pro', 'con']) {
