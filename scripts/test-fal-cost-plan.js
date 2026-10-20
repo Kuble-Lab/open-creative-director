@@ -160,6 +160,24 @@ async function testQueue() {
 }
 
 function testCosts() {
+  // fal upscale estimates follow the current model/media, never a previous node-type cost.
+  const imageUpscale = registry.get('fal.upscale_image');
+  const videoUpscale = registry.get('fal.upscale_video');
+  const kling = registry.get('fal.kling_lipsync');
+  assert.equal(imageUpscale.cost.history, false);
+  assert.equal(videoUpscale.cost.history, false);
+  assert.equal(kling.cost.history, false);
+  const imageContext = { inputs: { image: { type: 'image', width: 3000, height: 2000 } }, lastCost: { usd: 999 } };
+  assert.equal(imageUpscale.cost.estimate({ model: 'topaz_precision' }, imageContext), 0.08);
+  assert.equal(imageUpscale.cost.estimate({ model: 'topaz_generative' }, imageContext), 0.24);
+  assert.equal(imageUpscale.cost.estimate({ model: 'recraft_crisp' }), 0.004);
+  assert.equal(imageUpscale.cost.estimate({ model: 'seedvr' }, {}), null);
+  const videoContext = { inputs: { video: { type: 'video', duration: 5.01 } }, lastCost: { usd: 999 } };
+  assert.equal(videoUpscale.cost.estimate({ model: 'topaz_precision' }, videoContext), 0.2);
+  assert.equal(videoUpscale.cost.estimate({ model: 'bytedance', target_fps: '60', enhancement_tier: 'pro' }, videoContext), 0.72144);
+  assert.equal(videoUpscale.cost.estimate({ model: 'seedvr' }, videoContext), null);
+  assert.equal(kling.cost.estimate({}, videoContext), 0.14);
+  assert.equal(kling.cost.estimate({}, {}), null);
   const template = require('../lib/nodes/templates/event-video.json');
   const workflow = { sessionId: 'session', graph: structuredClone(template.graph) };
   const node = (id) => workflow.graph.nodes.find((item) => item.id === id);

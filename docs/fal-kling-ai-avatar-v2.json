@@ -1,0 +1,702 @@
+{
+ "fetched": "2026-10-20",
+ "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=<id>",
+ "endpoints": {
+  "fal-ai_kling-video_ai-avatar_v2_standard": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/kling-video/ai-avatar/v2/standard",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/kling-video/ai-avatar/v2/standard queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/kling-video/ai-avatar/v2/standard",
+     "category": "image-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0a84f39a/V_Zy58fLpOlS1jN3balTm_bf4c62c984b34a1597340c007fac8fe8.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard",
+     "documentationUrl": "https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard/api",
+     "about": "Standard Ai Avatar V2"
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "KlingVideoAiAvatarV2StandardInput": {
+      "type": "object",
+      "title": "AIAvatarInput",
+      "properties": {
+       "enable_safety_checker": {
+        "type": "boolean",
+        "title": "Enable Safety Checker",
+        "description": "Disabling safety checks requires account authorization; unauthorized requests are always checked.",
+        "default": true
+       },
+       "audio_url": {
+        "type": "string",
+        "_fal_ui_field": "audio",
+        "title": "Audio Url",
+        "description": "The URL of the audio file.",
+        "examples": [
+         "https://v3.fal.media/files/rabbit/9_0ZG_geiWjZOmn9yscO6_output.mp3"
+        ]
+       },
+       "image_url": {
+        "type": "string",
+        "_fal_ui_field": "image",
+        "title": "Image Url",
+        "description": "The URL of the image to use as your avatar",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/example_inputs/kling_ai_avatar_input.jpg"
+        ]
+       },
+       "prompt": {
+        "type": "string",
+        "title": "Prompt",
+        "description": "The prompt to use for the video generation.",
+        "default": "."
+       }
+      },
+      "x-fal-order-properties": [
+       "enable_safety_checker",
+       "image_url",
+       "audio_url",
+       "prompt"
+      ],
+      "required": [
+       "image_url",
+       "audio_url"
+      ]
+     },
+     "KlingVideoAiAvatarV2StandardOutput": {
+      "type": "object",
+      "title": "AIAvatarOutput",
+      "properties": {
+       "duration": {
+        "type": "number",
+        "title": "Duration",
+        "description": "Duration of the output video in seconds."
+       },
+       "video": {
+        "$ref": "#/components/schemas/File",
+        "description": "The generated video",
+        "examples": [
+         {
+          "url": "https://v3.fal.media/files/penguin/ln3x7H1p1jL0Pwo7675NI_output.mp4"
+         }
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "video",
+       "duration"
+      ],
+      "required": [
+       "video",
+       "duration"
+      ]
+     },
+     "File": {
+      "type": "object",
+      "title": "File",
+      "properties": {
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ]
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ]
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ]
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/kling-video/ai-avatar/v2/standard/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/ai-avatar/v2/standard/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/ai-avatar/v2/standard": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/KlingVideoAiAvatarV2StandardInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/ai-avatar/v2/standard/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/KlingVideoAiAvatarV2StandardOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_kling-video_ai-avatar_v2_pro": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/kling-video/ai-avatar/v2/pro",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/kling-video/ai-avatar/v2/pro queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/kling-video/ai-avatar/v2/pro",
+     "category": "image-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0a84f36f/CYuWetfKsuQC0MR6G4EG8_cd62fa685e9844aaaf086c293eddb2ee.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/pro",
+     "documentationUrl": "https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/pro/api",
+     "about": "Pro Ai Avatar V2"
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "KlingVideoAiAvatarV2ProInput": {
+      "type": "object",
+      "title": "AIAvatarInput",
+      "properties": {
+       "enable_safety_checker": {
+        "type": "boolean",
+        "title": "Enable Safety Checker",
+        "description": "Disabling safety checks requires account authorization; unauthorized requests are always checked.",
+        "default": true
+       },
+       "audio_url": {
+        "type": "string",
+        "_fal_ui_field": "audio",
+        "title": "Audio Url",
+        "description": "The URL of the audio file.",
+        "examples": [
+         "https://v3.fal.media/files/rabbit/9_0ZG_geiWjZOmn9yscO6_output.mp3"
+        ]
+       },
+       "image_url": {
+        "type": "string",
+        "_fal_ui_field": "image",
+        "title": "Image Url",
+        "description": "The URL of the image to use as your avatar",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/example_inputs/kling_ai_avatar_input.jpg"
+        ]
+       },
+       "prompt": {
+        "type": "string",
+        "title": "Prompt",
+        "description": "The prompt to use for the video generation.",
+        "default": "."
+       }
+      },
+      "x-fal-order-properties": [
+       "enable_safety_checker",
+       "image_url",
+       "audio_url",
+       "prompt"
+      ],
+      "required": [
+       "image_url",
+       "audio_url"
+      ]
+     },
+     "KlingVideoAiAvatarV2ProOutput": {
+      "type": "object",
+      "title": "AIAvatarOutput",
+      "properties": {
+       "duration": {
+        "type": "number",
+        "title": "Duration",
+        "description": "Duration of the output video in seconds."
+       },
+       "video": {
+        "$ref": "#/components/schemas/File",
+        "description": "The generated video",
+        "examples": [
+         {
+          "url": "https://v3.fal.media/files/penguin/ln3x7H1p1jL0Pwo7675NI_output.mp4"
+         }
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "video",
+       "duration"
+      ],
+      "required": [
+       "video",
+       "duration"
+      ]
+     },
+     "File": {
+      "type": "object",
+      "title": "File",
+      "properties": {
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ]
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ]
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ]
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/kling-video/ai-avatar/v2/pro/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/ai-avatar/v2/pro/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/ai-avatar/v2/pro": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/KlingVideoAiAvatarV2ProInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/ai-avatar/v2/pro/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/KlingVideoAiAvatarV2ProOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  }
+ }
+}

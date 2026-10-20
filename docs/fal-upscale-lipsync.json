@@ -1,0 +1,4489 @@
+{
+ "fetched": "2026-10-20",
+ "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=<id>",
+ "endpoints": {
+  "blackforestlabs_flux-video-upscale": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for blackforestlabs/flux-video-upscale",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the blackforestlabs/flux-video-upscale queue.",
+    "x-fal-metadata": {
+     "endpointId": "blackforestlabs/flux-video-upscale",
+     "category": "video-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0aa7182f/Frq0vrwqyitVDqknXCE-t.jpg",
+     "playgroundUrl": "https://fal.ai/models/blackforestlabs/flux-video-upscale",
+     "documentationUrl": "https://fal.ai/models/blackforestlabs/flux-video-upscale/api",
+     "about": "Upscale"
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "FluxVideoUpscaleInput": {
+      "properties": {
+       "creativity": {
+        "type": "integer",
+        "enum": [
+         0,
+         1
+        ],
+        "title": "Creativity",
+        "description": "Use 0 for a source-faithful upscale or 1 for creative detail enhancement.",
+        "default": 1
+       },
+       "safety_tolerance": {
+        "minimum": 0,
+        "maximum": 4,
+        "title": "Safety Tolerance",
+        "type": "integer",
+        "description": "Moderation strictness. Lower values are stricter.",
+        "default": 2
+       },
+       "upscale_factor": {
+        "minimum": 1.5,
+        "maximum": 3,
+        "title": "Upscale Factor",
+        "type": "number",
+        "description": "Output scaling factor. The source aspect ratio is preserved.",
+        "default": 2
+       },
+       "video_url": {
+        "type": "string",
+        "title": "Video Url",
+        "examples": [
+         "https://v3b.fal.media/files/b/0a93a27d/-iFpecUCsSdwXVMevsZa3_output_5s_448x256.mp4"
+        ],
+        "description": "URL of the MP4 video to upscale. The video must be at most 20 seconds and 50 MB."
+       },
+       "prompt": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Prompt",
+        "description": "Optional description used to guide creative detail enhancement."
+       }
+      },
+      "type": "object",
+      "required": [
+       "video_url"
+      ],
+      "title": "FluxVideoUpscaleInput",
+      "x-fal-order-properties": [
+       "video_url",
+       "upscale_factor",
+       "creativity",
+       "prompt",
+       "safety_tolerance"
+      ]
+     },
+     "FluxVideoUpscaleOutput": {
+      "properties": {
+       "video": {
+        "description": "The upscaled MP4 video.",
+        "$ref": "#/components/schemas/File"
+       }
+      },
+      "type": "object",
+      "required": [
+       "video"
+      ],
+      "title": "FluxVideoUpscaleOutput",
+      "x-fal-order-properties": [
+       "video"
+      ]
+     },
+     "File": {
+      "properties": {
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "examples": [
+         "image/png"
+        ],
+        "description": "The mime type of the file."
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "examples": [
+         4404019
+        ],
+        "description": "The size of the file in bytes."
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "description": "The name of the file. It will be auto-generated if not provided."
+       }
+      },
+      "type": "object",
+      "required": [
+       "url"
+      ],
+      "title": "File",
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ]
+     }
+    }
+   },
+   "paths": {
+    "/blackforestlabs/flux-video-upscale/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/blackforestlabs/flux-video-upscale/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/blackforestlabs/flux-video-upscale": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/FluxVideoUpscaleInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/blackforestlabs/flux-video-upscale/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/FluxVideoUpscaleOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_bytedance-upscaler_upscale_video": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/bytedance-upscaler/upscale/video",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/bytedance-upscaler/upscale/video queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/bytedance-upscaler/upscale/video",
+     "category": "video-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/kangaroo/LorVpq4fAORdnn1YHRM-A_d801feeaa1764cefb7de0c3381ecaf84.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/bytedance-upscaler/upscale/video",
+     "documentationUrl": "https://fal.ai/models/fal-ai/bytedance-upscaler/upscale/video/api",
+     "about": "Enhance and upscale a video using BytePlus VOD."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "BytedanceUpscalerUpscaleVideoInput": {
+      "properties": {
+       "fidelity": {
+        "description": "The enhancement intensity. 'high' applies mild enhancement while keeping visual texture close to the source video. 'medium' provides a balanced image quality enhancement.",
+        "default": "high",
+        "type": "string",
+        "enum": [
+         "high",
+         "medium"
+        ],
+        "title": "Fidelity"
+       },
+       "enhancement_tier": {
+        "description": "The enhancement quality tier. 'fast' provides essential upscaling with good speed, 'standard' uses adaptive algorithms for better visual texture, 'pro' uses large-model restoration for cinematic quality (longer processing time), and 10 times the cost of `standard` and `fast`.",
+        "default": "standard",
+        "type": "string",
+        "enum": [
+         "fast",
+         "standard",
+         "pro"
+        ],
+        "title": "Enhancement Tier"
+       },
+       "video_url": {
+        "examples": [
+         "https://storage.googleapis.com/falserverless/example_inputs/bytedance_video_upscaler_input.mp4"
+        ],
+        "type": "string",
+        "title": "Video Url",
+        "description": "The URL of the video to upscale."
+       },
+       "enhancement_preset": {
+        "description": "The enhancement preset optimized for specific video scenarios. 'general' is a general-purpose template, 'ugc' targets user-generated short videos, 'short_series' is for short dramas, 'aigc' is for AI-generated content, and 'old_film' is for classic film restoration.",
+        "default": "general",
+        "type": "string",
+        "enum": [
+         "general",
+         "ugc",
+         "short_series",
+         "aigc",
+         "old_film"
+        ],
+        "title": "Enhancement Preset"
+       },
+       "target_fps": {
+        "description": "The target frame rate of the enhanced video in frames per second.",
+        "default": 30,
+        "minimum": 24,
+        "type": "number",
+        "title": "Target Fps",
+        "maximum": 120
+       },
+       "bit_depth": {
+        "description": "The color bit depth of the output video. 10-bit and 12-bit output require the Pro enhancement tier.",
+        "default": 8,
+        "type": "integer",
+        "enum": [
+         8,
+         10,
+         12
+        ],
+        "title": "Bit Depth"
+       },
+       "scale_ratio": {
+        "anyOf": [
+         {
+          "minimum": 1.1,
+          "type": "number",
+          "maximum": 10
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Scale Ratio",
+        "description": "The scaling ratio for the output video resolution. When set, overrides target_resolution and scales the input resolution by this factor (e.g., 2.0 doubles the resolution). Range: 1.1 to 10.0. Please note that this is valid only up to 4k resolution, and trying to scale beyond 4k will result in an error. (4k is defined as having atotal pixel count of 3840x2160)."
+       },
+       "target_resolution": {
+        "description": "The target resolution of the video to upscale.",
+        "default": "1080p",
+        "type": "string",
+        "enum": [
+         "1080p",
+         "2k",
+         "4k",
+         "6k",
+         "8k"
+        ],
+        "title": "Target Resolution"
+       }
+      },
+      "x-fal-order-properties": [
+       "video_url",
+       "target_resolution",
+       "target_fps",
+       "enhancement_preset",
+       "enhancement_tier",
+       "scale_ratio",
+       "fidelity",
+       "bit_depth"
+      ],
+      "required": [
+       "video_url"
+      ],
+      "title": "UpscaleInput",
+      "type": "object"
+     },
+     "BytedanceUpscalerUpscaleVideoOutput": {
+      "properties": {
+       "duration": {
+        "type": "number",
+        "title": "Duration",
+        "description": "Duration of audio input/video output as used for billing."
+       },
+       "video": {
+        "examples": [
+         {
+          "url": "https://storage.googleapis.com/falserverless/example_outputs/bytedance_video_upscaler_output.mp4"
+         }
+        ],
+        "description": "Generated video file",
+        "$ref": "#/components/schemas/File"
+       }
+      },
+      "x-fal-order-properties": [
+       "video",
+       "duration"
+      ],
+      "required": [
+       "video",
+       "duration"
+      ],
+      "title": "UpscaleOutput",
+      "type": "object"
+     },
+     "File": {
+      "properties": {
+       "content_type": {
+        "examples": [
+         "image/png"
+        ],
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "description": "The mime type of the file."
+       },
+       "file_name": {
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "description": "The name of the file. It will be auto-generated if not provided."
+       },
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "file_size": {
+        "examples": [
+         4404019
+        ],
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "description": "The size of the file in bytes."
+       }
+      },
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ],
+      "title": "File",
+      "type": "object"
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/bytedance-upscaler/upscale/video/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/bytedance-upscaler/upscale/video/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/bytedance-upscaler/upscale/video": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/BytedanceUpscalerUpscaleVideoInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/bytedance-upscaler/upscale/video/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/BytedanceUpscalerUpscaleVideoOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_kling-video_lipsync_audio-to-video": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/kling-video/lipsync/audio-to-video",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/kling-video/lipsync/audio-to-video queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/kling-video/lipsync/audio-to-video",
+     "category": "text-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/elephant/njNipNC0TkA9fJguiS1NB_c75b090e2ebb4d9581d21d66cfc4a0d3.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/kling-video/lipsync/audio-to-video",
+     "documentationUrl": "https://fal.ai/models/fal-ai/kling-video/lipsync/audio-to-video/api",
+     "about": "Kling Lipsync Audio to Video API."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "KlingVideoLipsyncAudioToVideoInput": {
+      "type": "object",
+      "title": "LipsyncA2VRequest",
+      "properties": {
+       "video_url": {
+        "type": "string",
+        "_fal_ui_field": "video",
+        "title": "Video Url",
+        "description": "The URL of the video to generate the lip sync for. Supports .mp4/.mov, ≤100MB, 2–10s, 720p/1080p only, width/height 720–1920px.",
+        "examples": [
+         "https://fal.media/files/koala/8teUPbRRMtAUTORDvqy0l.mp4"
+        ]
+       },
+       "enable_safety_checker": {
+        "type": "boolean",
+        "title": "Enable Safety Checker",
+        "description": "Disabling safety checks requires account authorization; unauthorized requests are always checked.",
+        "default": true
+       },
+       "audio_url": {
+        "type": "string",
+        "_fal_ui_field": "audio",
+        "title": "Audio Url",
+        "description": "The URL of the audio to generate the lip sync for. Minimum duration is 2s and maximum duration is 60s. Maximum file size is 5MB.",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/kling/kling-audio.mp3"
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "enable_safety_checker",
+       "video_url",
+       "audio_url"
+      ],
+      "required": [
+       "video_url",
+       "audio_url"
+      ]
+     },
+     "KlingVideoLipsyncAudioToVideoOutput": {
+      "type": "object",
+      "title": "LipsyncA2VOutput",
+      "properties": {
+       "video": {
+        "$ref": "#/components/schemas/File",
+        "description": "The generated video",
+        "examples": [
+         {
+          "url": "https://storage.googleapis.com/falserverless/kling/kling_output.mp4"
+         }
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "video"
+      ],
+      "required": [
+       "video"
+      ]
+     },
+     "File": {
+      "type": "object",
+      "title": "File",
+      "properties": {
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ]
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ]
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ]
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/kling-video/lipsync/audio-to-video/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/lipsync/audio-to-video/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/lipsync/audio-to-video": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/KlingVideoLipsyncAudioToVideoInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/lipsync/audio-to-video/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/KlingVideoLipsyncAudioToVideoOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_kling-video_lipsync_text-to-video": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/kling-video/lipsync/text-to-video",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/kling-video/lipsync/text-to-video queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/kling-video/lipsync/text-to-video",
+     "category": "text-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0a9f92e2/Xxa6mNP6nf210FA10wNqJ_e8YUdiKZ.png",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/kling-video/lipsync/text-to-video",
+     "documentationUrl": "https://fal.ai/models/fal-ai/kling-video/lipsync/text-to-video/api",
+     "about": "Kling Lipsync Text to Video API."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "KlingVideoLipsyncTextToVideoInput": {
+      "type": "object",
+      "title": "LipsyncT2VRequest",
+      "properties": {
+       "text": {
+        "type": "string",
+        "title": "Text",
+        "description": "Text content for lip-sync video generation. Max 120 characters.",
+        "examples": [
+         "Mental health is as important as physical health, shaping our emotions, thoughts, and daily interactions."
+        ],
+        "maxLength": 120
+       },
+       "video_url": {
+        "type": "string",
+        "_fal_ui_field": "video",
+        "title": "Video Url",
+        "description": "The URL of the video to generate the lip sync for. Supports .mp4/.mov, ≤100MB, 2-60s, 720p/1080p only, width/height 720–1920px. If validation fails, an error is returned.",
+        "examples": [
+         "https://fal.media/files/koala/8teUPbRRMtAUTORDvqy0l.mp4"
+        ]
+       },
+       "voice_speed": {
+        "type": "number",
+        "description": "Speech rate for Text to Video generation",
+        "maximum": 2,
+        "title": "Voice Speed",
+        "default": 1,
+        "minimum": 0.8
+       },
+       "enable_safety_checker": {
+        "type": "boolean",
+        "title": "Enable Safety Checker",
+        "description": "Disabling safety checks requires account authorization; unauthorized requests are always checked.",
+        "default": true
+       },
+       "voice_id": {
+        "type": "string",
+        "enum": [
+         "genshin_vindi2",
+         "zhinen_xuesheng",
+         "AOT",
+         "ai_shatang",
+         "genshin_klee2",
+         "genshin_kirara",
+         "ai_kaiya",
+         "oversea_male1",
+         "ai_chenjiahao_712",
+         "girlfriend_4_speech02",
+         "chat1_female_new-3",
+         "chat_0407_5-1",
+         "cartoon-boy-07",
+         "uk_boy1",
+         "cartoon-girl-01",
+         "PeppaPig_platform",
+         "ai_huangzhong_712",
+         "ai_huangyaoshi_712",
+         "ai_laoguowang_712",
+         "chengshu_jiejie",
+         "you_pingjing",
+         "calm_story1",
+         "uk_man2",
+         "laopopo_speech02",
+         "heainainai_speech02",
+         "reader_en_m-v1",
+         "commercial_lady_en_f-v1",
+         "tiyuxi_xuedi",
+         "tiexin_nanyou",
+         "girlfriend_1_speech02",
+         "girlfriend_2_speech02",
+         "zhuxi_speech02",
+         "uk_oldman3",
+         "dongbeilaotie_speech02",
+         "chongqingxiaohuo_speech02",
+         "chuanmeizi_speech02",
+         "chaoshandashu_speech02",
+         "ai_taiwan_man2_speech02",
+         "xianzhanggui_speech02",
+         "tianjinjiejie_speech02",
+         "diyinnansang_DB_CN_M_04-v2",
+         "yizhipiannan-v1",
+         "guanxiaofang-v2",
+         "tianmeixuemei-v1",
+         "daopianyansang-v1",
+         "mengwa-v1"
+        ],
+        "title": "Voice Id",
+        "description": "Voice ID to use for speech synthesis",
+        "examples": [
+         "genshin_klee2"
+        ]
+       },
+       "voice_language": {
+        "type": "string",
+        "enum": [
+         "zh",
+         "en"
+        ],
+        "description": "The voice language corresponding to the Voice ID",
+        "title": "Voice Language",
+        "default": "en"
+       }
+      },
+      "x-fal-order-properties": [
+       "enable_safety_checker",
+       "video_url",
+       "text",
+       "voice_id",
+       "voice_language",
+       "voice_speed"
+      ],
+      "required": [
+       "video_url",
+       "text",
+       "voice_id"
+      ]
+     },
+     "KlingVideoLipsyncTextToVideoOutput": {
+      "type": "object",
+      "title": "LipsyncOutput",
+      "properties": {
+       "video": {
+        "$ref": "#/components/schemas/File",
+        "description": "The generated video",
+        "examples": [
+         {
+          "url": "https://storage.googleapis.com/falserverless/kling/kling_text_lipsync.mp4"
+         }
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "video"
+      ],
+      "required": [
+       "video"
+      ]
+     },
+     "File": {
+      "type": "object",
+      "title": "File",
+      "properties": {
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ]
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ]
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ]
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/kling-video/lipsync/text-to-video/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/lipsync/text-to-video/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/lipsync/text-to-video": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/KlingVideoLipsyncTextToVideoInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/kling-video/lipsync/text-to-video/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/KlingVideoLipsyncTextToVideoOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_recraft_upscale_crisp": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/recraft/upscale/crisp",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/recraft/upscale/crisp queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/recraft/upscale/crisp",
+     "category": "image-to-image",
+     "thumbnailUrl": "https://storage.googleapis.com/falserverless/gallery/recraft-creative-upscale.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/recraft/upscale/crisp",
+     "documentationUrl": "https://fal.ai/models/fal-ai/recraft/upscale/crisp/api",
+     "about": "Crisp Upscale Image"
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "RecraftUpscaleCrispInput": {
+      "required": [
+       "image_url"
+      ],
+      "title": "UpscaleInput",
+      "properties": {
+       "sync_mode": {
+        "type": "boolean",
+        "title": "Sync Mode",
+        "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history.",
+        "default": false
+       },
+       "enable_safety_checker": {
+        "type": "boolean",
+        "title": "Enable Safety Checker",
+        "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+        "default": false
+       },
+       "image_url": {
+        "type": "string",
+        "title": "Image Url",
+        "_fal_ui_field": "image",
+        "description": "The URL of the image to be upscaled. Must be in PNG format.",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/model_tests/recraft/recraft-upscaler-1.jpeg"
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "image_url",
+       "sync_mode",
+       "enable_safety_checker"
+      ],
+      "type": "object"
+     },
+     "RecraftUpscaleCrispOutput": {
+      "required": [
+       "image"
+      ],
+      "title": "UpscaleOutput",
+      "properties": {
+       "image": {
+        "$ref": "#/components/schemas/File",
+        "description": "The upscaled image."
+       }
+      },
+      "x-fal-order-properties": [
+       "image"
+      ],
+      "type": "object"
+     },
+     "File": {
+      "required": [
+       "url"
+      ],
+      "title": "File",
+      "properties": {
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Name",
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ]
+       },
+       "url": {
+        "type": "string",
+        "title": "Url",
+        "description": "The URL where the file can be downloaded from."
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Content Type",
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ]
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "File Size",
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ]
+       }
+      },
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "type": "object"
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/recraft/upscale/crisp/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/recraft/upscale/crisp/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/recraft/upscale/crisp": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/RecraftUpscaleCrispInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/recraft/upscale/crisp/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/RecraftUpscaleCrispOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_seedvr_upscale_image": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/seedvr/upscale/image",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/seedvr/upscale/image queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/seedvr/upscale/image",
+     "category": "image-to-image",
+     "thumbnailUrl": "https://v3.fal.media/files/panda/_-1rRy0_I6w-fbt3q0RDL_2f47fece6e2b433994dda482e8d20bb9.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/seedvr/upscale/image",
+     "documentationUrl": "https://fal.ai/models/fal-ai/seedvr/upscale/image/api",
+     "about": "Upscale Image"
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "SeedvrUpscaleImageInput": {
+      "required": [
+       "image_url"
+      ],
+      "x-fal-order-properties": [
+       "image_url",
+       "upscale_mode",
+       "upscale_factor",
+       "target_resolution",
+       "seed",
+       "noise_scale",
+       "output_format",
+       "sync_mode"
+      ],
+      "title": "SeedVRImageInput",
+      "properties": {
+       "image_url": {
+        "description": "The input image to be processed",
+        "title": "Image Url",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/example_inputs/seedvr2/image_in.png"
+        ],
+        "type": "string"
+       },
+       "noise_scale": {
+        "minimum": 0,
+        "description": "The noise scale to use for the generation process.",
+        "title": "Noise Scale",
+        "multipleOf": 0.001,
+        "type": "number",
+        "maximum": 1,
+        "default": 0.1
+       },
+       "target_resolution": {
+        "description": "The target resolution to upscale to when `upscale_mode` is `target`.",
+        "title": "Target Resolution",
+        "enum": [
+         "720p",
+         "1080p",
+         "1440p",
+         "2160p"
+        ],
+        "type": "string",
+        "default": "1080p"
+       },
+       "upscale_factor": {
+        "minimum": 1,
+        "description": "Upscaling factor to be used. Will multiply the dimensions with this factor when `upscale_mode` is `factor`.",
+        "title": "Upscale Factor",
+        "type": "number",
+        "maximum": 10,
+        "default": 2
+       },
+       "output_format": {
+        "description": "The format of the output image.",
+        "title": "Output Format",
+        "enum": [
+         "png",
+         "jpg",
+         "webp"
+        ],
+        "type": "string",
+        "default": "jpg"
+       },
+       "upscale_mode": {
+        "description": "The mode to use for the upscale. If 'target', the upscale factor will be calculated based on the target resolution. If 'factor', the upscale factor will be used directly.",
+        "title": "Upscale Mode",
+        "enum": [
+         "target",
+         "factor"
+        ],
+        "type": "string",
+        "default": "factor"
+       },
+       "seed": {
+        "description": "The random seed used for the generation process.",
+        "title": "Seed",
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "sync_mode": {
+        "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history.",
+        "title": "Sync Mode",
+        "type": "boolean",
+        "default": false
+       }
+      },
+      "type": "object"
+     },
+     "SeedvrUpscaleImageOutput": {
+      "required": [
+       "image",
+       "seed"
+      ],
+      "x-fal-order-properties": [
+       "image",
+       "seed"
+      ],
+      "title": "SeedVRImageOutput",
+      "properties": {
+       "seed": {
+        "description": "The random seed used for the generation process.",
+        "title": "Seed",
+        "type": "integer"
+       },
+       "image": {
+        "description": "Upscaled image file after processing",
+        "$ref": "#/components/schemas/ImageFile",
+        "examples": [
+         {
+          "content_type": "image/png",
+          "url": "https://storage.googleapis.com/falserverless/example_outputs/seedvr2/image_out.png"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "ImageFile": {
+      "required": [
+       "url"
+      ],
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size",
+       "width",
+       "height"
+      ],
+      "title": "ImageFile",
+      "properties": {
+       "height": {
+        "description": "The height of the image",
+        "title": "Height",
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "content_type": {
+        "description": "The mime type of the file.",
+        "title": "Content Type",
+        "examples": [
+         "image/png"
+        ],
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "url": {
+        "description": "The URL where the file can be downloaded from.",
+        "title": "Url",
+        "type": "string"
+       },
+       "file_name": {
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "title": "File Name",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "width": {
+        "description": "The width of the image",
+        "title": "Width",
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "file_size": {
+        "description": "The size of the file in bytes.",
+        "title": "File Size",
+        "examples": [
+         4404019
+        ],
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/seedvr/upscale/image/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/seedvr/upscale/image/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/seedvr/upscale/image": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/SeedvrUpscaleImageInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/seedvr/upscale/image/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/SeedvrUpscaleImageOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "fal-ai_seedvr_upscale_video": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for fal-ai/seedvr/upscale/video",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the fal-ai/seedvr/upscale/video queue.",
+    "x-fal-metadata": {
+     "endpointId": "fal-ai/seedvr/upscale/video",
+     "category": "video-to-video",
+     "thumbnailUrl": "https://v3.fal.media/files/koala/cAs3xUC9Lx-jlQh-27-60_4dddbb5a9bac42da86ddf20a5b9d30b3.jpg",
+     "playgroundUrl": "https://fal.ai/models/fal-ai/seedvr/upscale/video",
+     "documentationUrl": "https://fal.ai/models/fal-ai/seedvr/upscale/video/api",
+     "about": "Upscale Video"
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "SeedvrUpscaleVideoInput": {
+      "required": [
+       "video_url"
+      ],
+      "x-fal-order-properties": [
+       "video_url",
+       "upscale_mode",
+       "upscale_factor",
+       "target_resolution",
+       "seed",
+       "noise_scale",
+       "output_format",
+       "output_quality",
+       "output_write_mode",
+       "sync_mode"
+      ],
+      "title": "SeedVRVideoInput",
+      "properties": {
+       "output_write_mode": {
+        "description": "The write mode of the output video.",
+        "title": "Output Write Mode",
+        "enum": [
+         "fast",
+         "balanced",
+         "small"
+        ],
+        "type": "string",
+        "default": "balanced"
+       },
+       "noise_scale": {
+        "minimum": 0,
+        "description": "The noise scale to use for the generation process.",
+        "title": "Noise Scale",
+        "multipleOf": 0.001,
+        "type": "number",
+        "maximum": 1,
+        "default": 0.1
+       },
+       "output_quality": {
+        "description": "The quality of the output video.",
+        "title": "Output Quality",
+        "enum": [
+         "low",
+         "medium",
+         "high",
+         "maximum"
+        ],
+        "type": "string",
+        "default": "high"
+       },
+       "upscale_factor": {
+        "minimum": 1,
+        "description": "Upscaling factor to be used. Will multiply the dimensions with this factor when `upscale_mode` is `factor`.",
+        "title": "Upscale Factor",
+        "type": "number",
+        "maximum": 10,
+        "default": 2
+       },
+       "output_format": {
+        "description": "The format of the output video.",
+        "title": "Output Format",
+        "enum": [
+         "X264 (.mp4)",
+         "VP9 (.webm)",
+         "PRORES4444 (.mov)",
+         "GIF (.gif)"
+        ],
+        "type": "string",
+        "default": "X264 (.mp4)"
+       },
+       "video_url": {
+        "description": "The input video to be processed",
+        "title": "Video Url",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/example_inputs/seedvr-input.mp4"
+        ],
+        "type": "string"
+       },
+       "upscale_mode": {
+        "description": "The mode to use for the upscale. If 'target', the upscale factor will be calculated based on the target resolution. If 'factor', the upscale factor will be used directly.",
+        "title": "Upscale Mode",
+        "enum": [
+         "target",
+         "factor"
+        ],
+        "type": "string",
+        "default": "factor"
+       },
+       "target_resolution": {
+        "description": "The target resolution to upscale to when `upscale_mode` is `target`.",
+        "title": "Target Resolution",
+        "enum": [
+         "720p",
+         "1080p",
+         "1440p",
+         "2160p"
+        ],
+        "type": "string",
+        "default": "1080p"
+       },
+       "sync_mode": {
+        "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history.",
+        "title": "Sync Mode",
+        "type": "boolean",
+        "default": false
+       },
+       "seed": {
+        "description": "The random seed used for the generation process.",
+        "title": "Seed",
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "SeedvrUpscaleVideoOutput": {
+      "required": [
+       "video",
+       "seed"
+      ],
+      "x-fal-order-properties": [
+       "video",
+       "seed"
+      ],
+      "title": "SeedVRVideoOutput",
+      "properties": {
+       "seed": {
+        "description": "The random seed used for the generation process.",
+        "title": "Seed",
+        "type": "integer"
+       },
+       "video": {
+        "description": "Upscaled video file after processing",
+        "$ref": "#/components/schemas/File",
+        "examples": [
+         {
+          "content_type": "video/mp4",
+          "url": "https://storage.googleapis.com/falserverless/example_outputs/seedvr-output.mp4"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "File": {
+      "required": [
+       "url"
+      ],
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "title": "File",
+      "properties": {
+       "file_size": {
+        "description": "The size of the file in bytes.",
+        "title": "File Size",
+        "examples": [
+         4404019
+        ],
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "content_type": {
+        "description": "The mime type of the file.",
+        "title": "Content Type",
+        "examples": [
+         "image/png"
+        ],
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "url": {
+        "description": "The URL where the file can be downloaded from.",
+        "title": "Url",
+        "type": "string"
+       },
+       "file_name": {
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "title": "File Name",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     }
+    }
+   },
+   "paths": {
+    "/fal-ai/seedvr/upscale/video/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/seedvr/upscale/video/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/seedvr/upscale/video": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/SeedvrUpscaleVideoInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/fal-ai/seedvr/upscale/video/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/SeedvrUpscaleVideoOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "topaz_upscale_image_generative": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for topaz/upscale/image/generative",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the topaz/upscale/image/generative queue.",
+    "x-fal-metadata": {
+     "endpointId": "topaz/upscale/image/generative",
+     "category": "image-to-image",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0aa5f6e8/wn3JpJcY1I824uEdijtAy.jpg",
+     "playgroundUrl": "https://fal.ai/models/topaz/upscale/image/generative",
+     "documentationUrl": "https://fal.ai/models/topaz/upscale/image/generative/api",
+     "about": "# Topaz Generative Image Upscale (Wonder)\n\nGenerative upscaling that reconstructs and invents detail the\nsource no longer has.\n\n## Models\n- **Wonder 3** — Topaz's most advanced generative realism model\n(default).\n- **Wonder** — one-click repair for low/medium resolution images.\n- **Standard MAX** — high-quality upscaling with generative help.\n- **Redefine** — prompt-guided creative upscaling (`prompt`,\n`creativity`, `texture`).\n- **Recovery / Recovery V2** — rebuild extreme low-resolution\nimages."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "UpscaleImageGenerativeInput": {
+      "x-fal-order-properties": [
+       "image_url",
+       "model",
+       "upscale_factor",
+       "crop_to_fill",
+       "output_format",
+       "subject_detection",
+       "face_enhancement",
+       "face_enhancement_creativity",
+       "face_enhancement_strength",
+       "enhancement_strength",
+       "creativity",
+       "texture",
+       "prompt",
+       "autoprompt",
+       "sharpen",
+       "denoise",
+       "detail",
+       "enable_safety_checker"
+      ],
+      "required": [
+       "image_url"
+      ],
+      "type": "object",
+      "properties": {
+       "enhancement_strength": {
+        "anyOf": [
+         {
+          "enum": [
+           "low",
+           "medium",
+           "high"
+          ],
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Enhancement strength for generative upscaling. Applies to Wonder 3 and Wonder 3.5 models. When omitted, Topaz auto-configures it.",
+        "title": "Enhancement Strength"
+       },
+       "detail": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Detail recovery level (0.0-1.0). Applies to Recovery V2 model only.",
+        "title": "Detail"
+       },
+       "denoise": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Denoising level (0.0-1.0). Applies to Redefine model only.",
+        "title": "Denoise"
+       },
+       "crop_to_fill": {
+        "default": false,
+        "type": "boolean",
+        "title": "Crop To Fill"
+       },
+       "sharpen": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Sharpening level (0.0-1.0). Applies to Redefine model only.",
+        "title": "Sharpen"
+       },
+       "prompt": {
+        "anyOf": [
+         {
+          "maxLength": 1024,
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Text prompt to guide generative upscaling (max 1024 chars). Applies to Redefine model only.",
+        "title": "Prompt"
+       },
+       "model": {
+        "description": "Generative upscaling model. Wonder 3.5 is the latest Wonder with finer detail and fewer repetitive patterns; Wonder 3 is Topaz's most advanced generative realism model (Wonder 2/Wonder are earlier generations); Recover 3 rebuilds natural detail; Standard MAX is high-quality precision-leaning upscaling; Redefine adds prompt-guided creative detail; Recovery and Recovery V2 rebuild extreme low-resolution images.",
+        "enum": [
+         "Wonder 3.5",
+         "Wonder 3",
+         "Wonder 2",
+         "Wonder",
+         "Recover 3",
+         "Standard MAX",
+         "Redefine",
+         "Recovery V2",
+         "Recovery"
+        ],
+        "default": "Wonder 3",
+        "type": "string",
+        "title": "Model"
+       },
+       "image_url": {
+        "description": "Url of the image to be upscaled",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/model_tests/codeformer/codeformer_poor_1.jpeg"
+        ],
+        "type": "string",
+        "minLength": 1,
+        "title": "Image Url"
+       },
+       "creativity": {
+        "anyOf": [
+         {
+          "maximum": 6,
+          "type": "integer",
+          "minimum": 1
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Creativity level for generative upscaling (1-6). Higher values produce more creative/hallucinated details. Applies to Redefine model only.",
+        "title": "Creativity"
+       },
+       "upscale_factor": {
+        "minimum": 1,
+        "description": "Factor to upscale the image by (e.g. 2.0 doubles width and height)",
+        "maximum": 4,
+        "default": 2,
+        "type": "number",
+        "title": "Upscale Factor"
+       },
+       "face_enhancement_strength": {
+        "minimum": 0,
+        "description": "Strength of the face enhancement. 0.0 means no enhancement, 1.0 means maximum enhancement. Ignored if face enhancement is disabled.",
+        "maximum": 1,
+        "default": 0.8,
+        "type": "number",
+        "title": "Face Enhancement Strength"
+       },
+       "face_enhancement": {
+        "description": "Whether to apply face enhancement to the image.",
+        "default": true,
+        "type": "boolean",
+        "title": "Face Enhancement"
+       },
+       "subject_detection": {
+        "description": "Subject detection mode for the image enhancement. Applies to Wonder 3, Recovery and Recovery V2 models.",
+        "enum": [
+         "All",
+         "Foreground",
+         "Background"
+        ],
+        "default": "All",
+        "type": "string",
+        "title": "Subject Detection"
+       },
+       "autoprompt": {
+        "anyOf": [
+         {
+          "type": "boolean"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Enable automatic prompt generation for generative upscaling. Applies to Redefine model only.",
+        "title": "Autoprompt"
+       },
+       "face_enhancement_creativity": {
+        "minimum": 0,
+        "description": "Creativity level for face enhancement. 0.0 means no creativity, 1.0 means maximum creativity. Ignored if face enhancement is disabled.",
+        "maximum": 1,
+        "default": 0,
+        "type": "number",
+        "title": "Face Enhancement Creativity"
+       },
+       "enable_safety_checker": {
+        "description": "Authorized callers may set false to request relaxed screening.",
+        "default": true,
+        "type": "boolean",
+        "title": "Enable Safety Checker"
+       },
+       "texture": {
+        "anyOf": [
+         {
+          "maximum": 5,
+          "type": "integer",
+          "minimum": 1
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Texture detail level for generative upscaling (1-5). Applies to Redefine model only.",
+        "title": "Texture"
+       },
+       "output_format": {
+        "description": "Output format of the upscaled image.",
+        "enum": [
+         "jpeg",
+         "png"
+        ],
+        "default": "jpeg",
+        "type": "string",
+        "title": "Output Format"
+       }
+      },
+      "title": "ImageGenerativeUpscaleRequest"
+     },
+     "UpscaleImageGenerativeOutput": {
+      "x-fal-order-properties": [
+       "image"
+      ],
+      "required": [
+       "image"
+      ],
+      "type": "object",
+      "properties": {
+       "image": {
+        "$ref": "#/components/schemas/File",
+        "description": "The upscaled image."
+       }
+      },
+      "title": "ImageUpscaleOutput"
+     },
+     "File": {
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ],
+      "type": "object",
+      "properties": {
+       "url": {
+        "description": "The URL where the file can be downloaded from.",
+        "type": "string",
+        "title": "Url"
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "title": "File Name"
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ],
+        "title": "Content Type"
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ],
+        "title": "File Size"
+       }
+      },
+      "title": "File"
+     }
+    }
+   },
+   "paths": {
+    "/topaz/upscale/image/generative/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/image/generative/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/image/generative": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/UpscaleImageGenerativeInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/image/generative/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/UpscaleImageGenerativeOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "topaz_upscale_image_precision": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for topaz/upscale/image/precision",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the topaz/upscale/image/precision queue.",
+    "x-fal-metadata": {
+     "endpointId": "topaz/upscale/image/precision",
+     "category": "image-to-image",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0aa5f4d2/jP4o7RDGaEMhvRaykFtct.jpg",
+     "playgroundUrl": "https://fal.ai/models/topaz/upscale/image/precision",
+     "documentationUrl": "https://fal.ai/models/topaz/upscale/image/precision/api",
+     "about": "# Topaz Precision Image Upscale (Gigapixel)\n\nClassic (non-generative) upscaling that stays faithful to the\nsource pixels.\n\n## Models\n- **Standard V2** — general-purpose, fits most photos.\n- **High Fidelity V2** — preserves fine detail in professional\nshots.\n- **Low Resolution V2** — recovers compressed, low-quality sources.\n- **CGI** — artwork and rendered graphics.\n- **Text Refine** — keeps text and shapes crisp.\n- **Faces** — Face Recovery 3, restores facial detail."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "UpscaleImagePrecisionInput": {
+      "x-fal-order-properties": [
+       "image_url",
+       "model",
+       "upscale_factor",
+       "crop_to_fill",
+       "output_format",
+       "subject_detection",
+       "face_enhancement",
+       "face_enhancement_creativity",
+       "face_enhancement_strength",
+       "sharpen",
+       "denoise",
+       "fix_compression",
+       "strength",
+       "enable_safety_checker"
+      ],
+      "required": [
+       "image_url"
+      ],
+      "type": "object",
+      "properties": {
+       "crop_to_fill": {
+        "default": false,
+        "type": "boolean",
+        "title": "Crop To Fill"
+       },
+       "sharpen": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Sharpening level (0.0-1.0). Default varies by model.",
+        "title": "Sharpen"
+       },
+       "face_enhancement_strength": {
+        "minimum": 0,
+        "description": "Strength of the face enhancement. 0.0 means no enhancement, 1.0 means maximum enhancement. Ignored if face enhancement is disabled.",
+        "maximum": 1,
+        "default": 0.8,
+        "type": "number",
+        "title": "Face Enhancement Strength"
+       },
+       "fix_compression": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Compression artifact removal level (0.0-1.0). Not supported by the CGI model.",
+        "title": "Fix Compression"
+       },
+       "denoise": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Denoising level (0.0-1.0). Default varies by model.",
+        "title": "Denoise"
+       },
+       "strength": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0.01
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Enhancement strength (0.01-1.0). Applies to Text Refine model only.",
+        "title": "Strength"
+       },
+       "face_enhancement_creativity": {
+        "minimum": 0,
+        "description": "Creativity level for face enhancement. 0.0 means no creativity, 1.0 means maximum creativity. Ignored if face enhancement is disabled.",
+        "maximum": 1,
+        "default": 0,
+        "type": "number",
+        "title": "Face Enhancement Creativity"
+       },
+       "face_enhancement": {
+        "description": "Whether to apply face enhancement to the image.",
+        "default": true,
+        "type": "boolean",
+        "title": "Face Enhancement"
+       },
+       "subject_detection": {
+        "description": "Subject detection mode for the image enhancement.",
+        "enum": [
+         "All",
+         "Foreground",
+         "Background"
+        ],
+        "default": "All",
+        "type": "string",
+        "title": "Subject Detection"
+       },
+       "model": {
+        "description": "Precision upscaling model. Standard V2 fits most photos; High Fidelity V3/V2 preserve detail in professional shots; Low Resolution V2 recovers compressed sources; CGI targets art and rendered graphics; Text Refine keeps text and shapes crisp; Faces restores facial detail with Face Recovery 3.",
+        "enum": [
+         "Standard V2",
+         "High Fidelity V3",
+         "High Fidelity V2",
+         "Low Resolution V2",
+         "CGI",
+         "Text Refine",
+         "Faces"
+        ],
+        "default": "Standard V2",
+        "type": "string",
+        "title": "Model"
+       },
+       "image_url": {
+        "description": "Url of the image to be upscaled",
+        "examples": [
+         "https://storage.googleapis.com/falserverless/model_tests/codeformer/codeformer_poor_1.jpeg"
+        ],
+        "type": "string",
+        "minLength": 1,
+        "title": "Image Url"
+       },
+       "enable_safety_checker": {
+        "description": "Authorized callers may set false to request relaxed screening.",
+        "default": true,
+        "type": "boolean",
+        "title": "Enable Safety Checker"
+       },
+       "upscale_factor": {
+        "minimum": 1,
+        "description": "Factor to upscale the image by (e.g. 2.0 doubles width and height)",
+        "maximum": 4,
+        "default": 2,
+        "type": "number",
+        "title": "Upscale Factor"
+       },
+       "output_format": {
+        "description": "Output format of the upscaled image.",
+        "enum": [
+         "jpeg",
+         "png"
+        ],
+        "default": "jpeg",
+        "type": "string",
+        "title": "Output Format"
+       }
+      },
+      "title": "ImagePrecisionUpscaleRequest"
+     },
+     "UpscaleImagePrecisionOutput": {
+      "x-fal-order-properties": [
+       "image"
+      ],
+      "required": [
+       "image"
+      ],
+      "type": "object",
+      "properties": {
+       "image": {
+        "$ref": "#/components/schemas/File",
+        "description": "The upscaled image."
+       }
+      },
+      "title": "ImageUpscaleOutput"
+     },
+     "File": {
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ],
+      "type": "object",
+      "properties": {
+       "url": {
+        "description": "The URL where the file can be downloaded from.",
+        "type": "string",
+        "title": "Url"
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "title": "File Name"
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ],
+        "title": "Content Type"
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ],
+        "title": "File Size"
+       }
+      },
+      "title": "File"
+     }
+    }
+   },
+   "paths": {
+    "/topaz/upscale/image/precision/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/image/precision/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/image/precision": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/UpscaleImagePrecisionInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/image/precision/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/UpscaleImagePrecisionOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "topaz_upscale_video_generative": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for topaz/upscale/video/generative",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the topaz/upscale/video/generative queue.",
+    "x-fal-metadata": {
+     "endpointId": "topaz/upscale/video/generative",
+     "category": "video-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0aa5f2fc/fH7-Krw-QX8aqm9aPXcgU.jpg",
+     "playgroundUrl": "https://fal.ai/models/topaz/upscale/video/generative",
+     "documentationUrl": "https://fal.ai/models/topaz/upscale/video/generative/api",
+     "about": "# Topaz Generative Video Upscale (Starlight)\n\nDiffusion-based restoration and upscaling that regenerates detail\nthe source no longer has.\n\n## Models\n- **Starlight Precise 2.6** — realism pass for AI-generated video.\n- **Starlight HQ** — maximum quality on high-resolution sources.\n- **Starlight Mini** — diffusion restoration for archival footage.\n- **Starlight Sharp** — fast restoration with sharper detail.\n- **Starlight Fast 2** — the fastest, cheapest diffusion upscaler.\n\nVideos are limited to 5 minutes. `target_fps` enables Apollo frame\ninterpolation only when it differs from the source FPS."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "UpscaleVideoGenerativeInput": {
+      "x-fal-order-properties": [
+       "video_url",
+       "model",
+       "upscale_factor",
+       "target_fps",
+       "softness",
+       "H264_output"
+      ],
+      "required": [
+       "video_url"
+      ],
+      "type": "object",
+      "properties": {
+       "softness": {
+        "anyOf": [
+         {
+          "maximum": 5,
+          "type": "number",
+          "minimum": 1
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "How much softening the model applies to the output, from 1 (sharpest) to 5 (softest). Starlight Precise 2.6 only; leave unset for Topaz's default.",
+        "title": "Softness"
+       },
+       "H264_output": {
+        "description": "Whether to use H264 codec for output video. Default is H265.",
+        "default": false,
+        "type": "boolean",
+        "title": "H264 Output"
+       },
+       "model": {
+        "description": "Generative diffusion enhancement model. Starlight Precise 2.6 adds realism to AI-generated video; Starlight HQ maximizes quality on high-resolution sources; Starlight Mini restores archival footage; Starlight Sharp is fast restoration with sharper detail; Starlight Fast 2 is the fastest, cheapest diffusion upscaler.",
+        "enum": [
+         "Starlight Precise 2.6",
+         "Starlight HQ",
+         "Starlight Mini",
+         "Starlight Sharp",
+         "Starlight Fast 2"
+        ],
+        "default": "Starlight Precise 2.6",
+        "type": "string",
+        "title": "Model"
+       },
+       "upscale_factor": {
+        "minimum": 1,
+        "description": "Factor to upscale the video by (e.g. 2.0 doubles width and height)",
+        "maximum": 4,
+        "default": 2,
+        "type": "number",
+        "title": "Upscale Factor"
+       },
+       "target_fps": {
+        "anyOf": [
+         {
+          "maximum": 60,
+          "type": "integer",
+          "minimum": 16
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Target FPS for the output. Frame interpolation is enabled only when this differs from the source FPS.",
+        "title": "Target Fps"
+       },
+       "video_url": {
+        "description": "URL of the video to upscale",
+        "examples": [
+         "https://v3.fal.media/files/kangaroo/y5-1YTGpun17eSeggZMzX_video-1733468228.mp4"
+        ],
+        "type": "string",
+        "title": "Video Url"
+       }
+      },
+      "title": "VideoGenerativeUpscaleRequest"
+     },
+     "UpscaleVideoGenerativeOutput": {
+      "x-fal-order-properties": [
+       "video"
+      ],
+      "required": [
+       "video"
+      ],
+      "type": "object",
+      "properties": {
+       "video": {
+        "$ref": "#/components/schemas/File",
+        "description": "The upscaled video file",
+        "examples": [
+         {
+          "url": "https://v3.fal.media/files/penguin/ztj_LB4gQlW6HIfVs8zX4_upscaled.mp4"
+         }
+        ]
+       }
+      },
+      "title": "VideoUpscaleOutput"
+     },
+     "File": {
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ],
+      "type": "object",
+      "properties": {
+       "url": {
+        "description": "The URL where the file can be downloaded from.",
+        "type": "string",
+        "title": "Url"
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "title": "File Name"
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ],
+        "title": "Content Type"
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ],
+        "title": "File Size"
+       }
+      },
+      "title": "File"
+     }
+    }
+   },
+   "paths": {
+    "/topaz/upscale/video/generative/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/video/generative/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/video/generative": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/UpscaleVideoGenerativeInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/video/generative/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/UpscaleVideoGenerativeOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  },
+  "topaz_upscale_video_precision": {
+   "openapi": "3.0.4",
+   "info": {
+    "title": "Queue OpenAPI for topaz/upscale/video/precision",
+    "version": "1.0.0",
+    "description": "The OpenAPI schema for the topaz/upscale/video/precision queue.",
+    "x-fal-metadata": {
+     "endpointId": "topaz/upscale/video/precision",
+     "category": "video-to-video",
+     "thumbnailUrl": "https://v3b.fal.media/files/b/0aa5f1ec/6RruEcb1mzuNDFal3KsPz.jpg",
+     "playgroundUrl": "https://fal.ai/models/topaz/upscale/video/precision",
+     "documentationUrl": "https://fal.ai/models/topaz/upscale/video/precision/api",
+     "about": "# Topaz Precision Video Upscale\n\nClassic (non-generative) upscaling and enhancement that stays\nfaithful to the source.\n\n## Models\n- **Proteus** — the default choice for most real-world footage.\n- **Artemis HQ / MQ / LQ** — denoise and sharpen, for progressively\nmore degraded sources.\n- **Gaia HQ / CG** — refinement for high-quality footage and CG\nrenders.\n- **Gaia 2** — frame-by-frame 2x upscaling for animation and motion\ngraphics (billed at half price).\n- **Rhea** — maximum fine detail via an internal 4x pass.\n\nVideos are limited to 5 minutes. `target_fps` enables Apollo frame\ninterpolation only when it differs from the source FPS."
+    }
+   },
+   "components": {
+    "securitySchemes": {
+     "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Fal Key"
+     }
+    },
+    "schemas": {
+     "QueueStatus": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "IN_QUEUE",
+         "IN_PROGRESS",
+         "COMPLETED"
+        ]
+       },
+       "request_id": {
+        "type": "string",
+        "description": "The request id."
+       },
+       "response_url": {
+        "type": "string",
+        "description": "The response url."
+       },
+       "status_url": {
+        "type": "string",
+        "description": "The status url."
+       },
+       "cancel_url": {
+        "type": "string",
+        "description": "The cancel url."
+       },
+       "logs": {
+        "type": "object",
+        "description": "The logs.",
+        "additionalProperties": true
+       },
+       "metrics": {
+        "type": "object",
+        "description": "The metrics.",
+        "additionalProperties": true
+       },
+       "queue_position": {
+        "type": "integer",
+        "description": "The queue position."
+       }
+      },
+      "required": [
+       "status",
+       "request_id"
+      ]
+     },
+     "UpscaleVideoPrecisionInput": {
+      "x-fal-order-properties": [
+       "video_url",
+       "model",
+       "upscale_factor",
+       "target_fps",
+       "compression",
+       "noise",
+       "halo",
+       "grain",
+       "recover_detail",
+       "H264_output"
+      ],
+      "required": [
+       "video_url"
+      ],
+      "type": "object",
+      "properties": {
+       "recover_detail": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Recover original detail level (0.0-1.0). Higher values preserve more original detail.",
+        "title": "Recover Detail"
+       },
+       "H264_output": {
+        "description": "Whether to use H264 codec for output video. Default is H265.",
+        "default": false,
+        "type": "boolean",
+        "title": "H264 Output"
+       },
+       "grain": {
+        "anyOf": [
+         {
+          "multipleOf": 0.01,
+          "maximum": 0.1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Film grain amount (0.0-0.1). Default varies by model.",
+        "title": "Grain"
+       },
+       "halo": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Halo reduction level (0.0-1.0). Default varies by model.",
+        "title": "Halo"
+       },
+       "compression": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Compression artifact removal level (0.0-1.0). Default varies by model.",
+        "title": "Compression"
+       },
+       "model": {
+        "description": "Precision (non-generative) enhancement model. Proteus fits most real-world footage; Proteus Natural is a softer variant; Iris recovers faces; Dione deinterlaces legacy/interlaced sources; Artemis denoises and sharpens degraded footage; Gaia refines high-quality footage and CG (Gaia 2 upscales animation at 2x); Rhea maximizes fine detail via an internal 4x pass; Theia gives manual detail/fidelity control.",
+        "enum": [
+         "Proteus",
+         "Proteus Natural",
+         "Iris",
+         "Iris Low Quality",
+         "Dione DV",
+         "Dione TV",
+         "Dione Robust",
+         "Dione Dehalo",
+         "Dione Robust Dehalo",
+         "Artemis High Quality",
+         "Artemis Medium Quality",
+         "Artemis Low Quality",
+         "Artemis Strong Halo",
+         "Artemis Medium Halo",
+         "Artemis Aliasing & Moire",
+         "Gaia HQ",
+         "Gaia CG",
+         "Gaia 2",
+         "Rhea",
+         "Theia Fine Tune Detail",
+         "Theia Fine Tune Fidelity"
+        ],
+        "default": "Proteus",
+        "type": "string",
+        "title": "Model"
+       },
+       "noise": {
+        "anyOf": [
+         {
+          "maximum": 1,
+          "type": "number",
+          "minimum": 0
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Noise reduction level (0.0-1.0). Default varies by model.",
+        "title": "Noise"
+       },
+       "upscale_factor": {
+        "minimum": 1,
+        "description": "Factor to upscale the video by (e.g. 2.0 doubles width and height)",
+        "maximum": 4,
+        "default": 2,
+        "type": "number",
+        "title": "Upscale Factor"
+       },
+       "target_fps": {
+        "anyOf": [
+         {
+          "maximum": 60,
+          "type": "integer",
+          "minimum": 16
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "Target FPS for the output. Frame interpolation is enabled only when this differs from the source FPS.",
+        "title": "Target Fps"
+       },
+       "video_url": {
+        "description": "URL of the video to upscale",
+        "examples": [
+         "https://v3.fal.media/files/kangaroo/y5-1YTGpun17eSeggZMzX_video-1733468228.mp4"
+        ],
+        "type": "string",
+        "title": "Video Url"
+       }
+      },
+      "title": "VideoPrecisionUpscaleRequest"
+     },
+     "UpscaleVideoPrecisionOutput": {
+      "x-fal-order-properties": [
+       "video"
+      ],
+      "required": [
+       "video"
+      ],
+      "type": "object",
+      "properties": {
+       "video": {
+        "$ref": "#/components/schemas/File",
+        "description": "The upscaled video file",
+        "examples": [
+         {
+          "url": "https://v3.fal.media/files/penguin/ztj_LB4gQlW6HIfVs8zX4_upscaled.mp4"
+         }
+        ]
+       }
+      },
+      "title": "VideoUpscaleOutput"
+     },
+     "File": {
+      "x-fal-order-properties": [
+       "url",
+       "content_type",
+       "file_name",
+       "file_size"
+      ],
+      "required": [
+       "url"
+      ],
+      "type": "object",
+      "properties": {
+       "url": {
+        "description": "The URL where the file can be downloaded from.",
+        "type": "string",
+        "title": "Url"
+       },
+       "file_name": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The name of the file. It will be auto-generated if not provided.",
+        "examples": [
+         "z9RV14K95DvU.png"
+        ],
+        "title": "File Name"
+       },
+       "content_type": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The mime type of the file.",
+        "examples": [
+         "image/png"
+        ],
+        "title": "Content Type"
+       },
+       "file_size": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "description": "The size of the file in bytes.",
+        "examples": [
+         4404019
+        ],
+        "title": "File Size"
+       }
+      },
+      "title": "File"
+     }
+    }
+   },
+   "paths": {
+    "/topaz/upscale/video/precision/requests/{request_id}/status": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       },
+       {
+        "name": "logs",
+        "in": "query",
+        "required": false,
+        "schema": {
+         "type": "number",
+         "description": "Whether to include logs (`1`) in the response or not (`0`)."
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/video/precision/requests/{request_id}/cancel": {
+     "put": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "The request was cancelled.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "type": "object",
+           "properties": {
+            "success": {
+             "type": "boolean",
+             "description": "Whether the request was cancelled successfully."
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/video/precision": {
+     "post": {
+      "requestBody": {
+       "required": true,
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/UpscaleVideoPrecisionInput"
+         }
+        }
+       }
+      },
+      "responses": {
+       "200": {
+        "description": "The request status.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/QueueStatus"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "/topaz/upscale/video/precision/requests/{request_id}": {
+     "get": {
+      "parameters": [
+       {
+        "name": "request_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+         "type": "string",
+         "description": "Request ID"
+        }
+       }
+      ],
+      "responses": {
+       "200": {
+        "description": "Result of the request.",
+        "content": {
+         "application/json": {
+          "schema": {
+           "$ref": "#/components/schemas/UpscaleVideoPrecisionOutput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "servers": [
+    {
+     "url": "https://queue.fal.run"
+    }
+   ],
+   "security": [
+    {
+     "apiKeyAuth": []
+    }
+   ]
+  }
+ }
+}

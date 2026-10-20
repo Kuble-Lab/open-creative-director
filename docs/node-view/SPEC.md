@@ -1325,3 +1325,20 @@ For `music_video.hud_plan`, `brief` below 80 whitespace-separated words is a bin
 ### Team billing for Higgsfield
 
 Active team participants may use Higgsfield only with a connected operator plan and an explicitly configured positive `higgsfieldUsdPerCredit` in admin service settings. Guests stay blocked. Known credit estimates reserve credits × rate in USD; async unknown prices use the standard flat hold. Completion books reported credits at the job's frozen rate, otherwise a labelled credit estimate/unknown-price flat fallback. Other internal services stay restricted. See IMPLEMENTATION-NOTES for the shared access decision, journal and recovery behaviour.
+
+## fal upscale and Kling LipSync (2026-10-20)
+
+| Type | Inputs → outputs | Parameters and behavior |
+| --- | --- | --- |
+| `fal.upscale_image` | required `image` → `image` (implicit list map) | `model`: Topaz Precision (default), Topaz Generative, SeedVR, Recraft Crisp. 2×/4× except fixed Recraft; Topaz submodel enums, defaults Standard V2 / Wonder 3.5. PNG output. Price from output pixels; Recraft 0.004/image and PNG input. |
+| `fal.upscale_video` | required `video` → `video` | `model`: Topaz Precision (default Proteus), Bytedance, SeedVR, FLUX Video Upscale. Model-specific target selections: Topaz 720p/1080p/4K; SeedVR adds 2K; Bytedance/FLUX 1080p/2K/4K. Short edge, preserved aspect, target-tier limits; Topaz 1–4× (Proteus Natural/Gaia 2 exactly 2×), FLUX 1.5–3×, MP4 ≤20 s/50 MB. Topaz/Bytedance 30/60 fps, Bytedance fast/standard/pro (default standard), FLUX precise/creative (default precise). Cost from duration/resolution/fps or SeedVR output pixel-frames. Audio retention awaits live verification. |
+| `fal.kling_lipsync` | required `video`, optional `audio`, optional `text` → `video` | Exactly one of audio or text (connection or typed `text`). Video MP4/MOV, 2–10 s, ≤100 MB, 720p/1080p and each edge 720–1920 px; audio 2–60 s/≤5 MB; text ≤120 characters. Text mode: schema `voice_id`, `voice_language` en/zh, `voice_speed` 0.8–2. Cost 0.014 USD/input second, rounded up to 5 s. |
+
+All three are experimental in category `fal`, available only with FAL_KEY, with the existing participant budget/reservation, queue/poller, cancellation and content-filter behavior. Unsupported sizes/settings fail before the paid tool; no silent video preparation. Price sources, conservative Topaz rounding and missing provider limits are detailed in the appended implementation notes.
+
+
+## Kling AI Avatar v2 (2026-10-20)
+
+`fal.kling_avatar` (category `fal`, experimental, paid, async, `FAL_KEY` required): required `image` and `audio`, optional text `prompt` (also inline), one `video` output with sound. Model `standard` (default) or `pro` selects `fal-ai/kling-video/ai-avatar/v2/{standard,pro}`. This creates a talking photo; Kling LipSync modifies an existing video.
+
+Inputs and output follow `docs/fal-kling-ai-avatar-v2.json`; safety checking is always enabled. Price: `ceil(audio seconds) × 0.0562` USD (Standard) or `× 0.115` (Pro). Unknown audio length stays unknown in the plan; execution inspects duration and checks/reserves the measured cost before the paid tool. Mapped audio lists use mean item cost, like H3 Lip Sync. App guards inherited from LipSync: 2–60 s, ≤5 MB; upload audio formats MP3/WAV/M4A/AAC. Images use app upload formats and the shared fal cap of 90 MB. The supplied Avatar sources specify no media limits; these conservative app guards do not assert provider limits. Existing queue/poller, budgets, cancellation, journal and 422 handling are reused. See the adjacent implementation notes for source links and live-only checks.

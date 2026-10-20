@@ -1229,3 +1229,55 @@ The HUD capacity is 120; classic scene generation and HUD/template defaults stay
 HUD performance image prompts include the planned left/right third and leave calm background for the graphics. A figure or brief that explicitly mentions a headset adds a headset-only/no-handheld-microphone instruction to images with the figure and a no-morphing/no-new-microphone instruction to their clip prompts; a scene mentioning a headset applies it only there. B-roll without the figure receives neither instruction. Face tracking is unchanged.
 
 The shared node LLM adapter marks content-filter finishes, explicit provider refusals (including partial answers), and moderation errors as `PLANNER_CONTENT_FILTER`. Reported costs are booked before throwing. HUD planning (including brief writing), event planning, and the explainer scene writer stop immediately on this error; it cannot trigger an empty-answer retry or JSON-format fallback. Other retry rules are unchanged. The issue message is available in German, English, and Spanish.
+
+## fal image/video upscale and Kling LipSync (2026-10-20, package U)
+
+Three experimental, participant-accessible fal nodes reuse `fal_generate`: session-local uploads, budget reservation before submission, the existing queue gate/poller, cancellation, cost journal and HTTP 422 content-checker handling. No provider calls were made for this implementation. Plans and price helpers live in `lib/nodes/fal-upscale-lipsync.js`; prices stay in `PRICES` in `nodes-fal.js`. A scalar image input uses the engine's implicit map for lists, one paid job per image.
+
+### Models and pricing evidence
+
+Schemas are the supplied OpenAPI snapshot `docs/fal-upscale-lipsync.json`, fetched **2026-10-20**. Prices are the same day's supplied model-page snapshots, read outside the repository (not copied). Sources are `https://fal.ai/models/<endpoint>/llms.txt` for each endpoint below; the corresponding model page omits `/llms.txt`.
+
+| Endpoint | USD estimate |
+| --- | --- |
+| `topaz/upscale/image/precision` | 0.08 per started **24 MP of output**, all seven submodels, default Standard V2 |
+| `topaz/upscale/image/generative` | 0.08 per started **8 MP** for Wonder 3/3.5; per started **4 MP** for the other submodels; default Wonder 3.5 |
+| `fal-ai/seedvr/upscale/image` | 0.001 per output MP; the page only says “megapixels”, the schema gives no different billing basis |
+| `fal-ai/recraft/upscale/crisp` | 0.004 per image, PNG input required by the schema; no configurable scale factor |
+| `topaz/upscale/video/precision` | Per started 10 s block at 30 fps: 720p 0.10, 1080p 0.20, 4K 0.60; Proteus Natural 4K 0.50; Gaia 2 720p/1080p 0.10 and 4K 0.30. 60 fps ×2 |
+| `fal-ai/bytedance-upscaler/upscale/video` | Per second at 30 fps: 1080p 0.0072, 2K 0.0144, 4K 0.0288; 60 fps ×2; pro ×10; fast/standard share the normal price |
+| `fal-ai/seedvr/upscale/video` | 0.001 per output megapixel-frame; source frames counted with the existing ffprobe helper |
+| `blackforestlabs/flux-video-upscale` | Per second, precise: 1080p 0.084, 2K 0.15, 4K 0.33; creative: 0.12/0.21/0.474 |
+| `fal-ai/kling-video/lipsync/audio-to-video`, `fal-ai/kling-video/lipsync/text-to-video` | 0.014 per second of input video, rounded up to whole 5-second blocks |
+
+### Decisions, preflight and assumptions
+
+- Image scaling offers 2×/4×. Only fields of the selected endpoint are shown/sent; submodel choices are exact schema enums. Image costs use measured input dimensions times the factor squared; the plan can read a bounded image header without spawning a process. The supplied image schemas/pages specify factor ceilings (Topaz 4×, SeedVR 10×), but **no absolute output pixel/dimension cap**. No undocumented cap is invented; selected factors are checked before calling the paid tool. Recraft rejects non-PNG input rather than changing it silently.
+- Video target names denote the **short edge** (720/1080/1440/2160), preserving aspect ratio and accepting at most the standard 16:9 pixel area/long edge of the selected tier. Topaz/FLUX require `upscale_factor`, calculated from measured source dimensions; Topaz accepts 1–4×, FLUX 1.5–3×. Proteus Natural and Gaia 2 require exactly 2×. Bytedance/SeedVR get their schema's target field. No resizing/cropping is performed locally. Sources wider than the chosen tier and downscaling requests are refused. Bytedance's schema also offers 6K/8K and 24–120 fps, but only the priced 1080p/2K/4K and 30/60 fps options are exposed.
+- Topaz's page says credits are rounded once per job, but its 10 s and 60 s examples do not scale linearly (e.g. standard 4K 0.60 vs 3.10 for a minute). The reservation conservatively rounds duration up to a started 10 s block **once for the whole job**, then multiplies by the documented 30 fps price and fps ratio (60 fps ×2). This can overestimate; the actual Topaz credit formula needs a live check. Special submodel prices are retained rather than charging all submodels as Proteus.
+- FLUX requires MP4, at most 20 s and 50 MB. No duration/file-size ceilings are stated for the other upscale endpoints in the supplied sources; only explicit limits and the shared fal upload cap apply. Unknown dimensions/duration stop execution before upload/payment. Video plan prices use known asset duration and selected resolution/fps; SeedVR stays unknown without dimensions/frame metadata. Execution probes first and passes the measured cost to the existing budget grant before submit. Bytedance supplies billed output duration: the existing poller prices that duration when present, falling back to the input-length estimate otherwise. Historical costs never substitute for a changed setting (`history: false`).
+- Kling requires exactly one of audio or non-empty text, with connected text overriding typed text. MP4/MOV video: 2–10 s, ≤100 MB, short edge 720 or 1080 and each dimension 720–1920. Text is ≤120 Unicode characters; voices and en/zh languages are exact schema enums, speed 0.8–2. The text endpoint's schema describes up to 60 s video, but this package deliberately uses the requested conservative **10 s maximum for both endpoints**. Audio is 2–60 s and ≤5 MB. The existing song-listening compressor makes AAC for Gemini, not an MP3 helper for Kling, so oversized audio gets a clear request to export a smaller MP3. Video is never silently rescaled; the error says to upscale/crop it first.
+- Safety checks remain enabled wherever the schema exposes them. FLUX keeps safety tolerance 2. Output images are PNG and Topaz/SeedVR video output is MP4 (Topaz explicitly H.264).
+
+### Validation and live-only checks
+
+`scripts/test-fal-upscale-lipsync.js` uses a private app copy with no server/sockets, mocks provider submission and media probing, and checks all ten exact endpoint inputs, every priced resolution/mode, MP and 5 s rounding, Bytedance fps/pro multipliers, schema enums, preflight failures before tool invocation, output routing and FAL_KEY-only availability. Registry counts, cost-plan regressions and palette search tests include the new nodes. Searching “hochskalieren” now ranks the AI image upscaler first; local image resizing remains among the results.
+
+Live checks remain: provider acceptance/output dimensions and target semantics, all submodels, actual Topaz rounded billing and higher-fps charges, SeedVR's image billing basis/frame behavior, moderation, cancellation and **audio preservation for every video upscaler**. None of the supplied schemas/pages guarantees whether original audio survives. No audio is stripped intentionally or reconstructed locally; a live audio loss must be reported rather than hidden. All three nodes retain the experimental badge.
+
+
+## Kling AI Avatar v2 (2026-10-20, package U extension)
+
+`fal.kling_avatar` turns a required photo and required speech audio into a talking video with sound; an optional text prompt controls motion/expression. Kling LipSync instead edits the mouth in an existing video. The model selector exposes `standard` (default) and `pro`; category `fal`, paid, asynchronous, experimental, available only with `FAL_KEY`. The inline prompt and connected text follow the existing node convention; connected text takes precedence, a blank prompt is omitted to retain the schema default `"."`. Safety checking is always enabled.
+
+### Schema and pricing sources
+
+The supplied OpenAPI documents are copied without schema changes to `docs/fal-kling-ai-avatar-v2.json` (2026-10-20). Model-page snapshots of the same date are the pricing source: [Standard](https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard/llms.txt), [Pro](https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/pro/llms.txt). Inputs are `image_url`, `audio_url`, optional `prompt`, `enable_safety_checker`; output is `video` plus `duration` (result metadata).
+
+Standard costs **0.0562 USD/s**, Pro **0.115 USD/s**. The estimate is `ceil(audio duration) × rate`, never based on image duration or a historical run. Like H3 Lip Sync, the synchronous plan reads known audio durations and returns unknown if any mapped item has unknown duration; list estimates are averaged so the engine's map multiplication gives the sum. Execution inspects audio before calling `fal_generate`; an unreadable/unknown duration stops before uploads, reservation or payment. The measured, rounded estimate reaches the existing budget check/reservation. Settlement retains that estimate, as for Kling LipSync: the raw returned duration must not silently remove started-second rounding. Provider billing still needs live verification.
+
+### Media guards and shared execution
+
+Neither supplied Avatar schema nor model-page snapshot specifies duration, size, format or image-dimension limits. This extension conservatively reuses **LipSync's app audio guards: 2–60 s and ≤5 MB**, plus the existing app upload formats **MP3/WAV/M4A/AAC**. These are app policy, not claimed Avatar provider limits. Images use the existing fal upload image formats (PNG/JPEG/WebP/GIF) and the shared fal upload cap **90 MB**. Empty files and unsupported formats fail locally; no conversion, compression, rescaling or truncation occurs. Actual provider format support requires a live check.
+
+The planner and cost helpers extend `lib/nodes/fal-upscale-lipsync.js`; prices remain in `PRICES`. Execution reuses `runFal`/`fal_generate`, participant budget grants/reservations, per-node queue gate, poller, cancellation, cost journal and 422 content-filter handling. No provider call is needed to build or test the adapter. Offline coverage uses an isolated app copy with mocked media probes/providers for both exact endpoint inputs, pricing/rounding and unknown/list costs, guards, key availability, cancellation and output/cost routing. Live-only checks remain provider acceptance of formats and guard boundaries, motion/voice quality, sound preservation/sync, reported duration, billing, moderation and cancellation. The node remains experimental.
