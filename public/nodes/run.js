@@ -70,7 +70,7 @@
     for (const [nodeId, status] of Object.entries(active.nodes || {})) {
       const previous = nodes[nodeId] || {};
       const startedAt = previous.startedAt || (status === 'running' || status === 'waiting_job' ? now : undefined);
-      nodes[nodeId] = { ...previous, status, ...(startedAt ? { startedAt } : {}), ...(isFinal(status) && !previous.endedAt ? { endedAt: now } : {}) };
+      nodes[nodeId] = { ...previous, ...(active.nodeRenders ? { render: active.nodeRenders[nodeId] || null } : {}), status, ...(startedAt ? { startedAt } : {}), ...(isFinal(status) && !previous.endedAt ? { endedAt: now } : {}) };
     }
     return { ...base, active: true, status: active.status || 'running', approval: active.approval || null, accounting: active.accounting || base.accounting, mode: active.mode || base.mode, nodes, resync: false };
   }
@@ -81,6 +81,8 @@
     const previous = base.nodes[event.nodeId] || {};
     const status = event.status;
     const next = { ...previous, status };
+    if ('render' in event) next.render = event.render;
+    if (['error', 'cancelled', 'skipped', 'cached'].includes(status)) delete next.render;
     if ((status === 'running' || status === 'waiting_job') && !previous.startedAt) next.startedAt = now;
     if (isFinal(status)) next.endedAt = now;
     else delete next.endedAt;
@@ -161,6 +163,13 @@
       active: ['running', 'awaiting_approval'].includes(record.status), accounting: record.accounting, approval: record.approval, status: record.status, nodes, cost: record.cost || { usd: 0, credits: 0 },
       error: record.error || null, startedAt: record.startedAt ? new Date(record.startedAt).getTime() : null,
       finishedAt: record.finishedAt ? new Date(record.finishedAt).getTime() : null };
+  }
+
+  function renderText(render, T) {
+    if (!render || !['rendering', 'completed'].includes(render.phase)) return '';
+    const names = Array.isArray(render.names) ? render.names : Array.from({ length: Math.min(100, render.count || 0) }, (_, i) => T('nodes.render.computer', { n: i + 1 }));
+    if (!names.length) return '';
+    return T(`nodes.render.${render.phase}`, { name: names.join(', ') });
   }
 
   function clearResync(state) {
@@ -376,6 +385,7 @@
         nodeId,
         title: titleOf(nodeId),
         executions,
+        reusedItems: node.reusedItems || 0,
         estimate,
         unknown: !estimate || executions === null || (!isNumber(estimate.usd) && !isNumber(estimate.credits)),
         usd: estimate && isNumber(estimate.usd) && executions !== null ? estimate.usd * executions : null,
@@ -461,8 +471,9 @@
     return shown;
   }
 
-  function buildRunRequest({ mode, nodeIds, force, rev, nodeId, items }) {
+  function buildRunRequest({ mode, nodeIds, force, rev, nodeId, items, retry }) {
     const request = { mode, force: Boolean(force) };
+    if (retry) request.retry = true;
     if (mode === 'items') {
       // single items of the list of one node made again (the scene table of the inspector)
       request.nodeId = nodeId;
@@ -525,6 +536,7 @@
     reduce,
     clearResync,
     restoreRun,
+    renderText,
     activeNodeIds,
     progressOf,
     inFlightNodes,
@@ -741,6 +753,9 @@
         slot.message = queueText(run.queue, T);
         slot.tooltip = T('nodes.statusHint.renderQueue');
       }
+
+      const renderedOn = run && ['running', 'waiting_job', 'done'].includes(status) ? renderText(run.render, T) : '';
+      if (renderedOn) slot.message = [slot.message, renderedOn].filter(Boolean).join(' · ');
 
       // preview of the selected result (inputs already show their asset in the widget)
       let items = [];
@@ -1124,7 +1139,7 @@
     }
 
     // `all`: the question of "Run all again" (nothing is taken from the cache), with its own title and texts.
-    async function confirmPaid(info, { all = false, resume = false } = {}) {
+    async function confirmPaid(info, { all = false, resume = false, items = false } = {}) {
       const body = el('div', { class: 'nv-confirm' });
       body.append(el('p', { class: 'nv-confirm-intro', text: T(resume ? 'nodes.run.resumeIntro' : all ? 'nodes.run.confirmAll.intro' : 'nodes.run.previewIntro') }));
       const changes = el('ul', { class: 'nv-confirm-list is-changes' });
@@ -1149,6 +1164,7 @@
         const item = el('li', {});
         item.append(el('span', { class: 'nv-confirm-name', text: row.title }));
         if (row.executions && row.executions > 1) item.append(el('span', { class: 'nv-confirm-times', text: `× ${row.executions}` }));
+        if (row.reusedItems && !items) item.append(el('span', { class: 'nv-confirm-times', text: T('nodes.run.confirm.remainingItems', { missing: row.executions, existing: row.reusedItems }) }));
         const amount = row.unknown ? T('nodes.run.confirm.unknown') : costText({ usd: row.usd ?? undefined, credits: row.credits ?? undefined }, { estimate: true }) || T('nodes.run.confirm.unknown');
         item.append(el('span', { class: `nv-confirm-cost ${row.unknown ? 'is-unknown' : ''}`.trim(), text: amount }));
         list.append(item);
@@ -1203,7 +1219,7 @@
       return ui.confirmDialog({ title: T('nodes.run.confirmAll.title'), message: T('nodes.run.confirmAll.free'), confirmLabel: T('nodes.run.confirmAll.start') });
     }
 
-    async function startRun({ mode, nodeIds, force, nodeId, items, again = false }) {
+    async function startRun({ mode, nodeIds, force, nodeId, items, retry, again = false }) {
       const st = S();
       if (!st.workflow || !st.reg) return;
       if (runState.active || starting) {
@@ -1231,7 +1247,7 @@
           return;
         }
         const id = st.workflow.id;
-        const request = buildRunRequest({ mode, nodeIds, force, nodeId, items });
+        const request = buildRunRequest({ mode, nodeIds, force, nodeId, items, retry });
         let planned;
         try {
           planned = await api.plan(id, request);
@@ -1253,7 +1269,7 @@
           return;
         }
         if (info.needsConfirm) {
-          const confirmed = await confirmPaid(info, { all: again });
+          const confirmed = await confirmPaid(info, { all: again, items: mode === 'items' });
           if (!confirmed) return;
         } else if (again && !(await confirmAllFree())) return;
         try {
@@ -1285,6 +1301,11 @@
 
     function runNode(nodeId) {
       return startRun({ mode: 'node', nodeIds: [nodeId], force: true });
+    }
+
+    // Retry keeps finished list items; the explicit run commands still offer fresh results.
+    function retryNode(nodeId) {
+      return startRun({ mode: 'node', nodeIds: [nodeId], force: false, retry: true });
     }
 
     // Every node runs again, nothing comes from the cache (like "Run again" of the app view). The plan with force says what it costs; the
@@ -1330,6 +1351,7 @@
       const planNode = plan && plan.nodes ? plan.nodes[nodeId] : null;
       return {
         ...table,
+        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index) })),
         entryId: entry ? entry.id : null,
         cost: OCD.sceneTable.itemCost(planNode, def),
         busy: runState.active || starting,
@@ -1537,6 +1559,7 @@
           status: shown.status,
           message: (invalid ? invalid.message : shown.message) || null,
           fix: invalid ? invalid.fix : null,
+          renderText: run && ['running', 'waiting_job', 'done'].includes(shown.status) ? renderText(run.render, T) : '',
           run: run || null,
           log: runState.logs[nodeId] || [],
           plan: planNode,
@@ -1565,6 +1588,7 @@
         };
       },
       runNode,
+      retryNode,
       runFrom,
       runItems,
       scenes: scenesOf,
@@ -1699,6 +1723,7 @@
       paintAll: () => schedulePaint(),
       startRun,
       runNode,
+      retryNode,
       runFrom,
       runSelection,
       runAllAgain,

@@ -169,6 +169,25 @@ async function run(iso, realFetch) {
     }
   }
 
+  // Refusals are billed once, including partial responses and HTTP 400 moderation errors.
+  {
+    for (const message of [{ content: '' }, { content: 'partial text' }, { content: '', refusal: 'Declined' }]) {
+      journal.length = 0;
+      posts.length = 0;
+      reply = () => ({ choices: [{ finish_reason: message.refusal ? 'stop' : 'content_filter', message }], usage: { cost: 0.13 } });
+      const err = await llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', json: true }).catch((error) => error);
+      assert.equal(err.code, 'PLANNER_CONTENT_FILTER');
+      assert.equal(posts.length, 1);
+      assert.equal(journal.length, 1);
+      assert.equal(journal[0].cost, 0.13);
+    }
+    posts.length = 0;
+    reply = () => { throw Object.assign(new Error('Content filter rejected request'), { status: 400 }); };
+    await assert.rejects(llm.completeText({ model: 'vendor/text-only', prompt: 'Hi', json: true }), { code: 'PLANNER_CONTENT_FILTER' });
+    assert.equal(posts.length, 1, 'no response_format retry for a refusal');
+    reply = () => ({ choices: [{ message: { content: 'The answer' } }], usage: { cost: 0.01 } });
+  }
+
   /* ---------- an empty answer is billed all the same (WP40 part C) ---------- */
   {
     posts.length = 0;
