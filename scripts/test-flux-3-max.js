@@ -34,7 +34,14 @@ function pureTests() {
   assert.deepEqual(keyframes.input, { ...expected, keyframes: ['a', 'b', 'c', 'd'].map((image_url, i) => ({ image_url, frame_index: i * 40 })) });
   assert.deepEqual(spec.frameIndices(3, 5, '0, 2.5, 5'), [0, 60, 120]);
   assert.deepEqual(spec.frameIndices(4, 5), [0, 40, 80, 120]);
-  for (const count of [1, 11]) assert.throws(() => spec.frameIndices(count, 5), /2 to 10/);
+  assert.deepEqual(spec.frameIndices(1, 5), [0]);
+  assert.deepEqual(spec.frameIndices(1, 5, '5'), [120]);
+  for (const count of [0, 11]) {
+    assert.throws(() => spec.frameIndices(count, 5), (err) => err.code === 'FLUX_MAX_KEYFRAMES_COUNT' && /1 to 10/.test(err.message));
+  }
+  assert.throws(() => spec.frameIndices(2, 5, '0'), (err) => err.code === 'FLUX_MAX_KEYFRAME_TIMES_COUNT' && err.data.times === 1);
+  assert.throws(() => spec.frameIndices(2, 5, '3, 1'), (err) => err.code === 'FLUX_MAX_KEYFRAME_TIMES_ORDER' && err.data.duration === 5);
+  assert.throws(() => spec.frameIndices(2, 5, '1, 1.01'), (err) => err.code === 'FLUX_MAX_KEYFRAME_TIMES_UNIQUE');
   for (const times of ['0, 0, 5', '0, 2, 6', '0, 3, 2', '0, 5', '0, , 5', '-1, 2, 5', '0, 0.001, 5']) {
     assert.throws(() => spec.frameIndices(3, 5, times), /keyframe_times/);
   }
@@ -181,7 +188,9 @@ async function integration(iso) {
     if (inputs.last_frame) assert.equal(input.end_image_url, input.image_url);
   }
   const beforeInvalid = [uploads.length, submissions.length];
-  for (const count of [1, 11]) await assert.rejects(nodes.planFluxMax(nodeCtx, { prompt: text, images: { type: 'list', items: Array(count).fill(value) } }, params, true), /2 to 10/);
+  const single = await nodes.planFluxMax(nodeCtx, { prompt: text, images: { type: 'list', items: [value] } }, params, true);
+  assert.deepEqual(single.input.keyframes, [{ image_url: '@@flux_max_image_0@@', frame_index: 0 }]);
+  for (const count of [0, 11]) await assert.rejects(nodes.planFluxMax(nodeCtx, { prompt: text, images: { type: 'list', items: Array(count).fill(value) } }, params, true), (err) => err.code === 'FLUX_MAX_KEYFRAMES_COUNT');
   await assert.rejects(nodes.planFluxMax(nodeCtx, { prompt: text, last_frame: value }, params), /requires a start/);
   await assert.rejects(nodes.planFluxMax(nodeCtx, { prompt: text, first_frame: { ...value, file: 'test.gif' } }, params), /PNG, JPEG or WebP/);
   const large = await store.saveAsset(session.id, { kind: 'image', buffer: PNG, ext: '.png' });
