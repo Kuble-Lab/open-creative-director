@@ -1,0 +1,1538 @@
+{
+  "fetched": "2026-10-20",
+  "endpoints": {
+    "blackforestlabs/flux-3-max/text-to-video": {
+      "openapi": "3.0.4",
+      "info": {
+        "title": "Queue OpenAPI for blackforestlabs/flux-3-max/text-to-video",
+        "version": "1.0.0",
+        "description": "FLUX 3 Max text to video from Black Forest Labs. Input: prompt. Options: duration 5-20 seconds (default 5), aspect_ratio (auto, 21:9, 2:1, 16:9, 4:3, 1:1, 3:4, 9:16; default auto), generate_audio (default true), reasoning_level low or high (default high, the model expands your prompt), seed. Output: 720p video with native audio. Billed per second of generated video.",
+        "x-fal-metadata": {
+          "endpointId": "blackforestlabs/flux-3-max/text-to-video",
+          "category": "text-to-video",
+          "thumbnailUrl": "https://v3b.fal.media/files/b/0aae8ccd/cfm_KIh1OltujxYuHIzzV.jpg",
+          "playgroundUrl": "https://fal.ai/models/blackforestlabs/flux-3-max/text-to-video",
+          "documentationUrl": "https://fal.ai/models/blackforestlabs/flux-3-max/text-to-video/api",
+          "about": "Generate a video with audio from a text prompt."
+        }
+      },
+      "components": {
+        "securitySchemes": {
+          "apiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "Fal Key"
+          }
+        },
+        "schemas": {
+          "QueueStatus": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "IN_QUEUE",
+                  "IN_PROGRESS",
+                  "COMPLETED"
+                ]
+              },
+              "request_id": {
+                "type": "string",
+                "description": "The request id."
+              },
+              "response_url": {
+                "type": "string",
+                "description": "The response url."
+              },
+              "status_url": {
+                "type": "string",
+                "description": "The status url."
+              },
+              "cancel_url": {
+                "type": "string",
+                "description": "The cancel url."
+              },
+              "logs": {
+                "type": "object",
+                "description": "The logs.",
+                "additionalProperties": true
+              },
+              "metrics": {
+                "type": "object",
+                "description": "The metrics.",
+                "additionalProperties": true
+              },
+              "queue_position": {
+                "type": "integer",
+                "description": "The queue position."
+              }
+            },
+            "required": [
+              "status",
+              "request_id"
+            ]
+          },
+          "Flux3MaxTextToVideoInput": {
+            "required": [
+              "prompt"
+            ],
+            "title": "AlligatorTextToVideoInput",
+            "type": "object",
+            "x-fal-order-properties": [
+              "prompt",
+              "duration",
+              "resolution",
+              "reasoning_level",
+              "aspect_ratio",
+              "generate_audio",
+              "seed"
+            ],
+            "properties": {
+              "prompt": {
+                "examples": [
+                  "A red panda walks along a mossy log in a sunlit forest, pausing to sniff the air before climbing over a fallen branch. Soft morning light filters through the canopy. Ambient birdsong and rustling leaves."
+                ],
+                "type": "string",
+                "minLength": 1,
+                "title": "Prompt",
+                "description": "The text prompt describing the video you want to generate."
+              },
+              "duration": {
+                "enum": [
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20
+                ],
+                "type": "integer",
+                "default": 5,
+                "title": "Duration",
+                "description": "Duration of the generated video in seconds."
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Seed",
+                "description": "The seed to use for the generation. Random when not provided."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "auto",
+                  "21:9",
+                  "2:1",
+                  "16:9",
+                  "4:3",
+                  "1:1",
+                  "3:4",
+                  "9:16"
+                ],
+                "type": "string",
+                "default": "auto",
+                "title": "Aspect Ratio",
+                "description": "Aspect ratio of the generated video. `auto` uses 16:9 for text prompts and follows the first image otherwise."
+              },
+              "generate_audio": {
+                "default": true,
+                "type": "boolean",
+                "title": "Generate Audio",
+                "description": "Whether to generate audio for the video."
+              },
+              "reasoning_level": {
+                "enum": [
+                  "low",
+                  "high"
+                ],
+                "type": "string",
+                "default": "high",
+                "title": "Reasoning Level",
+                "description": "How much effort the harness spends reasoning about the given prompt. Higher reasoning effort means slower generation time."
+              },
+              "resolution": {
+                "enum": [
+                  "720p",
+                  "1080p"
+                ],
+                "type": "string",
+                "default": "720p",
+                "title": "Resolution",
+                "description": "Resolution of the generated video."
+              }
+            }
+          },
+          "Flux3MaxTextToVideoOutput": {
+            "required": [
+              "video",
+              "seed"
+            ],
+            "title": "AlligatorTextToVideoOutput",
+            "type": "object",
+            "x-fal-order-properties": [
+              "video",
+              "seed",
+              "timings"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "description": "The seed used for the generation."
+              },
+              "video": {
+                "examples": [
+                  {
+                    "content_type": "video/mp4",
+                    "duration": 5.041666666666667,
+                    "fps": 24,
+                    "url": "https://v3b.fal.media/files/b/0aad95e5/Yk8T8_MXiLBhuphmPfeqR_alligator.mp4",
+                    "height": 704,
+                    "num_frames": 121,
+                    "width": 1280
+                  }
+                ],
+                "$ref": "#/components/schemas/VideoFile",
+                "description": "The generated video."
+              },
+              "timings": {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object",
+                "title": "Timings",
+                "description": "`inference`: seconds the model spent denoising the video. Excludes prompt expansion, decoding and upload."
+              }
+            }
+          },
+          "VideoFile": {
+            "required": [
+              "url"
+            ],
+            "title": "VideoFile",
+            "type": "object",
+            "x-fal-order-properties": [
+              "url",
+              "content_type",
+              "file_name",
+              "file_size",
+              "width",
+              "height",
+              "fps",
+              "duration",
+              "num_frames"
+            ],
+            "properties": {
+              "content_type": {
+                "examples": [
+                  "image/png"
+                ],
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Content Type",
+                "description": "The mime type of the file."
+              },
+              "file_size": {
+                "examples": [
+                  4404019
+                ],
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Size",
+                "description": "The size of the file in bytes."
+              },
+              "fps": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fps",
+                "description": "The FPS of the video"
+              },
+              "url": {
+                "type": "string",
+                "title": "Url",
+                "description": "The URL where the file can be downloaded from."
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height",
+                "description": "The height of the video"
+              },
+              "duration": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Duration",
+                "description": "The duration of the video"
+              },
+              "num_frames": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Num Frames",
+                "description": "The number of frames in the video"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width",
+                "description": "The width of the video"
+              },
+              "file_name": {
+                "examples": [
+                  "z9RV14K95DvU.png"
+                ],
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name",
+                "description": "The name of the file. It will be auto-generated if not provided."
+              }
+            }
+          }
+        }
+      },
+      "paths": {
+        "/blackforestlabs/flux-3-max/text-to-video/requests/{request_id}/status": {
+          "get": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              },
+              {
+                "name": "logs",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "number",
+                  "description": "Whether to include logs (`1`) in the response or not (`0`)."
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "The request status.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/QueueStatus"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/text-to-video/requests/{request_id}/cancel": {
+          "put": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "The request was cancelled.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "description": "Whether the request was cancelled successfully."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/text-to-video": {
+          "post": {
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Flux3MaxTextToVideoInput"
+                  }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "The request status.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/QueueStatus"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/text-to-video/requests/{request_id}": {
+          "get": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Result of the request.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/Flux3MaxTextToVideoOutput"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://queue.fal.run"
+        }
+      ],
+      "security": [
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    "blackforestlabs/flux-3-max/image-to-video": {
+      "openapi": "3.0.4",
+      "info": {
+        "title": "Queue OpenAPI for blackforestlabs/flux-3-max/image-to-video",
+        "version": "1.0.0",
+        "description": "FLUX 3 Max image to video from Black Forest Labs. Input: image_url (PNG, JPEG or WebP, the first frame), optional end_image_url (the last frame) and a prompt describing how the video unfolds. Options: duration 5-20 seconds (default 5), aspect_ratio (auto, 21:9, 2:1, 16:9, 4:3, 1:1, 3:4, 9:16; default auto), generate_audio (default true), reasoning_level low or high (default high, the model expands your prompt), seed. Output: 720p video with native audio. Billed per second of generated video.",
+        "x-fal-metadata": {
+          "endpointId": "blackforestlabs/flux-3-max/image-to-video",
+          "category": "image-to-video",
+          "thumbnailUrl": "https://v3b.fal.media/files/b/0aaf0ae2/vqNYPsX9h49SQulyxqJyL.jpg",
+          "playgroundUrl": "https://fal.ai/models/blackforestlabs/flux-3-max/image-to-video",
+          "documentationUrl": "https://fal.ai/models/blackforestlabs/flux-3-max/image-to-video/api",
+          "about": "Generate a video that starts from an input image, optionally ending on\na second image."
+        }
+      },
+      "components": {
+        "securitySchemes": {
+          "apiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "Fal Key"
+          }
+        },
+        "schemas": {
+          "QueueStatus": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "IN_QUEUE",
+                  "IN_PROGRESS",
+                  "COMPLETED"
+                ]
+              },
+              "request_id": {
+                "type": "string",
+                "description": "The request id."
+              },
+              "response_url": {
+                "type": "string",
+                "description": "The response url."
+              },
+              "status_url": {
+                "type": "string",
+                "description": "The status url."
+              },
+              "cancel_url": {
+                "type": "string",
+                "description": "The cancel url."
+              },
+              "logs": {
+                "type": "object",
+                "description": "The logs.",
+                "additionalProperties": true
+              },
+              "metrics": {
+                "type": "object",
+                "description": "The metrics.",
+                "additionalProperties": true
+              },
+              "queue_position": {
+                "type": "integer",
+                "description": "The queue position."
+              }
+            },
+            "required": [
+              "status",
+              "request_id"
+            ]
+          },
+          "Flux3MaxImageToVideoInput": {
+            "required": [
+              "prompt",
+              "image_url"
+            ],
+            "title": "AlligatorImageToVideoInput",
+            "type": "object",
+            "x-fal-order-properties": [
+              "prompt",
+              "image_url",
+              "end_image_url",
+              "duration",
+              "resolution",
+              "reasoning_level",
+              "aspect_ratio",
+              "generate_audio",
+              "seed"
+            ],
+            "properties": {
+              "resolution": {
+                "enum": [
+                  "720p",
+                  "1080p"
+                ],
+                "type": "string",
+                "default": "720p",
+                "title": "Resolution",
+                "description": "Resolution of the generated video."
+              },
+              "duration": {
+                "enum": [
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20
+                ],
+                "type": "integer",
+                "default": 5,
+                "title": "Duration",
+                "description": "Duration of the generated video in seconds."
+              },
+              "prompt": {
+                "examples": [
+                  "The monkey leans into his microphone and says, \"Welcome back to the show!\" The polar bear laughs and nods along, tapping the desk. Jungle birdsong on the left, a cold wind on the right."
+                ],
+                "type": "string",
+                "minLength": 1,
+                "title": "Prompt",
+                "description": "The text prompt describing how the video unfolds from the image."
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Seed",
+                "description": "The seed to use for the generation. Random when not provided."
+              },
+              "image_url": {
+                "description": "URL of the image the video starts from (PNG, JPEG, or WebP).",
+                "type": "string",
+                "title": "Image URL",
+                "examples": [
+                  "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg"
+                ]
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "auto",
+                  "21:9",
+                  "2:1",
+                  "16:9",
+                  "4:3",
+                  "1:1",
+                  "3:4",
+                  "9:16"
+                ],
+                "type": "string",
+                "default": "auto",
+                "title": "Aspect Ratio",
+                "description": "Aspect ratio of the generated video. `auto` uses 16:9 for text prompts and follows the first image otherwise."
+              },
+              "generate_audio": {
+                "default": true,
+                "type": "boolean",
+                "title": "Generate Audio",
+                "description": "Whether to generate audio for the video."
+              },
+              "reasoning_level": {
+                "enum": [
+                  "low",
+                  "high"
+                ],
+                "type": "string",
+                "default": "high",
+                "title": "Reasoning Level",
+                "description": "How much effort the harness spends reasoning about the given prompt. Higher reasoning effort means slower generation time."
+              },
+              "end_image_url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "End Image URL",
+                "description": "Optional URL of the image used as the last frame of the video (PNG, JPEG, or WebP)."
+              }
+            }
+          },
+          "Flux3MaxImageToVideoOutput": {
+            "required": [
+              "video",
+              "seed"
+            ],
+            "title": "AlligatorImageToVideoOutput",
+            "type": "object",
+            "x-fal-order-properties": [
+              "video",
+              "seed",
+              "timings"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "description": "The seed used for the generation."
+              },
+              "video": {
+                "examples": [
+                  {
+                    "content_type": "video/mp4",
+                    "duration": 5.041666666666667,
+                    "fps": 24,
+                    "url": "https://v3b.fal.media/files/b/0aad95e6/ESYZjWfb88A3PeyaAqCbD_alligator.mp4",
+                    "height": 704,
+                    "num_frames": 121,
+                    "width": 1280
+                  }
+                ],
+                "$ref": "#/components/schemas/VideoFile",
+                "description": "The generated video."
+              },
+              "timings": {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object",
+                "title": "Timings",
+                "description": "`inference`: seconds the model spent denoising the video. Excludes prompt expansion, decoding and upload."
+              }
+            }
+          },
+          "VideoFile": {
+            "required": [
+              "url"
+            ],
+            "title": "VideoFile",
+            "type": "object",
+            "x-fal-order-properties": [
+              "url",
+              "content_type",
+              "file_name",
+              "file_size",
+              "width",
+              "height",
+              "fps",
+              "duration",
+              "num_frames"
+            ],
+            "properties": {
+              "content_type": {
+                "examples": [
+                  "image/png"
+                ],
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Content Type",
+                "description": "The mime type of the file."
+              },
+              "file_size": {
+                "examples": [
+                  4404019
+                ],
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Size",
+                "description": "The size of the file in bytes."
+              },
+              "fps": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fps",
+                "description": "The FPS of the video"
+              },
+              "url": {
+                "type": "string",
+                "title": "Url",
+                "description": "The URL where the file can be downloaded from."
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height",
+                "description": "The height of the video"
+              },
+              "duration": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Duration",
+                "description": "The duration of the video"
+              },
+              "num_frames": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Num Frames",
+                "description": "The number of frames in the video"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width",
+                "description": "The width of the video"
+              },
+              "file_name": {
+                "examples": [
+                  "z9RV14K95DvU.png"
+                ],
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name",
+                "description": "The name of the file. It will be auto-generated if not provided."
+              }
+            }
+          }
+        }
+      },
+      "paths": {
+        "/blackforestlabs/flux-3-max/image-to-video/requests/{request_id}/status": {
+          "get": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              },
+              {
+                "name": "logs",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "number",
+                  "description": "Whether to include logs (`1`) in the response or not (`0`)."
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "The request status.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/QueueStatus"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/image-to-video/requests/{request_id}/cancel": {
+          "put": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "The request was cancelled.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "description": "Whether the request was cancelled successfully."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/image-to-video": {
+          "post": {
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Flux3MaxImageToVideoInput"
+                  }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "The request status.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/QueueStatus"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/image-to-video/requests/{request_id}": {
+          "get": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Result of the request.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/Flux3MaxImageToVideoOutput"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://queue.fal.run"
+        }
+      ],
+      "security": [
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    "blackforestlabs/flux-3-max/keyframes-to-video": {
+      "openapi": "3.0.4",
+      "info": {
+        "title": "Queue OpenAPI for blackforestlabs/flux-3-max/keyframes-to-video",
+        "version": "1.0.0",
+        "description": "FLUX 3 Max keyframes to video from Black Forest Labs. Input: keyframes (list of image_url + frame_index, at most duration x fps) and a prompt describing how the video moves between them. Options: duration 5-20 seconds (default 5), aspect_ratio (auto, 21:9, 2:1, 16:9, 4:3, 1:1, 3:4, 9:16; default auto), generate_audio (default true), reasoning_level low or high (default high, the model expands your prompt), seed. Output: 720p video with native audio. Billed per second of generated video.",
+        "x-fal-metadata": {
+          "endpointId": "blackforestlabs/flux-3-max/keyframes-to-video",
+          "category": "image-to-video",
+          "thumbnailUrl": "https://v3b.fal.media/files/b/0aae8cf6/-Cuw8bwhTM9rdnwq7eICJ.jpg",
+          "playgroundUrl": "https://fal.ai/models/blackforestlabs/flux-3-max/keyframes-to-video",
+          "documentationUrl": "https://fal.ai/models/blackforestlabs/flux-3-max/keyframes-to-video/api",
+          "about": "Generate a video through keyframe images pinned to frame positions."
+        }
+      },
+      "components": {
+        "securitySchemes": {
+          "apiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "Fal Key"
+          }
+        },
+        "schemas": {
+          "QueueStatus": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "IN_QUEUE",
+                  "IN_PROGRESS",
+                  "COMPLETED"
+                ]
+              },
+              "request_id": {
+                "type": "string",
+                "description": "The request id."
+              },
+              "response_url": {
+                "type": "string",
+                "description": "The response url."
+              },
+              "status_url": {
+                "type": "string",
+                "description": "The status url."
+              },
+              "cancel_url": {
+                "type": "string",
+                "description": "The cancel url."
+              },
+              "logs": {
+                "type": "object",
+                "description": "The logs.",
+                "additionalProperties": true
+              },
+              "metrics": {
+                "type": "object",
+                "description": "The metrics.",
+                "additionalProperties": true
+              },
+              "queue_position": {
+                "type": "integer",
+                "description": "The queue position."
+              }
+            },
+            "required": [
+              "status",
+              "request_id"
+            ]
+          },
+          "Flux3MaxKeyframesToVideoInput": {
+            "required": [
+              "prompt",
+              "keyframes"
+            ],
+            "title": "AlligatorKeyframesToVideoInput",
+            "type": "object",
+            "x-fal-order-properties": [
+              "prompt",
+              "keyframes",
+              "duration",
+              "resolution",
+              "reasoning_level",
+              "aspect_ratio",
+              "generate_audio",
+              "seed"
+            ],
+            "properties": {
+              "keyframes": {
+                "examples": [
+                  [
+                    {
+                      "frame_index": 0,
+                      "image_url": "https://storage.googleapis.com/falserverless/example_inputs/veo31-flf2v-input-1.jpeg"
+                    },
+                    {
+                      "frame_index": 120,
+                      "image_url": "https://storage.googleapis.com/falserverless/example_inputs/veo31-flf2v-input-2.jpeg"
+                    }
+                  ]
+                ],
+                "type": "array",
+                "title": "Keyframes",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/components/schemas/AlligatorKeyframe"
+                },
+                "maxItems": 10,
+                "description": "Keyframe images pinned to frame positions in the generated video. Up to 10 keyframes with unique `frame_index` values."
+              },
+              "resolution": {
+                "enum": [
+                  "720p",
+                  "1080p"
+                ],
+                "type": "string",
+                "default": "720p",
+                "title": "Resolution",
+                "description": "Resolution of the generated video."
+              },
+              "duration": {
+                "enum": [
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20
+                ],
+                "type": "integer",
+                "default": 5,
+                "title": "Duration",
+                "description": "Duration of the generated video in seconds."
+              },
+              "prompt": {
+                "examples": [
+                  "The woman picks up a brown felt fedora, lifts it onto her head with both hands and adjusts the brim, smiling at the camera. Soft studio light against a plain gray wall."
+                ],
+                "type": "string",
+                "minLength": 1,
+                "title": "Prompt",
+                "description": "The text prompt describing how the video moves between keyframes."
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Seed",
+                "description": "The seed to use for the generation. Random when not provided."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "auto",
+                  "21:9",
+                  "2:1",
+                  "16:9",
+                  "4:3",
+                  "1:1",
+                  "3:4",
+                  "9:16"
+                ],
+                "type": "string",
+                "default": "auto",
+                "title": "Aspect Ratio",
+                "description": "Aspect ratio of the generated video. `auto` uses 16:9 for text prompts and follows the first image otherwise."
+              },
+              "generate_audio": {
+                "default": true,
+                "type": "boolean",
+                "title": "Generate Audio",
+                "description": "Whether to generate audio for the video."
+              },
+              "reasoning_level": {
+                "enum": [
+                  "low",
+                  "high"
+                ],
+                "type": "string",
+                "default": "high",
+                "title": "Reasoning Level",
+                "description": "How much effort the harness spends reasoning about the given prompt. Higher reasoning effort means slower generation time."
+              }
+            }
+          },
+          "Flux3MaxKeyframesToVideoOutput": {
+            "required": [
+              "video",
+              "seed"
+            ],
+            "title": "AlligatorKeyframesToVideoOutput",
+            "type": "object",
+            "x-fal-order-properties": [
+              "video",
+              "seed",
+              "timings"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "description": "The seed used for the generation."
+              },
+              "video": {
+                "examples": [
+                  {
+                    "content_type": "video/mp4",
+                    "duration": 5.041666666666667,
+                    "fps": 24,
+                    "url": "https://v3b.fal.media/files/b/0aad95e6/8CP6rEBGhIRsmaiPP1Y9Q_alligator.mp4",
+                    "height": 1088,
+                    "num_frames": 121,
+                    "width": 800
+                  }
+                ],
+                "$ref": "#/components/schemas/VideoFile",
+                "description": "The generated video."
+              },
+              "timings": {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object",
+                "title": "Timings",
+                "description": "`inference`: seconds the model spent denoising the video. Excludes prompt expansion, decoding and upload."
+              }
+            }
+          },
+          "AlligatorKeyframe": {
+            "required": [
+              "image_url",
+              "frame_index"
+            ],
+            "title": "AlligatorKeyframe",
+            "type": "object",
+            "x-fal-order-properties": [
+              "image_url",
+              "frame_index"
+            ],
+            "properties": {
+              "frame_index": {
+                "type": "integer",
+                "minimum": 0,
+                "title": "Frame Index",
+                "description": "Frame position of this keyframe in the generated 24 fps video. Must be unique and at most `duration * 24`."
+              },
+              "image_url": {
+                "type": "string",
+                "title": "Image URL",
+                "description": "URL of the keyframe image (PNG, JPEG, or WebP)."
+              }
+            }
+          },
+          "VideoFile": {
+            "required": [
+              "url"
+            ],
+            "title": "VideoFile",
+            "type": "object",
+            "x-fal-order-properties": [
+              "url",
+              "content_type",
+              "file_name",
+              "file_size",
+              "width",
+              "height",
+              "fps",
+              "duration",
+              "num_frames"
+            ],
+            "properties": {
+              "content_type": {
+                "examples": [
+                  "image/png"
+                ],
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Content Type",
+                "description": "The mime type of the file."
+              },
+              "file_size": {
+                "examples": [
+                  4404019
+                ],
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Size",
+                "description": "The size of the file in bytes."
+              },
+              "fps": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fps",
+                "description": "The FPS of the video"
+              },
+              "url": {
+                "type": "string",
+                "title": "Url",
+                "description": "The URL where the file can be downloaded from."
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height",
+                "description": "The height of the video"
+              },
+              "duration": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Duration",
+                "description": "The duration of the video"
+              },
+              "num_frames": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Num Frames",
+                "description": "The number of frames in the video"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width",
+                "description": "The width of the video"
+              },
+              "file_name": {
+                "examples": [
+                  "z9RV14K95DvU.png"
+                ],
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "File Name",
+                "description": "The name of the file. It will be auto-generated if not provided."
+              }
+            }
+          }
+        }
+      },
+      "paths": {
+        "/blackforestlabs/flux-3-max/keyframes-to-video/requests/{request_id}/status": {
+          "get": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              },
+              {
+                "name": "logs",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "number",
+                  "description": "Whether to include logs (`1`) in the response or not (`0`)."
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "The request status.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/QueueStatus"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/keyframes-to-video/requests/{request_id}/cancel": {
+          "put": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "The request was cancelled.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "description": "Whether the request was cancelled successfully."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/keyframes-to-video": {
+          "post": {
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Flux3MaxKeyframesToVideoInput"
+                  }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "The request status.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/QueueStatus"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/blackforestlabs/flux-3-max/keyframes-to-video/requests/{request_id}": {
+          "get": {
+            "parameters": [
+              {
+                "name": "request_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "description": "Request ID"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Result of the request.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/Flux3MaxKeyframesToVideoOutput"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://queue.fal.run"
+        }
+      ],
+      "security": [
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    }
+  }
+}

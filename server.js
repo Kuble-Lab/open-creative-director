@@ -2301,6 +2301,7 @@ app.post('/api/sessions/:id/video-model-requests/:requestId', async (req, res) =
     // The provider refused the image (real person): the card reopens with its models marked, the answer carries the code.
     const refusal = videoRefusal.refusalOf(err, { model: selected.option.id });
     if (refusal) return failWithCode(res, refusal.status, refusal.code, refusal.messageDe);
+    if (err.code === 'FAL_CONTENT_CHECKER') return failWithCode(res, err.status || 422, err.code, err.messageDe || err.message);
     const status = err instanceof or.OpenRouterError ? Math.min(502, Math.max(400, err.status || 502)) : 400;
     fail(res, status, err.message);
   }
