@@ -224,7 +224,7 @@
       if (info.status === 'error') {
         const box = el('div', { class: 'nv-notice is-error' }, ui.icon('warning', 14), el('span', { class: 'nv-notice-text nv-scroll', text: info.message || ui.T('nodes.run.failedNode') }));
         const retry = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: info.busy }, ui.icon('refresh', 13), el('span', { text: ui.T('nodes.common.retry') }));
-        retry.addEventListener('click', () => cb.run.runNode(nodeId));
+        retry.addEventListener('click', () => cb.run.retryNode(nodeId));
         body.append(box, retry);
         // A refused music prompt or song text comes with ElevenLabs' own suggestion: the card shows it cut short, a longer one
         // (a whole song text) is shown here in full, with a button to copy it.
@@ -474,7 +474,7 @@
         all.indeterminate = count > 0 && count < data.count;
         regenSelected.disabled = !canStart || count === 0;
         regenSelected.querySelector('.nv-scenes-regen-label').textContent = count ? ui.T('nodes.scenes.regenerateSelectedCount', { count }) : ui.T('nodes.scenes.regenerateSelected');
-        selectedCost.textContent = count ? hintFor(OCD.sceneTable.selectionCost(data.cost, count)) : '';
+        selectedCost.textContent = count ? hintFor(OCD.sceneTable.selectionCost(data.rows.filter((row) => ticked.has(row.index)).map((row) => row.cost || data.cost))) : '';
         checks.forEach(({ box, index }) => {
           box.checked = ticked.has(index);
         });
@@ -511,7 +511,7 @@
         main.append(el('div', { class: `nv-scene-text ${row.text ? '' : 'is-empty'}`.trim(), text: row.text ? OCD.preview.shortText(row.text, 160) : ui.T('nodes.scenes.noText'), title: row.text || '' }));
         const meta = el('div', { class: 'nv-scene-meta' });
         if (row.duration !== null) meta.append(el('span', { class: 'nv-scene-duration', text: OCD.sceneTable.clock(row.duration), title: ui.T('nodes.scenes.duration') }));
-        meta.append(el('span', { class: 'nv-scene-cost', text: hintFor(data.cost) }));
+        meta.append(el('span', { class: 'nv-scene-cost', text: hintFor(row.cost || data.cost) }));
         main.append(meta);
         const again = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-scene-regen', disabled: !canStart, title: data.aligned ? ui.T('nodes.scenes.regenerateRow', { n: row.number }) : ui.T('nodes.scenes.notPerItem'), 'aria-label': ui.T('nodes.scenes.regenerateRow', { n: row.number }) }, ui.icon('refresh', 13), el('span', { text: ui.T('nodes.scenes.regenerate') }));
         again.addEventListener('click', () => cb.run.runItems(nodeId, [row.index]));

@@ -74,10 +74,11 @@ async function testController() {
     };
     const calls = [];
     let nextPlan = forcedPlan();
+    let retryPlan = null;
     OCD.api = {
       plan: async (id, request) => {
         calls.push(['plan', id, request]);
-        return request.force ? nextPlan : PLAN_ALL_CACHED;
+        return request.force ? nextPlan : retryPlan || PLAN_ALL_CACHED;
       },
       startRun: async (id, request) => {
         calls.push(['startRun', id, request]);
@@ -220,6 +221,28 @@ async function testController() {
     assert.equal(question.body.find((node) => node.tagName === 'INPUT')[1].checked, true);
     assert.equal(started().length, 0, 'cancelling changes nothing: no run');
     assert.equal(controller.getRunState().active, false);
+
+    // Inspector Retry plans only missing list items and clearly names the kept ones.
+    retryPlan = { valid: true, issues: [], order: ['s'], targets: ['s'], nodes: {
+      s: { status: 'stale', paid: true, estimate: { usd: 0.48 }, executions: 7, reusedItems: 49 }
+    }, totals: { paidNodes: 1, usd: 3.36, credits: 0, unknownNodes: 0 } };
+    calls.length = 0;
+    dialogs.length = 0;
+    await controller.retryNode('s');
+    assert.deepEqual(asked()[0][2], { mode: 'node', nodeIds: ['s'], force: false, retry: true });
+    assert.match(dialogs[0].body.textContent, /7 fehlen, 49 vorhanden/);
+    assert.match(dialogs[0].body.textContent, /3\.36|3,36/);
+    assert.equal(started().length, 0, 'cancelling Retry starts nothing');
+    answer = true;
+    await controller.retryNode('s');
+    assert.equal(started()[0][2].force, false, 'the confirmed start keeps the same cache policy');
+    finish();
+    answer = false;
+    retryPlan = null;
+    calls.length = 0;
+    dialogs.length = 0;
+    const inspectorSource = read('public/nodes/inspector.js');
+    assert.match(inspectorSource, /retry\.addEventListener\('click', \(\) => cb\.run\.retryNode\(nodeId\)\)/);
 
     // an unknown price is said
     nextPlan = forcedPlan({ unknown: true });

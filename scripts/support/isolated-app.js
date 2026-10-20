@@ -5,6 +5,7 @@
 // symlink; everything the app writes (chats, workflows, cost journal, team files) lands in the temp directory.
 //
 //   const isolated = await createIsolatedApp();      // { root, app, listen, request, whoami, cleanup, require }
+//   createIsolatedApp({ loadServer: false })         // private modules only; no server or authentication socket
 //   createIsolatedApp({ env: {...}, config: {...} }) // environment variables / fields of the copy's config.json
 //   const { port } = await isolated.listen();        // ephemeral port on 127.0.0.1
 //   await isolated.request('/api/me', { as: 'alice@example.com' });
@@ -33,7 +34,7 @@ async function startWhoami() {
   return { server, url: `http://127.0.0.1:${server.address().port}/whoami` };
 }
 
-async function createIsolatedApp({ active = true, env = {}, config = null } = {}) {
+async function createIsolatedApp({ active = true, env = {}, config = null, loadServer = true } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-isolated-'));
   await fsp.cp(path.join(REPO, 'lib'), path.join(root, 'lib'), { recursive: true });
   await fsp.cp(path.join(REPO, 'views'), path.join(root, 'views'), { recursive: true }).catch(() => {});
@@ -49,18 +50,19 @@ async function createIsolatedApp({ active = true, env = {}, config = null } = {}
   await fsp.symlink(path.join(REPO, 'node_modules'), path.join(root, 'node_modules'), 'dir');
   await fsp.symlink(path.join(REPO, 'public'), path.join(root, 'public'), 'dir');
 
-  const whoami = await startWhoami();
+  // Pure engine tests need the private modules and storage, without any listening sockets.
+  const whoami = loadServer ? await startWhoami() : null;
   const saved = {};
   const set = (key, value) => {
     if (!(key in saved)) saved[key] = process.env[key];
     if (value === undefined || value === null) delete process.env[key];
     else process.env[key] = value;
   };
-  set('AUTH_WHOAMI_URL', active ? whoami.url : undefined);
+  set('AUTH_WHOAMI_URL', active ? whoami?.url : undefined);
   for (const key of ['ADMIN_EMAILS', 'SUPERADMIN_EMAILS', 'AUTH_LOGOUT_URL']) set(key, undefined);
   for (const [key, value] of Object.entries(env)) set(key, value);
 
-  const mod = require(path.join(root, 'server.js'));
+  const mod = loadServer ? require(path.join(root, 'server.js')) : null;
   let httpServer = null;
   let port = 0;
 
@@ -109,7 +111,7 @@ async function createIsolatedApp({ active = true, env = {}, config = null } = {}
 
   async function cleanup() {
     if (httpServer) await new Promise((resolve) => { httpServer.closeAllConnections?.(); httpServer.close(resolve); });
-    await new Promise((resolve) => whoami.server.close(resolve));
+    if (whoami) await new Promise((resolve) => whoami.server.close(resolve));
     for (const [key, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -122,7 +124,7 @@ async function createIsolatedApp({ active = true, env = {}, config = null } = {}
 
   return {
     root,
-    app: mod.app,
+    app: mod?.app,
     server: mod,
     listen,
     request,

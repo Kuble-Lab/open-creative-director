@@ -113,20 +113,25 @@
   }
 
   // What one item costs to make again, from the plan of the node: { paid, usd, credits, unknown }. The table is used on a finished
-  // node, which the plan calls 'cached' and has nothing to estimate for: it gives the price of one execution as `itemEstimate`
-  // (a node that is out of date has it in `estimate`). The plan lags behind an edit by a moment and a node that is not paid has
+  // node, which the plan calls 'cached' and has nothing to estimate for: individual prices are in `itemEstimates`, with their
+  // mean in `itemEstimate` for older plans (a node that is out of date has it in `estimate`). The plan lags behind an edit and a node that is not paid has
   // no estimate; the confirmation of the run shows the exact sum before anything is spent.
-  function itemCost(planNode, def) {
+  function itemCost(planNode, def, index) {
     const paid = Boolean((planNode && planNode.paid) || (def && def.paid));
     const given = planNode && isObject(planNode.itemEstimate) ? planNode.itemEstimate : planNode && isObject(planNode.estimate) ? planNode.estimate : null;
-    const estimate = given;
+    const estimate = Number.isInteger(index) && Array.isArray(planNode?.itemEstimates) ? planNode.itemEstimates[index] : given;
     const usd = estimate && Number.isFinite(estimate.usd) ? estimate.usd : null;
     const credits = estimate && Number.isFinite(estimate.credits) ? estimate.credits : null;
     return { paid, usd, credits, unknown: paid && usd === null && credits === null };
   }
 
-  // The same for several items: the sum of the known amounts, `unknown` where one is missing
+  // The same for several items: individual row prices, or a uniform price and count. Missing prices stay unknown.
   function selectionCost(cost, count) {
+    if (Array.isArray(cost)) {
+      const paid = cost.some((item) => item.paid);
+      const sum = (unit) => paid && cost.every((item) => !item.paid || Number.isFinite(item[unit])) ? cost.reduce((total, item) => total + (item[unit] || 0), 0) : null;
+      return { paid, usd: sum('usd'), credits: sum('credits'), unknown: cost.some((item) => item.unknown) };
+    }
     if (!cost.paid) return { paid: false, usd: null, credits: null, unknown: false };
     return {
       paid: true,
