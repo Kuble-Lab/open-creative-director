@@ -2477,7 +2477,7 @@ app.post('/api/sessions/:id/message', async (req, res) => {
     }
   }, 15000);
 
-  const { text, brainModel, attachments, renderMode, brandingWizard } = req.body || {};
+  const { text, brainModel, attachments, renderMode, brandingWizard, uiLang } = req.body || {};
   const configPayload = publicRuntimeConfig(askingViewer);
   const requestedChatGPTModel = chatgpt.BRAIN_MODELS.includes(brainModel);
   let model = configPayload.brainModels.includes(brainModel) ? brainModel : configPayload.defaultBrain;
@@ -2504,7 +2504,8 @@ app.post('/api/sessions/:id/message', async (req, res) => {
       emit,
       user: req.kubleUser,
       renderMode: renderMode === true,
-      brandingWizard: brandingWizard === true
+      brandingWizard: brandingWizard === true,
+      uiLang: ['de', 'en', 'es'].includes(uiLang) ? uiLang : 'en'
     });
     emit({ type: 'done' });
   } catch (err) {

@@ -499,10 +499,11 @@ async function send() {
   startStreamHeartbeat();
 
   try {
+    const language = window.getLang?.();
     const res = await fetch(rel(`/api/sessions/${state.currentId}/message`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: messageText, brainModel: state.brainModel, attachments, renderMode, brandingWizard })
+      body: JSON.stringify({ uiLang: ['de', 'en', 'es'].includes(language) ? language : 'en', text: messageText, brainModel: state.brainModel, attachments, renderMode, brandingWizard })
     });
     if (!res.ok || !res.body) {
       let message = `HTTP ${res.status}`;

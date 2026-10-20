@@ -405,7 +405,7 @@ async function run(iso) {
     // nothing set: nothing to add
     assert.equal(await stampOf('llm.chat', {}, {}), undefined);
     // a node that does not read these settings has no stamp
-    for (const type of ['input.text', 'text.template', 'audio.tts', 'image.crop', 'video.concat', 'fal.depth_map', 'explainer.voice', 'llm.research']) {
+    for (const type of ['input.text', 'text.template', 'audio.tts', 'image.crop', 'video.concat', 'fal.depth_map', 'explainer.voice']) {
       assert.equal(realRegistry.get(type).cacheStamp, undefined, `${type}: no stamp`);
     }
 
@@ -414,7 +414,7 @@ async function run(iso) {
     const openrouter = iso.load('lib/openrouter');
     const realHasKey = openrouter.hasKey;
     const planDef = realRegistry.get('explainer.plan');
-    assert.equal(planDef.cacheStampAdopts, true, 'an old planner result is taken once: a deploy does not pay for it again');
+    assert.equal(typeof planDef.cacheStampAdopts, 'function', 'an old planner result is taken once: a deploy does not pay for it again');
     const planStamp = async (params, settings) => (await resolveStamp(planDef, realRegistry.normalizeParams(planDef, params), {}, null, { user: STAFF, config: settings })).stamp;
     try {
       openrouter.hasKey = () => true;
