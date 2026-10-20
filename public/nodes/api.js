@@ -42,6 +42,12 @@
     return error;
   }
 
+  // Every run entry point (canvas, app mode, plan and approval) carries the current interface language.
+  function withUiLanguage(body) {
+    const language = global.getLang?.();
+    return { ...body, uiLang: ['de', 'en', 'es'].includes(language) ? language : 'en' };
+  }
+
   const enc = encodeURIComponent;
 
   // Raw body with progress (XMLHttpRequest, the only way to get upload progress). options: { headers, onProgress(ratio),
@@ -148,12 +154,12 @@
     // assistant of the node view (WP25): { question, canvas, history, lang } -> { answer, mentions, insert?, ... }
     assistant: (id, body) => request('POST', `/api/workflows/${enc(id)}/assistant`, body),
     // run UX (WP6)
-    plan: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs/plan`, body || {}),
-    startRun: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs`, body || {}),
+    plan: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs/plan`, withUiLanguage(body)),
+    startRun: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs`, withUiLanguage(body)),
     getRun: (id, runId) => request('GET', `/api/workflows/${enc(id)}/runs/${enc(runId)}`),
     listRuns: (id, limit) => request('GET', `/api/workflows/${enc(id)}/runs${limit ? `?limit=${enc(limit)}` : ''}`),
     cardPreview: (id, nodeId, text_overrides) => request('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/card-preview`, { text_overrides }),
-    resumeRun: (id, runId, body) => request('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/resume`, body),
+    resumeRun: (id, runId, body) => request('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/resume`, withUiLanguage(body)),
     cancelRun: (id, runId) => request('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/cancel`, {}),
     selectVariant: (id, nodeId, entry, variant) => request('PATCH', `/api/workflows/${enc(id)}/results/${enc(nodeId)}`, { entry, variant }),
     // delete one history entry of a node, or all results of the node (WP38e): { ok, nodeId, removed, node, files: { deleted, kept } }

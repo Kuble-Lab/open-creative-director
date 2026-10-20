@@ -69,6 +69,7 @@ async function main() {
     return realFetch(input, init);
   };
   const iso = await createIsolatedApp({
+    loadServer: false,
     env: {
       ADMIN_EMAILS: 'admin@example.com',
       SUPERADMIN_EMAILS: '',
@@ -79,7 +80,6 @@ async function main() {
       GTS_API_TOKEN: ''
     }
   });
-  await iso.listen();
   try {
     await run(iso);
   } finally {
@@ -107,6 +107,7 @@ async function run(iso) {
   const real = registryModule.registry;
   const graphLib = require('../public/nodes/graph');
 
+  await store.ensureDirs();
   const session = await store.createSession();
   const sessionId = session.id;
 
@@ -133,11 +134,12 @@ async function run(iso) {
   patch(or, 'hasKey', () => true);
   patch(fal, 'hasKey', () => true);
 
-  function makeCtx() {
+  function makeCtx(uiLang) {
     const controller = new AbortController();
     const logs = [];
     const config = { defaultBrain: 'vendor/default-brain', brainModels: ['anthropic/claude-opus-5.5', 'vendor/default-brain'], imageModel: 'openai/gpt-image-2' };
     return {
+      uiLang,
       workflowId: 'wf-test',
       runId: 'r-test',
       nodeId: 'n1',
@@ -194,7 +196,7 @@ async function run(iso) {
     const alone = makeCtx();
     await exec('llm.research', alone, { topic: text('Git vs GitHub') }, { language: 'auto' });
     assert.match(calls[1].options.system, /Write in English/);
-    assert.deepEqual(languageLogs(alone), ['Language: English (no hint in the input: English is the default)']);
+    assert.deepEqual(languageLogs(alone), ['Language: English (no hint in the input: interface language English)']);
     const weak = makeCtx();
     await exec('llm.research', weak, { topic: text('Wie funktioniert Git') }, { language: 'auto' });
     assert.match(calls[2].options.system, /Write in German/);
@@ -221,11 +223,24 @@ async function run(iso) {
     assert.equal(new Set(calls.map((call) => call.options.system)).size, 1);
   }
 
+  for (const [uiLang, name] of [['de', 'German'], ['es', 'Spanish'], ['en', 'English']]) {
+    calls.length = 0;
+    const ctx = makeCtx(uiLang);
+    await exec('llm.research', ctx, { topic: text('Git vs GitHub') }, { language: 'auto' });
+    assert.match(calls[0].options.system, new RegExp(`Write in ${name}`));
+    assert.deepEqual(languageLogs(ctx), [`Language: ${name} (no hint in the input: interface language ${name})`]);
+  }
+  for (const topic of ['Thema: geschichte vo phyton programmiersprache', 'geschichte der programmiersprache python', 'Geschichte Programmiersprache Python']) {
+    calls.length = 0;
+    await exec('llm.research', makeCtx('es'), { topic: text(topic) }, { language: 'auto' });
+    assert.match(calls[0].options.system, /Write in German/);
+  }
+
   /* ============ P: explainer.plan ============ */
 
-  const plan = async (inputs, raw = {}) => {
+  const plan = async (inputs, raw = {}, uiLang) => {
     calls.length = 0;
-    const ctx = makeCtx();
+    const ctx = makeCtx(uiLang);
     const result = await exec('explainer.plan', ctx, inputs, { verify: false, length_seconds: 120, ...raw });
     return { ctx, out: result.variants[0], system: calls[0]?.options.system || '', prompt: calls[0]?.options.prompt || '', script: JSON.parse(result.variants[0].script.value) };
   };
@@ -286,7 +301,18 @@ async function run(iso) {
   {
     const found = await plan({ topic: text('Git vs GitHub'), text: text('=== D1: x.pdf (3 pages) ===\n[p. 1]\n1234') }, { language: 'auto' });
     assert.equal(found.script.language, 'en');
-    assert.deepEqual(languageLogs(found.ctx), ['Language: English (no hint in the input: English is the default)']);
+    assert.deepEqual(languageLogs(found.ctx), ['Language: English (no hint in the input: interface language English)']);
+  }
+  for (const [uiLang, name] of [['de', 'German'], ['es', 'Spanish']]) {
+    const found = await plan({ topic: text('Git vs GitHub') }, { language: 'auto' }, uiLang);
+    assert.equal(found.script.language, uiLang);
+    assert.deepEqual(languageLogs(found.ctx), [`Language: ${name} (no hint in the input: interface language ${name})`]);
+    const fixed = await plan({ topic: text('Git vs GitHub') }, { language: 'en' }, uiLang);
+    assert.equal(fixed.script.language, 'en');
+  }
+  for (const topic of ['Thema: geschichte vo phyton programmiersprache', 'geschichte der programmiersprache python', 'Geschichte Programmiersprache Python']) {
+    const found = await plan({ topic: text(topic), notes: text(ENGLISH_DOC) }, { language: 'auto' }, 'es');
+    assert.equal(found.script.language, 'de', 'German topic beats English research and the interface fallback');
   }
   // a language named in the node is used as it is: a German topic with "en" gives an English script, and nothing is logged
   {

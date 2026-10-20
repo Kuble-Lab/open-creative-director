@@ -639,6 +639,13 @@ async function main() {
       const finished = await engine.whenFinished(runsId, runId);
       assert.equal(finished.status, 'completed');
       assert.equal(finished.user, 'tester');
+      assert.equal(finished.uiLang, 'en', 'legacy API clients keep English');
+      assert.equal((await api('POST', `/api/workflows/${runsId}/runs/plan`, { uiLang: 'de' })).status, 200);
+      assert.equal((await api('POST', `/api/workflows/${runsId}/runs/plan`, { uiLang: 'fr' })).status, 400);
+      assert.equal((await api('POST', `/api/workflows/${runsId}/runs`, { uiLang: 'fr' })).status, 400);
+      const germanStart = await api('POST', `/api/workflows/${runsId}/runs`, { uiLang: 'de' });
+      assert.equal(germanStart.status, 202);
+      assert.equal((await engine.whenFinished(runsId, germanStart.json.runId)).uiLang, 'de');
 
       const record = await api('GET', `/api/workflows/${runsId}/runs/${runId}`);
       assert.equal(record.status, 200);

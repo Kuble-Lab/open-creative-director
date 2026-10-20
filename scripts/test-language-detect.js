@@ -92,6 +92,36 @@ function testExamples() {
   assert.equal(detect.detectLanguage(marked), 'de');
 }
 
+function testSwissGermanAndWordShapes() {
+  for (const topic of [
+    'Thema: geschichte vo phyton programmiersprache', 'geschichte vo phyton programmiersprache',
+    'geschichte der programmiersprache python', 'Geschichte Programmiersprache Python',
+    'geschichte programmiersprache python', 'Was isch das und wiso hesch nüt gseit', 'nöd nume öppis', 'hät eus scho gholfe'
+  ]) {
+    assert.equal(detect.classify(topic).language, 'de', topic);
+    assert.equal(detect.classify(topic).strength, 'clear', topic);
+    assert.equal(detect.resolveLanguage([{ id: 'topic', text: topic }, { id: 'notes', text: ENGLISH }]).language, 'de', topic);
+  }
+  for (const word of ['vo', 'isch', 'nöd', 'nid', 'öppis', 'nüt', 'gsi', 'häsch', 'chönd', 'üs', 'ois', 'wänn']) {
+    assert.equal(detect.classify(word).language, 'de', word);
+    assert.equal(detect.score(word).de, 1, 'no second point for an umlaut in a stop word');
+  }
+  for (const word of ['wohnung', 'wohnungen', 'freiheit', 'sicherheit', 'freundlichkeit', 'gesellschaft', 'freundlich', 'freundliche', 'freundlichen', 'programmiersprache', 'geschichte']) {
+    assert.equal(detect.score(word).de, 1, word);
+    assert.equal(detect.score(word[0].toUpperCase() + word.slice(1)).de, 0, 'one capital may be a name');
+  }
+  assert.equal(detect.score('Wissenschaft Freundlichkeit').de, 2);
+  assert.equal(detect.score('Wissenschaft Freundlichkeit and').de, 0);
+  assert.equal(detect.score('fröhliche').de, 1, 'shape and umlaut never stack');
+  for (const word of ['school', 'schema', 'schedule', 'discharge', 'mischief', 'mischievous', 'eschew', 'lung', 'sung', 'het', 'cha', 'chan', 'mer', 'au', 'uf', 'sones', 'ned']) {
+    assert.equal(detect.classify(word).language, null, word);
+  }
+  // Deliberate limit: Die is a German stop word even when it belongs to an English movie title.
+  assert.equal(detect.detectLanguage('Die Hard movie analysis'), 'de');
+  assert.equal(detect.detectLanguage('The history of the programming language Python in Zürich'), 'en');
+  assert.equal(detect.detectLanguage('La historia del lenguaje de programación Python y sus escuelas'), 'es');
+}
+
 function testShortTopics() {
   // no stop word, no special character: no evidence, never a coin toss
   for (const text of ['Git vs GitHub', 'GitHub Copilot vs Cursor', 'Kubernetes', 'AI', 'LA Metro', 'UN DE IT', '2026 Q3', 'Git vs. GitHub: Branches & Pull Requests']) {
@@ -173,6 +203,7 @@ function testSameInputSameAnswer() {
 
 testWordLists();
 testExamples();
+testSwissGermanAndWordShapes();
 testShortTopics();
 testOrderOfSources();
 testNothingToGoOn();

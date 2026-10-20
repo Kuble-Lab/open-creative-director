@@ -376,12 +376,12 @@ async function run(iso) {
   const newChat = async (email) => (await api('/api/sessions', { method: 'POST', as: email, json: {} })).body.session;
   const detail = async (id, email) => (await api(`/api/sessions/${id}`, { as: email })).body;
   const runCard = async (id, email, index = -1) => (await detail(id, email)).session.messages.filter((m) => m.workflowRun).at(index)?.workflowRun;
-  const send = async (id, email, text) => {
-    const response = await api(`/api/sessions/${id}/message`, { method: 'POST', as: email, json: { text, brainModel: 'brain-test' } });
+  const send = async (id, email, text, uiLang) => {
+    const response = await api(`/api/sessions/${id}/message`, { method: 'POST', as: email, json: { text, brainModel: 'brain-test', uiLang } });
     return { status: response.status, events: response.status === 200 ? parseEvents(response.text) : [], body: response.body };
   };
   // The click of the client: it says what the card showed (by default what the request has stored, i.e. an up-to-date card).
-  const click = async (id, requestId, email, seen) => {
+  const click = async (id, requestId, email, seen, uiLang) => {
     let body = seen;
     if (body === undefined) {
       body = {};
@@ -392,6 +392,7 @@ async function run(iso) {
         body = {};
       }
     }
+    if (uiLang !== undefined) body = { ...body, uiLang };
     return api(`/api/sessions/${id}/workflow-runs/${requestId}`, { method: 'POST', as: email, json: body });
   };
   const cancel = (id, requestId, email) => api(`/api/sessions/${id}/workflow-runs/${requestId}/cancel`, { method: 'POST', as: email, json: {} });
@@ -481,7 +482,7 @@ async function run(iso) {
   director.say({ text: 'Ich lasse den Text umwandeln.', tools: [{ name: 'run_workflow', args: { template_id: 'free-text', inputs: { Idee: 'hallo welt' }, language: 'de' } }] });
   director.say({ text: 'Der Lauf ist gestartet.' });
   const requestsBeforeFree = director.requests.length;
-  const freeTurn = await send(freeChat.id, STAFF1, 'Mach den Text gross');
+  const freeTurn = await send(freeChat.id, STAFF1, 'Mach den Text gross', 'de');
   assert.equal(freeTurn.status, 200);
   assert.equal(director.requests.length, requestsBeforeFree + 2, 'no halt: the Director answers once more after the tool');
   const freeEvent = freeTurn.events.find((event) => event.type === 'workflow_run');
@@ -498,6 +499,7 @@ async function run(iso) {
   assert.equal(createdFree.owner, STAFF1);
   const freeRequest = await completed(freeChat.id, freeEvent.run.id);
   assert.equal(freeRequest.status, 'completed');
+  assert.equal((await wfStore.readRun(freeRequest.workflowId, freeRequest.runId)).uiLang, 'de', 'chat transport passes interface language through the Director to automatic free runs');
   assert.deepEqual(freeRequest.result.texts.map((text) => [text.label, text.text]), [['Result', 'HALLO WELT']]);
   assert.equal(freeRequest.result.costUsd, 0);
   assert.equal(director.requests.length, requestsBeforeFree + 2, 'the end of the run starts no Director turn');
@@ -586,10 +588,12 @@ async function run(iso) {
   assert.equal((await requestOf(chat.id, waiting.id)).status, 'pending');
   // three clicks at once: one run
   const held = openGate();
-  const clicks = await Promise.all([click(chat.id, waiting.id, STAFF1), click(chat.id, waiting.id, STAFF1), click(chat.id, waiting.id, STAFF1)]);
+  const clicks = await Promise.all([click(chat.id, waiting.id, STAFF1, undefined, 'es'), click(chat.id, waiting.id, STAFF1, undefined, 'es'), click(chat.id, waiting.id, STAFF1, undefined, 'es')]);
   assert.deepEqual(clicks.map((response) => response.status).sort(), [201, 409, 409], 'only one click wins');
   const winner = clicks.find((response) => response.status === 201);
   assert.equal(winner.body.run.status, 'running');
+  const runningRequest = await requestOf(chat.id, waiting.id);
+  assert.equal((await wfStore.readRun(waiting.workflowId, runningRequest.runId)).uiLang, 'es', 'the Start card uses the current interface language');
   assert.equal(winner.body.run.run.step.total, 4);
   await waitFor(() => gate.started >= 1, 'the paid step');
   assert.equal(calls.paid, 1, 'exactly one paid step');
@@ -606,7 +610,7 @@ async function run(iso) {
   const runningTool = await toolMessageOf(chat.id, waiting.id);
   assert.match(runningTool.content, /läuft \(Lauf wfr-/);
   assert.match((await markerOf(chat.id, waiting.id)).content, /läuft\. Das Ergebnis erscheint automatisch im Chat/);
-  assert.equal((await click(chat.id, waiting.id, STAFF1)).status, 409, 'a started run cannot be started again');
+  assert.equal((await click(chat.id, waiting.id, STAFF1, undefined, 'es')).status, 409, 'a started run cannot be started again');
   assert.equal((await cancel(chat.id, waiting.id, STAFF2)).status, 404);
   // the end: the result is in the chat with the effective cost, no Director turn
   const requestsBeforeEnd = director.requests.length;

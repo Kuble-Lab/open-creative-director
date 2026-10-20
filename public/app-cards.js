@@ -512,7 +512,8 @@ async function startWorkflowRun(run, card) {
   try {
     // The click says what this card showed; the server starts nothing when its estimate has moved on since.
     const totals = run.totals || {};
-    const seen = { maxUsd: totals.usd || 0, maxCredits: totals.credits || 0, maxUnknownNodes: totals.unknownNodes || 0, rev: run.rev };
+    const language = window.getLang?.();
+    const seen = { uiLang: ['de', 'en', 'es'].includes(language) ? language : 'en', maxUsd: totals.usd || 0, maxCredits: totals.credits || 0, maxUnknownNodes: totals.unknownNodes || 0, rev: run.rev };
     await api(`/api/sessions/${encodeURIComponent(state.currentId)}/workflow-runs/${encodeURIComponent(run.id)}`, { method: 'POST', body: JSON.stringify(seen) });
     await afterWorkflowRunChange();
   } catch (error) {
