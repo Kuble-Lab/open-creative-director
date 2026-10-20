@@ -125,12 +125,20 @@ const GOLDEN = [
   ['de', 'participant', 0, 'lippen', (r) => {
     assert.ok(indexOfType(r, 'fal.h3_lipsync') >= 0 && indexOfType(r, 'fal.h3_lipsync') <= 2, `lip sync among the first 3: ${types(r, 4)}`);
   }],
+  ['de', 'participant', 0, 'bild hochskalieren', (r) => assert.equal(r[0].type, 'fal.upscale_image')],
+  ['de', 'participant', 0, 'video hochskalieren', (r) => assert.equal(r[0].type, 'fal.upscale_video')],
+  ['en', 'participant', 0, 'upscale image', (r) => assert.equal(r[0].type, 'fal.upscale_image')],
+  ['es', 'participant', 0, 'ampliar vídeo', (r) => assert.equal(r[0].type, 'fal.upscale_video')],
+  ['en', 'participant', 0, 'Kling LipSync', (r) => assert.equal(r[0].type, 'fal.kling_lipsync')],
+  ['en', 'participant', 0, 'Kling Avatar', (r) => assert.equal(r[0].type, 'fal.kling_avatar')],
+  ['de', 'participant', 0, 'sprechendes Bild', (r) => assert.equal(r[0].type, 'fal.kling_avatar')],
+  ['es', 'participant', 0, 'Kling Avatar', (r) => assert.equal(r[0].type, 'fal.kling_avatar')],
   ['de', 'participant', 0, 'zeitlupe', (r) => assert.equal(r[0].type, 'video.speed')],
   ['de', 'admin', 13, 'zeitlupe', (r) => assert.equal(r[0].type, 'video.speed')],
   ['de', 'participant', 0, 'kling', (r) => {
     // no Higgsfield for participants: nothing, or at most the free fal.ai model, the video node with a model choice and the video
-    // editing node (Kling O3), which all name Kling as a keyword. Never noise.
-    assert.ok(r.every((entry) => ['fal.model', 'video.generate', 'fal.video_edit'].includes(entry.type)), `only the free fal.ai model, the video nodes and the video editor may match: ${types(r)}`);
+    // editing node (Kling O3), plus Kling LipSync and Kling Avatar. Never noise.
+    assert.ok(r.every((entry) => ['fal.model', 'video.generate', 'fal.video_edit', 'fal.kling_lipsync', 'fal.kling_avatar'].includes(entry.type)), `only Kling LipSync, Kling Avatar, the free fal.ai model, video generation and the video editor may match: ${types(r)}`);
     assert.ok(!r.some((entry) => ['image.chroma_key', 'image.invert', 'image.adjust', 'image.crop'].includes(entry.type)));
   }],
   ['de', 'admin', 13, 'kling', (r) => {
@@ -189,7 +197,7 @@ function testGoldenQueries() {
       throw error;
     }
   }
-  assert.equal(GOLDEN.length, 41, 'the table lists the golden queries (the quick pick has its own test)');
+  assert.equal(GOLDEN.length, 49, 'the table lists the golden queries (the quick pick has its own test)');
 }
 
 function testAllVideoNodesSurviveManyModels() {
@@ -570,7 +578,8 @@ function testNodesBeforeModelsOnTies() {
 
 function testImageEditingSynonyms() {
   const first = (lang, query) => search(lang, 'participant', query).map((entry) => entry.type);
-  assert.equal(first('de', 'hochskalieren')[0], 'image.resize');
+  assert.equal(first('de', 'hochskalieren')[0], 'fal.upscale_image');
+  assert.ok(first('de', 'hochskalieren').includes('image.resize'), 'local resizing remains available alongside AI upscaling');
   assert.equal(first('de', 'vergrössern')[0], 'image.resize');
   // the AI cutout with fal (open to participants) answers "remove background" first; "freistellen" still starts with the chroma key
   assert.equal(first('de', 'freistellen')[0], 'image.chroma_key');
