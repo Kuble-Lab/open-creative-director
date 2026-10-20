@@ -113,7 +113,7 @@ function testSwissGermanAndWordShapes() {
   assert.equal(detect.score('Wissenschaft Freundlichkeit').de, 2);
   assert.equal(detect.score('Wissenschaft Freundlichkeit and').de, 0);
   assert.equal(detect.score('fröhliche').de, 1, 'shape and umlaut never stack');
-  for (const word of ['school', 'schema', 'schedule', 'lung', 'sung', 'het', 'cha', 'chan', 'mer', 'au', 'uf', 'sones', 'ned']) {
+  for (const word of ['school', 'schema', 'schedule', 'discharge', 'mischief', 'mischievous', 'eschew', 'lung', 'sung', 'het', 'cha', 'chan', 'mer', 'au', 'uf', 'sones', 'ned']) {
     assert.equal(detect.classify(word).language, null, word);
   }
   // Deliberate limit: Die is a German stop word even when it belongs to an English movie title.
