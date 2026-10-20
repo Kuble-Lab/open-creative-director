@@ -73,6 +73,7 @@ async function refreshHiggsfieldStatus() {
   const status = await api('/api/higgsfield/status');
   state.higgsfield = status;
   renderHiggsfieldStatus();
+  renderMagnificStatus();
   if (status.connected) {
     stopHiggsfieldPolling();
     showSettingsFeedback(t('higgsfield.connectedFeedback'));
@@ -87,6 +88,7 @@ function scheduleHiggsfieldPolling(delay = 3000) {
     if (Date.now() >= state.higgsfieldPollExpiresAt) {
       state.higgsfield = { ...state.higgsfield, pending: false };
       renderHiggsfieldStatus();
+    renderMagnificStatus();
       showSettingsFeedback(t('higgsfield.connectExpired'), { error: true });
       stopHiggsfieldPolling();
       return;
@@ -111,10 +113,12 @@ async function connectHiggsfield() {
     state.higgsfield = { ...state.higgsfield, connected: false, pending: true };
     state.higgsfieldPollExpiresAt = Date.now() + Math.min(15 * 60 * 1000, Math.max(1, Number(result.expiresIn) || 900) * 1000);
     renderHiggsfieldStatus();
+    renderMagnificStatus();
     scheduleHiggsfieldPolling(3000);
   } catch (err) {
     state.higgsfield = { ...state.higgsfield, pending: false };
     renderHiggsfieldStatus();
+    renderMagnificStatus();
     showSettingsFeedback(t('higgsfield.connectFailed', { error: err.message }), { error: true });
   }
 }
@@ -135,11 +139,120 @@ async function disconnectHiggsfield() {
     resetHiggsfieldDisconnect();
     el.higgsfieldVerification.classList.add('hidden');
     renderHiggsfieldStatus();
+    renderMagnificStatus();
     showSettingsFeedback(t('higgsfield.disconnectedFeedback'));
   } catch (err) {
     showSettingsFeedback(t('higgsfield.disconnectFailed', { error: err.message }), { error: true });
   } finally {
     el.higgsfieldDisconnect.disabled = false;
+  }
+}
+
+function resetMagnificDisconnect() {
+  if (state.magnificDisconnectTimer) clearTimeout(state.magnificDisconnectTimer);
+  state.magnificDisconnectTimer = null;
+  state.magnificDisconnectPending = false;
+  el.magnificDisconnect.textContent = t('magnific.disconnect');
+}
+
+function stopMagnificPolling() {
+  if (state.magnificPollTimer) clearTimeout(state.magnificPollTimer);
+  state.magnificPollTimer = null;
+  state.magnificPollExpiresAt = 0;
+}
+
+function renderMagnificStatus() {
+  const status = state.magnific || {};
+  const connected = Boolean(status.connected);
+  el.magnificStatusDot.classList.toggle('connected', connected);
+  if (connected) {
+    const credits = Number.isFinite(Number(status.balance?.credits))
+      ? t('magnific.credits', { credits: status.balance.credits })
+      : '';
+    const plan = status.balance?.plan ? t('magnific.plan', { plan: status.balance.plan }) : '';
+    el.magnificStatusText.textContent = [t('magnific.connected'), credits, plan].filter(Boolean).join(' · ');
+  } else if (status.pending) {
+    el.magnificStatusText.textContent = t('magnific.pending');
+  } else {
+    el.magnificStatusText.textContent = t('magnific.disconnected');
+  }
+  el.magnificConnect.classList.toggle('hidden', connected);
+  el.magnificDisconnect.classList.toggle('hidden', !connected);
+  el.magnificConnect.disabled = false;
+  if (connected) el.magnificVerification.classList.add('hidden');
+}
+
+async function refreshMagnificStatus() {
+  const status = await api('/api/magnific/status');
+  state.magnific = status;
+  renderMagnificStatus();
+  if (status.connected) {
+    stopMagnificPolling();
+    showSettingsFeedback(t('magnific.connectedFeedback'));
+  }
+  return status;
+}
+
+function scheduleMagnificPolling(delay = 3000) {
+  if (state.magnificPollTimer) clearTimeout(state.magnificPollTimer);
+  state.magnificPollTimer = setTimeout(async () => {
+    state.magnificPollTimer = null;
+    if (Date.now() >= state.magnificPollExpiresAt) {
+      state.magnific = { ...state.magnific, pending: false };
+      renderMagnificStatus();
+      showSettingsFeedback(t('magnific.connectExpired'), { error: true });
+      stopMagnificPolling();
+      return;
+    }
+    try {
+      const status = await refreshMagnificStatus();
+      if (!status.connected && (status.pending || Date.now() < state.magnificPollExpiresAt)) scheduleMagnificPolling(3000);
+    } catch (_) {
+      scheduleMagnificPolling(3000);
+    }
+  }, delay);
+}
+
+async function connectMagnific() {
+  resetMagnificDisconnect();
+  el.magnificConnect.disabled = true;
+  showSettingsFeedback('');
+  try {
+    const result = await api('/api/magnific/oauth/start', { method: 'POST', body: '{}' });
+    el.magnificVerificationLink.href = result.verificationUri;
+    el.magnificVerification.classList.remove('hidden');
+    state.magnific = { ...state.magnific, connected: false, pending: true };
+    state.magnificPollExpiresAt = Date.now() + Math.min(15 * 60 * 1000, Math.max(1, Number(result.expiresIn) || 900) * 1000);
+    renderMagnificStatus();
+    scheduleMagnificPolling(3000);
+  } catch (err) {
+    state.magnific = { ...state.magnific, pending: false };
+    renderMagnificStatus();
+    showSettingsFeedback(t('magnific.connectFailed', { error: err.message }), { error: true });
+  }
+}
+
+async function disconnectMagnific() {
+  if (!state.magnificDisconnectPending) {
+    resetMagnificDisconnect();
+    state.magnificDisconnectPending = true;
+    el.magnificDisconnect.textContent = t('magnific.reallyDisconnect');
+    state.magnificDisconnectTimer = setTimeout(resetMagnificDisconnect, 3000);
+    return;
+  }
+  el.magnificDisconnect.disabled = true;
+  showSettingsFeedback('');
+  try {
+    state.magnific = await api('/api/magnific/disconnect', { method: 'POST' });
+    stopMagnificPolling();
+    resetMagnificDisconnect();
+    el.magnificVerification.classList.add('hidden');
+    renderMagnificStatus();
+    showSettingsFeedback(t('magnific.disconnectedFeedback'));
+  } catch (err) {
+    showSettingsFeedback(t('magnific.disconnectFailed', { error: err.message }), { error: true });
+  } finally {
+    el.magnificDisconnect.disabled = false;
   }
 }
 
@@ -642,11 +755,12 @@ async function addRenderNode() {
 
 async function loadSettingsAccess() {
   try {
-    const [settingsData, adminsData, renderNodesData, higgsfieldData, chatgptData] = await Promise.all([
+    const [settingsData, adminsData, renderNodesData, higgsfieldData, magnificData, chatgptData] = await Promise.all([
       api('/api/settings'),
       api('/api/admins'),
       api('/api/rendernodes'),
       api('/api/higgsfield/status'),
+      api('/api/magnific/status'),
       api('/api/chatgpt/status')
     ]);
     state.settings = Array.isArray(settingsData.keys) ? settingsData.keys : [];
@@ -655,6 +769,7 @@ async function loadSettingsAccess() {
     state.renderNodes = Array.isArray(renderNodesData.nodes) ? renderNodesData.nodes : [];
     state.renderAgents = Array.isArray(renderNodesData.agents) ? renderNodesData.agents : [];
     state.higgsfield = higgsfieldData;
+    state.magnific = magnificData;
     state.chatgpt = chatgptData;
     state.settingsAvailable = true;
     OCShell.refresh();
@@ -668,6 +783,7 @@ async function loadSettingsAccess() {
     // render servers in the cloud (WP54, public/cloud-render-ui.js): settings and status for admins
     OCCloudRender.mount(document.getElementById('cloudRenderSlot'), { onFeedback: showSettingsFeedback });
     renderHiggsfieldStatus();
+    renderMagnificStatus();
     renderChatGPTStatus();
     return true;
   } catch (_) {
@@ -696,6 +812,7 @@ async function openSettingsModal(tab) {
   renderAdmins();
   renderRenderNodes();
   renderHiggsfieldStatus();
+  renderMagnificStatus();
   renderChatGPTStatus();
   el.settingsModal.classList.remove('hidden');
   selectSettingsTab(typeof tab === 'string' ? tab : currentSettingsTab());

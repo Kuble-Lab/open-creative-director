@@ -104,6 +104,8 @@ el.renderNodeForm.addEventListener('submit', (event) => {
   event.preventDefault();
   addRenderNode();
 });
+el.magnificConnect.addEventListener('click', () => connectMagnific());
+el.magnificDisconnect.addEventListener('click', () => disconnectMagnific());
 el.higgsfieldConnect.addEventListener('click', () => connectHiggsfield());
 el.higgsfieldDisconnect.addEventListener('click', () => disconnectHiggsfield());
 el.chatgptImport.addEventListener('click', () => importChatGPT());
@@ -367,6 +369,7 @@ window.onLangChange = () => {
   renderAdmins();
   renderRenderNodes();
   renderHiggsfieldStatus();
+  renderMagnificStatus();
   renderChatGPTStatus();
   renderPromptPresetFormMode();
   for (const [id, value] of settingsValues) {

@@ -35,6 +35,7 @@ const cast = require('./lib/cast');
 const { createWhoamiMiddleware } = require('./lib/whoami');
 const settings = require('./lib/settings');
 const higgsfield = require('./lib/higgsfield');
+const magnific = require('./lib/magnific');
 const chatgpt = require('./lib/chatgpt');
 const chatgptFallback = require('./lib/chatgpt-fallback');
 const promptPresets = require('./lib/prompt-presets');
@@ -1311,6 +1312,59 @@ app.post('/api/cloud-render/delete-servers', async (req, res) => {
   } catch (err) {
     failCloudRender(res, err);
   }
+});
+
+let magnificBalanceCache = null;
+app.get('/api/magnific/status', async (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  res.set('Cache-Control', 'no-store');
+  const status = magnific.status();
+  if (status.connected) {
+    if (!magnificBalanceCache || magnificBalanceCache.expiresAt < Date.now()) {
+      try {
+        const api = require('./lib/tools/magnific');
+        const result = api.parsed(await magnific.mcpCall('account_balance', {}, { timeoutMs: 5000 }));
+        const records = api.objects(result);
+        const credits = records.flatMap((row) => ['credits', 'available_credits', 'remaining_credits', 'balance'].map((key) => row[key])).find((v) => typeof v === 'number' && Number.isFinite(v));
+        const plan = records.map((row) => row.plan).find((v) => typeof v === 'string');
+        const value = { ...(credits === undefined ? {} : { credits }), ...(plan ? { plan } : {}) };
+        magnificBalanceCache = { value, expiresAt: Date.now() + 60000 };
+      } catch (_) { magnificBalanceCache = { value: null, expiresAt: Date.now() + 10000 }; }
+    }
+    if (magnificBalanceCache.value) status.balance = magnificBalanceCache.value;
+  }
+  res.json({ ...status, connected: magnific.status().connected });
+});
+app.post('/api/magnific/oauth/start', async (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    const redirectUri = higgsfieldRedirectUri(req).replace(/\/api\/higgsfield\/oauth\/callback$/, '/api/magnific/oauth/callback');
+    res.set('Cache-Control', 'no-store');
+    res.json(await magnific.startConnect({ redirectUri }));
+  } catch (_) { fail(res, 502, 'Magnific-Anmeldung konnte nicht gestartet werden.'); }
+});
+app.get('/api/magnific/oauth/callback', async (req, res) => {
+  const send = (status, ok, text = '') => {
+    res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" });
+    res.send(higgsfieldCallbackPage(ok, text).replace(/Higgsfield/g, 'Magnific'));
+  };
+  if (!isAdmin(req)) return send(403, false, 'Zugriff verweigert.');
+  const param = (name) => typeof req.query?.[name] === 'string' ? req.query[name] : '';
+  try {
+    await magnific.completeConnect({ code: param('code'), state: param('state'), iss: param('iss'), error: param('error') });
+    magnificBalanceCache = null;
+    require('./lib/nodes/magnific-catalog').reset();
+    send(200, true);
+  } catch (_) { send(400, false, 'Magnific-Anmeldung fehlgeschlagen. Bitte erneut verbinden.'); }
+});
+app.post('/api/magnific/disconnect', async (req, res) => {
+  if (!isAdmin(req)) return fail(res, 403, 'Zugriff verweigert.');
+  try {
+    magnificBalanceCache = null;
+    require('./lib/nodes/magnific-catalog').reset();
+    res.json(await magnific.disconnect());
+  } catch (_) { fail(res, 500, 'Magnific konnte nicht getrennt werden.'); }
 });
 
 app.get('/api/higgsfield/status', async (req, res) => {

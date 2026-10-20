@@ -191,6 +191,24 @@
           <p class="settings-hint" data-i18n="settings.hint">Keys werden serverseitig in data/settings.json gespeichert (nur für Admins zugänglich) und übersteuern die .env. Änderungen wirken sofort, ohne Neustart.</p>
           <h3 class="settings-section-title" data-i18n="settings.apiKeys">API-Keys</h3>
           <div id="settingsList" class="settings-list"></div>
+          <section class="settings-higgsfield" aria-labelledby="magnificTitle">
+            <h3 id="magnificTitle" class="settings-section-title" data-i18n="magnific.title">Magnific</h3>
+            <p class="settings-hint" data-i18n="magnific.hint">Verbindet den Director mit deinem Magnific-Plan. Tokens bleiben ausschliesslich auf dem Server.</p>
+            <div class="higgsfield-connection-row">
+              <span id="magnificStatusDot" class="higgsfield-status-dot" aria-hidden="true"></span>
+              <div class="higgsfield-connection-copy">
+                <div id="magnificStatusText" class="higgsfield-status-text" data-i18n="magnific.disconnected">Nicht verbunden</div>
+                <div id="magnificVerification" class="higgsfield-verification hidden">
+                  <a id="magnificVerificationLink" href="#" target="_blank" rel="noopener noreferrer" data-i18n="magnific.openVerification">Bei Magnific anmelden</a>
+                  <span data-i18n="magnific.confirmHint">Im neuen Tab bei Magnific anmelden und Zugriff erlauben …</span>
+                </div>
+              </div>
+              <div class="settings-actions">
+                <button id="magnificConnect" class="branding-manager-action" type="button" data-i18n="magnific.connect">Mit Magnific verbinden</button>
+                <button id="magnificDisconnect" class="branding-manager-action danger hidden" type="button" data-i18n="magnific.disconnect">Trennen</button>
+              </div>
+            </div>
+          </section>
           <section class="settings-higgsfield" aria-labelledby="higgsfieldTitle">
             <h3 id="higgsfieldTitle" class="settings-section-title" data-i18n="higgsfield.title">Higgsfield</h3>
             <p class="settings-hint" data-i18n="higgsfield.hint">Verbindet den Director mit deinem Higgsfield-Plan. Tokens bleiben ausschliesslich auf dem Server.</p>
