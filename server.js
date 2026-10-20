@@ -45,6 +45,7 @@ const teams = require('./lib/teams');
 const teamGroups = require('./lib/team-groups');
 const budget = require('./lib/budget');
 const accessSync = require('./lib/access-sync');
+const loginCodes = require('./lib/login-codes');
 const adminMonitoring = require('./lib/admin-monitoring');
 const nodeWorkflows = require('./lib/nodes/workflows-store');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
@@ -969,6 +970,10 @@ registerKeyRoutes(app, { keys: mcp.keys, usage: (key) => mcp.accounting.monthSpe
 // (lib/access-sync.js); its state is part of the answers so the UI can show a warning.
 teams.onChange(() => {
   void accessSync.sync();
+  // Login codes of people who lost their access (removed, team archived or deleted) stop working (lib/login-codes.js).
+  if (loginCodes.enabled() && !teams.problem()) {
+    loginCodes.retainOnly(teams.activeMemberEmails()).catch((err) => console.warn('[login-codes]', err.code || err.name));
+  }
 });
 
 function requireTeamAdmin(req, res) {
@@ -1007,6 +1012,7 @@ async function teamDetail(team, shared = null) {
   const statuses = shared ? shared.statuses : await budget.statusOfEmails(team.members.map((member) => member.email));
   const members = [];
   let spentUsd = 0;
+  const codes = loginCodes.enabled() ? loginCodes.list() : null;
   for (const member of team.members) {
     const status = statuses.get(member.email) || (await budget.statusOfEmail(member.email));
     spentUsd += status.spentUsd;
@@ -1021,11 +1027,13 @@ async function teamDetail(team, shared = null) {
       reservedUsd: status.reservedUsd,
       remainingUsd: status.remainingUsd,
       firstSeen: seen.get(member.email)?.firstSeen || null,
-      lastSeen: seen.get(member.email)?.lastSeen || null
+      lastSeen: seen.get(member.email)?.lastSeen || null,
+      // { expiresAt } of the current login code (never the code itself), or null.
+      loginCode: codes ? loginCodes.statusOf(member.email, codes) : null
     });
   }
   members.sort((a, b) => a.email.localeCompare(b.email));
-  return { ...teamSummary(team), spentUsd: Math.round(spentUsd * 1e6) / 1e6, members };
+  return { ...teamSummary(team), spentUsd: Math.round(spentUsd * 1e6) / 1e6, loginCodesEnabled: Boolean(codes), members };
 }
 
 async function afterTeamChange() {
@@ -1158,6 +1166,52 @@ app.delete('/api/teams/:id/members/:email', async (req, res) => {
     res.json({ ok: true, email, team: await teamDetail(teams.getTeam(req.params.id)), sync });
   } catch (err) {
     failTeams(res, err);
+  }
+});
+
+// Login codes from the course lead (lib/login-codes.js, only with ACCESS_LOGIN_CODES_FILE): an 8-digit code for one
+// member of an active team, for the login service when the login mail does not arrive. The plain code is only in the
+// answer of POST (never stored, never logged); a new code replaces the old one, DELETE revokes it.
+function failLoginCode(res, err) {
+  if (err instanceof loginCodes.LoginCodeError) return failWithCode(res, err.code === 'LOGIN_CODES_DISABLED' ? 404 : 400, err.code, err.message);
+  if (err instanceof teams.TeamNotFoundError || err instanceof teams.MemberNotFoundError || err instanceof teams.TeamValidationError) return failTeams(res, err);
+  console.warn('[login-codes]', err.code || err.name);
+  return failWithCode(res, 500, 'LOGIN_CODE_WRITE_FAILED', 'Der Login-Code konnte nicht gespeichert werden.');
+}
+
+// Body: { email, hours: 24 | 168 } (24 without hours). Answers { email, code, expiresAt, team }.
+app.post('/api/teams/:id/login-code', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  res.set('Cache-Control', 'no-store');
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    if (!loginCodes.enabled()) throw new loginCodes.LoginCodeError('Login-Codes sind nicht eingerichtet (ACCESS_LOGIN_CODES_FILE).', 'LOGIN_CODES_DISABLED');
+    const team = teams.getTeam(req.params.id);
+    if (team.archived) throw new loginCodes.LoginCodeError('Das Team ist archiviert. Login-Codes gibt es nur für Mitglieder aktiver Teams.', 'TEAM_ARCHIVED');
+    const email = access.normalizeEmail(body.email);
+    if (!email) throw new loginCodes.LoginCodeError('Die E-Mail-Adresse ist ungültig.', 'INVALID_EMAIL');
+    if (!team.members.some((member) => member.email === email)) throw new teams.MemberNotFoundError(email);
+    const { code, expiresAt } = await loginCodes.create({ email, hours: body.hours, by: access.viewerOf(req).email });
+    res.json({ email, code, expiresAt, team: await teamDetail(teams.getTeam(req.params.id)) });
+  } catch (err) {
+    failLoginCode(res, err);
+  }
+});
+
+// Body: { email }. Answers { ok, email, revoked, team }; revoking an address without a code is no error.
+app.delete('/api/teams/:id/login-code', async (req, res) => {
+  if (!requireTeamAdmin(req, res)) return;
+  res.set('Cache-Control', 'no-store');
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    if (!loginCodes.enabled()) throw new loginCodes.LoginCodeError('Login-Codes sind nicht eingerichtet (ACCESS_LOGIN_CODES_FILE).', 'LOGIN_CODES_DISABLED');
+    teams.getTeam(req.params.id);
+    const email = access.normalizeEmail(body.email);
+    if (!email) throw new loginCodes.LoginCodeError('Die E-Mail-Adresse ist ungültig.', 'INVALID_EMAIL');
+    const revoked = await loginCodes.revoke(email);
+    res.json({ ok: true, email, revoked, team: await teamDetail(teams.getTeam(req.params.id)) });
+  } catch (err) {
+    failLoginCode(res, err);
   }
 });
 

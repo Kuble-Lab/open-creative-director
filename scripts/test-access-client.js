@@ -246,7 +246,7 @@ function testTexts() {
   // access-client builds a few keys from tables
   for (const key of ['sharing.private', 'sharing.privateHint', 'sharing.team', 'sharing.teamHint', 'sharing.teams', 'sharing.teamsHint', 'sharing.specific', 'sharing.specificHint']) used.add(key);
   // keys built from tables and codes: one text per error code of the teams API and per feature name
-  for (const code of ['INVALID_TEAM', 'INVALID_BUDGET', 'TEAM_NAME_TAKEN', 'NO_EMAILS', 'INVALID_EMAILS', 'TOO_MANY_EMAILS', 'TEAM_FULL', 'TOO_MANY_TEAMS', 'TEAM_NOT_FOUND', 'MEMBER_NOT_FOUND', 'USER_MANAGEMENT_INACTIVE']) used.add(`teams.err.${code}`);
+  for (const code of ['INVALID_TEAM', 'INVALID_BUDGET', 'TEAM_NAME_TAKEN', 'NO_EMAILS', 'INVALID_EMAILS', 'TOO_MANY_EMAILS', 'TEAM_FULL', 'TOO_MANY_TEAMS', 'TEAM_NOT_FOUND', 'MEMBER_NOT_FOUND', 'USER_MANAGEMENT_INACTIVE', 'TEAM_ARCHIVED', 'INVALID_HOURS', 'INVALID_EMAIL', 'LOGIN_CODES_DISABLED', 'LOGIN_CODE_WRITE_FAILED']) used.add(`teams.err.${code}`);
   for (const feature of ['gts', 'higgsfield', 'chatgpt', 'roles', 'context']) used.add(`role.feature.${feature}`);
   for (const key of ['account.roleParticipant', 'account.roleGuest', 'budget.menuLabel', 'budget.banner', 'budget.bannerLow', 'budget.bannerGuest']) used.add(key);
   assert.ok(used.size > 40, `expected many user management keys, found ${used.size}`);
