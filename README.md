@@ -39,6 +39,8 @@ The Director offers five compact tools: balance, free cost simulation, catalogue
 
 **Magnific Upscale** (`magnific.upscale_image`, category `magnific`) takes an image and returns images. Modes and scale factors come from the connected account; the disconnected menu has a fallback. Plans use free `simulate_cost` when the real input is available; otherwise the price stays unknown until submission. Participants and guests cannot use Magnific tools, nodes, templates or the assistant’s Magnific suggestions, even when Higgsfield team access is enabled. An admin manages the connection.
 
+Further nodes (all category `magnific`, same access rules and price planning): remove background (`magnific.remove_background`), replace background (`magnific.replace_background`, prompt or backdrop image), relight (`magnific.relight`), expand to an aspect ratio (`magnific.expand`), reimagine (`magnific.reimagine`), change camera (`magnific.change_camera`), skin enhancer (`magnific.skin_enhancer`), restyle from a style image (`magnific.restyle`), vectorize to SVG (`magnific.to_svg`), video upscale (`magnific.video_upscale`), video HDR (`magnific.video_hdr`), video background removal (`magnific.video_remove_background`) and clean speech (`magnific.clean_speech`). They run through the node-only tool `magnific_media`. Video jobs get 30 instead of 10 minutes. Argument names follow the live schema of 2026-10-22 (`docs/magnific-mcp-tools.md`).
+
 The account’s live tool schemas, upload formats, actual credit charges and a real OAuth login still require operator verification. Offline tests use fake OAuth/MCP responses and never spend credits.
 
 ## Quick start

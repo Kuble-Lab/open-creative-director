@@ -39,6 +39,8 @@ Der Director erhält fünf kompakte Werkzeuge: Kontostand, kostenlose Kostensch�
 
 Der Node **Magnific Upscale** (`magnific.upscale_image`, Kategorie `magnific`) nimmt ein Bild und liefert Bilder. Modus und Faktor kommen vom verbundenen Konto; ohne Verbindung gibt es eine Fallback-Liste. Sobald die reale Eingabe vorhanden ist, nutzt der Plan das kostenlose `simulate_cost`, sonst bleibt der Preis bis zur Einreichung unbekannt. Teilnehmende und Gäste haben keinen Zugriff auf Magnific-Werkzeuge, Nodes, Vorlagen oder Vorschläge des Assistenten. Die Higgsfield-Teamfreigabe gilt ausschliesslich für Higgsfield.
 
+Weitere Nodes (alle Kategorie `magnific`, gleiche Rechte und Preisplanung): Bild freistellen (`magnific.remove_background`), Hintergrund ersetzen (`magnific.replace_background`, Prompt oder Hintergrundbild), Relight (`magnific.relight`), Erweitern auf ein Seitenverhältnis (`magnific.expand`), Reimagine (`magnific.reimagine`), Kamera ändern (`magnific.change_camera`), Haut (`magnific.skin_enhancer`), Restyle mit Stilbild (`magnific.restyle`), Vektorisieren zu SVG (`magnific.to_svg`), Video-Upscale (`magnific.video_upscale`), Video-HDR (`magnific.video_hdr`), Video freistellen (`magnific.video_remove_background`) und Sprache säubern (`magnific.clean_speech`). Sie laufen über das Node-Werkzeug `magnific_media`, das nur die Node-Ansicht aufrufen kann. Videoaufträge haben 30 statt 10 Minuten Zeit. Die Argumentnamen folgen dem Live-Schema vom 2026-10-22 (`docs/magnific-mcp-tools.md`).
+
 Echte Anmeldung, kontospezifische Werkzeugschemas, Upload-Formate und tatsächliche Credits müssen mit dem Betreiberkonto live geprüft werden. Die Offline-Tests verwenden Fake-Antworten ohne Credit-Verbrauch.
 
 ## Schnellstart
