@@ -7,6 +7,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const http = require('node:http');
 const { createIsolatedApp } = require('./support/isolated-app');
+// More MCP calls than the per-minute budget run here; the budget itself would make the test wait a minute.
+process.env.MAGNIFIC_MCP_PER_MINUTE = '10000';
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 async function main() {
   const iso = await createIsolatedApp({ loadServer: false, env: { AUTH_WHOAMI_URL: 'https://identity.invalid', INTERNAL_EMAIL_DOMAINS: 'staff.test', ADMIN_EMAILS: 'admin@staff.test' } });
@@ -54,6 +56,7 @@ async function main() {
     let refreshes = 0;
     let rejectNext = false;
     let parallelNext = 0;
+    let rateNext = 0;
     let sse = false;
     let fakeNow = Date.now();
     const ISSUER = 'https://auth.magnific.test/realms/mcp';
@@ -106,6 +109,10 @@ async function main() {
           parallelNext -= 1;
           return json({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: 'Video generation is at its parallel limit for this account: a slot frees in ~300s' }] } });
         }
+        if (name === 'account_balance' && rateNext > 0) {
+          rateNext -= 1;
+          return rateNext % 2 ? json({}, 429) : json({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: 'Too many MCP requests per minute for this account' }] } });
+        }
         if (name === 'refuse_me') {
           const payload = { jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: `Too many concurrent video generations, see https://storage.test/x?sig=SECRET for ${'a'.repeat(40)}` }] } };
           return json(payload);
@@ -142,7 +149,8 @@ async function main() {
       if (err.code !== 'EPERM' && err.code !== 'EACCES') throw err;
       console.log('Local fake server: listen blocked by sandbox; testing the injected HTTP handler without sockets.');
     }
-    const client = magnific.createMagnificClient({ fetchImpl: transport, store: magnific.createFileTokenStore(tokenFile), now: () => fakeNow });
+    const rateWaits = [];
+    const client = magnific.createMagnificClient({ fetchImpl: transport, store: magnific.createFileTokenStore(tokenFile), now: () => fakeNow, wait: async (ms) => { rateWaits.push(ms); } });
     assert.equal(client.status().connected, false);
     assert.ok(!tools.toolDefinitions().some((t) => t.function.name.startsWith('magnific_')));
     const started = await client.startConnect({ redirectUri: redirect });
@@ -318,6 +326,11 @@ async function main() {
     const badClient = magnific.createMagnificClient({ fetchImpl: async () => { throw new Error(`${secretAccess} ${secretRefresh} signed-url-SECRET`); },
       store: { read: () => JSON.parse(require('node:fs').readFileSync(tokenFile, 'utf8')) } });
     await assert.rejects(badClient.mcpCall('account_balance', {}), (err) => !err.message.includes('SECRET'));
+    // Too many requests (HTTP 429 or a refusal saying so): the call waits and is sent again.
+    rateNext = 2;
+    const balanceAfterRate = await client.mcpCall('account_balance', {});
+    assert.match(balanceAfterRate, /1000/);
+    assert.equal(rateWaits.length, 2);
     await assert.rejects(client.mcpCall('refuse_me', {}), (err) => /rejected the request: Too many concurrent video generations/.test(err.message)
       && !err.message.includes('SECRET') && !err.message.includes('a'.repeat(40)));
     const unsafeDiscovery = magnific.createMagnificClient({ fetchImpl: async () => json({ authorization_servers: ['http://unsafe.test'] }), store: { read: () => null } });
