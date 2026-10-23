@@ -45,7 +45,8 @@ async function main() {
           intensity: { type: 'integer', minimum: 1, maximum: 10 }, type: { type: 'string', enum: ['neutral', 'gel'] }, color: { type: 'string' } }, required: ['azimuth', 'elevation'], additionalProperties: false } } }, ['creationIdentifier', 'lights']),
       creations_wait: obj({ identifiers: { type: 'array', items: id }, timeoutSeconds: { type: 'integer', minimum: 0, maximum: 55 } }, ['identifiers']),
       creation_status: obj({ creationIdentifier: id }, ['creationIdentifier']), creations_get: obj({ creationIdentifier: id, identifiers: { type: 'array', items: id } }),
-      video_generate: obj({ prompt: { type: 'string' } }, ['prompt'])
+      video_generate: obj({ prompt: { type: 'string' }, slug: { type: 'string' }, duration: { type: 'number' }, resolution: { type: 'string' }, aspectRatio: { type: 'string' },
+        withSoundEffects: { type: 'boolean' }, keyframes: { type: 'object' }, references: { type: 'array', items: { type: 'object' } } })
     }).map(([name, inputSchema]) => ({ name, description: `Fake ${name}`, inputSchema }));
     const calls = [];
     let state;
@@ -270,6 +271,21 @@ async function main() {
     assert.deepEqual(relight.job.creationIds, ['output-1'], 'the echoed input creation is not a result');
     assert.equal(relight.job.credits, 8);
     await assert.rejects(tools.executeTool(nodeCtx, 'magnific_media', { tool: 'images_relight', asset_id: image.id, arguments: { lights: [{ azimuth: 10, elevation: 0 }] } }), /inputSchema/);
+    // Magnific Video: a first frame goes in as start keyframe, the settings of the node as they are.
+    await assert.rejects(tools.executeTool(ctx, 'magnific_video', { prompt: 'x', duration: 5 }), /node/i);
+    const videoFull = await api.videoArgs(nodeCtx, { slug: 'bytedance-seedance-pro-2.5', prompt: 'A dancer', duration: 5, resolution: '720p', withSoundEffects: false, first_frame: image.id });
+    assert.deepEqual(videoFull.keyframes, { start: { type: 'image', url: 'input-1' } });
+    assert.equal(videoFull.references, undefined);
+    assert.equal(videoFull.slug, 'bytedance-seedance-pro-2.5');
+    const video = await tools.executeTool(nodeCtx, 'magnific_video', { slug: 'bytedance-seedance-pro-2.5', prompt: 'A dancer', duration: 5, resolution: '720p' });
+    assert.deepEqual(video.job.creationIds, ['output-1']);
+    assert.equal(video.job.kind, 'video');
+    const videoNodes = iso.load('lib/nodes/nodes-magnific');
+    assert.equal(videoNodes.clipSeconds({ model: 'bytedance-seedance-pro-2.5', duration: 5 }, { duration: 7.2 }), 8, 'the audio decides, rounded up');
+    assert.equal(videoNodes.clipSeconds({ model: 'bytedance-seedance-pro-2.5', duration: 5 }, { duration: 2 }), 4, 'at least 4 s');
+    assert.equal(videoNodes.clipSeconds({ model: 'bytedance-seedance-pro-2.0', duration: 5 }, { duration: 40 }), 15, 'at most what the model makes');
+    assert.deepEqual(registry.get('magnific.video').validate({ model: 'bytedance-seedance-fast-2.0', resolution: '1080p', duration: 5 }).map((i) => i.code), ['magnific_settings']);
+    assert.equal(registry.blockedFor(registry.get('magnific.video'), participant), true);
     for (const def of iso.load('lib/nodes/nodes-magnific').MEDIA_NODES) {
       assert.equal(registry.blockedFor(registry.get(def.type), participant), true, def.type);
       assert.equal(registry.get(def.type).paid, true);
