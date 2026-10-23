@@ -30,16 +30,23 @@ async function main() {
     const costs = iso.load('lib/costs');
     const assistant = iso.load('lib/nodes/assistant');
     store.ensureDirs();
-    const schemas = [
-      ['account_balance', {}], ['images_upscale_modes_list', {}],
-      ['simulate_cost', { tool_name: { type: 'string' }, arguments: { type: 'object' } }],
-      ['creations_request_upload', { filename: { type: 'string' }, content_type: { type: 'string' }, size: { type: 'number' } }],
-      ['creations_finalize_upload', { upload_id: { type: 'string' } }],
-      ['images_upscale', { creation_id: { type: 'string' }, mode: { type: 'string', enum: ['creative', 'precision'] }, scale: { type: 'integer', enum: [2, 4, 8, 16] } }],
-      ['creations_wait', { creation_ids: { type: 'array', items: { type: 'string' } } }],
-      ['creation_status', { creation_id: { type: 'string' } }], ['creations_get', { creation_ids: { type: 'array', items: { type: 'string' } } }],
-      ['video_generate', { prompt: { type: 'string' } }]
-    ].map(([name, properties]) => ({ name, description: `Fake ${name}`, inputSchema: { type: 'object', properties, required: Object.keys(properties), additionalProperties: false } }));
+    // Argument names and shapes follow the live Magnific MCP (tools/list, 2026-10-22; docs/magnific-mcp-tools.md).
+    const obj = (properties, required = []) => ({ type: 'object', properties, required });
+    const id = { type: 'string' };
+    const schemas = Object.entries({
+      account_balance: obj({}), images_upscale_modes_list: obj({}),
+      simulate_cost: obj({ tool: { type: 'string', enum: ['images_upscale', 'images_remove_background', 'images_relight', 'video_upscale'] }, arguments: { type: 'object' } }, ['tool']),
+      creations_request_upload: obj({ mimeType: { type: 'string', enum: ['image/jpeg', 'image/png', 'video/mp4', 'audio/mpeg'] }, count: { type: 'integer' } }, ['mimeType']),
+      creations_finalize_upload: obj({ fileName: { type: 'string' }, path: { type: 'string' }, visible: { type: 'boolean' } }, ['fileName']),
+      images_upscale: obj({ creationIdentifier: id, mode: { type: 'string', enum: ['creative', 'ultra-sublime', 'ultra-photo', 'ultra-denoiser', 'ultra'] }, scale: { type: 'string', enum: ['2x', '4x', '8x', '16x'] } }, ['creationIdentifier']),
+      images_remove_background: obj({ creationIdentifier: id, folderReference: id }, ['creationIdentifier']),
+      images_relight: obj({ creationIdentifier: id, resolution: { type: 'string', enum: ['1k', '2k'] }, lights: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'object',
+        properties: { azimuth: { type: 'integer', enum: [-135, -90, -45, 0, 45, 90, 135, 180] }, elevation: { type: 'integer', enum: [-90, -45, 0, 45, 90] },
+          intensity: { type: 'integer', minimum: 1, maximum: 10 }, type: { type: 'string', enum: ['neutral', 'gel'] }, color: { type: 'string' } }, required: ['azimuth', 'elevation'], additionalProperties: false } } }, ['creationIdentifier', 'lights']),
+      creations_wait: obj({ identifiers: { type: 'array', items: id }, timeoutSeconds: { type: 'integer', minimum: 0, maximum: 55 } }, ['identifiers']),
+      creation_status: obj({ creationIdentifier: id }, ['creationIdentifier']), creations_get: obj({ creationIdentifier: id, identifiers: { type: 'array', items: id } }),
+      video_generate: obj({ prompt: { type: 'string' } }, ['prompt'])
+    }).map(([name, inputSchema]) => ({ name, description: `Fake ${name}`, inputSchema }));
     const calls = [];
     let state;
     let clientId;
@@ -81,16 +88,19 @@ async function main() {
       else if (body.method === 'tools/list') result = { tools: schemas };
       else {
         const { name, arguments: args } = body.params;
+        let listing = null;
         if (name === 'account_balance') result = { credits: 1000 };
-        if (name === 'images_upscale_modes_list') result = { modes: [{ id: 'creative', scales: [2, 4, 8, 16] }, { id: 'precision', scales: [2, 4] }] };
-        if (name === 'simulate_cost') { assert.ok(args.tool_name); result = { credits: 8 }; }
-        if (name === 'creations_request_upload') result = { upload_url: 'https://storage.test/private?signature=SECRET', upload_id: 'upload-1' };
-        if (name === 'creations_finalize_upload') result = { creation_id: 'input-1' };
-        if (name === 'images_upscale' || name === 'video_generate') result = { creation_id: 'output-1', status: 'pending' };
-        if (name === 'creations_wait' || name === 'creation_status') result = { creation_id: 'output-1', status: 'completed' };
-        if (name === 'creations_get') result = { creations: [{ id: 'output-1', download_url: 'https://storage.test/result.png' }] };
+        // The live server answers these two as an indented listing instead of JSON.
+        if (name === 'images_upscale_modes_list') listing = 'modes[2]:\n  - id: creative\n    params:\n      scale:\n        enum[4]: 2x,4x,8x,16x\n  - id: ultra-photo';
+        if (name === 'simulate_cost') { assert.ok(args.tool); result = { credits: 8, isUnlimited: false, certainty: 'exact' }; }
+        if (name === 'creations_request_upload') { assert.ok(args.mimeType); result = { proxyUploadUrl: 'https://storage.test/private?signature=SECRET', path: 'temp-files/in.png', mimeType: args.mimeType }; }
+        if (name === 'creations_finalize_upload') { assert.equal(args.path, 'temp-files/in.png'); assert.equal(args.visible, false); listing = 'identifier: input-1\ntool: upload\nstatus: completed\nurl: "https://storage.test/in.png"'; }
+        if (['images_upscale', 'images_remove_background', 'images_relight', 'video_generate'].includes(name)) result = { creationIdentifier: 'output-1', status: 'queued', source: { creationIdentifier: args.creationIdentifier } };
+        if (name === 'creations_wait') result = { results: args.identifiers.map((i) => ({ identifier: i, status: 'completed', results: { url: 'https://storage.test/result.png' } })), allTerminal: true };
+        if (name === 'creation_status') result = { creationIdentifier: args.creationIdentifier, status: 'completed', results: { url: 'https://storage.test/result.png' } };
+        if (listing !== null) result = listing;
         assert.ok(result, name);
-        result = { content: [{ type: 'text', text: JSON.stringify(result) }] };
+        result = { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] };
       }
       const payload = { jsonrpc: '2.0', id: body.id, result };
       if (sse) return new Response(`event: message\ndata: ${JSON.stringify(payload)}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
@@ -155,13 +165,13 @@ async function main() {
     assert.equal(access.higgsfieldAllowed(participant), true);
     for (const viewer of [participant, guest]) {
       assert.ok(!tools.toolDefinitions(viewer).some((t) => t.function.name.startsWith('magnific_')));
-      for (const name of Object.keys(api.executors)) await assert.rejects(tools.executeTool({ user: viewer.email }, name, {}), (e) => e.code === 'FORBIDDEN_FOR_ROLE');
+      for (const name of Object.keys(api.executors)) await assert.rejects(tools.executeTool({ user: viewer.email, nodeView: true }, name, {}), (e) => e.code === 'FORBIDDEN_FOR_ROLE');
       assert.equal(registry.blockedFor(registry.get('magnific.upscale_image'), viewer), true);
       assert.ok(!assistant.visibleDescriptors(registry.registry, false, viewer).descriptors.some((d) => d.type.startsWith('magnific.')));
     }
     assert.equal(tools.toolDefinitions(internal).filter((t) => t.function.name.startsWith('magnific_')).length, 5);
     const schemaValidator = iso.load('lib/magnific-schema');
-    assert.throws(() => schemaValidator.validate({ creation_id: 'x', mode: 'creative', scale: 3 }, schemas.find((t) => t.name === 'images_upscale').inputSchema));
+    assert.throws(() => schemaValidator.validate({ creationIdentifier: 'x', mode: 'creative', scale: 3 }, schemas.find((t) => t.name === 'images_upscale').inputSchema));
     assert.throws(() => schemaValidator.validate({ bad: true }, { type: 'object', additionalProperties: false }));
     const { workflow } = await iso.load('lib/nodes/workflows-store').createWorkflowsStore().createWorkflow({ name: 'Magnific', owner: 'p@example.test', graph: {
       nodes: [{ id: 'up', type: 'magnific.upscale_image', params: {}, x: 0, y: 0 }], edges: []
@@ -205,7 +215,7 @@ async function main() {
     const image = await store.saveAsset(session.id, { kind: 'image', buffer: Buffer.from('fake input'), ext: '.png', prompt: 'input', cost: 0, model: 'test' });
     const output = Buffer.from('fake output');
     global.fetch = async (url, options) => {
-      if (url === 'https://storage.test/private?signature=SECRET') { assert.equal(options.method, 'PUT'); assert.equal(options.headers.Authorization, undefined); return new Response(null, { status: 200 }); }
+      if (url === 'https://storage.test/private?signature=SECRET') { assert.equal(options.method, 'PUT'); assert.equal(options.headers['Content-Type'], 'image/png'); assert.equal(options.headers.Authorization, undefined); return new Response(null, { status: 200 }); }
       throw new Error(`Network forbidden ${secretAccess} ${secretRefresh}`);
     };
     magnific.downloadResult = async (url) => { assert.equal(url, 'https://storage.test/result.png'); return { buffer: output, contentType: 'image/png', url }; };
@@ -246,7 +256,24 @@ async function main() {
     assert.throws(() => catalog.check('precision', 16));
     assert.deepEqual(api.creationIds({ id: 'space-1', type: 'space', status: 'ready' }), []);
     assert.equal(api.creditsOf({ balance: { credits: 999 } }), null);
-    await assert.rejects(api.checkedCall('images_upscale', { creation_id: 'input-1', mode: 'creative', scale: 3 }), /inputSchema/);
+    await assert.rejects(api.checkedCall('images_upscale', { creationIdentifier: 'input-1', mode: 'creative', scale: 3 }), /inputSchema/);
+    // The live mode list is not JSON: the snapshot of the real modes stays in use, and precision modes stop at 2x.
+    assert.deepEqual((await catalog.load()).map((m) => m.value), catalog.FALLBACK.map((m) => m.value));
+    assert.throws(() => catalog.check('ultra-photo', 4));
+    catalog.check('ultra-sublime', 16);
+    assert.deepEqual(api.creationIds('identifier: abc123\nstatus: completed'), ['abc123']);
+    // The other media nodes run through the node-only tool with the live argument names.
+    await assert.rejects(tools.executeTool(ctx, 'magnific_media', { tool: 'images_remove_background', asset_id: image.id }), /node/i);
+    const nodeCtx = { ...ctx, nodeView: true };
+    const relight = await tools.executeTool(nodeCtx, 'magnific_media', { tool: 'images_relight', asset_id: image.id,
+      arguments: registry.get('magnific.relight') && iso.load('lib/nodes/nodes-magnific').MEDIA_NODES.find((n) => n.type === 'magnific.relight').args({ azimuth: '-45', elevation: '45', intensity: 5, light_type: 'neutral', resolution: '2k' }) });
+    assert.deepEqual(relight.job.creationIds, ['output-1'], 'the echoed input creation is not a result');
+    assert.equal(relight.job.credits, 8);
+    await assert.rejects(tools.executeTool(nodeCtx, 'magnific_media', { tool: 'images_relight', asset_id: image.id, arguments: { lights: [{ azimuth: 10, elevation: 0 }] } }), /inputSchema/);
+    for (const def of iso.load('lib/nodes/nodes-magnific').MEDIA_NODES) {
+      assert.equal(registry.blockedFor(registry.get(def.type), participant), true, def.type);
+      assert.equal(registry.get(def.type).paid, true);
+    }
     const badClient = magnific.createMagnificClient({ fetchImpl: async () => { throw new Error(`${secretAccess} ${secretRefresh} signed-url-SECRET`); },
       store: { read: () => JSON.parse(require('node:fs').readFileSync(tokenFile, 'utf8')) } });
     await assert.rejects(badClient.mcpCall('account_balance', {}), (err) => !err.message.includes('SECRET'));

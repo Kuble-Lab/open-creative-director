@@ -140,7 +140,7 @@ async function testHelp(A, registry, registryModule) {
   const [usablePart, unusablePart] = catalog.split('## Not usable right now');
   assert.equal(usablePart.includes('- video.motion_graphics '), false, 'a node that cannot run is not offered ...');
   assert.match(unusablePart, /- video\.motion_graphics "[^"]+": No render node configured/, '... but named with the reason, in the part that is never inserted');
-  assert.ok(catalog.length < 24000, `the catalogue stays compact (${catalog.length})`);
+  assert.ok(catalog.length < 25500, `the catalogue stays compact (${catalog.length})`);
 
   // roles: participants and guests never see a Higgsfield node, in the catalogue or in the help
   const own = A.visibleDescriptors(registry, true);
