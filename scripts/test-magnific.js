@@ -34,7 +34,7 @@ async function main() {
     const obj = (properties, required = []) => ({ type: 'object', properties, required });
     const id = { type: 'string' };
     const schemas = Object.entries({
-      account_balance: obj({}), images_upscale_modes_list: obj({}),
+      account_balance: obj({}), images_upscale_modes_list: obj({}), library_list: obj({ type: { type: 'string' }, search: { type: 'string' } }),
       simulate_cost: obj({ tool: { type: 'string', enum: ['images_upscale', 'images_remove_background', 'images_relight', 'video_upscale'] }, arguments: { type: 'object' } }, ['tool']),
       creations_request_upload: obj({ mimeType: { type: 'string', enum: ['image/jpeg', 'image/png', 'video/mp4', 'audio/mpeg'] }, count: { type: 'integer' } }, ['mimeType']),
       creations_finalize_upload: obj({ fileName: { type: 'string' }, path: { type: 'string' }, visible: { type: 'boolean' } }, ['fileName']),
@@ -53,6 +53,7 @@ async function main() {
     let clientId;
     let refreshes = 0;
     let rejectNext = false;
+    let parallelNext = 0;
     let sse = false;
     let fakeNow = Date.now();
     const ISSUER = 'https://auth.magnific.test/realms/mcp';
@@ -99,6 +100,12 @@ async function main() {
         if (['images_upscale', 'images_remove_background', 'images_relight', 'video_generate'].includes(name)) result = { creationIdentifier: 'output-1', status: 'queued', source: { creationIdentifier: args.creationIdentifier } };
         if (name === 'creations_wait') result = { results: args.identifiers.map((i) => ({ identifier: i, status: 'completed', results: { url: 'https://storage.test/result.png' } })), allTerminal: true };
         if (name === 'creation_status') result = { creationIdentifier: args.creationIdentifier, status: 'completed', results: { url: 'https://storage.test/result.png' } };
+        // The live library answers as an indented listing.
+        if (name === 'library_list') listing = 'references[2]:\n  - id: 2421251\n    name: gu\n    type: character\n  - id: 77\n    name: gustav\n    type: character\npagination:\n  page: 1';
+        if (name === 'video_generate' && parallelNext > 0) {
+          parallelNext -= 1;
+          return json({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: 'Video generation is at its parallel limit for this account: a slot frees in ~300s' }] } });
+        }
         if (name === 'refuse_me') {
           const payload = { jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: `Too many concurrent video generations, see https://storage.test/x?sig=SECRET for ${'a'.repeat(40)}` }] } };
           return json(payload);
@@ -281,9 +288,23 @@ async function main() {
     assert.deepEqual(videoFull.keyframes, { start: { type: 'image', url: 'input-1' } });
     assert.equal(videoFull.references, undefined);
     assert.equal(videoFull.slug, 'bytedance-seedance-pro-2.5');
+    // A character of the library: frame and character go in as references, the prompt names the character.
+    const withCharacter = await api.videoArgs(nodeCtx, { slug: 'bytedance-seedance-pro-2.5', prompt: 'A dancer', duration: 5, resolution: '720p', first_frame: image.id, character: '@gu' });
+    assert.equal(withCharacter.keyframes, undefined);
+    assert.deepEqual(withCharacter.references, [{ type: 'image', url: 'input-1' }, { type: 'character', custom_model_id: '2421251', name: 'gu', modifier_key: '@gu' }]);
+    assert.match(withCharacter.prompt, /^A dancer\n@gu is the person/);
+    await assert.rejects(api.videoArgs(nodeCtx, { prompt: 'x', duration: 5, character: 'nobody' }), /no character named "nobody"/);
     const video = await tools.executeTool(nodeCtx, 'magnific_video', { slug: 'bytedance-seedance-pro-2.5', prompt: 'A dancer', duration: 5, resolution: '720p' });
     assert.deepEqual(video.job.creationIds, ['output-1']);
     assert.equal(video.job.kind, 'video');
+    // At the parallel limit of the account a clip waits for a free slot and is sent again.
+    const waits = [];
+    api.videoWait.pause = async (_ctx, ms) => { waits.push(ms); };
+    parallelNext = 2;
+    const waited = await tools.executeTool(nodeCtx, 'magnific_video', { slug: 'bytedance-seedance-pro-2.5', prompt: 'A dancer', duration: 5, resolution: '720p' });
+    assert.deepEqual(waited.job.creationIds, ['output-1']);
+    assert.equal(waits.length, 2);
+    assert.ok(waits.every((ms) => ms >= 20000 && ms <= 135000), String(waits));
     const videoNodes = iso.load('lib/nodes/nodes-magnific');
     assert.equal(videoNodes.clipSeconds({ model: 'bytedance-seedance-pro-2.5', duration: 5 }, { duration: 7.2 }), 8, 'the audio decides, rounded up');
     assert.equal(videoNodes.clipSeconds({ model: 'bytedance-seedance-pro-2.5', duration: 5 }, { duration: 2 }), 4, 'at least 4 s');

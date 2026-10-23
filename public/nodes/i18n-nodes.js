@@ -890,6 +890,7 @@
     ['nodes.type.magnific.video.tip.1', 'Das Audio dient Seedance als Vorlage für Rhythmus und Lippen; es wird nicht 1:1 übernommen. Für den fertigen Film legt der Schnitt den echten Song darunter.', 'Seedance uses the audio as a guide for rhythm and lips; it is not copied one to one. In the finished film the cut puts the real song underneath.', 'Seedance usa el audio como guía de ritmo y labios; no lo copia tal cual. En la película final el montaje pone la canción real debajo.'],
     ['nodes.type.magnific.video.keywords', 'Seedance, KI-Video, Video generieren, Bild zu Video, Lippensynchron, singen, tanzen', 'Seedance, AI video, generate video, image to video, lip sync, sing, dance', 'Seedance, vídeo con IA, generar vídeo, imagen a vídeo, sincronía labial, cantar, bailar'],
     ['nodes.param.sound', 'Eigener Ton', 'Own sound', 'Sonido propio'],
+    ['nodes.param.character', 'Magnific-Charakter', 'Magnific character', 'Personaje de Magnific'],
     ['nodes.option.bytedance-seedance-pro-2.5', 'Seedance 2.5', 'Seedance 2.5', 'Seedance 2.5'],
     ['nodes.option.bytedance-seedance-pro-2.0', 'Seedance 2.0', 'Seedance 2.0', 'Seedance 2.0'],
     ['nodes.option.bytedance-seedance-fast-2.0', 'Seedance 2.0 Fast', 'Seedance 2.0 Fast', 'Seedance 2.0 Fast'],
