@@ -99,6 +99,10 @@ async function main() {
         if (['images_upscale', 'images_remove_background', 'images_relight', 'video_generate'].includes(name)) result = { creationIdentifier: 'output-1', status: 'queued', source: { creationIdentifier: args.creationIdentifier } };
         if (name === 'creations_wait') result = { results: args.identifiers.map((i) => ({ identifier: i, status: 'completed', results: { url: 'https://storage.test/result.png' } })), allTerminal: true };
         if (name === 'creation_status') result = { creationIdentifier: args.creationIdentifier, status: 'completed', results: { url: 'https://storage.test/result.png' } };
+        if (name === 'refuse_me') {
+          const payload = { jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: `Too many concurrent video generations, see https://storage.test/x?sig=SECRET for ${'a'.repeat(40)}` }] } };
+          return json(payload);
+        }
         if (listing !== null) result = listing;
         assert.ok(result, name);
         result = { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] };
@@ -293,6 +297,8 @@ async function main() {
     const badClient = magnific.createMagnificClient({ fetchImpl: async () => { throw new Error(`${secretAccess} ${secretRefresh} signed-url-SECRET`); },
       store: { read: () => JSON.parse(require('node:fs').readFileSync(tokenFile, 'utf8')) } });
     await assert.rejects(badClient.mcpCall('account_balance', {}), (err) => !err.message.includes('SECRET'));
+    await assert.rejects(client.mcpCall('refuse_me', {}), (err) => /rejected the request: Too many concurrent video generations/.test(err.message)
+      && !err.message.includes('SECRET') && !err.message.includes('a'.repeat(40)));
     const unsafeDiscovery = magnific.createMagnificClient({ fetchImpl: async () => json({ authorization_servers: ['http://unsafe.test'] }), store: { read: () => null } });
     await assert.rejects(unsafeDiscovery.startConnect({ redirectUri: redirect }));
     await client.disconnect();
