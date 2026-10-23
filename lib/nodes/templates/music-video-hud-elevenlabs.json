@@ -308,6 +308,7 @@
           "effects": "strong",
           "grain": 0.35,
           "glitch": 0.6,
+          "variation": 0,
           "endcard": true,
           "quality": "standard"
         }

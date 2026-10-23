@@ -409,7 +409,7 @@ async function main() {
       assert.deepEqual(hudNode('n16').params, { transition: 'cut', resolution: '1080p', fps: '24', fit: 'crop', fade_out: 0, captions: 'off', captions_position: 'bottom' });
       assert.equal(hudDoc.graph.edges.some((edge) => edge.to.node === 'n16' && edge.to.port === 'captions'), false, 'no lyric times go into the cut');
       // the render takes the style of the plan (auto), the karaoke line is off, the beat effects strong (WP45), standard quality, with the end card
-      assert.deepEqual(hudNode('n17').params, { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
+      assert.deepEqual(hudNode('n17').params, { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, variation: 0, endcard: true, quality: 'standard' });
       // the planner: HUD Blue, the default model, the figure Claudia (the canon text; word for word in test-music-video-hud-template.js), the idea ships empty
       // and is optional (WP48: the brief then comes from the lyrics, in the language of the interface)
       assert.deepEqual([hudNode('n4').params.theme, hudNode('n4').params.model, hudNode('n4').params.brief, hudNode('n4').params.hud_language, hudNode('n4').params.brief_language], ['hud', '', '', 'en', 'en']);

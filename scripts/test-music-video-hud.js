@@ -1400,14 +1400,16 @@ async function testNode(binaries, group) {
   const portsOf = (list) => list.map((port) => [port.id, port.type, Boolean(port.required)]);
   assert.deepEqual(portsOf(def.inputs), [['video', 'video', true], ['audio', 'audio', true], ['graphics', 'text', true]]);
   assert.deepEqual(portsOf(def.outputs), [['video', 'video', false], ['sheet', 'image', false]]);
-  assert.deepEqual(real.normalizeParams(def, {}), { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, endcard: true, quality: 'standard' });
+  assert.deepEqual(real.normalizeParams(def, {}), { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, variation: 0, endcard: true, quality: 'standard' });
   // WP45, WP49: the beat effects, strong by default; off makes the film of before (scripts/test-music-video-hud-effects.js)
   assert.deepEqual(def.params.find((param) => param.id === 'effects').options, ['off', 'subtle', 'strong', 'wild']);
   assert.deepEqual(real.checkParams(def, real.normalizeParams(def, { effects: 'wild' })), []);
   assert.deepEqual(real.checkParams(def, real.normalizeParams(def, { effects: 'loud' })), ['param effects: "loud" is not a valid option']);
-  // WP49: a film with the effects on has a stamp, so a film drawn with the effects of WP45 is drawn once more (free); off keeps the key of before
-  assert.equal(def.cacheStamp(real.normalizeParams(def, { effects: 'off' })), undefined);
-  for (const level of ['subtle', 'strong', 'wild']) assert.deepEqual(def.cacheStamp(real.normalizeParams(def, { effects: level })), { effects: 'wp49' }, level);
+  // every film is drawn once more (free): its graphics keep off the faces found in the footage; with the effects on each film has a character of its own
+  assert.deepEqual(def.cacheStamp(real.normalizeParams(def, { effects: 'off' })), { faces: 'cuts' });
+  for (const level of ['subtle', 'strong', 'wild']) assert.deepEqual(def.cacheStamp(real.normalizeParams(def, { effects: level })), { effects: 'character', faces: 'cuts' }, level);
+  // `variation`: another character of the effects; at 0 it is not in the key (the key of before)
+  assert.equal(def.params.find((param) => param.id === 'variation').cacheOmitDefault, true);
   assert.equal(def.cacheStampAdopts, undefined, 'an entry from before the stamp is not taken');
   assert.deepEqual(def.params.find((param) => param.id === 'quality').options, ['draft', 'standard', 'high']);
   assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['auto', 'hud', 'kuble'], 'the styles: the one of the plan (auto) is the default, HUD Blue and Kuble force one');

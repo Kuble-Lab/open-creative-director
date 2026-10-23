@@ -47,6 +47,7 @@ async function main() {
           intensity: { type: 'integer', minimum: 1, maximum: 10 }, type: { type: 'string', enum: ['neutral', 'gel'] }, color: { type: 'string' } }, required: ['azimuth', 'elevation'], additionalProperties: false } } }, ['creationIdentifier', 'lights']),
       creations_wait: obj({ identifiers: { type: 'array', items: id }, timeoutSeconds: { type: 'integer', minimum: 0, maximum: 55 } }, ['identifiers']),
       creation_status: obj({ creationIdentifier: id }, ['creationIdentifier']), creations_get: obj({ creationIdentifier: id, identifiers: { type: 'array', items: id } }),
+      video_speak: obj({ videoUrl: id, audioUrl: id, imageUrl: id, mode: { type: 'string', enum: ['lipsync-2.0', 'veed-sync-2-v2v', 'latentsync', 'omnihuman'] } }, ['audioUrl']),
       video_generate: obj({ prompt: { type: 'string' }, slug: { type: 'string' }, duration: { type: 'number' }, resolution: { type: 'string' }, aspectRatio: { type: 'string' },
         withSoundEffects: { type: 'boolean' }, keyframes: { type: 'object' }, references: { type: 'array', items: { type: 'object' } } })
     }).map(([name, inputSchema]) => ({ name, description: `Fake ${name}`, inputSchema }));
@@ -100,7 +101,7 @@ async function main() {
         if (name === 'simulate_cost') { assert.ok(args.tool); result = { credits: 8, isUnlimited: false, certainty: 'exact' }; }
         if (name === 'creations_request_upload') { assert.ok(args.mimeType); result = { proxyUploadUrl: 'https://storage.test/private?signature=SECRET', path: 'temp-files/in.png', mimeType: args.mimeType }; }
         if (name === 'creations_finalize_upload') { assert.equal(args.path, 'temp-files/in.png'); assert.equal(args.visible, false); listing = 'identifier: input-1\ntool: upload\nstatus: completed\nurl: "https://storage.test/in.png"'; }
-        if (['images_upscale', 'images_remove_background', 'images_relight', 'video_generate'].includes(name)) result = { creationIdentifier: 'output-1', status: 'queued', source: { creationIdentifier: args.creationIdentifier } };
+        if (['images_upscale', 'images_remove_background', 'images_relight', 'video_generate', 'video_speak'].includes(name)) result = { creationIdentifier: 'output-1', status: 'queued', source: { creationIdentifier: args.creationIdentifier } };
         if (name === 'creations_wait') result = { results: args.identifiers.map((i) => ({ identifier: i, status: 'completed', results: { url: 'https://storage.test/result.png' } })), allTerminal: true };
         if (name === 'creation_status') result = { creationIdentifier: args.creationIdentifier, status: 'completed', results: { url: 'https://storage.test/result.png' } };
         // The live library answers as an indented listing.
@@ -235,7 +236,7 @@ async function main() {
     const image = await store.saveAsset(session.id, { kind: 'image', buffer: Buffer.from('fake input'), ext: '.png', prompt: 'input', cost: 0, model: 'test' });
     const output = Buffer.from('fake output');
     global.fetch = async (url, options) => {
-      if (url === 'https://storage.test/private?signature=SECRET') { assert.equal(options.method, 'PUT'); assert.equal(options.headers['Content-Type'], 'image/png'); assert.equal(options.headers.Authorization, undefined); return new Response(null, { status: 200 }); }
+      if (url === 'https://storage.test/private?signature=SECRET') { assert.equal(options.method, 'PUT'); assert.ok(['image/png', 'video/mp4', 'audio/mpeg'].includes(options.headers['Content-Type'])); assert.equal(options.headers.Authorization, undefined); return new Response(null, { status: 200 }); }
       throw new Error(`Network forbidden ${secretAccess} ${secretRefresh}`);
     };
     magnific.downloadResult = async (url) => { assert.equal(url, 'https://storage.test/result.png'); return { buffer: output, contentType: 'image/png', url }; };
@@ -290,6 +291,17 @@ async function main() {
     assert.deepEqual(relight.job.creationIds, ['output-1'], 'the echoed input creation is not a result');
     assert.equal(relight.job.credits, 8);
     await assert.rejects(tools.executeTool(nodeCtx, 'magnific_media', { tool: 'images_relight', asset_id: image.id, arguments: { lights: [{ azimuth: 10, elevation: 0 }] } }), /inputSchema/);
+    // Lip sync: the clip goes in as videoUrl, its slice of the song as audioUrl, the model as mode.
+    const lipsyncNode = iso.load('lib/nodes/nodes-magnific').MEDIA_NODES.find((n) => n.type === 'magnific.lipsync');
+    assert.equal(lipsyncNode.field, 'videoUrl');
+    assert.deepEqual(registry.get('magnific.lipsync').inputs.map((port) => [port.id, port.type, port.required]), [['video', 'video', true], ['audio', 'audio', true]]);
+    const clip = await store.saveAsset(session.id, { kind: 'video', buffer: Buffer.from('fake clip'), ext: '.mp4', prompt: 'clip', cost: 0, model: 'test' });
+    const slice = await store.saveAsset(session.id, { kind: 'audio', buffer: Buffer.from('fake slice'), ext: '.mp3', prompt: 'slice', cost: 0, model: 'test' });
+    const speakArgs = await api.mediaArgs(nodeCtx, { tool: 'video_speak', field: 'videoUrl', asset_id: clip.id, arguments: lipsyncNode.args({ model: 'lipsync-2.0' }), extra_assets: { audioUrl: slice.id } });
+    assert.deepEqual(speakArgs, { name: 'video_speak', full: { mode: 'lipsync-2.0', audioUrl: 'input-1', videoUrl: 'input-1' } });
+    const speak = await tools.executeTool(nodeCtx, 'magnific_media', { tool: 'video_speak', field: 'videoUrl', asset_id: clip.id, arguments: { mode: 'lipsync-2.0' }, extra_assets: { audioUrl: slice.id } });
+    assert.ok(speak.job.creationIds.includes('output-1'));
+    await assert.rejects(api.mediaArgs(nodeCtx, { tool: 'video_speak', field: 'imageUrl', asset_id: clip.id }), /unsupported input field/);
     // Magnific Video: a first frame goes in as start keyframe, the settings of the node as they are.
     await assert.rejects(tools.executeTool(ctx, 'magnific_video', { prompt: 'x', duration: 5 }), /node/i);
     const videoFull = await api.videoArgs(nodeCtx, { slug: 'bytedance-seedance-pro-2.5', prompt: 'A dancer', duration: 5, resolution: '720p', withSoundEffects: false, first_frame: image.id });
