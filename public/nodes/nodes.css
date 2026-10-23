@@ -30,6 +30,7 @@
   --nv-cat-edit-audio: #7be0b4;
   --nv-cat-higgsfield: #ff8fb1;
   --nv-cat-fal: #6ee0d0;
+  --nv-cat-magnific: #f0a868;
   --nv-cat-utility: #9aa1ab;
   --nv-cat-output: #e5c07b;
   --nv-cat-unknown: #656c76;
@@ -703,6 +704,9 @@
 [data-cat='fal'] {
   --cat: var(--nv-cat-fal);
 }
+[data-cat='magnific'] {
+  --cat: var(--nv-cat-magnific);
+}
 [data-cat='utility'] {
   --cat: var(--nv-cat-utility);
 }
@@ -750,6 +754,19 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.nv-node-model {
+  margin: 7px 11px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nv-node-model.is-empty {
+  display: none;
 }
 
 .nv-node-badges {

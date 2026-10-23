@@ -172,6 +172,7 @@
     'edit-audio': 'M3 12h3l2-6 4 12 3-9 2 3h4',
     higgsfield: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3.1-5.4 3.1 1.2-6-4.5-4.2 6.1-.7z',
     fal: 'M13 3L5 13.5h6L10 21l8-10.5h-6z',
+    magnific: 'M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.8-4.8M10.5 7.5v6M7.5 10.5h6',
     utility: 'M12 9a3 3 0 100 6 3 3 0 000-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1',
     output: 'M12 15V4m0 0L8 8m4-4l4 4M5 17v3h14v-3',
     unknown: 'M9.5 9a2.5 2.5 0 115 0c0 1.7-2.5 2-2.5 4M12 17h.01',
@@ -1538,6 +1539,8 @@
     // "?": the help of the node type in a popover (main.js -> node-help.js); the title keeps its double click to rename.
     const helpBtn = el('button', { type: 'button', class: 'nv-node-help', title: `${T('nodes.help.open')} (?)`, 'aria-label': T('nodes.help.open'), 'aria-haspopup': 'dialog', 'aria-keyshortcuts': '?' }, icon('help', 13));
     head.append(iconWrap, title, badges, helpBtn, runBtn);
+    // The model the node runs with when its model choice is not on the card itself (patchModelLine).
+    const model = el('div', { class: 'nv-node-model is-empty' });
     const status = el('div', { class: 'nv-node-status', dataset: { slot: 'status' } });
     const message = el('div', { class: 'nv-node-msg nv-scroll' });
     // One-click remedy for an issue shown in `message` (slot.fix), e.g. "Convert to HTML with AI".
@@ -1552,10 +1555,10 @@
     const pager = el('div', { class: 'nv-node-pager' });
     const cost = el('span', { class: 'nv-node-cost', dataset: { slot: 'cost' } });
     const foot = el('div', { class: 'nv-node-foot' }, pager, cost);
-    card.append(head, status, message, fix, ports, order, params, note, preview, foot);
+    card.append(head, model, status, message, fix, ports, order, params, note, preview, foot);
     const state = {
       el: card,
-      refs: { head, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, order, params, note, preview, pager, cost, foot },
+      refs: { head, model, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, order, params, note, preview, pager, cost, foot },
       widgets: new Map(),
       sig: null,
       node: null,
@@ -1565,6 +1568,7 @@
       slotKey: '',
       previewKey: null,
       noteKey: '',
+      modelKey: '',
       orderKey: '',
       orderDrag: false,
       orderPending: null,
@@ -1747,6 +1751,37 @@
   }
 
   // Creates or patches the card for `node`. connected: Map(inputPortId -> edge count).
+  // Line under the title with the model of a node whose model choice sits in the inspector only: the chosen entry, or
+  // "Default: <name>" when nothing is chosen. A list that is still loading fills the line when it arrives.
+  const modelLineWaiting = new Set();
+  optionListeners.add(() => {
+    for (const state of [...modelLineWaiting]) {
+      modelLineWaiting.delete(state);
+      if (state.node && state.el.isConnected) patchModelLine(state, state.lastDef, state.node);
+    }
+  });
+
+  // The label of that line for a node, '' when its type has no such choice. `loading`: the list has not arrived yet.
+  function modelLineOf(def, node) {
+    const param = def && def.params.find((item) => item.id === 'model' && item.kind === 'select' && !item.inline);
+    if (!param) return { label: '', loading: false };
+    const current = String(graphLib.effectiveParams(def, node).model ?? '');
+    const source = optionsFor(param);
+    const entry = source.state === 'ready' ? selectEntries(param, source, current).find((option) => option.value === current) : null;
+    return { label: entry ? entry.label : current, loading: source.state === 'loading' };
+  }
+
+  function patchModelLine(state, def, node) {
+    state.lastDef = def;
+    const { label, loading } = modelLineOf(def, node);
+    if (loading) modelLineWaiting.add(state);
+    if (label === state.modelKey) return;
+    state.modelKey = label;
+    state.refs.model.textContent = label;
+    state.refs.model.title = label ? `${T('nodes.param.model')}: ${label}` : '';
+    state.refs.model.classList.toggle('is-empty', !label);
+  }
+
   function updateCard(state, node, connected, ctx) {
     const def = ctx.reg.types.get(node.type);
     const previousNode = state.node;
@@ -1759,6 +1794,7 @@
     const heading = node.title || (def ? typeLabel(def) : node.type);
     if (refs.title.textContent !== heading) refs.title.textContent = heading;
     refs.title.title = def ? typeLabel(def) : node.type;
+    patchModelLine(state, def, node);
     const signature = cardSignature(node, def, connected, ctx.reg);
     if (signature !== state.sig) {
       state.sig = signature;
@@ -2127,6 +2163,7 @@
     optionsFor,
     refreshOptions,
     onOptionsChange,
+    modelLineOf,
     normalizeOptions,
     modelDetail,
     peekModelDetail,
