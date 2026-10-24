@@ -1539,7 +1539,7 @@ async function main() {
         patch(ffmpeg, 'binaries', () => ({ ffmpeg: '/x/ffmpeg', ffprobe: '/x/ffprobe', available: true }));
         patch(ffmpeg, 'probeVideo', async () => ({ duration: clipSeconds, video: { width: 720, height: 1280 } }));
         published.length = 0;
-        const swapped = await execute(registry, 'hf.motion_control', editCtx(), { image: [image1, image2], motion: video1 }, {
+        const swapped = await execute(registry, 'hf.motion_control', editCtx(), { image: { type: 'list', of: 'image', items: [image1, image2] }, motion: video1 }, {
           model: 'genjutsu', resolution: '480p', prompt: ' Left is image 1, right is image 2. ', scene_control: 'video'
         });
         assert.deepEqual(published, [video1.assetId, image1.assetId, image2.assetId], 'the motion video is imported first, then the images in order');
@@ -1563,20 +1563,20 @@ async function main() {
           }
         }, 'scene_control is a Kling setting and is not sent');
         assert.equal(swapped.variants[0].video.type, 'video');
-        await execute(registry, 'hf.motion_control', editCtx(), { image: [image1], motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' });
+        await execute(registry, 'hf.motion_control', editCtx(), { image: { type: 'list', of: 'image', items: [image1] }, motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' });
         assert.equal('prompt' in calls.at(-1).args.requests[0].params, false, 'an empty prompt is left out');
         assert.equal(calls.at(-1).args.requests[0].params.medias.length, 2);
         const beforeGenjutsu = calls.length;
         for (const seconds of [3.5, 31]) {
           clipSeconds = seconds;
           await assert.rejects(
-            execute(registry, 'hf.motion_control', editCtx(), { image: [image1], motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' }),
+            execute(registry, 'hf.motion_control', editCtx(), { image: { type: 'list', of: 'image', items: [image1] }, motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' }),
             /4 to 30 s.*Nothing was submitted/
           );
         }
         clipSeconds = 12;
         await assert.rejects(
-          execute(registry, 'hf.motion_control', editCtx(), { image: Array(9).fill(image1), motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' }),
+          execute(registry, 'hf.motion_control', editCtx(), { image: { type: 'list', of: 'image', items: Array(9).fill(image1) }, motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' }),
           /at most 8/
         );
         const genjutsuArgs = (args) => runEdit({ tool: 'genjutsu', kind: 'video', source_asset_ids: [video1.assetId, image1.assetId], ...args });
