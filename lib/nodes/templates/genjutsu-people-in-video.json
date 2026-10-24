@@ -1,0 +1,211 @@
+{
+  "id": "genjutsu-people-in-video",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Put people into a motion video (Genjutsu)",
+  "description": "Put the people from two photos into a motion video: movement, camera and sound stay. Genjutsu (Higgsfield) does it; the prompt says who replaces whom. The video must be 4 to 30 s long; the price is in Higgsfield credits (for 15 s at 720p about 104). Use only people who have agreed to appear.",
+  "requires": [
+    "higgsfield"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.video",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 60,
+        "title": "Motion video",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.image",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 380,
+        "title": "Person for image 1",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.image",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 700,
+        "title": "Person for image 2",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n4",
+        "type": "hf.motion_control",
+        "typeVersion": 1,
+        "x": 540,
+        "y": 200,
+        "title": "Put people into the video",
+        "params": {
+          "model": "genjutsu",
+          "resolution": "720p",
+          "scene_control": "image",
+          "prompt": "Replace the person on the left with the person from image 1 and the person on the right with the person from image 2. Keep the movement, the camera, the lighting and the sound of the video."
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1000,
+        "y": 240,
+        "params": {
+          "label": "Video with the new people"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "video"
+        },
+        "to": {
+          "node": "n4",
+          "port": "motion"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "image"
+        },
+        "to": {
+          "node": "n4",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "image"
+        },
+        "to": {
+          "node": "n4",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "video"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 540,
+        "y": 620,
+        "w": 400,
+        "h": 250,
+        "text": "Use only people who have agreed to appear. Genjutsu (Higgsfield) keeps the movement, camera and sound of the motion video and puts the people from the photos into it. The photos are image 1 and image 2 in the order of their connections; up to 8 photos can go into the input \"Image\" (people, a setting, an outfit). The video must be 4 to 30 s long; a shorter or longer one is refused before anything is paid. Price in Higgsfield credits by length and resolution, for 15 s about 40 (480p), 104 (720p) or 144 (1080p) credits. A clear front photo per face works best; prompts in English often work better."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Put people into a motion video",
+    "description": "Upload a motion video (4 to 30 s) and two photos of the people who take over, and say who replaces whom. You get the video with the new people, with the movement, camera and sound of the original. Use only people who have agreed to appear.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "asset",
+        "label": "Motion video (4 to 30 s)"
+      },
+      {
+        "node": "n2",
+        "param": "asset",
+        "label": "Person for image 1"
+      },
+      {
+        "node": "n3",
+        "param": "asset",
+        "label": "Person for image 2"
+      },
+      {
+        "node": "n4",
+        "param": "prompt",
+        "label": "Who replaces whom"
+      },
+      {
+        "node": "n4",
+        "param": "resolution",
+        "label": "Resolution"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n5",
+        "label": "Video with the new people"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Personen in ein Bewegungsvideo setzen (Genjutsu)",
+      "description": "Setze die Personen aus zwei Fotos in ein Bewegungsvideo: Bewegung, Kamera und Ton bleiben. Genjutsu (Higgsfield) macht das; im Prompt steht, wer wen ersetzt. Das Video muss 4 bis 30 s lang sein; der Preis wird in Higgsfield-Credits abgerechnet (für 15 s in 720p rund 104). Verwende nur Personen, die zugestimmt haben.",
+      "node.n1": "Bewegungsvideo",
+      "node.n2": "Person für Bild 1",
+      "node.n3": "Person für Bild 2",
+      "node.n4": "Personen ins Video setzen",
+      "note.t1": "Verwende nur Personen, die einverstanden sind. Genjutsu (Higgsfield) behält Bewegung, Kamera und Ton des Bewegungsvideos und setzt die Personen aus den Fotos hinein. Die Fotos sind Bild 1 und Bild 2 in der Reihenfolge ihrer Verbindungen; am Eingang «Bild» gehen bis zu 8 Fotos (Personen, ein Ort, ein Outfit). Das Video muss 4 bis 30 s lang sein; ein kürzeres oder längeres wird abgelehnt, bevor etwas bezahlt wird. Preis in Higgsfield-Credits nach Länge und Auflösung, für 15 s rund 40 (480p), 104 (720p) oder 144 (1080p) Credits. Ein klares Frontalfoto pro Gesicht wirkt am besten; englische Prompts gelingen oft besser.",
+      "param.n4.prompt": "Ersetze die Person links durch die Person aus Bild 1 und die Person rechts durch die Person aus Bild 2. Bewegung, Kamera, Licht und Ton des Videos bleiben.",
+      "param.n5.label": "Video mit den neuen Personen",
+      "app.title": "Personen in ein Bewegungsvideo setzen",
+      "app.description": "Lade ein Bewegungsvideo (4 bis 30 s) und zwei Fotos der Personen hoch, die einspringen, und schreibe, wer wen ersetzt. Du erhältst das Video mit den neuen Personen, mit Bewegung, Kamera und Ton des Originals. Verwende nur Personen, die zugestimmt haben.",
+      "app.input.n1.asset": "Bewegungsvideo (4 bis 30 s)",
+      "app.input.n2.asset": "Person für Bild 1",
+      "app.input.n3.asset": "Person für Bild 2",
+      "app.input.n4.prompt": "Wer ersetzt wen",
+      "app.input.n4.resolution": "Auflösung",
+      "app.output.n5": "Video mit den neuen Personen"
+    },
+    "es": {
+      "name": "Poner personas en un vídeo de movimiento (Genjutsu)",
+      "description": "Coloca a las personas de dos fotos en un vídeo de movimiento: el movimiento, la cámara y el sonido se mantienen. Lo hace Genjutsu (Higgsfield); el prompt dice quién reemplaza a quién. El vídeo debe durar de 4 a 30 s; el precio se cobra en créditos de Higgsfield (para 15 s en 720p unos 104). Usa solo personas que hayan dado su consentimiento.",
+      "node.n1": "Vídeo de movimiento",
+      "node.n2": "Persona para la imagen 1",
+      "node.n3": "Persona para la imagen 2",
+      "node.n4": "Poner personas en el vídeo",
+      "note.t1": "Usa solo personas que hayan dado su consentimiento. Genjutsu (Higgsfield) conserva el movimiento, la cámara y el sonido del vídeo de movimiento y coloca en él a las personas de las fotos. Las fotos son la imagen 1 y la imagen 2 en el orden de sus conexiones; en la entrada «Imagen» caben hasta 8 fotos (personas, un lugar, un vestuario). El vídeo debe durar de 4 a 30 s; uno más corto o más largo se rechaza antes de pagar nada. Precio en créditos de Higgsfield según duración y resolución, para 15 s unos 40 (480p), 104 (720p) o 144 (1080p) créditos. Una foto frontal clara por cara funciona mejor; los prompts en inglés suelen funcionar mejor.",
+      "param.n4.prompt": "Reemplaza a la persona de la izquierda por la persona de la imagen 1 y a la de la derecha por la persona de la imagen 2. Conserva el movimiento, la cámara, la luz y el sonido del vídeo.",
+      "param.n5.label": "Vídeo con las nuevas personas",
+      "app.title": "Poner personas en un vídeo de movimiento",
+      "app.description": "Sube un vídeo de movimiento (de 4 a 30 s) y dos fotos de las personas que lo sustituyen, y escribe quién reemplaza a quién. Recibes el vídeo con las nuevas personas, con el movimiento, la cámara y el sonido del original. Usa solo personas que hayan dado su consentimiento.",
+      "app.input.n1.asset": "Vídeo de movimiento (de 4 a 30 s)",
+      "app.input.n2.asset": "Persona para la imagen 1",
+      "app.input.n3.asset": "Persona para la imagen 2",
+      "app.input.n4.prompt": "Quién reemplaza a quién",
+      "app.input.n4.resolution": "Resolución",
+      "app.output.n5": "Vídeo con las nuevas personas"
+    }
+  }
+}

@@ -34,6 +34,7 @@ const EXPECTED = [
   'explainer-video-presenter',
   'explainer-video-topic',
   'frame-chain',
+  'genjutsu-people-in-video',
   'hero-variants',
   'image-formats',
   'image-to-ad',
@@ -62,7 +63,8 @@ const EXPECTED = [
   'video-with-music'
 ];
 // Without an admin credit rate, participants (and all guests) get templates without Higgsfield.
-const FOR_PARTICIPANTS = EXPECTED.filter((id) => id !== 'dub-clip');
+const HIGGSFIELD_TEMPLATES = ['dub-clip', 'genjutsu-people-in-video'];
+const FOR_PARTICIPANTS = EXPECTED.filter((id) => !HIGGSFIELD_TEMPLATES.includes(id));
 const FREE = ['image-formats', 'photo-slideshow', 'text-on-video'];
 
 // requirement keys that a node type needs (mirrors the availability predicates of the node modules)
@@ -627,7 +629,8 @@ async function main() {
       assert.equal(dub.available, false);
       assert.deepEqual(dub.missing, [{ key: 'higgsfield', reason: 'Higgsfield is not connected' }]);
       assert.deepEqual(dub.requires, ['higgsfield']);
-      assert.ok(noHiggsfield.filter((item) => item.id !== 'dub-clip').every((item) => item.available));
+      assert.deepEqual(noHiggsfield.find((item) => item.id === 'genjutsu-people-in-video').missing, [{ key: 'higgsfield', reason: 'Higgsfield is not connected' }]);
+      assert.ok(noHiggsfield.filter((item) => !HIGGSFIELD_TEMPLATES.includes(item.id)).every((item) => item.available));
       // fal.ai is a requirement of its own: available exactly when FAL_KEY is set
       const noFal = templates.listTemplates({ lang: 'en', checks: { ...allOn, fal: () => 'FAL_KEY is not set' } });
       const portrait = noFal.find((item) => item.id === 'talking-portrait');

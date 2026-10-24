@@ -408,8 +408,15 @@ async function main() {
       assert.deepEqual([portOf('video.higgsfield', 'audio').multiple, portOf('video.higgsfield', 'audio').max], [true, 15], 'up to 15 tracks, the model limit is checked at run time');
       assert.ok(!portOf('video.higgsfield', 'audio').required);
       assert.equal(paramOf('hf.speech', 'extra_params').dynamic, 'higgsfield-model');
-      assert.deepEqual(paramOf('hf.motion_control', 'resolution').options, ['720p', '1080p']);
+      assert.deepEqual(paramOf('hf.motion_control', 'resolution').options, ['480p', '720p', '1080p'], '480p only for Genjutsu');
       assert.equal(paramOf('hf.motion_control', 'resolution').default, '720p');
+      assert.deepEqual(paramOf('hf.motion_control', 'model').options, ['kling3_0', 'genjutsu']);
+      assert.equal(paramOf('hf.motion_control', 'model').default, 'kling3_0', 'saved nodes keep Kling');
+      assert.equal(paramOf('hf.motion_control', 'model').cacheOmitDefault, true, 'the cache keys of saved nodes stay');
+      assert.equal(paramOf('hf.motion_control', 'prompt').cacheOmitDefault, true);
+      assert.deepEqual(oneOf(registry, 'hf.motion_control').portVariants.values.genjutsu.inputs[0], { id: 'image', type: 'image', required: true, multiple: true, max: 8 });
+      assert.deepEqual(oneOf(registry, 'hf.motion_control').validate({ model: 'kling3_0', resolution: '480p' }).map((issue) => issue.param), ['resolution'], 'Kling has no 480p');
+      assert.deepEqual(oneOf(registry, 'hf.motion_control').validate({ model: 'genjutsu', resolution: '480p' }), []);
       assert.deepEqual(paramOf('hf.motion_control', 'scene_control').options, ['image', 'video']);
       assert.equal(paramOf('hf.motion_control', 'scene_control').default, 'image');
 
@@ -1526,6 +1533,58 @@ async function main() {
         assert.equal(calls.length, beforeMotion, 'nothing is imported for invalid motion control calls');
         await motionArgs({ params: { unknown: 1 } });
         assert.deepEqual(Object.keys(calls.at(-1).args.params).sort(), ['image_id', 'motion_video_id', 'resolution', 'scene_control']);
+
+        /* Genjutsu: a generation of hf_mult_motion_control with the motion video and 1 to 8 reference images */
+        let clipSeconds = 12;
+        patch(ffmpeg, 'binaries', () => ({ ffmpeg: '/x/ffmpeg', ffprobe: '/x/ffprobe', available: true }));
+        patch(ffmpeg, 'probeVideo', async () => ({ duration: clipSeconds, video: { width: 720, height: 1280 } }));
+        published.length = 0;
+        const swapped = await execute(registry, 'hf.motion_control', editCtx(), { image: [image1, image2], motion: video1 }, {
+          model: 'genjutsu', resolution: '480p', prompt: ' Left is image 1, right is image 2. ', scene_control: 'video'
+        });
+        assert.deepEqual(published, [video1.assetId, image1.assetId, image2.assetId], 'the motion video is imported first, then the images in order');
+        assert.deepEqual(calls.at(-1), {
+          name: 'generate_video_batch',
+          args: {
+            requests: [{
+              index: 0,
+              params: {
+                model: 'hf_mult_motion_control',
+                prompt: 'Left is image 1, right is image 2.',
+                resolution: '480p',
+                use_unlim: false,
+                medias: [
+                  { value: mediaIds.at(-3), role: 'video_references' },
+                  { value: mediaIds.at(-2), role: 'image_references' },
+                  { value: mediaIds.at(-1), role: 'image_references' }
+                ]
+              }
+            }]
+          }
+        }, 'scene_control is a Kling setting and is not sent');
+        assert.equal(swapped.variants[0].video.type, 'video');
+        await execute(registry, 'hf.motion_control', editCtx(), { image: [image1], motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' });
+        assert.equal('prompt' in calls.at(-1).args.requests[0].params, false, 'an empty prompt is left out');
+        assert.equal(calls.at(-1).args.requests[0].params.medias.length, 2);
+        const beforeGenjutsu = calls.length;
+        for (const seconds of [3.5, 31]) {
+          clipSeconds = seconds;
+          await assert.rejects(
+            execute(registry, 'hf.motion_control', editCtx(), { image: [image1], motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' }),
+            /4 to 30 s.*Nothing was submitted/
+          );
+        }
+        clipSeconds = 12;
+        await assert.rejects(
+          execute(registry, 'hf.motion_control', editCtx(), { image: Array(9).fill(image1), motion: video1 }, { model: 'genjutsu', resolution: '720p', prompt: '' }),
+          /at most 8/
+        );
+        const genjutsuArgs = (args) => runEdit({ tool: 'genjutsu', kind: 'video', source_asset_ids: [video1.assetId, image1.assetId], ...args });
+        await assert.rejects(genjutsuArgs({ source_asset_ids: [video1.assetId] }), /genau 2 Asset-IDs/, 'at least one image');
+        await assert.rejects(genjutsuArgs({ source_asset_ids: [image1.assetId, image2.assetId] }), /keine gueltige Video-Quelle/, 'the motion video comes first');
+        await assert.rejects(genjutsuArgs({ source_asset_ids: [video1.assetId, ...Array(9).fill(image1.assetId)] }), /hoechstens 9 Asset-IDs/);
+        await assert.rejects(genjutsuArgs({ params: { resolution: '4k' } }), /resolution "4k" ist ungueltig/);
+        assert.equal(calls.length, beforeGenjutsu, 'nothing is imported for invalid Genjutsu calls');
 
         // the Director can never reach the new tools' entry point
         const directorCtx = { ...editCtx().toolCtx, nodeView: undefined };
