@@ -818,8 +818,8 @@ async function testRulesTable(ctx) {
   for (const email of [P1, GUEST]) {
     const listed = await call(email, 'GET', '/api/workflow-templates');
     assert.equal(listed.status, 200);
-    assert.equal(listed.body.templates.length, staffTemplates.length - 1, `${email}: only the Higgsfield template is missing`);
-    assert.ok(!listed.body.templates.some((template) => template.id === 'dub-clip'));
+    assert.equal(listed.body.templates.length, staffTemplates.length - 2, `${email}: only the two Higgsfield templates are missing`);
+    assert.ok(!listed.body.templates.some((template) => ['dub-clip', 'genjutsu-people-in-video'].includes(template.id)));
     assert.ok(listed.body.templates.every((template) => !template.nodeTypes.some((type) => type.startsWith('hf.'))));
     const single = await call(email, 'GET', '/api/workflow-templates/dub-clip');
     assert.equal(single.status, 403, `${email}: single template with Higgsfield nodes`);
