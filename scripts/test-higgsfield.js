@@ -300,12 +300,78 @@ async function testAudioResults() {
   }
 }
 
+// Passing failures are absorbed: every tool is asked again when Higgsfield did not take the request (429, 503, no
+// connection), read-only tools also after a timeout or a 502; a submission that may have arrived is never sent twice.
+async function testRetries(directory) {
+  const file = path.join(directory, 'retry-auth.json');
+  const time = 1_000_000;
+  await writeTokens(file, { access_token: 'access-r', access_expires_at: time + 3_600_000, refresh_token: 'refresh-r', refresh_expires_at: time + 604_800_000 });
+  const waits = [];
+  let responses = [];
+  let calls = 0;
+  const client = createHiggsfieldClient({
+    store: createFileTokenStore(file),
+    now: () => time,
+    sleep: async (ms) => { waits.push(ms); },
+    fetchImpl: async () => {
+      calls += 1;
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    }
+  });
+  const refused = Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } });
+  const reset = Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } });
+
+  responses = [jsonResponse({ error: 'slow down' }, 429, { 'Retry-After': '7' }), jsonResponse({}, 503), refused, mcpResponse('Job 11111111-1111-4111-8111-111111111111 submitted')];
+  assert.match(await client.mcpCall('generate_video_batch', {}), /submitted/, 'a submission that never arrived is sent again');
+  assert.deepEqual(waits, [7000, ...higgsfield.MCP_RETRY_DELAYS_MS.slice(1)], 'Retry-After wins over the fixed waits');
+  assert.equal(calls, 4);
+
+  waits.length = 0; calls = 0;
+  responses = [jsonResponse({}, 502), reset, mcpResponse('MCP error -32000: upstream timed out, try again'), mcpResponse('Credits: 12 | Plan: ultra')];
+  assert.match(await client.mcpCall('balance', {}), /Credits: 12/, 'a read-only tool is asked again after 502, a cut connection and a timeout answer');
+  assert.equal(calls, 4);
+
+  waits.length = 0; calls = 0;
+  responses = [jsonResponse({}, 504)];
+  await assert.rejects(client.mcpCall('generate_video_batch', {}), (err) => /HTTP 504/.test(err.message) && /Higgsfield-Bibliothek nachsehen/.test(err.message));
+  assert.equal(calls, 1, 'a submission that may have arrived is not sent twice');
+  responses = [reset];
+  await assert.rejects(client.mcpCall('generate_image_batch', {}), /angekommen sein/);
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, []);
+
+  responses = [jsonResponse({}, 503), jsonResponse({}, 503), jsonResponse({}, 503), jsonResponse({}, 503)];
+  calls = 0;
+  await assert.rejects(client.mcpCall('job_status', { jobId: 'x' }), /HTTP 503/);
+  assert.equal(calls, 1 + higgsfield.MCP_RETRY_DELAYS_MS.length, 'after the last wait the error stands');
+  responses = [mcpResponse('MCP error -32602: model is required')];
+  calls = 0;
+  await assert.rejects(client.mcpCall('models_explore', {}), /model is required/);
+  assert.equal(calls, 1, 'a real error is not repeated');
+
+  // downloads: a slow or cut transfer is fetched again, a missing file is not
+  waits.length = 0; calls = 0;
+  responses = [reset, new Response('', { status: 502 }), new Response(Buffer.from('mp4'), { status: 200, headers: { 'Content-Type': 'video/mp4' } })];
+  const downloaded = await client.downloadResult('https://cdn.example/result.mp4');
+  assert.equal(downloaded.buffer.toString(), 'mp4');
+  assert.deepEqual(waits, higgsfield.DOWNLOAD_RETRY_DELAYS_MS);
+  calls = 0;
+  responses = [new Response('', { status: 404 })];
+  await assert.rejects(client.downloadResult('https://cdn.example/gone.mp4'), /HTTP 404/);
+  assert.equal(calls, 1);
+  assert.equal(higgsfield.SUBMIT_MCP_TIMEOUT_MS, 180000, 'submissions get three minutes');
+  assert.ok(higgsfield.MAX_DOWNLOAD_BYTES >= 300 * 1024 * 1024, 'a 30 s video in 1080p fits');
+}
+
 async function main() {
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcd-higgsfield-'));
   try {
     await testRotatingRefresh(directory);
     await testRefreshFailureDisconnects(directory);
     await testMcpFormatsAnd401(directory);
+    await testRetries(directory);
     await testStructuredContent(directory);
     testTextParsers();
     await testToolGating();
