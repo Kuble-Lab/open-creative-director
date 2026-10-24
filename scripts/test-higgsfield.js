@@ -171,6 +171,74 @@ async function testToolGating() {
   }
 }
 
+// Transient failures (overload, gateway errors, broken connections) are repeated: every one for reading calls
+// (retry 'safe'), for paid starts (retry 'submit') only when Higgsfield certainly did not accept the request.
+async function testTransientRetries(directory) {
+  const file = path.join(directory, 'retry-auth.json');
+  await writeTokens(file, { access_token: 'access-r', access_expires_at: 10_000_000, refresh_token: 'refresh-r', refresh_expires_at: 20_000_000 });
+  let responses = [];
+  const waits = [];
+  let calls = 0;
+  const client = createHiggsfieldClient({
+    store: createFileTokenStore(file),
+    now: () => 1_000_000,
+    sleep: async (ms) => { waits.push(ms); },
+    fetchImpl: async () => {
+      calls += 1;
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    }
+  });
+  const refused = () => Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } });
+  const reset = () => Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } });
+
+  responses = [jsonResponse({ error: 'busy' }, 503), reset(), mcpResponse('MCP error -32000: Rate limit exceeded, try again'), mcpResponse('Credits: 1')];
+  assert.equal(await client.mcpCall('balance', {}, { retry: 'safe' }), 'Credits: 1');
+  assert.deepEqual(waits, higgsfield.RETRY_DELAYS_MS, 'three pauses before the fourth attempt');
+
+  waits.length = 0; calls = 0;
+  responses = [jsonResponse({ error: 'busy' }, 502), mcpResponse('Credits: 2')];
+  await assert.rejects(client.mcpCall('balance', {}), /HTTP 502/, 'without retry nothing is repeated');
+  assert.equal(calls, 1);
+  responses = [];
+
+  waits.length = 0; calls = 0;
+  responses = [jsonResponse({ error: 'slow down' }, 429, { 'Retry-After': '20' }), refused(), mcpResponse('Job 22222222-2222-4222-8222-222222222222 queued')];
+  assert.match(await client.mcpCall('generate_video', {}, { retry: 'submit' }), /queued/);
+  assert.deepEqual(waits, [20000, 5000], 'Retry-After is honoured');
+
+  for (const failure of [jsonResponse({ error: 'gateway' }, 504), reset()]) {
+    calls = 0;
+    responses = [failure, mcpResponse('should not be sent')];
+    await assert.rejects(client.mcpCall('generate_video', {}, { retry: 'submit' }), /504|fetch failed/, 'a start that may have arrived is not sent twice');
+    assert.equal(calls, 1);
+  }
+  responses = [];
+
+  calls = 0;
+  responses = [jsonResponse({ error: 'busy' }, 503), jsonResponse({ error: 'busy' }, 503), jsonResponse({ error: 'busy' }, 503), jsonResponse({ error: 'busy' }, 503), mcpResponse('late')];
+  await assert.rejects(client.mcpCall('balance', {}, { retry: 'safe' }), /HTTP 503/);
+  assert.equal(calls, 4, 'at most four attempts');
+  responses = [];
+
+  calls = 0;
+  responses = [jsonResponse({ error: 'bad' }, 400), mcpResponse('x')];
+  await assert.rejects(client.mcpCall('balance', {}, { retry: 'safe' }), /HTTP 400/, 'a real error is not repeated');
+  assert.equal(calls, 1);
+  responses = [];
+
+  calls = 0;
+  responses = [new Response('busy', { status: 502 }), reset(), new Response(Buffer.from('video-bytes'), { status: 200, headers: { 'Content-Type': 'video/mp4' } })];
+  const downloaded = await client.downloadResult('https://cdn.example/result.mp4');
+  assert.equal(downloaded.buffer.toString(), 'video-bytes');
+  assert.equal(calls, 3);
+  calls = 0;
+  responses = [new Response('gone', { status: 404 })];
+  await assert.rejects(client.downloadResult('https://cdn.example/missing.mp4'), /HTTP 404/);
+  assert.equal(calls, 1);
+}
+
 // mcpCall answers the first text part; with { withStructured: true } it answers { text, structured } (list_voices keeps
 // its paging cursor only in structuredContent), also after a 401 refresh.
 async function testStructuredContent(directory) {
@@ -307,13 +375,14 @@ async function main() {
     await testRefreshFailureDisconnects(directory);
     await testMcpFormatsAnd401(directory);
     await testStructuredContent(directory);
+    await testTransientRetries(directory);
     testTextParsers();
     await testToolGating();
     await testAudioResults();
   } finally {
     await fsp.rm(directory, { recursive: true, force: true });
   }
-  console.log('higgsfield ok: Legacy-Refresh, Rotation, Fehler, JSON/SSE, 401, structuredContent, Parser, Tool-Gating und Audio-Ergebnisse');
+  console.log('higgsfield ok: Legacy-Refresh, Rotation, Fehler, JSON/SSE, 401, structuredContent, Wiederholungen, Parser, Tool-Gating und Audio-Ergebnisse');
   console.log('test-higgsfield.js: ok');
 }
 
