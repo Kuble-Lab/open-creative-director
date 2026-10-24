@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
 const store = require('../lib/store');
 const rendernode = require('../lib/rendernode');
 const poller = require('../lib/poller');
+const higgsfield = require('../lib/higgsfield');
 
 const STUNDE = 60 * 60 * 1000;
 
@@ -84,7 +85,62 @@ async function main() {
     await store.mutateSession(session.id, (saved) => { for (const job of saved.jobs) job.status = 'cancelled'; });
     await store.deleteSession(session.id);
   }
+  await higgsfieldFaelle();
   console.log('test-job-timeouts.js: ok');
+}
+
+// Higgsfield: vor dem Zeitlimit eine letzte Statusabfrage (ein inzwischen fertiger Job wird uebernommen), die Meldung
+// nennt die Frist des Jobs, und ein fertiger Job, dessen Download einmal scheitert, wird im naechsten Durchlauf geholt.
+async function higgsfieldFaelle() {
+  const session = await store.createSession();
+  const original = { status: higgsfield.status, mcpCall: higgsfield.mcpCall, downloadResult: higgsfield.downloadResult };
+  const statusById = new Map();
+  let downloadFehler = 0;
+  let downloadFehlerJob = '';
+  higgsfield.status = () => ({ connected: true });
+  higgsfield.mcpCall = async (name, args) => {
+    assert.equal(name, 'job_status');
+    const status = statusById.get(args.jobId) || 'in_progress';
+    return status === 'completed'
+      ? `Job ${args.jobId}: completed\nhttps://cdn.example/${args.jobId}.mp4`
+      : `Job ${args.jobId}: ${status}`;
+  };
+  higgsfield.downloadResult = async (url) => {
+    if (downloadFehler > 0 && url.includes(downloadFehlerJob)) {
+      downloadFehler -= 1;
+      throw new Error('fetch failed');
+    }
+    return { buffer: Buffer.from(`video ${url}`), contentType: 'video/mp4', url };
+  };
+  const MINUTE = 60 * 1000;
+  try {
+    const spaetFertig = await jobAnlegen(session.id, { source: 'higgsfield', alterMs: 30 * MINUTE, timeoutAt: Date.now() - 5 * MINUTE });
+    const nochAmRechnen = await jobAnlegen(session.id, { source: 'higgsfield', alterMs: 30 * MINUTE, timeoutAt: Date.now() - 5 * MINUTE });
+    const downloadHakt = await jobAnlegen(session.id, { source: 'higgsfield', alterMs: MINUTE, timeoutAt: Date.now() + 20 * MINUTE });
+    const vorher = await store.readSession(session.id);
+    statusById.set(jobLesen(vorher, spaetFertig).jobId, 'completed');
+    statusById.set(jobLesen(vorher, downloadHakt).jobId, 'completed');
+    downloadFehler = 1;
+    downloadFehlerJob = jobLesen(vorher, downloadHakt).jobId;
+
+    await poller.pollOnce();
+    let nachher = await store.readSession(session.id);
+    assert.equal(jobLesen(nachher, spaetFertig).status, 'completed', 'ein inzwischen fertiger Job wird trotz Frist uebernommen');
+    const laeuft = jobLesen(nachher, nochAmRechnen);
+    assert.equal(laeuft.status, 'failed');
+    assert.match(laeuft.error, /Higgsfield-Job hat nach 25 Minuten das Zeitlimit erreicht/, 'die Meldung nennt die Frist des Jobs');
+    assert.match(laeuft.error, /Higgsfield-Bibliothek/);
+    assert.equal(jobLesen(nachher, downloadHakt).status, 'pending', 'ein gescheiterter Download laesst den Job offen');
+
+    await poller.pollOnce();
+    nachher = await store.readSession(session.id);
+    assert.equal(jobLesen(nachher, downloadHakt).status, 'completed', 'der naechste Durchlauf holt das Ergebnis');
+    console.log('OK: Higgsfield-Frist mit letzter Abfrage und wiederholtem Download');
+  } finally {
+    Object.assign(higgsfield, original);
+    await store.mutateSession(session.id, (saved) => { for (const job of saved.jobs) if (job.status === 'pending') job.status = 'cancelled'; });
+    await store.deleteSession(session.id);
+  }
 }
 
 main().catch((err) => {
