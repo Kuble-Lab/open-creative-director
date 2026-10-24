@@ -6,7 +6,7 @@
 //   parts      a song with parts: break, verse, chorus, bridge, drop from its lyrics (what comes back is a chorus) and its loudness; a song without
 //              lyrics; a long part in phrases
 //   palettes   3 to 5 kinds for every part, its own for every kind of part, the second chorus varies the first, from the seed of the song
-//   variety    never a kind of the accent before, at most CAPS of a kind in any minute, every kind somewhere in a busy film and none takes over; zoom
+//   variety    never a kind of the accent before, at most CAPS of a kind in any minute, every favoured kind somewhere in a busy film and none takes over; zoom
 //              punch and exposure pulse only on a loud downbeat, a strong hit or the start of a part; bursts of 6 to 12 frames on the strongest hits,
 //              2 to 4 frames on the others; the stretches over bars
 //   rules      at most 3 flashes in any second (with those of the HUD), no red flash, nothing on the end card or before the film, the face in a lip-sync
@@ -154,13 +154,21 @@ function testLevels() {
   const count = (plan) => effects.accentsOf(plan).length;
   assert.ok(count(subtle) < count(strong) * 0.75 && count(wild) > count(strong) * 1.2, `accents: subtle ${count(subtle)}, strong ${count(strong)}, wild ${count(wild)}`);
   for (const event of subtle.events) assert.ok(!effects.LEVEL.subtle.never.includes(event.k), event.k);
-  const amplitude = (plan, kind) => Math.max(...plan.events.filter((event) => event.k === kind).map((event) => event.a));
-  assert.ok(amplitude(wild, 'rgb') > amplitude(strong, 'rgb') && amplitude(strong, 'rgb') > amplitude(subtle, 'rgb'));
+  // the mean amplitude of a kind (which accents of a film take it, a short one or a burst, comes from its seed)
+  const amplitude = (plan, kind) => {
+    const list = plan.events.filter((event) => event.k === kind).map((event) => event.a);
+    return list.reduce((sum, a) => sum + a, 0) / list.length;
+  };
+  // a glitch kind with amplitudes that all three levels use (which ones a film takes comes from its seed)
+  const has = (plan, kind) => plan.events.some((event) => event.k === kind);
+  const shared = ['rgb', 'slices', 'blocks', 'pixel', 'noise', 'chroma', 'shake'].find((kind) => [wild, strong, subtle].every((plan) => has(plan, kind)) && has(planOf(song, 'strong', 1), kind));
+  assert.ok(shared, 'a kind in all levels');
+  assert.ok(amplitude(wild, shared) > amplitude(strong, shared) && amplitude(strong, shared) > amplitude(subtle, shared), `${shared}: ${amplitude(wild, shared)} ${amplitude(strong, shared)} ${amplitude(subtle, shared)}`);
   // the slider: 0 leaves out every glitch, more makes it stronger
   const none = planOf(song, 'strong', 0);
   assert.ok(none.events.every((event) => !(effects.KINDS[event.k] && effects.KINDS[event.k].glitch)) && none.spans.length === 0, 'no glitch at 0');
   assert.ok(none.parts.every((part) => part.palette.every((kind) => !effects.KINDS[kind].glitch)));
-  assert.ok(amplitude(planOf(song, 'strong', 1), 'rgb') > amplitude(strong, 'rgb'));
+  assert.ok(amplitude(planOf(song, 'strong', 1), shared) > amplitude(strong, shared));
 }
 
 // The parts of the song with parts, where it has them (a chorus is known from the bar on whose words come back with its neighbours': at most a bar late)
@@ -226,7 +234,36 @@ function testPalettes() {
   assert.ok(others.length >= 3, `other palettes for ${others.length} of 4 other songs`);
 }
 
-// Variety: never a kind of the accent before; at most CAPS of a kind in any minute; in a busy film every kind somewhere and none takes over; zoom punch
+// Every film has a character of its own: two families of kinds it favours, from the song, the cuts of the plan and the parameter `variation`. Another
+// plan of the same song (other cuts) or another variation gives other palettes; the same plan and variation the same film.
+function testCharacter() {
+  const palettes = (plan) => JSON.stringify(plan.parts.map((part) => part.palette));
+  assert.equal(strong.character.length, 2);
+  assert.notEqual(strong.character[0], strong.character[1]);
+  for (const family of strong.character) assert.ok(effects.FAMILIES[family], family);
+  assert.equal(palettes(effects.planEffects({ ...song, variation: 0 }, { level: 'strong' })), palettes(strong));
+  const varied = [1, 2, 3, 4, 5, 6].map((variation) => effects.planEffects({ ...song, variation }, { level: 'strong' }));
+  assert.ok(varied.filter((plan) => palettes(plan) !== palettes(strong)).length >= 5, 'other variations, other palettes');
+  assert.ok(new Set([strong, ...varied].map((plan) => plan.character.join('+'))).size >= 3, 'several characters');
+  // the favoured families lead: their kinds take more of the accents than in a film that favours others
+  const share = (plan, character) => {
+    const favoured = new Set(character.flatMap((family) => effects.FAMILIES[family]));
+    const accents = plan.events.filter((event) => event.x && effects.KINDS[event.k]);
+    return accents.filter((event) => favoured.has(event.k)).length / accents.length;
+  };
+  const all = [strong, ...varied];
+  const mean = (list) => list.reduce((sum, value) => sum + value, 0) / list.length;
+  const own = mean(all.map((plan) => share(plan, plan.character)));
+  const others = mean(all.flatMap((plan) => all.filter((other) => other.character.join() !== plan.character.join()).map((other) => share(other, plan.character))));
+  assert.ok(own > others + 0.1, `own families ${own.toFixed(2)}, in the other films ${others.toFixed(2)}`);
+  // another plan of the same song: other cuts, another film
+  const recut = { ...song, cuts: song.cuts.map((cut, i) => (i === 2 ? { ...cut, framing: cut.framing === 'CU' ? 'MS' : 'CU' } : cut)) };
+  assert.notEqual(effects.filmSeed(recut), effects.filmSeed(song));
+  assert.equal(effects.filmSeed(json(song)), effects.filmSeed(song));
+}
+
+// Variety: never a kind of the accent before; at most CAPS of a kind in any minute; in a busy film every kind of its favoured families
+// and most of the others somewhere, and none takes over; zoom punch
 // and exposure pulse only on a loud downbeat, a strong hit or the start of a part.
 function testVariety() {
   for (const [name, g, level] of [['song', song, 'strong'], ['song', song, 'subtle'], ['song', song, 'wild'], ['kuble', kubleSong, 'strong'], ['busy', busy, 'strong'], ['busy', busy, 'wild'], ['example', film, 'strong'], ['short', short, 'strong']]) {
@@ -259,7 +296,9 @@ function testVariety() {
   const accents = effects.accentsOf(plan);
   const counts = {};
   for (const accent of accents) for (const kind of accent.kinds) counts[kind] = (counts[kind] || 0) + 1;
-  for (const kind of Object.keys(effects.KINDS)) assert.ok(counts[kind] > 0, `the busy film has no ${kind}`);
+  const favoured = plan.character.flatMap((family) => effects.FAMILIES[family]).filter((kind) => !effects.LEVEL.strong.never.includes(kind));
+  for (const kind of favoured) assert.ok(counts[kind] > 0, `the busy film (${plan.character}) has no ${kind}`);
+  assert.ok(Object.keys(counts).filter((kind) => effects.KINDS[kind]).length >= 12, `the busy film has ${Object.keys(counts).length} kinds`);
   assert.ok(plan.spans.some((span) => span.k === 'split'));
   const most = Math.max(...Object.values(counts));
   assert.ok(most <= accents.length * 0.2, `one kind on ${most} of ${accents.length} accents`);
@@ -280,7 +319,8 @@ function testLengths() {
     for (const event of plan.events.filter((item) => ['scan', 'vhs', 'roll', 'smear', 'stutter', 'echo', 'mirror'].includes(item.k))) assert.ok(event.n >= 6 && event.n <= 12, `${level}: ${event.k} of ${event.n} frames`);
     const burst = glitch.filter((event) => event.n >= 6).length;
     const shortOnes = glitch.filter((event) => event.n <= 4).length;
-    assert.ok(burst >= 4 && shortOnes >= 10, `${level}: ${burst} bursts, ${shortOnes} short`);
+    // subtle has few accents: how many of them take a glitch of the signal depends on the character of the film (its seed)
+    assert.ok(burst >= 4 && shortOnes >= (level === 'subtle' ? 5 : 10), `${level}: ${burst} bursts, ${shortOnes} short`);
     // the strongest hits of the song (their percentile from burstFrom on) burst
     const hits = g.music.hits;
     const hitRank = effects.ranks(hits.map((hit) => hit.strength));
@@ -458,7 +498,15 @@ function testCopies() {
     assert.equal(Math.floor((frame / FPS - value) * FPS + 1e-9), 0);
     assert.equal(Math.floor(((frame + 1) / FPS - value) * FPS + 1e-9), 1, `frame ${frame}: the next frame of the clip is its second`);
   }
-  for (const [g, level] of [[song, 'strong'], [busy, 'wild'], [kubleSong, 'strong'], [film, 'wild']]) {
+  // a film that favours the time effects (the copies), found by its variation
+  const timeFilm = (base, level) => {
+    for (let variation = 0; variation < 40; variation += 1) {
+      const g = { ...base, variation };
+      if (effects.planEffects(g, { level }).character.includes('time')) return g;
+    }
+    throw new Error('no variation favours the time effects');
+  };
+  for (const [g, level] of [[song, 'strong'], [busy, 'wild'], [kubleSong, 'strong'], [film, 'wild']].map(([base, level]) => [timeFilm(base, level), level])) {
     const plan = planOf(g, level);
     assert.ok(plan.copies.length >= 5, `${level}: ${plan.copies.length} copies`);
     for (const copy of plan.copies) {
@@ -539,7 +587,9 @@ function testFrames() {
 // default the weakest accent of every kind is at least the amplitude whose frames changed by more than VISIBLE of the picture there (the exposure
 // pulse, which fades in 9 frames: on its first frames).
 function testVisible() {
-  const plan = planOf(busy, 'strong');
+  // a film shows the kinds of its character (and some others): several variations of the busy film show every kind
+  const plans = [planOf(busy, 'strong'), ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((variation) => effects.planEffects({ ...busy, variation }, { level: 'strong' }))];
+  let plan = plans[0];
   const look = (event, f = event.f) => effects.frameEffects(plan, f / FPS);
   const firstOf = (kind) => plan.events.filter((event) => event.k === kind && event.x && !event.w);
   const svgValue = (drawn, id, attribute) => Number((drawn.svg.find(([a, b]) => a === id && b === attribute) || [])[2]);
@@ -567,15 +617,23 @@ function testVisible() {
     echo: (e) => plan.copies.some((copy) => copy.f === e.f && copy.s === 'echo' && copy.m === e.f - 4),
     mirror: (e) => plan.copies.some((copy) => copy.f === e.f && ['left', 'right', 'kx'].includes(copy.s))
   };
-  for (const kind of Object.keys(effects.KINDS)) {
-    const list = firstOf(kind);
-    assert.ok(list.length, `the busy film has ${kind}`);
-    for (const event of list) {
-      // while a word is sung the kinds that may be there are smaller on purpose (testSungWords)
-      if (effects.KINDS[kind].sung === 'small' && touches(plan.quiet, event.f, event.n || 3)) continue;
-      assert.ok(checks[kind](event), `${kind} at ${event.f} is too weak: ${JSON.stringify(event)}`);
+  const seen = new Set();
+  for (const each of plans) {
+    plan = each;
+    for (const kind of Object.keys(effects.KINDS)) {
+      const list = firstOf(kind);
+      if (list.length) seen.add(kind);
+      // the strength is measured on the film of the measure (the first); the others show that every kind comes in some film
+      if (each !== plans[0]) continue;
+      for (const event of list) {
+        // while a word is sung the kinds that may be there are smaller on purpose (testSungWords)
+        if (effects.KINDS[kind].sung === 'small' && touches(plan.quiet, event.f, event.n || 3)) continue;
+        assert.ok(checks[kind](event), `${kind} at ${event.f} is too weak: ${JSON.stringify(event)}`);
+      }
     }
   }
+  for (const kind of Object.keys(effects.KINDS)) assert.ok(seen.has(kind), `no variation of the busy film has ${kind}`);
+  plan = plans[0];
   // the long split of the drop: 9 px and more in its middle
   const split = plan.spans.find((span) => span.k === 'split');
   const middle = look(split, split.f + Math.floor(split.n / 2)).split;
@@ -754,8 +812,9 @@ function testFilters() {
   for (const id of filterIds) assert.ok(defs.includes(`<filter id="${id}" `), id);
   const ids = new Set([...defs.matchAll(/ id="([^"]+)"/g)].map((match) => match[1]));
   const used = new Set();
-  for (const level of ['strong', 'wild']) {
-    const plan = planOf(busy, level);
+  // the busy film in three variations (every film shows the kinds of its own character)
+  for (const [level, variation] of [['strong', 0], ['wild', 0], ['strong', 3], ['wild', 5], ['strong', 7]]) {
+    const plan = variation ? effects.planEffects({ ...busy, variation }, { level }) : planOf(busy, level);
     for (let f = 0; f < busy.endFrame; f += 1) {
       const drawn = effects.view(effects.frameEffects(plan, f / FPS));
       for (const [id, attribute, value] of drawn.svg) {
@@ -770,7 +829,7 @@ function testFilters() {
       for (const style of [drawn.fx, drawn.all, drawn.light, drawn.grain, drawn.scan, drawn.snow]) assert.ok(!/NaN|undefined|Infinity/.test(style), style);
     }
   }
-  for (const id of filterIds) assert.ok(used.has(id), `the busy film uses ${id}`);
+  for (const id of filterIds) assert.ok(used.has(id), `the variations of the busy film use ${id}`);
   // a frame without anything is plain
   assert.deepEqual(effects.view(effects.frameEffects(null, 0)), { fx: 'transform:none;filter:none', all: 'filter:none', light: 'opacity:0', grain: 'opacity:0', scan: 'opacity:0', snow: 'opacity:0', svg: [] });
   const maps = fxsvg.maps();
@@ -983,7 +1042,7 @@ async function main() {
     console.log(skipped ? `skipped testRender: ${skipped}` : 'ok testRender');
     return;
   }
-  const tests = [testLevels, testParts, testPalettes, testVariety, testLengths, testDeterminism, testFlashLimit, testNoRed, testEndcardFree, testSungWords, testFresh, testCopies, testFrames, testVisible, testPage, testFilters, testRuntime, testPostArgs, testNode];
+  const tests = [testLevels, testParts, testPalettes, testVariety, testCharacter, testLengths, testDeterminism, testFlashLimit, testNoRed, testEndcardFree, testSungWords, testFresh, testCopies, testFrames, testVisible, testPage, testFilters, testRuntime, testPostArgs, testNode];
   let passed = 0;
   for (const test of tests) {
     test();

@@ -357,20 +357,20 @@ function testMain() {
 /* ---------- the pages ---------- */
 
 // The SHA-256 of the pages of the chunks without a tag of the example (graphicsLib.demoGraphics, 72 s, without the karaoke line), as main (WP49) built
-// them. Made again with PRINT_TARGETS_GOLDEN=1 after a change that is meant to change those pages.
+// them (the pages with the effects: as the character of the films made them). Made again with PRINT_TARGETS_GOLDEN=1 after a change that is meant to change those pages.
 const MAIN_PAGES = {
   'hud off 0': '9b87d5a27557f2adce2804224d94e505e099226980fc009d952c698aa82c155e',
   'hud off 1': '97f60409e9f1d56f0817e7421a5f01a5019b08d572a24e42560b661324e0b2b9',
   'hud off 3': '6fb254e448367b6d46b1d3b65b5c3cdb1346ce4e3ef4d85164ad98264506d1f8',
-  'hud strong 0': '75a0cecda294b8c1b8b3489a4fe3f03f1574825df0758d2328cd9b2a0c129426',
-  'hud strong 1': 'a0fd34052d5a953435c4d6caecfdb830c544962d34c1f8297539d0b6f60d27c0',
-  'hud strong 3': 'f35bfb10ad295a408a3da5a7431c821cc7821d9e9f633749cca982ed737c7af7',
+  'hud strong 0': '005d3af223310d1ae73136bfbc7527f57f6f145d11a2a53721f8907b5e85a844',
+  'hud strong 1': '4bbec9e78e16b4fe98d9780c864a741c8e7c2484b356b49d9505e3958bd10612',
+  'hud strong 3': '90f839433c4652ea3177e3bb1e192aa16ef6eedb0f4eadffa99698842aa8a2eb',
   'kuble off 0': 'f0e6219d21bf22456869b33ce50472ea47d3bca483548a39ca96186faf9faf12',
   'kuble off 1': '4fa0dfc89ddd6224a23a28d52a180c3723873cb17d7e2ff43beaf6fa94fd81f1',
   'kuble off 3': 'aab5b035c5c3f268b6e06aeced9149546a1f944a58f19bbe6ec6410946ed7822',
-  'kuble strong 0': 'c2070e8de95292a81b3f39fbb546653b96e16580f1e74763d4f10b87501f75c2',
-  'kuble strong 1': 'a914cc5b103f826860c96f982fe202dfb1e0a7c80e1e65a51b0d4a318b38aa6e',
-  'kuble strong 3': 'bac97cf742ce17e47b67ae243623590ca6681e42a299fe561e6ff259df10ae25'
+  'kuble strong 0': '072a4c9b0ccac0ef93abf952b58cb773250bc52802c3caa97be6bee7eab48b54',
+  'kuble strong 1': '0461d497040439df915ca04a809a24f14790938f3e9b86e186205c6182d189f3',
+  'kuble strong 3': '77793b678cc7dcf1c192b6ab7cc180a540bb4a1b7d65820e59bdabaf03ecc94b'
 };
 
 const TRACK = { step: 4, points: Array.from({ length: 80 }, (_, i) => [1180 + 4 * i, 950 + i, 420, 150, 0]) };
@@ -606,6 +606,31 @@ async function testFinder() {
   // a short cut with fewer frames than CHAIN.points takes what it has
   assert.equal(faces.trackOf({ cuts: [{ start: 0, end: 8 / FPS, subject: 'center' }] }, [{ frame: 0, faces: [at(900, 400, 300, 60)] }, { frame: 4, faces: [at(902, 400, 300, 60)] }]).points.length, 2);
 
+  // the faces of the cuts: three frames of every cut with the figure; a face found in two of them counts, a find in one frame does not; the side by
+  // the largest face; two people give the span over both
+  const cutG = { start: 0, cuts: [{ start: 0, end: 5, subject: 'center' }, { start: 5, end: 8, subject: 'none' }, { start: 8, end: 12, subject: 'left' }, { start: 12, end: 12 + 1 / FPS, subject: 'center' }] };
+  assert.deepEqual(faces.cutSamplesOf(cutG), [24, 60, 96, 211, 240, 268, 288]);
+  const found = faces.cutFacesOf(cutG, [
+    { frame: 24, faces: [at(1500, 400, 300, 40)] },
+    { frame: 60, faces: [at(1520, 410, 310, 40), at(300, 300, 100, 20)] },
+    { frame: 96, faces: [] },
+    { frame: 211, faces: [at(500, 400, 200, 40), at(1400, 420, 260, 40)] },
+    { frame: 240, faces: [at(520, 400, 210, 40), at(1380, 420, 250, 40)] },
+    { frame: 268, faces: [] },
+    { frame: 288, faces: [at(900, 400, 200, 40)] }
+  ]);
+  assert.deepEqual(found[0], { x0: 1500, x1: 1520, s: 310, count: 1, subject: 'right' }, 'the plan said center, the face is on the right');
+  assert.equal(found[1], null, 'no figure');
+  assert.deepEqual(found[2], { x0: 500, x1: 1400, s: 260, count: 2, subject: 'right' }, 'two people: over both, the side of the larger face');
+  assert.deepEqual(found[3], { x0: 900, x1: 900, s: 200, count: 1, subject: 'center' }, 'a cut of one frame takes its one find');
+  assert.deepEqual(faces.cutFacesOf(cutG, []), [null, null, null, null]);
+  // the zone of the face of a cut: round the faces found, not round the subject of the plan
+  const planned = graphicsLib.faceZone({ start: 0, end: 5, kind: 'performance', framing: 'MCU', subject: 'left' });
+  const measured = graphicsLib.faceZone({ start: 0, end: 5, kind: 'performance', framing: 'MCU', subject: 'right', faces: { x0: 1500, x1: 1520, s: 310 } });
+  assert.ok(planned.x1 < 1000 && measured.x0 >= 1100 && measured.x1 >= 1880, JSON.stringify([planned, measured]));
+  const both = graphicsLib.faceZone({ start: 0, end: 5, kind: 'performance', framing: 'MS', subject: 'right', faces: { x0: 500, x1: 1400, s: 260 } });
+  assert.ok(both.x0 <= 500 - 240 && both.x1 >= 1400 + 240, JSON.stringify(both));
+
   // the thread: the frames of a file, read one by one; the end of the run ends it
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-faces-'));
   try {
@@ -621,6 +646,8 @@ async function testFinder() {
     controller.abort();
     await assert.rejects(running, (err) => err.name === 'AbortError');
     await assert.rejects(faces.trackFile(g2, path.join(dir, 'missing.raw'), [0]));
+    // the faces of the frames of a file: what facesOfFrames finds in the buffer
+    assert.deepEqual(await faces.facesOfFile(file, [0, 4, 8]), faces.facesOfFrames(fs.readFileSync(file), [0, 4, 8]));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -633,21 +660,21 @@ async function testNode() {
   const graphicsText = (list) => ({ graphics: { value: JSON.stringify({ duration: 10, cuts: [{ start: 0, end: 10 }], graphics: list }) } });
   const tag = [{ type: 'tag', text: 'LIP GLOSS ON', start: 1 }];
   const stamp = [{ type: 'stamp', text: 'DONE', start: 1 }];
-  // a film without a tag keeps its key (the stamp of before: none with the effects off, the one of WP49 with them on)
-  assert.equal(render.cacheStamp({ effects: 'off' }, { inputs: graphicsText(stamp) }), undefined);
-  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, { inputs: graphicsText(stamp) }), { effects: 'wp49' });
-  assert.equal(render.cacheStamp({ effects: 'off' }, {}), undefined);
-  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, undefined), { effects: 'wp49' });
-  // a film with a tag is drawn once more
-  assert.deepEqual(render.cacheStamp({ effects: 'off' }, { inputs: graphicsText(tag) }), { tags: 'wp51' });
-  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, { inputs: graphicsText(tag) }), { effects: 'wp49', tags: 'wp51' });
-  assert.equal(render.cacheStamp({ effects: 'off' }, { inputs: { graphics: { value: 'not json' } } }), undefined);
+  // every film is drawn once more (free and local): its graphics keep off the faces found in the footage (faces: cuts), and with the effects on each
+  // film has a character of its own (effects: character); a film with a tag points its tags at the face (tags: wp51)
+  assert.deepEqual(render.cacheStamp({ effects: 'off' }, { inputs: graphicsText(stamp) }), { faces: 'cuts' });
+  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, { inputs: graphicsText(stamp) }), { effects: 'character', faces: 'cuts' });
+  assert.deepEqual(render.cacheStamp({ effects: 'off' }, {}), { faces: 'cuts' });
+  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, undefined), { effects: 'character', faces: 'cuts' });
+  assert.deepEqual(render.cacheStamp({ effects: 'off' }, { inputs: graphicsText(tag) }), { faces: 'cuts', tags: 'wp51' });
+  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, { inputs: graphicsText(tag) }), { effects: 'character', faces: 'cuts', tags: 'wp51' });
+  assert.deepEqual(render.cacheStamp({ effects: 'off' }, { inputs: { graphics: { value: 'not json' } } }), { faces: 'cuts' });
   assert.equal(hudNodes.planHasTag('{"graphics":[null,{"type":"tag"}]}'), true);
   assert.equal(hudNodes.planHasTag('{"graphics":{}}'), false);
   const coerced = [{ type: ['tag'], text: 'LIP GLOSS', start: 1 }];
   assert.equal(graphicsLib.prepareGraphics({ duration: 10, cuts: [{ start: 0, end: 10 }], graphics: coerced }).graphics.devices[0].type, 'tag');
-  assert.deepEqual(render.cacheStamp({ effects: 'off' }, { inputs: graphicsText(coerced) }), { tags: 'wp51' });
-  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, { inputs: graphicsText(coerced) }), { effects: 'wp49', tags: 'wp51' });
+  assert.deepEqual(render.cacheStamp({ effects: 'off' }, { inputs: graphicsText(coerced) }), { faces: 'cuts', tags: 'wp51' });
+  assert.deepEqual(render.cacheStamp({ effects: 'strong' }, { inputs: graphicsText(coerced) }), { effects: 'character', faces: 'cuts', tags: 'wp51' });
 
   // the measurement with ffmpeg on a made-up video (no face in it): the frames under the tag are read and looked at; a failure is no reason to stop
   const probe = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' });
@@ -693,6 +720,13 @@ async function testNode() {
     const none = await hudNodes.measureFaces(ctx, { videoFile: broken, scratch: dir, graphics, log: (line) => logs.push(line) });
     assert.equal(none, null);
     assert.match(logs[logs.length - 1], /could not be found .*: the tags point where the framing puts the face$/);
+    // the faces of the cuts: three frames of the cut looked at, no face in the test picture (the layout keeps to the plan); a broken video: logged
+    const cutFaces = await hudNodes.measureCutFaces(ctx, { videoFile: video, scratch: dir, graphics, log: (line) => logs.push(line) });
+    assert.deepEqual(cutFaces, [null]);
+    assert.match(logs[logs.length - 1], /^the faces in the cuts: 3 frames looked at, a face in 0 of 1 cuts with the figure \(0 not where the plan put the figure, 0 with two or more faces\), [\d.]+ s$/);
+    assert.ok(!fs.existsSync(path.join(dir, 'cut-faces.raw')), 'the frames are removed');
+    assert.equal(await hudNodes.measureCutFaces(ctx, { videoFile: broken, scratch: dir, graphics, log: (line) => logs.push(line) }), null);
+    assert.match(logs[logs.length - 1], /could not be found .*: the graphics keep off the place the plan gives the figure$/);
     // a film without a tag looks at nothing
     const noTag = graphicsLib.prepareGraphics({ duration: 4, cuts: [{ start: 0, end: 4 }], graphics: [{ type: 'stamp', text: 'DONE', start: 1, end: 3 }] }).graphics;
     assert.equal(await hudNodes.measureFaces(ctx, { videoFile: video, scratch: dir, graphics: noTag, log: () => assert.fail('nothing to log') }), null);
