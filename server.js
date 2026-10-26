@@ -796,7 +796,7 @@ app.put('/api/settings/preferences', (req, res) => {
   if (typeof body.name !== 'string' || !settings.PREFERENCE_NAMES.includes(body.name)) {
     return fail(res, 400, 'Diese Einstellung ist nicht erlaubt.');
   }
-  if (body.name === 'higgsfieldUsdPerCredit'
+  if (['higgsfieldUsdPerCredit', 'magnificUsdPerCredit'].includes(body.name)
     ? body.value !== null && !(typeof body.value === 'number' && Number.isFinite(body.value) && body.value > 0)
     : typeof body.value !== 'boolean') return fail(res, 400, 'Invalid preference value.');
   try {

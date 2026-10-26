@@ -734,6 +734,21 @@ async function testRulesTable(ctx) {
     assert.notEqual((await api(url, { as: STAFF })).body?.code, 'FORBIDDEN_FOR_ROLE', `${url} for internal people`);
   }
 
+  // Magnific: participants need their own configured rate and a connected service.
+  const magnific = iso.load('lib/magnific');
+  const preferences = iso.load('lib/settings');
+  patch(magnific, 'status', () => ({ connected: true }));
+  const magnificCatalog = iso.load('lib/nodes/magnific-catalog');
+  patch(magnificCatalog, 'load', async () => [{ value: 'creative', label: 'Creative', scales: [2] }]);
+  for (const source of ['magnific-upscale-modes', 'magnific-upscale-scales']) {
+    const url = `/api/nodes/options/${source}`;
+    assert.equal((await call(P1, 'GET', url)).status, 403, 'no Magnific rate: blocked');
+    preferences.setPreference('magnificUsdPerCredit', 0.2);
+    assert.equal((await call(P1, 'GET', url)).status, 200, 'rate and connection: allowed');
+    assert.equal((await call(GUEST, 'GET', url)).status, 403, 'guests stay blocked');
+    preferences.setPreference('magnificUsdPerCredit', null);
+  }
+
   // filtered: config
   const chatgpt = iso.load('lib/chatgpt');
   const gtsLib = iso.load('lib/gts');

@@ -405,6 +405,7 @@ async function deleteSetting(name, row) {
 function renderVideoAskToggle() {
   el.videoAskToggle.checked = state.preferences.askVideoModel !== false;
   el.higgsfieldRate.value = state.preferences.higgsfieldUsdPerCredit ?? '';
+  el.magnificRate.value = state.preferences.magnificUsdPerCredit ?? '';
 }
 
 async function saveHiggsfieldRate() {
@@ -426,6 +427,28 @@ async function saveHiggsfieldRate() {
     showSettingsFeedback(t('higgsfield.rateFailed', { error: err.message }), { error: true });
   } finally {
     setSettingsBusy(el.higgsfieldRateForm, false);
+  }
+}
+
+async function saveMagnificRate() {
+  const raw = el.magnificRate.value.trim();
+  const value = raw === '' ? null : Number(raw);
+  if (value !== null && !(Number.isFinite(value) && value > 0)) {
+    showSettingsFeedback(t('magnific.rateInvalid'), { error: true });
+    return;
+  }
+  setSettingsBusy(el.magnificRateForm, true);
+  showSettingsFeedback('');
+  try {
+    const data = await api('/api/settings/preferences', {
+      method: 'PUT', body: JSON.stringify({ name: 'magnificUsdPerCredit', value })
+    });
+    state.preferences = { ...state.preferences, ...data.preferences };
+    showSettingsFeedback(t('magnific.rateSaved'));
+  } catch (err) {
+    showSettingsFeedback(t('magnific.rateFailed', { error: err.message }), { error: true });
+  } finally {
+    setSettingsBusy(el.magnificRateForm, false);
   }
 }
 
