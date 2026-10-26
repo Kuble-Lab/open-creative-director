@@ -509,7 +509,7 @@ async function run(iso) {
   assert.equal((await api('/api/config', { as: P1 })).body.askVideoModel, true);
   const off = await api('/api/settings/preferences', { method: 'PUT', as: ADMIN, json: { name: 'askVideoModel', value: false } });
   assert.equal(off.status, 200);
-  assert.deepEqual(off.body.preferences, { askVideoModel: false, higgsfieldUsdPerCredit: null });
+  assert.deepEqual(off.body.preferences, { askVideoModel: false, higgsfieldUsdPerCredit: null, magnificUsdPerCredit: null });
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(iso.root, 'data', 'settings.json'), 'utf8')).preferences, { askVideoModel: false });
   assert.equal(fs.statSync(path.join(iso.root, 'data', 'settings.json')).mode & 0o777, 0o600);
   const offChat = await newChat(ADMIN);

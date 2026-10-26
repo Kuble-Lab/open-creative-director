@@ -93,6 +93,8 @@ const el = {
   sendBtn: document.getElementById('sendBtn'),
   jobStatusBar: document.getElementById('jobStatusBar'),
   videoModelHint: document.getElementById('videoModelHint'),
+  magnificRate: document.getElementById('magnificRate'),
+  magnificRateForm: document.getElementById('magnificRateForm'),
   higgsfieldRate: document.getElementById('higgsfieldRate'),
   higgsfieldRateForm: document.getElementById('higgsfieldRateForm'),
   videoAskToggle: document.getElementById('videoAskToggle'),

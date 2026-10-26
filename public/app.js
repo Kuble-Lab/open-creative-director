@@ -66,6 +66,10 @@ el.higgsfieldRateForm.addEventListener('submit', (event) => {
   event.preventDefault();
   saveHiggsfieldRate();
 });
+el.magnificRateForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveMagnificRate();
+});
 el.videoAskToggle.addEventListener('change', () => saveVideoAskToggle());
 el.adminForm.addEventListener('submit', (event) => {
   event.preventDefault();
