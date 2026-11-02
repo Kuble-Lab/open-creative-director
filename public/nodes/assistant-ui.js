@@ -34,8 +34,8 @@
     warnings: 15,
     warningText: 160,
     historyTurns: 6,
-    historyText: 1500,
-    question: 2000,
+    historyText: 4000,
+    question: 10000,
     namesShown: 6,
     keptMessages: 80
   });
