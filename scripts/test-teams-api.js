@@ -360,6 +360,20 @@ async function testTeamAdminApi(ctx) {
 /* ---------- identities ---------- */
 
 async function testIdentities({ api, teamA, teamB }) {
+  // Personal Suno access is available to participants and guests, independently of admin settings.
+  for (const email of [P1, GUEST]) {
+    assert.deepEqual((await api('/api/suno/status', { as: email })).body, { connected: false });
+    for (const endpoint of ['account', 'usage', 'library']) {
+      assert.equal((await api('/api/suno/' + endpoint, { as: email })).status, 409);
+    }
+    assert.equal((await api('/api/suno/oauth/callback?state=foreign&code=invalid', { as: email })).status, 400);
+    // No configured public base or trusted Origin: writes must fail before contacting Suno.
+    for (const [method, endpoint] of [['POST', 'connect'], ['DELETE', 'auth']]) {
+      const result = await api('/api/suno/' + endpoint, { method, as: email, json: {} });
+      assert.ok([403, 503].includes(result.status));
+    }
+  }
+
   const p1 = (await api('/api/me', { as: P1 })).body;
   assert.equal(p1.identified, true);
   assert.equal(p1.role, 'participant');
