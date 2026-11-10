@@ -24,7 +24,14 @@ const express = require('express');
     const request = JSON.parse(options.body);
     if (request.method === 'initialize') return json({ jsonrpc: '2.0', id: request.id, result: { protocolVersion: '2025-03-26' } });
     if (request.method === 'notifications/initialized') return new Response(null, { status: 202 });
-    return json({ jsonrpc: '2.0', id: request.id, result: { structuredContent: { authorization: options.headers.Authorization } } });
+    const result = { jsonrpc: '2.0', id: request.id, result: { structuredContent: { authorization: options.headers.Authorization } } };
+    if (request.params.name === 'sse-test') {
+      // The server deliberately keeps SSE open after the result: client must cancel after its matching id.
+      return new Response(new ReadableStream({ start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: message\ndata: ' + JSON.stringify(result) + '\n\n'));
+      } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    return json(result);
   };
   const suno = createSuno({ directory, fetchImpl, now: () => time });
   const a = 'alice@example.com', b = 'bob@example.com';
@@ -47,6 +54,7 @@ const express = require('express');
     const results = await Promise.all([suno.mcpCall(a, 'account-me'), suno.mcpCall(b, 'account-me')]);
     assert.equal(results[0].structuredContent.authorization, 'Bearer alice-secret');
     assert.equal(results[1].structuredContent.authorization, 'Bearer bob-secret');
+    assert.equal((await suno.mcpCall(b, 'sse-test')).structuredContent.authorization, 'Bearer bob-secret');
     for (const file of fs.readdirSync(directory).filter(f => f.endsWith('.json'))) assert.ok(!fs.readFileSync(path.join(directory, file), 'utf8').includes('alice-secret'));
     time += 3600000;
     await Promise.all([suno.mcpCall(a, 'account-me'), suno.mcpCall(a, 'account-me')]);
