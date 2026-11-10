@@ -191,7 +191,7 @@ async function testActiveMode(seenSecrets, responses) {
     assert.equal(init.body.result.serverInfo.name, 'open-creative-director');
     const initWithOtherCookie = await mcp(secret, rpc(2, 'tools/list'), { as: GUEST });
     assert.equal(initWithOtherCookie.status, 200, 'the cookie of somebody else changes nothing');
-    assert.deepEqual(initWithOtherCookie.body.result.tools.map((tool) => tool.name), ['estimate_run', 'get_run', 'get_workflow', 'list_templates', 'list_workflows'], 'a read key lists the reading tools');
+    assert.deepEqual(initWithOtherCookie.body.result.tools.map((tool) => tool.name), ['estimate_run', 'get_run', 'get_workflow', 'list_templates', 'list_workflows', 'suno_audio', 'suno_library', 'suno_status'], 'a read key lists the reading tools');
     assert.equal((await mcp(secret, rpc(3, 'ping'))).status, 200);
     assert.equal((await api('/mcp', { method: 'GET', headers: bearer(secret) })).status, 405);
     assert.equal((await api('/mcp', { method: 'GET', as: ADMIN })).status, 405);

@@ -362,13 +362,13 @@ async function run(iso, holder) {
 
   /* ============ R: rights and visibility ============ */
 
-  const readNames = ['estimate_run', 'get_run', 'get_workflow', 'list_templates', 'list_workflows'];
+  const readNames = ['estimate_run', 'get_run', 'get_workflow', 'list_templates', 'list_workflows', 'suno_audio', 'suno_library', 'suno_status'];
   const startNames = ['cancel_run', 'create_from_template', 'run_workflow', 'upload_asset'];
   const readList = (await rpc(reader.secret, 'tools/list')).json.result.tools;
   assert.deepEqual(readList.map((item) => item.name), readNames, 'a read key lists the reading tools only');
   assert.ok(readList.every((item) => item.annotations.readOnlyHint === true));
   const startList = (await rpc(starter.secret, 'tools/list')).json.result.tools;
-  assert.deepEqual(startList.map((item) => item.name), [...readNames, ...startNames].sort(), 'a start key lists all nine');
+  assert.deepEqual(startList.map((item) => item.name), [...readNames, ...startNames].sort(), 'a start key lists workflow tools and personal Suno reads');
   for (const item of startList) {
     assert.equal(item.inputSchema.type, 'object');
     assert.ok(item.description.length > 40, `${item.name} describes itself`);
