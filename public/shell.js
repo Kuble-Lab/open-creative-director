@@ -11,6 +11,9 @@
 //   OCShell.accountMenu({ variant })                            -> { element, render, close }
 //   OCShell.refresh()                                           re-render every menu (language, costs, sign-in state)
 //
+// The shell also attaches the personal Suno dialog (public/suno-ui.js, loaded before this file): the entry "Suno" in
+// the section 'account' for everybody who is signed in; its texts follow every refresh (language change).
+//
 // The section 'account' is the place for the team entries of the teams interface (public/teams-ui.js registers
 // "Teams" for admins there); its items appear below the costs. For participants and guests the menu shows the
 // budget block (what is left, what was used since the budget started, the teams) and no costs line. Everything that comes from the server is written as text, never as HTML.
@@ -280,9 +283,13 @@
 
   function refresh() {
     for (const menu of menus) menu.render();
+    if (global.OCSuno && typeof global.OCSuno.rerender === 'function') global.OCSuno.rerender();
   }
 
   global.OCShell = { register, addSection, accountMenu: createAccountMenu, refresh, closeAll: () => menus.forEach((menu) => menu.close()) };
+
+  // The personal Suno connection: one entry for every signed-in person, independent of the admin settings.
+  if (global.OCSuno && typeof global.OCSuno.attach === 'function') global.OCSuno.attach();
 
   // The sign-in state arrives after the page has been built.
   if (global.OCAccess && global.OCAccess.ready) global.OCAccess.ready.then(refresh);

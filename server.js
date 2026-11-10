@@ -115,6 +115,8 @@ app.use(compression({
   }
 }));
 app.use(express.json({ limit: '60mb' }));
+// Personal provider connections require the confirmed identity from whoami.
+require('./lib/suno-routes').registerSunoRoutes(app);
 // Usage and cost monitoring page: superadmins only, everybody else gets a plain 404.
 app.use((req, res, next) => {
   let page;

@@ -22,6 +22,15 @@
 //   folder      the project folder: visible only with an entry the caller may see (404), rename / delete need
 //               admin rights or that every entry is the caller's
 const ROUTE_RULES = {
+  // Personal Suno connection; anonymous callers receive 401, no shared fallback.
+  'GET /api/suno/status': 'identified',
+  'POST /api/suno/connect': 'identified',
+  'GET /api/suno/oauth/callback': 'identified',
+  'DELETE /api/suno/auth': 'identified',
+  'GET /api/suno/account': 'identified',
+  'GET /api/suno/usage': 'identified',
+  'GET /api/suno/library': 'identified',
+
   'GET /refs/:file': 'public', // Seedance needs a public URL; the file name is an unguessable token
   'GET /api/prompt-presets': 'open',
   'POST /api/prompt-presets/custom': 'admin',
@@ -181,6 +190,15 @@ const ROUTE_RULES = {
 //   forbidden   403 with the code FORBIDDEN_FOR_ROLE (internal resource, Higgsfield ...)
 //   own         only their own data
 const PARTICIPANT_RULES = {
+  // Personal Suno connection; anonymous callers receive 401, no shared fallback.
+  'GET /api/suno/status': 'own',
+  'POST /api/suno/connect': 'own',
+  'GET /api/suno/oauth/callback': 'own',
+  'DELETE /api/suno/auth': 'own',
+  'GET /api/suno/account': 'own',
+  'GET /api/suno/usage': 'own',
+  'GET /api/suno/library': 'own',
+
   'GET /refs/:file': 'public',
   'GET /api/prompt-presets': 'filtered', // no custom (team) templates
   'POST /api/prompt-presets/custom': 'admin',
