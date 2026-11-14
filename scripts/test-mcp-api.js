@@ -73,6 +73,12 @@ async function testActiveMode(seenSecrets, responses) {
     return response;
   };
   try {
+    // A first sign-in through OAuth records internal people exactly like other logged-in app routes.
+    const firstOAuth = await api('/oauth/authorize', { as: 'first-oauth@staff.example.com' });
+    assert.equal(firstOAuth.status, 400, 'eligible first-time internal person reaches client validation');
+    assert.equal(firstOAuth.headers.get('location'), null, 'an unknown client cannot receive a redirect');
+    assert.equal(iso.load('lib/users').isMember('first-oauth@staff.example.com'), true);
+
     // people: a participant (in a team) and a guest
     const team = await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'Kurs', budgetUsd: 5 } });
     assert.equal(team.status, 201, team.text);

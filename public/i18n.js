@@ -2,6 +2,24 @@
 
 (function initI18n(global) {
   const de = {
+    "mcp.oauth.title": "Als Connector in Claude verbinden",
+    "mcp.oauth.hint": "Füge diese Adresse in Claude als Custom Connector hinzu. Melde dich mit deinem bestehenden Konto an und bestätige Rechte und Limits.",
+    "mcp.oauth.connection": "Verbindung (OAuth)",
+    "oauth.title": "Agent-Zugang verbinden",
+    "oauth.client": "Anwendung",
+    "oauth.redirectHost": "Rückkehr zu diesem Host",
+    "oauth.person": "Angemeldet als",
+    "oauth.limits": "Limit pro Lauf: {run} USD · pro Monat: {month} USD · Gültigkeit: {days} Tage",
+    "oauth.teamBudget": "Das Team-Budget gilt immer.",
+    "oauth.warning": "Der Name der Anwendung ist frei wählbar. Prüfe den Host, bevor du den Zugang erlaubst.",
+    "oauth.connect": "Verbinden",
+    "oauth.cancel": "Abbrechen",
+    "oauth.error": "Die Anfrage ist ungültig. Starte die Verbindung erneut in deinem Agent.",
+    "oauth.rateLimited": "Zu viele Anfragen. Warte eine Minute und versuche es erneut.",
+    "oauth.loginRequired": "Melde dich zuerst mit deinem bestehenden Konto an. Deine Anmeldung konnte nicht bestätigt werden.",
+    "oauth.forbidden": "Für dein Konto ist der Agent-Zugang nicht verfügbar. Aktive Teammitgliedschaft und eine freigegebene Richtlinie sind erforderlich.",
+    "oauth.consentExpired": "Die Zustimmung ist abgelaufen oder konnte nicht bestätigt werden. Starte die Verbindung erneut.",
+
     'sidebar.projects': 'Projekte',
     'sidebar.newChat': '+ Chat',
     'sidebar.newChatTitle': 'Neuer Chat',
@@ -1158,6 +1176,24 @@
   };
 
   const en = {
+    "mcp.oauth.title": "Connect as a connector in Claude",
+    "mcp.oauth.hint": "Add this address as a Custom Connector in Claude. Sign in with your existing account and approve rights and limits.",
+    "mcp.oauth.connection": "Connection (OAuth)",
+    "oauth.title": "Connect agent access",
+    "oauth.client": "Application",
+    "oauth.redirectHost": "Return to this host",
+    "oauth.person": "Signed in as",
+    "oauth.limits": "Limit per run: {run} USD · per month: {month} USD · validity: {days} days",
+    "oauth.teamBudget": "The team budget always applies.",
+    "oauth.warning": "The application name can be chosen freely. Check the host before allowing access.",
+    "oauth.connect": "Connect",
+    "oauth.cancel": "Cancel",
+    "oauth.error": "The request is invalid. Start the connection again in your agent.",
+    "oauth.rateLimited": "Too many requests. Wait a minute and try again.",
+    "oauth.loginRequired": "Sign in with your existing account first. Your login could not be confirmed.",
+    "oauth.forbidden": "Agent access is unavailable for your account. Active team membership and an enabled policy are required.",
+    "oauth.consentExpired": "Consent has expired or could not be verified. Start the connection again.",
+
     'sidebar.projects': 'Projects', 'sidebar.newChat': '+ Chat', 'sidebar.newChatTitle': 'New chat', 'sidebar.newProject': '+ Project', 'sidebar.newProjectTitle': 'Create new project', 'sidebar.projectName': 'Project name', 'sidebar.search': 'Search chats…', 'sidebar.brandings': '🎨 Brandings', 'sidebar.brandingsTitle': 'Manage brandings',
     'lang.de': 'German', 'lang.en': 'English', 'lang.es': 'Spanish', 'lang.selector': 'Language', 'drop.files': 'Drop files here', 'topbar.costsTitle': 'Open cost overview', 'topbar.context': 'Context', 'topbar.contextTitle': 'Manage context and brandings', 'banner.noApiKey': 'No OpenRouter API key found. An admin can add one in the menu under “Settings”.',
     'empty.title': 'What kind of video would you like to make?', 'empty.body': 'Describe your idea in one sentence or upload an image. The Creative Director will develop the direction with you, create images and turn them into a video.', 'messages.assistantLabel': 'Creative Director', 'composer.attach': 'Attach file', 'composer.tools': 'Tools and settings', 'composer.prompts': 'Prompt templates', 'composer.placeholder': 'Describe your idea — Enter sends, Shift+Enter adds a line break', 'composer.send': 'Send',
@@ -1918,6 +1954,24 @@
   };
 
   const es = {
+    "mcp.oauth.title": "Conectar como conector en Claude",
+    "mcp.oauth.hint": "Añade esta dirección como Custom Connector en Claude. Inicia sesión con tu cuenta existente y aprueba los permisos y límites.",
+    "mcp.oauth.connection": "Conexión (OAuth)",
+    "oauth.title": "Conectar acceso de agentes",
+    "oauth.client": "Aplicación",
+    "oauth.redirectHost": "Volver a este host",
+    "oauth.person": "Sesión iniciada como",
+    "oauth.limits": "Límite por ejecución: {run} USD · por mes: {month} USD · validez: {days} días",
+    "oauth.teamBudget": "El presupuesto del equipo siempre se aplica.",
+    "oauth.warning": "El nombre de la aplicación se puede elegir libremente. Comprueba el host antes de permitir el acceso.",
+    "oauth.connect": "Conectar",
+    "oauth.cancel": "Cancelar",
+    "oauth.error": "La solicitud no es válida. Inicia de nuevo la conexión en tu agente.",
+    "oauth.rateLimited": "Demasiadas solicitudes. Espera un minuto y vuelve a intentarlo.",
+    "oauth.loginRequired": "Inicia sesión primero con tu cuenta existente. No se pudo confirmar tu sesión.",
+    "oauth.forbidden": "El acceso de agentes no está disponible para tu cuenta. Se requiere pertenecer a un equipo activo y una política habilitada.",
+    "oauth.consentExpired": "El consentimiento ha caducado o no se pudo verificar. Inicia de nuevo la conexión.",
+
     'sidebar.projects': 'Proyectos', 'sidebar.newChat': '+ Chat', 'sidebar.newChatTitle': 'Nuevo chat', 'sidebar.newProject': '+ Proyecto', 'sidebar.newProjectTitle': 'Crear proyecto nuevo', 'sidebar.projectName': 'Nombre del proyecto', 'sidebar.search': 'Buscar chats…', 'sidebar.brandings': '🎨 Brandings', 'sidebar.brandingsTitle': 'Gestionar brandings',
     'lang.de': 'Alemán', 'lang.en': 'Inglés', 'lang.es': 'Español', 'lang.selector': 'Idioma', 'drop.files': 'Suelta los archivos aquí', 'topbar.costsTitle': 'Abrir resumen de costes', 'topbar.context': 'Contexto', 'topbar.contextTitle': 'Gestionar contexto y brandings', 'banner.noApiKey': 'No se encontró ninguna clave API de OpenRouter. Una persona administradora puede añadirla en el menú, en «Ajustes».',
     'empty.title': '¿Qué tipo de vídeo quieres crear?', 'empty.body': 'Describe tu idea en una frase o sube una imagen. El Creative Director desarrollará la dirección contigo, generará imágenes y producirá el vídeo.', 'messages.assistantLabel': 'Creative Director', 'composer.attach': 'Adjuntar archivo', 'composer.tools': 'Herramientas y ajustes', 'composer.prompts': 'Plantillas de prompts', 'composer.placeholder': 'Describe tu idea — Enter envía, Shift+Enter añade un salto de línea', 'composer.send': 'Enviar',
