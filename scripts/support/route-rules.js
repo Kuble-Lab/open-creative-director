@@ -16,7 +16,7 @@
 //   superadmin  superadmins only; 404 for everybody else
 //   identified  any identified person (403 for anonymous callers)
 //   internal    admins and internal people (403 for participants, guests and anonymous callers); the single local user
-//               without user management (agent access keys, lib/mcp/key-routes.js)
+//               without user management; agent keys additionally admit enabled active participants
 //   session     access rule of the chat: 404 unless usable; 403 if managing / sharing rights are missing
 //   workflow    access rule of the workflow (same)
 //   folder      the project folder: visible only with an entry the caller may see (404), rename / delete need
@@ -45,10 +45,12 @@ const ROUTE_RULES = {
   'DELETE /api/admins/:email': 'admin',
   'GET /api/me': 'public',
   'GET /api/team': 'identified',
-  'GET /api/mcp/keys': 'internal',
-  'POST /api/mcp/keys': 'internal',
-  'PATCH /api/mcp/keys/:id': 'internal',
-  'DELETE /api/mcp/keys/:id': 'internal',
+  'GET /api/mcp/policy': 'admin',
+  'PUT /api/mcp/policy': 'admin',
+  'GET /api/mcp/keys': 'identified',
+  'POST /api/mcp/keys': 'identified',
+  'PATCH /api/mcp/keys/:id': 'identified',
+  'DELETE /api/mcp/keys/:id': 'identified',
   'GET /api/teams/mine': 'identified',
   'GET /api/teams': 'admin',
   'POST /api/teams': 'admin',
@@ -213,10 +215,12 @@ const PARTICIPANT_RULES = {
   'DELETE /api/admins/:email': 'admin',
   'GET /api/me': 'filtered', // adds participant, teams and budget
   'GET /api/team': 'filtered', // the members of their own teams
-  'GET /api/mcp/keys': 'forbidden', // agent access: admins and internal people only
-  'POST /api/mcp/keys': 'forbidden',
-  'PATCH /api/mcp/keys/:id': 'forbidden',
-  'DELETE /api/mcp/keys/:id': 'forbidden',
+  'GET /api/mcp/policy': 'admin',
+  'PUT /api/mcp/policy': 'admin',
+  'GET /api/mcp/keys': 'filtered', // active participants only; guests are forbidden
+  'POST /api/mcp/keys': 'filtered',
+  'PATCH /api/mcp/keys/:id': 'filtered',
+  'DELETE /api/mcp/keys/:id': 'filtered',
   'GET /api/teams/mine': 'own',
   'GET /api/teams': 'admin',
   'POST /api/teams': 'admin',

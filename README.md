@@ -310,7 +310,7 @@ External agents (Claude Code, Codex, your own bots) can order runs from the app 
 
 **Set up**
 
-1. Open **Menu → Agent access (MCP)** (admins and internal people; in the local mode everybody). The dialog shows the address of the endpoint, your keys with right, limits, usage this month, last use and expiry, and a form for a new key.
+1. Open **Menu → Agent access (MCP)** (admins, internal people and active team participants; in the local mode everybody). The dialog shows the address of the endpoint, your keys with right, limits, usage this month, last use and expiry, and a form for a new key.
 2. Create a key: name, right (*Read only* or *Read and start*), limit per run, limit per month and validity. The key is shown **once**; copy it right away. Only a hash is stored.
 3. Enter the address and the key in the agent. For Claude Code:
 
@@ -323,9 +323,16 @@ External agents (Claude Code, Codex, your own bots) can order runs from the app 
 **Keys**
 
 - Format `ocd_k1_` plus 43 characters (256 bits of randomness). `data/mcp-keys.json` (mode 600) holds the SHA-256 hash, a short prefix for the list, name, owner, right, limits, creation, last use, expiry and revocation. The key never appears in a log, an error message or the cost journal.
-- Defaults: 2 USD per run, 20 USD per month, 90 days. Upper bounds: 1000 USD per run, 10000 USD per month, 365 days; at most 25 valid keys per person.
-- A key acts as its person and sees the same workflows, templates and teams, never more. It stops working as soon as the person is no longer an admin or internal person or was removed from the team list. Participants and guests get no keys. Without user management (`AUTH_WHOAMI_URL` unset) the key acts as the local person, and everybody who can reach the app can create keys.
+- Admin/internal defaults: 2 USD per run, 20 USD per month, 90 days. Upper bounds: 1000 USD per run, 10000 USD per month, 365 days; at most 25 valid keys per person.
+- A key acts as its person and sees the same workflows, templates and teams, never more. Participants need membership in an active team and an enabled participant policy; removal or team archival invalidates access immediately unless the person has another allowed role. Guests get no keys. Internal people must still be on the user list. Without user management (`AUTH_WHOAMI_URL` unset), the key acts as the local person, and everybody who can reach the app can create keys.
 - Admins see and revoke all keys; everybody else only their own. Revoking works at once. API: `GET` and `POST /api/mcp/keys`, `PATCH` and `DELETE /api/mcp/keys/:id` (errors `INVALID_NAME`, `INVALID_RIGHT`, `INVALID_LIMIT`, `INVALID_EXPIRY`, `TOO_MANY_KEYS`, `KEY_NOT_FOUND`, `KEY_REVOKED`, `FORBIDDEN_FOR_ROLE`).
+
+
+**Participant policy.** Admins (also the local user) configure “Limits for participants” in the agent access dialog or with `GET /api/mcp/policy` and `PUT /api/mcp/policy`. Other roles receive 403. The complete request and response is `{ "participant": { "enabled": true, "defaultRunUsd": 1, "defaultMonthUsd": 5, "maxRunUsd": 5, "maxMonthUsd": 25, "defaultExpiresInDays": 30, "maxExpiresInDays": 90, "keysPerOwner": 3 } }`. Amounts must be finite numbers of at least zero, defaults cannot exceed ceilings, and ceilings cannot exceed the global key limits. Days are integers 1–365, keys per owner 1–25. Invalid policy requests return 400 `INVALID_POLICY`.
+
+`data/mcp-policy.json` is written atomically with mode 0600. A missing file uses these defaults; an unreadable or invalid file blocks participant access while admins/internal people keep their existing access. Participant creation uses 1/5 USD, 30 days and at most three valid keys by default; the ceilings are 5/25 USD and 90 days. `GET /api/mcp/keys` returns role-specific `defaults`, `limits` (including `keysPerOwner`) and `role`. Above-ceiling creation/updates return `INVALID_LIMIT`, excessive validity `INVALID_EXPIRY`, a fourth valid key `TOO_MANY_KEYS`, and disabled access `FORBIDDEN_FOR_ROLE`. Admin edits of another person's key follow the owner's current role.
+
+Every authentication caps the participant's effective run/month limit at the lower of the stored value and current policy ceiling, including keys originally issued to internal people. Stored values and expiry stay unchanged. Management views add `effectiveMaxRunUsd`, `effectiveMaxMonthUsd`, `ownerRole` (`admin`, `internal`, `participant`, `local` or null) and show capped values. Internally, authenticated keys carry effective `maxRunUsd`/`maxMonthUsd` and separate `storedMaxRunUsd`/`storedMaxMonthUsd`. Lowering policy ceilings applies on the next request. **The team budget and credit always apply and can refuse a run below the key limit.** Higgsfield stays blocked for agents even when the participant may use it in the interface.
 
 **Tools**
 

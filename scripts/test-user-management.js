@@ -759,6 +759,8 @@ async function testChatToolsAdminOnly({ api, iso }) {
 /* ---------- admin-only routes ---------- */
 
 const ADMIN_ONLY_ROUTES = [
+  ['GET', '/api/mcp/policy'],
+  ['PUT', '/api/mcp/policy', { participant: { enabled: true, defaultRunUsd: 1, defaultMonthUsd: 5, maxRunUsd: 5, maxMonthUsd: 25, defaultExpiresInDays: 30, maxExpiresInDays: 90, keysPerOwner: 3 } }],
   ['GET', '/api/settings'],
   ['PUT', '/api/settings', { name: 'FAL_KEY', value: 'x' }],
   ['PUT', '/api/settings/preferences', { name: 'askVideoModel', value: false }],

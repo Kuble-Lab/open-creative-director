@@ -318,7 +318,7 @@ Externe Agents (Claude Code, Codex, eigene Bots) können über einen [MCP](https
 
 **Einrichten**
 
-1. Öffne **Menü → Agent-Zugang (MCP)** (Admins und interne Personen; im lokalen Modus alle). Der Dialog zeigt die Adresse des Endpunkts, deine Schlüssel mit Recht, Limits, Verbrauch im Monat, letzter Benutzung und Ablauf sowie ein Formular für einen neuen Schlüssel.
+1. Öffne **Menü → Agent-Zugang (MCP)** (Admins, interne Personen und Mitglieder aktiver Teams; im lokalen Modus alle). Der Dialog zeigt die Adresse des Endpunkts, deine Schlüssel mit Recht, Limits, Verbrauch im Monat, letzter Benutzung und Ablauf sowie ein Formular für einen neuen Schlüssel.
 2. Lege einen Schlüssel an: Name, Recht («Nur lesen» oder «Lesen und starten»), Limit pro Lauf, Limit pro Monat und Gültigkeit. Der Schlüssel wird **einmal** angezeigt; kopiere ihn sofort. Gespeichert wird nur ein Hash.
 3. Trage Adresse und Schlüssel im Agent ein. Für Claude Code:
 
@@ -331,9 +331,16 @@ Externe Agents (Claude Code, Codex, eigene Bots) können über einen [MCP](https
 **Schlüssel**
 
 - Format `ocd_k1_` plus 43 Zeichen (256 Bit Zufall). `data/mcp-keys.json` (Modus 600) enthält den SHA-256-Hash, ein kurzes Präfix für die Liste, Name, Besitzer, Recht, Limits, Erstellung, letzte Benutzung, Ablauf und Widerruf. Der Schlüssel erscheint nie in einem Log, einer Fehlermeldung oder im Kostenjournal.
-- Standard: 2 USD pro Lauf, 20 USD pro Monat, 90 Tage. Obergrenzen: 1000 USD pro Lauf, 10000 USD pro Monat, 365 Tage; höchstens 25 gültige Schlüssel pro Person.
-- Ein Schlüssel handelt als seine Person und sieht dieselben Workflows, Vorlagen und Teams, nie mehr. Er gilt nicht mehr, sobald die Person weder Admin noch intern ist oder aus der Team-Liste entfernt wurde. Teilnehmende und Gäste bekommen keine Schlüssel. Ohne Benutzerverwaltung (`AUTH_WHOAMI_URL` nicht gesetzt) handelt der Schlüssel als lokale Person, und alle, die die App erreichen, können Schlüssel anlegen.
+- Standard für Admins/Interne: 2 USD pro Lauf, 20 USD pro Monat, 90 Tage. Obergrenzen: 1000 USD pro Lauf, 10000 USD pro Monat, 365 Tage; höchstens 25 gültige Schlüssel pro Person.
+- Ein Schlüssel handelt als seine Person und sieht dieselben Workflows, Vorlagen und Teams, nie mehr. Teilnehmende brauchen die Mitgliedschaft in einem aktiven Team und eine aktivierte Richtlinie. Entfernen oder Archivieren des Teams sperrt den Zugang sofort, sofern keine andere berechtigte Rolle besteht. Gäste bekommen keine Schlüssel. Interne müssen weiterhin in der Personenliste stehen. Ohne Benutzerverwaltung (`AUTH_WHOAMI_URL` nicht gesetzt) handelt der Schlüssel als lokale Person; alle, die die App erreichen, können Schlüssel anlegen.
 - Admins sehen und widerrufen alle Schlüssel, alle anderen nur ihre eigenen. Ein Widerruf wirkt sofort. API: `GET` und `POST /api/mcp/keys`, `PATCH` und `DELETE /api/mcp/keys/:id` (Fehler `INVALID_NAME`, `INVALID_RIGHT`, `INVALID_LIMIT`, `INVALID_EXPIRY`, `TOO_MANY_KEYS`, `KEY_NOT_FOUND`, `KEY_REVOKED`, `FORBIDDEN_FOR_ROLE`).
+
+
+**Richtlinie für Teilnehmende.** Admins (auch der lokale Nutzer) konfigurieren «Limits für Teilnehmende» im Agent-Dialog oder über `GET /api/mcp/policy` und `PUT /api/mcp/policy`. Andere Rollen erhalten 403. Vollständiger Request und Response: `{ "participant": { "enabled": true, "defaultRunUsd": 1, "defaultMonthUsd": 5, "maxRunUsd": 5, "maxMonthUsd": 25, "defaultExpiresInDays": 30, "maxExpiresInDays": 90, "keysPerOwner": 3 } }`. Beträge sind endliche Zahlen ab null, Vorgaben höchstens die Obergrenzen und Obergrenzen höchstens die globalen Schlüssel-Limits. Tage sind ganze Zahlen 1–365, Schlüssel pro Person 1–25. Ungültige Richtlinien ergeben 400 `INVALID_POLICY`.
+
+`data/mcp-policy.json` wird atomar mit Modus 0600 geschrieben. Fehlt die Datei, gelten diese Vorgaben; eine unlesbare oder ungültige Datei sperrt Teilnehmende, während Admins/Interne unverändert Zugang haben. Für Teilnehmende gelten standardmässig 1/5 USD, 30 Tage und höchstens drei gültige Schlüssel; Obergrenzen sind 5/25 USD und 90 Tage. `GET /api/mcp/keys` liefert rollengerechte `defaults`, `limits` (inklusive `keysPerOwner`) und `role`. Zu hohe Limits beim Anlegen/Ändern ergeben `INVALID_LIMIT`, eine zu lange Gültigkeit `INVALID_EXPIRY`, der vierte gültige Schlüssel `TOO_MANY_KEYS`, deaktivierter Zugang `FORBIDDEN_FOR_ROLE`. Auch wenn ein Admin einen fremden Schlüssel ändert, zählt die aktuelle Rolle des Besitzers.
+
+Bei jeder Authentifizierung werden die wirksamen Lauf-/Monatslimits auf das Minimum aus gespeichertem Wert und aktueller Obergrenze gekappt, auch bei früher als interne Person angelegten Schlüsseln. Gespeicherte Werte und Ablauf bleiben erhalten. Verwaltungsansichten ergänzen `effectiveMaxRunUsd`, `effectiveMaxMonthUsd`, `ownerRole` (`admin`, `internal`, `participant`, `local` oder null) und zeigen gekappte Werte. Intern enthalten authentifizierte Schlüssel wirksame `maxRunUsd`/`maxMonthUsd` sowie separate `storedMaxRunUsd`/`storedMaxMonthUsd`. Gesenkte Obergrenzen wirken ab der nächsten Anfrage. **Das Team-Budget und Guthaben gelten immer und können einen Lauf unterhalb des Schlüssel-Limits ablehnen.** Higgsfield bleibt für Agents gesperrt, selbst wenn Teilnehmende es in der Oberfläche nutzen dürfen.
 
 **Werkzeuge**
 

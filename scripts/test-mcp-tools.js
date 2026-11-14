@@ -886,6 +886,85 @@ async function run(iso, holder) {
   // the cost journal of the real app: the free run booked nothing, and the file link does not need a login
   assert.equal((await api(`/mcp/files/${pathOf(liveFiles[0].url).split('/').pop()}`)).status, 200);
 
+  /* ----- participant keys use the same service, visibility and team budget as the app ----- */
+
+  const P = 'learner@gmail.example';
+  const course = (await api('/api/teams', { method: 'POST', as: ADMIN, json: { name: 'MCP-Kurs', budgetUsd: 0.6 } })).body.team;
+  assert.equal((await api(`/api/teams/${course.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P] } })).status, 201);
+  const participant = makeKey({ name: 'Teilnehmend', owner: P, right: 'start', maxRunUsd: 5, maxMonthUsd: 25 });
+  secrets.push(participant.secret);
+  const pViewer = access.viewerOf({ kubleUser: P });
+  assert.equal(pViewer.kind, 'participant');
+  const pOwn = await mk(P, 'Mein Kurslauf', freeGraph());
+  const pPay = await mk(P, 'Bezahlt im Kurs', paidGraph());
+  const pPay2 = await mk(P, 'Bezahlt im Kurs 2', paidGraph());
+  const legacy = await mk(null, 'Alte interne Daten', freeGraph());
+  const pShared = await mk(STAFF2, 'Kursfreigabe', freeGraph(), { share: { shareMode: 'teams', sharedTeams: [course.id] } });
+  const pIds = (await ok(participant.secret, 'list_workflows')).workflows.map((item) => item.id);
+  assert.ok(pIds.includes(pOwn.id) && pIds.includes(pShared.id));
+  for (const hidden of [foreignPrivate, sharedWithAll, legacy, free]) {
+    assert.ok(!pIds.includes(hidden.id));
+    for (const name of ['get_workflow', 'estimate_run', 'run_workflow']) {
+      await refused(participant.secret, name, { workflow_id: hidden.id, ...(name === 'run_workflow' ? { max_usd: 5 } : {}) }, /Not found/);
+    }
+  }
+  const pTemplates = await ok(participant.secret, 'list_templates');
+  assert.ok(!pTemplates.templates.some((item) => item.id === 'hf-flow'));
+  assert.deepEqual(pTemplates.templates.map((item) => item.id), (await baseService.listRunnable(pViewer)).items.filter((item) => item.kind === 'template').map((item) => item.id), 'the template catalogue matches the UI service');
+  const preparedForP = await ok(participant.secret, 'create_from_template', { template_id: 'free-text', inputs: { Idea: 'Kurs' } });
+  const pStored = await wfStore.readWorkflow(preparedForP.workflow_id);
+  assert.equal(pStored.owner, P);
+  assert.equal(pStored.teamId, course.id);
+  await refused(participant.secret, 'create_from_template', { template_id: 'hf-flow' }, /not available/);
+
+  // Even if the UI grants USD-backed Higgsfield access, agent starts remain blocked.
+  const accessHf = access.higgsfieldAllowed;
+  access.higgsfieldAllowed = () => true;
+  try {
+    const pHf = await mk(P, 'Higgsfield im Kurs', hfGraph);
+    await refused(participant.secret, 'run_workflow', { workflow_id: pHf.id, max_usd: 5 }, /Higgsfield.*not available through agent access/);
+    assert.equal(calls.hf, 0);
+  } finally { access.higgsfieldAllowed = accessHf; }
+
+  const policy = iso.load('lib/mcp/policy').defaultStore;
+  const initialPolicy = policy.get();
+  policy.set({ participant: { ...initialPolicy.participant, defaultRunUsd: 0.1, maxRunUsd: 0.3 } });
+  const limitedRun = await ok(participant.secret, 'estimate_run', { workflow_id: pPay.id });
+  assert.equal(limitedRun.agent.max_run_usd, 0.3);
+  assert.equal(limitedRun.agent.can_start, false);
+  await refused(participant.secret, 'run_workflow', { workflow_id: pPay.id, max_usd: 5 }, /limit of \$0\.30 per run/);
+  assert.equal(keys.get(participant.id).maxRunUsd, 5);
+  policy.set({ participant: { ...initialPolicy.participant, defaultMonthUsd: 0.1, maxMonthUsd: 0.3 } });
+  const limitedMonth = await ok(participant.secret, 'estimate_run', { workflow_id: pPay.id });
+  assert.equal(limitedMonth.agent.month_limit_usd, 0.3);
+  await refused(participant.secret, 'run_workflow', { workflow_id: pPay.id, max_usd: 5 }, /limit of \$0\.30 per month/);
+  policy.set(initialPolicy);
+
+  const pFirst = await ok(participant.secret, 'run_workflow', { workflow_id: pPay.id, max_usd: 5 });
+  assert.equal((await finish(participant.secret, pFirst.run_id)).status, 'completed');
+  const pBudget = await budgetLib.status(pViewer);
+  assert.ok(Math.abs(pBudget.remainingUsd - 0.2) < 0.00001, JSON.stringify(pBudget));
+  const pPlan = await ok(participant.secret, 'estimate_run', { workflow_id: pPay2.id });
+  assert.equal(pPlan.agent.can_start, false);
+  assert.match(pPlan.agent.problems.join(' '), /budget.*does not cover/);
+  assert.ok(pPlan.agent.max_run_usd > pBudget.remainingUsd, 'a key limit cannot add team credit');
+  const beforeBudgetRefusal = calls.paid;
+  await refused(participant.secret, 'run_workflow', { workflow_id: pPay2.id, max_usd: 5 }, /budget.*does not cover/);
+  await assert.rejects(baseService.start(pViewer, pPay2.id, { maxUsd: 5 }), (err) => err.code === 'BUDGET_INSUFFICIENT', 'the UI run service gives the same budget refusal');
+  assert.equal(calls.paid, beforeBudgetRefusal);
+
+  // Runtime guards receive the authenticated owner as ctx.user, including models and internal branding resources.
+  const realRegistry = iso.load('lib/nodes/registry').registry;
+  const toolNames = (await rpc(participant.secret, 'tools/list')).json.result.tools.map((item) => item.name);
+  assert.ok(!toolNames.some((name) => /gts|branding|custom_template/.test(name)));
+  const llm = iso.load('lib/nodes/llm');
+  const authenticated = keys.authenticate(participant.secret);
+  assert.equal(authenticated.viewer.email, P);
+  await assert.rejects(llm.completeText({ user: authenticated.viewer.email, model: 'chatgpt/gpt-5.6-sol', prompt: 'x' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'chatgpt');
+  await assert.rejects(llm.completeText({ user: authenticated.viewer.email, model: 'unlisted/model', restrictedModels: ['allowed/model'], prompt: 'x' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'models');
+  await assert.rejects(realRegistry.get('input.branding').execute({ user: authenticated.viewer.email, log() {} }, {}, { branding: 'internal-brand' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'brandings');
+  assert.equal(iso.load('lib/mcp/workflow-tools').describeError({ code: 'FORBIDDEN_FOR_ROLE', feature: 'models', message: 'Model blocked' }).includes('models'), true);
+
   // no key shows up in any answer
   const output = everything.join('\n');
   for (const secret of secrets) {

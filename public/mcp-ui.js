@@ -1,7 +1,7 @@
 'use strict';
 
 // Interface of the agent access (MCP): the dialog "Agent access (MCP)". Server: lib/mcp/key-routes.js, routes /api/mcp/keys.
-// For admins and internal people (and in the local mode without user management); everybody else does not see the menu entry
+// For admins, internal people and participants (and in the local mode without user management); guests do not see the menu entry
 // and the server refuses the routes anyway (403 FORBIDDEN_FOR_ROLE).
 //
 //   OCMcp.attach()      adds the menu entry "Agent access (MCP)" (section 'account' of the shell menu)
@@ -18,8 +18,8 @@
   const tr = (key, vars) => (typeof global.t === 'function' ? global.t(key, vars) : key);
   const access = () => global.OCAccess;
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const DEFAULT_LIMITS = { nameChars: 80, maxRunUsd: 1000, maxMonthUsd: 10000, maxExpiresInDays: 365 };
-  const KNOWN_ERRORS = ['INVALID_NAME', 'INVALID_RIGHT', 'INVALID_LIMIT', 'INVALID_EXPIRY', 'TOO_MANY_KEYS', 'KEY_NOT_FOUND', 'KEY_REVOKED', 'KEY_STORE_UNAVAILABLE', 'FORBIDDEN_FOR_ROLE'];
+  const DEFAULT_LIMITS = { nameChars: 80, maxRunUsd: 1000, maxMonthUsd: 10000, maxExpiresInDays: 365, keysPerOwner: 25 };
+  const KNOWN_ERRORS = ['INVALID_NAME', 'INVALID_RIGHT', 'INVALID_LIMIT', 'INVALID_EXPIRY', 'TOO_MANY_KEYS', 'KEY_NOT_FOUND', 'KEY_REVOKED', 'KEY_STORE_UNAVAILABLE', 'FORBIDDEN_FOR_ROLE', 'INVALID_POLICY'];
 
   function h(tag, attrs, ...children) {
     const node = document.createElement(tag);
@@ -84,15 +84,15 @@
     if (!error.status && !error.code) return tr('common.networkError');
     if (error.code && KNOWN_ERRORS.includes(error.code)) {
       const bounds = { ...DEFAULT_LIMITS, ...(limits || {}) };
-      return tr(`mcp.err.${error.code}`, { nameChars: bounds.nameChars, maxRun: bounds.maxRunUsd, maxMonth: bounds.maxMonthUsd, maxDays: bounds.maxExpiresInDays, maxKeys: 25 });
+      return tr(`mcp.err.${error.code}`, { nameChars: bounds.nameChars, maxRun: bounds.maxRunUsd, maxMonth: bounds.maxMonthUsd, maxDays: bounds.maxExpiresInDays, maxKeys: bounds.keysPerOwner });
     }
     return tr('mcp.err.generic', { error: error.message || '' });
   }
 
-  // Menu entry and dialog are for admins and internal people; the local mode has no roles.
+  // Menu entry and dialog are for admins, internal people and participants; the local mode has no roles.
   function allowed(me) {
     if (!me || !me.active) return true;
-    return Boolean(me.isAdmin || me.role === 'user');
+    return Boolean(me.isAdmin || me.role === 'user' || me.role === 'participant');
   }
 
   /* ---------- state ---------- */
@@ -108,11 +108,14 @@
     revealed: false,
     pending: null, // two-step confirmation { key, button, original, timer }
     trigger: null,
+    policyLoading: false,
+    policySaving: false,
+    policyData: null,
     refs: {}
   };
 
   const limitsOf = () => ({ ...DEFAULT_LIMITS, ...((state.data && state.data.limits) || {}) });
-  const defaultsOf = () => ({ maxRunUsd: 2, maxMonthUsd: 20, expiresInDays: 90, ...((state.data && state.data.defaults) || {}) });
+  const defaultsOf = () => ({ ...(access()?.me()?.role === 'participant' ? { maxRunUsd: 1, maxMonthUsd: 5, expiresInDays: 30 } : { maxRunUsd: 2, maxMonthUsd: 20, expiresInDays: 90 }), ...((state.data && state.data.defaults) || {}) });
   const addressOf = () => (state.data && state.data.endpoint) || '';
 
   function feedback(message, { error = false } = {}) {
@@ -204,6 +207,129 @@
     return button;
   }
 
+  // Policy editing uses the existing form components; values are filled only by a policy load/save.
+  const POLICY_FIELDS = [
+    ['defaultRunUsd', 'mcp.policy.defaultRun'],
+    ['defaultMonthUsd', 'mcp.policy.defaultMonth'],
+    ['maxRunUsd', 'mcp.policy.maxRun'],
+    ['maxMonthUsd', 'mcp.policy.maxMonth'],
+    ['defaultExpiresInDays', 'mcp.policy.defaultDays'],
+    ['maxExpiresInDays', 'mcp.policy.maxDays'],
+    ['keysPerOwner', 'mcp.policy.keys']
+  ];
+  const POLICY_DEFAULTS = { enabled: true, defaultRunUsd: 1, defaultMonthUsd: 5, maxRunUsd: 5, maxMonthUsd: 25, defaultExpiresInDays: 30, maxExpiresInDays: 90, keysPerOwner: 3 };
+  const isPolicyAdmin = () => {
+    const me = access()?.me();
+    return Boolean(me && (!me.active || me.isAdmin));
+  };
+
+  function effectiveLimitText(stored, effective) {
+    const value = Number.isFinite(effective) ? effective : stored;
+    return value < stored ? tr('mcp.effectiveLimit', { effective: fmt(value), stored: fmt(stored) }) : fmt(value);
+  }
+
+  function policyValues(form) {
+    const participant = { enabled: form.elements.enabled.checked };
+    for (const [name] of POLICY_FIELDS) {
+      const text = form.elements[name].value;
+      const value = /Days$/.test(name) || name === 'keysPerOwner' ? parseDays(text) : parseAmount(text);
+      if (value === null || !Number.isFinite(value)) return null;
+      participant[name] = value;
+    }
+    return { participant };
+  }
+
+  function fillPolicy() {
+    const form = state.refs.policyForm;
+    if (!form) return;
+    const participant = state.policyData?.participant || POLICY_DEFAULTS;
+    form.elements.enabled.checked = participant.enabled;
+    for (const [name] of POLICY_FIELDS) form.elements[name].value = String(participant[name]);
+  }
+
+  function renderPolicyTexts() {
+    const section = state.refs.policy;
+    if (!section) return;
+    section.classList.toggle('hidden', !isPolicyAdmin());
+    const form = state.refs.policyForm;
+    form.querySelector('.render-node-form-heading').textContent = tr('mcp.policy.title');
+    form.querySelector('[data-policy="enabled"] > span').textContent = tr('mcp.policy.enabled');
+    for (const [name, key] of POLICY_FIELDS) form.querySelector(`[data-policy="${name}"] > span`).textContent = tr(key);
+    form.querySelector('.mcp-limits-hint').textContent = tr('mcp.policy.hint');
+    form.querySelector('button[type="submit"]').textContent = tr(state.policySaving ? 'mcp.policy.saving' : 'mcp.policy.save');
+    form.setAttribute('aria-busy', String(state.policyLoading || state.policySaving));
+    for (const control of form.elements) control.disabled = !isPolicyAdmin() || state.policyLoading || state.policySaving;
+  }
+
+  async function loadPolicy() {
+    if (!isPolicyAdmin() || state.policyLoading || state.policySaving) return;
+    state.policyLoading = true;
+    state.refs.policyFeedback.textContent = tr('mcp.loading');
+    state.refs.policyFeedback.classList.remove('error');
+    renderPolicyTexts();
+    try {
+      state.policyData = await request('GET', '/api/mcp/policy');
+      fillPolicy();
+      state.refs.policyFeedback.textContent = '';
+    } catch (error) {
+      state.policyData = null;
+      fillPolicy();
+      state.refs.policyFeedback.textContent = errorText(error, limitsOf());
+      state.refs.policyFeedback.classList.add('error');
+    } finally {
+      state.policyLoading = false;
+      renderPolicyTexts();
+    }
+  }
+
+  async function savePolicy(event) {
+    event.preventDefault();
+    if (!isPolicyAdmin() || state.policyLoading || state.policySaving) return;
+    const values = policyValues(state.refs.policyForm);
+    const box = state.refs.policyFeedback;
+    if (!values) {
+      box.textContent = tr('mcp.err.INVALID_POLICY');
+      box.classList.add('error');
+      return;
+    }
+    state.policySaving = true;
+    box.textContent = '';
+    box.classList.remove('error');
+    renderPolicyTexts();
+    try {
+      state.policyData = await request('PUT', '/api/mcp/policy', values);
+      fillPolicy();
+      box.textContent = tr('mcp.policy.saved');
+      await load({ quiet: true });
+    } catch (error) {
+      box.textContent = errorText(error, limitsOf());
+      box.classList.add('error');
+    } finally {
+      state.policySaving = false;
+      renderPolicyTexts();
+    }
+  }
+
+  function buildPolicyForm() {
+    const form = h('form', { class: 'mcp-form', novalidate: true }, h('div', { class: 'render-node-form-heading', id: 'mcpPolicyTitle' }));
+    const enabled = h('input', { id: 'mcpPolicyEnabled', name: 'enabled', type: 'checkbox' });
+    form.append(h('label', { class: 'render-node-field mcp-wide', for: enabled.id, dataset: { policy: 'enabled' } }, h('span'), enabled));
+    for (const [name] of POLICY_FIELDS) {
+      const days = /Days$/.test(name);
+      const integer = days || name === 'keysPerOwner';
+      const max = days ? 365 : name === 'keysPerOwner' ? 25 : /Month/.test(name) ? DEFAULT_LIMITS.maxMonthUsd : DEFAULT_LIMITS.maxRunUsd;
+      const input = h('input', { id: `mcpPolicy-${name}`, name, class: 'settings-input', type: 'number', min: integer ? '1' : '0', max: String(max), step: integer ? '1' : 'any', required: true });
+      form.append(h('label', { class: 'render-node-field', for: input.id, dataset: { policy: name } }, h('span'), input));
+    }
+    form.append(h('p', { class: 'settings-hint mcp-wide mcp-limits-hint' }), h('div', { class: 'team-edit-actions mcp-wide' }, h('button', { type: 'submit', class: 'branding-manager-action primary' })));
+    form.addEventListener('submit', savePolicy);
+    state.refs.policyForm = form;
+    state.refs.policyFeedback = h('p', { class: 'settings-feedback', role: 'status', 'aria-live': 'polite' });
+    const section = h('section', { class: 'mcp-new hidden', 'aria-labelledby': 'mcpPolicyTitle' }, form, state.refs.policyFeedback);
+    fillPolicy();
+    return section;
+  }
+
   /* ---------- data ---------- */
 
   async function load({ quiet = false } = {}) {
@@ -218,6 +344,7 @@
       applyDefaults();
     } catch (error) {
       state.loadError = errorText(error, null);
+      state.data = null;
     } finally {
       state.loading = false;
       renderAll();
@@ -244,6 +371,7 @@
     renderList();
     renderGuide();
     renderFormTexts();
+    renderPolicyTexts();
   }
 
   function renderAddress() {
@@ -328,7 +456,7 @@
     );
 
     const used = typeof key.monthUsedUsd === 'number' && Number.isFinite(key.monthUsedUsd) ? key.monthUsedUsd : null;
-    const limit = key.maxMonthUsd;
+    const limit = Number.isFinite(key.effectiveMaxMonthUsd) ? key.effectiveMaxMonthUsd : key.maxMonthUsd;
     let usage = null;
     if (used !== null) {
       const fraction = limit > 0 ? Math.min(1, used / limit) : used > 0 ? 1 : 0;
@@ -339,8 +467,8 @@
     const facts = h(
       'dl',
       { class: 'mcp-facts' },
-      fact(tr('mcp.limitRun'), fmt(key.maxRunUsd)),
-      fact(tr('mcp.limitMonth'), fmt(key.maxMonthUsd)),
+      fact(tr('mcp.limitRun'), effectiveLimitText(key.maxRunUsd, key.effectiveMaxRunUsd)),
+      fact(tr('mcp.limitMonth'), effectiveLimitText(key.maxMonthUsd, key.effectiveMaxMonthUsd)),
       usage ? fact(tr('mcp.monthUsed'), usage) : null,
       fact(tr('mcp.lastUsed'), key.lastUsedAt ? formatDate(key.lastUsedAt, { time: true }) : tr('mcp.neverUsed')),
       fact(tr(key.status === 'expired' ? 'mcp.expiredOn' : 'mcp.expires'), expires),
@@ -437,6 +565,10 @@
     form.querySelector('.mcp-right-hint').textContent = tr(select.value === 'start' ? 'mcp.new.rightStartHint' : 'mcp.new.rightReadHint');
     form.querySelector('.mcp-limits-hint').textContent = tr('mcp.new.limitsHint', { maxRun: limits.maxRunUsd, maxMonth: limits.maxMonthUsd, maxDays: limits.maxExpiresInDays });
     form.querySelector('button[type="submit"]').textContent = tr('mcp.new.create');
+    for (const control of form.elements) control.disabled = state.loading || !state.data;
+    const participant = state.data?.role === 'participant' || access()?.me()?.role === 'participant';
+    state.refs.teamBudget.classList.toggle('hidden', !participant);
+    state.refs.teamBudget.textContent = tr('mcp.teamBudget', { maxKeys: limits.keysPerOwner });
   }
 
   /* ---------- actions ---------- */
@@ -544,13 +676,17 @@
     state.refs.guide = h('section', { class: 'mcp-guide', 'aria-labelledby': 'mcpGuideTitle' });
     state.refs.feedback = h('div', { class: 'settings-feedback hidden', role: 'status', 'aria-live': 'polite' });
     state.refs.intro = h('p', { class: 'settings-hint' });
+    state.refs.teamBudget = h('p', { class: 'settings-hint hidden' });
+    state.refs.policy = buildPolicyForm();
     body.replaceChildren(
       state.refs.intro,
+      state.refs.teamBudget,
       state.refs.address,
       state.refs.secret,
       h('section', { class: 'mcp-keys', 'aria-labelledby': 'mcpKeysTitle' }, state.refs.listTitle, state.refs.list),
       h('section', { class: 'mcp-new', 'aria-label': tr('mcp.new.title') }, form),
       state.refs.feedback,
+      state.refs.policy,
       state.refs.guide
     );
     state.refs.intro.textContent = tr('mcp.intro');
@@ -570,6 +706,7 @@
     const close = document.getElementById('mcpClose');
     if (close) close.focus();
     load();
+    loadPolicy();
   }
 
   function close() {
@@ -613,7 +750,7 @@
     });
   }
 
-  // The menu entry "Agent access (MCP)": for admins and internal people.
+  // The menu entry "Agent access (MCP)": for admins, internal people and participants.
   function attach() {
     wire();
     if (state.attached || !global.OCShell) return;
@@ -624,5 +761,5 @@
     });
   }
 
-  global.OCMcp = { attach, open, close, rerender, helpers: { parseAmount, parseDays, claudeCommand, errorText, allowed, daysLeft } };
+  global.OCMcp = { attach, open, close, rerender, helpers: { parseAmount, parseDays, claudeCommand, errorText, allowed, daysLeft, effectiveLimitText, policyValues } };
 })(window);

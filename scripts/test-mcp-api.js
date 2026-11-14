@@ -85,7 +85,7 @@ async function testActiveMode(seenSecrets, responses) {
     const anonymous = await api('/api/mcp/keys');
     assert.equal(anonymous.status, 401, 'an unconfirmed login is refused like everywhere');
     assert.equal(anonymous.body.code, 'LOGIN_UNCONFIRMED');
-    for (const email of [P1, GUEST]) {
+    for (const email of [GUEST]) {
       for (const [method, url, json] of [['GET', '/api/mcp/keys'], ['POST', '/api/mcp/keys', { name: 'X', right: 'read' }], ['PATCH', '/api/mcp/keys/kaaaaaaaaaaaaaaaa', { name: 'X' }], ['DELETE', '/api/mcp/keys/kaaaaaaaaaaaaaaaa']]) {
         const response = await api(url, { method, as: email, json });
         assert.equal(response.status, 403, `${method} ${url} as ${email}`);
@@ -151,6 +151,8 @@ async function testActiveMode(seenSecrets, responses) {
     assert.equal(own.headers.get('cache-control'), 'no-store');
     assert.equal(own.body.endpoint, 'https://creator.example.com/mcp');
     assert.deepEqual(own.body.defaults, { maxRunUsd: 2, maxMonthUsd: 20, expiresInDays: 90 });
+    assert.equal(own.body.limits.keysPerOwner, 25);
+    assert.deepEqual((await api('/api/mcp/keys', { as: ADMIN })).body.defaults, own.body.defaults);
     assert.deepEqual(own.body.rights, ['read', 'start']);
     assert.equal(own.body.keys.filter((entry) => entry.status === 'active').length, 2);
     assert.ok(own.body.keys.every((entry) => entry.owner === STAFF));
@@ -239,15 +241,17 @@ async function testActiveMode(seenSecrets, responses) {
     assert.equal((await api('/api/mcp/keys', { method: 'POST', as: STAFF, json: { name: 'Wieder da', right: 'read' } })).status, 201, 'back on the list: a key again');
     assert.equal((await mcp(secret, rpc(1, 'ping'))).status, 200);
 
-    // becomes a participant (a team member): no key for participants
+    // Becomes a participant: the same key works with the participant policy and current role.
     const second = await api('/api/mcp/keys', { method: 'POST', as: STAFF2, json: { name: 'Zweiter', right: 'start' } });
     seenSecrets.push(second.body.secret);
     assert.equal((await mcp(second.body.secret, rpc(1, 'ping'))).status, 200);
     assert.equal((await api(`/api/teams/${team.body.team.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [STAFF2] } })).status, 201);
     const participant = await mcp(second.body.secret, rpc(1, 'ping'));
-    assert.equal(participant.status, 403);
-    assert.equal(participant.body.error.data.reason, 'owner_invalid');
-    assert.equal((await api('/api/mcp/keys', { method: 'POST', as: STAFF2, json: { name: 'Neu', right: 'read' } })).status, 403, 'and no new key');
+    assert.equal(participant.status, 200);
+    const participantKeys = await api('/api/mcp/keys', { as: STAFF2 });
+    assert.equal(participantKeys.body.keys.find((item) => item.id === second.body.key.id).ownerRole, 'participant');
+    assert.deepEqual(participantKeys.body.defaults, { maxRunUsd: 1, maxMonthUsd: 5, expiresInDays: 30 });
+    assert.equal((await api('/api/mcp/keys', { method: 'POST', as: STAFF2, json: { name: 'Neu', right: 'read' } })).status, 201, 'participants may create keys');
     assert.equal((await api(`/api/teams/${team.body.team.id}/members/${encodeURIComponent(STAFF2)}`, { method: 'DELETE', as: ADMIN })).status, 200);
     assert.equal((await mcp(second.body.secret, rpc(1, 'ping'))).status, 200, 'valid again when the person is internal again');
 
@@ -268,6 +272,82 @@ async function testActiveMode(seenSecrets, responses) {
     const noLonger = await mcp(outsider.body.secret, rpc(1, 'ping'));
     assert.equal(noLonger.status, 403, 'no admin, not internal: the key is no longer valid');
     assert.equal(noLonger.body.error.data.reason, 'owner_invalid');
+
+    /* ----- participant policy and lifecycle ----- */
+
+    const policy = (await api('/api/mcp/policy', { as: ADMIN })).body;
+    assert.deepEqual(policy.participant, { enabled: true, defaultRunUsd: 1, defaultMonthUsd: 5, maxRunUsd: 5, maxMonthUsd: 25, defaultExpiresInDays: 30, maxExpiresInDays: 90, keysPerOwner: 3 });
+    for (const as of [STAFF, P1, GUEST]) {
+      for (const method of ['GET', 'PUT']) assert.equal((await api('/api/mcp/policy', { method, as, ...(method === 'PUT' ? { json: policy } : {}) })).status, 403);
+    }
+    const savePolicy = (participant) => api('/api/mcp/policy', { method: 'PUT', as: ADMIN, json: { participant: { ...policy.participant, ...participant } } });
+    for (const invalid of [{ defaultRunUsd: 6 }, { defaultMonthUsd: 26 }, { maxRunUsd: 1001 }, { maxMonthUsd: 10001 }, { enabled: 'true' }, { keysPerOwner: 0 }, { keysPerOwner: 26 }, { defaultExpiresInDays: 0 }, { maxExpiresInDays: 366 }, { defaultExpiresInDays: 91 }, { maxExpiresInDays: 1.5 }, { defaultRunUsd: -1 }]) {
+      const response = await savePolicy(invalid);
+      assert.equal(response.status, 400, JSON.stringify(invalid));
+      assert.equal(response.body.code, 'INVALID_POLICY');
+    }
+    const pCreated = await api('/api/mcp/keys', { method: 'POST', as: P1, json: { name: 'Kurs-Agent', right: 'start' } });
+    assert.equal(pCreated.status, 201, pCreated.text);
+    seenSecrets.push(pCreated.body.secret);
+    const pk = pCreated.body.key;
+    assert.equal(pk.ownerRole, 'participant');
+    assert.equal(pk.maxRunUsd, 1);
+    assert.equal(pk.maxMonthUsd, 5);
+    assert.equal(Date.parse(pk.expiresAt) - Date.parse(pk.createdAt), 30 * 86400000);
+    const pList = await api('/api/mcp/keys', { as: P1 });
+    assert.equal(pList.body.limits.keysPerOwner, 3);
+    assert.equal(pList.body.limits.maxRunUsd, 5);
+    assert.equal(pList.body.limits.maxMonthUsd, 25);
+    assert.equal(pList.body.limits.maxExpiresInDays, 90);
+    for (const [extra, code] of [[{ maxRunUsd: 6 }, 'INVALID_LIMIT'], [{ maxMonthUsd: 26 }, 'INVALID_LIMIT'], [{ expiresInDays: 91 }, 'INVALID_EXPIRY']]) {
+      const response = await api('/api/mcp/keys', { method: 'POST', as: P1, json: { name: 'X', right: 'read', ...extra } });
+      assert.equal(response.status, 400);
+      assert.equal(response.body.code, code);
+    }
+    for (const as of [P1, ADMIN]) {
+      for (const patch of [{ maxRunUsd: 6 }, { maxMonthUsd: 26 }]) {
+        const response = await api(`/api/mcp/keys/${pk.id}`, { method: 'PATCH', as, json: patch });
+        assert.equal(response.status, 400, response.text);
+        assert.equal(response.body.code, 'INVALID_LIMIT', 'the owner role wins over the caller role');
+      }
+    }
+    for (let i = 0; i < 2; i += 1) {
+      const extra = await api('/api/mcp/keys', { method: 'POST', as: P1, json: { name: `Agent ${i}`, right: 'read' } });
+      assert.equal(extra.status, 201);
+      seenSecrets.push(extra.body.secret);
+    }
+    const fourth = await api('/api/mcp/keys', { method: 'POST', as: P1, json: { name: 'Vierter', right: 'read' } });
+    assert.equal(fourth.status, 400);
+    assert.equal(fourth.body.code, 'TOO_MANY_KEYS');
+    assert.equal((await mcp(pCreated.body.secret, rpc(1, 'ping'))).status, 200);
+    assert.equal((await savePolicy({ enabled: false })).status, 200);
+    assert.equal(fs.statSync(path.join(iso.root, 'data/mcp-policy.json')).mode & 0o777, 0o600);
+    const disabled = await api('/api/mcp/keys', { method: 'POST', as: P1, json: { name: 'X', right: 'read' } });
+    assert.equal(disabled.status, 403);
+    assert.equal(disabled.body.code, 'FORBIDDEN_FOR_ROLE');
+    assert.equal((await mcp(pCreated.body.secret, rpc(1, 'ping'))).body.error.data.reason, 'owner_invalid');
+    assert.equal((await mcp(secret, rpc(1, 'ping'))).status, 200, 'internal keys are unaffected');
+    await savePolicy({});
+    // Membership removal and team archival invalidate the token at the next use.
+    assert.equal((await api(`/api/teams/${team.body.team.id}/members/${encodeURIComponent(P1)}`, { method: 'DELETE', as: ADMIN })).status, 200);
+    const removed = await mcp(pCreated.body.secret, rpc(1, 'ping'));
+    assert.equal(removed.status, 403);
+    assert.equal(removed.body.error.data.reason, 'owner_invalid');
+    await api(`/api/teams/${team.body.team.id}/members`, { method: 'POST', as: ADMIN, json: { emails: [P1] } });
+    assert.equal((await mcp(pCreated.body.secret, rpc(1, 'ping'))).status, 200);
+    await api(`/api/teams/${team.body.team.id}`, { method: 'PATCH', as: ADMIN, json: { archived: true } });
+    const archived = await mcp(pCreated.body.secret, rpc(1, 'ping'));
+    assert.equal(archived.status, 403);
+    assert.equal(archived.body.error.data.reason, 'owner_invalid');
+    await api(`/api/teams/${team.body.team.id}`, { method: 'PATCH', as: ADMIN, json: { archived: false } });
+    fs.writeFileSync(path.join(iso.root, 'data/mcp-policy.json'), '{broken');
+    assert.equal((await api('/api/mcp/policy', { as: ADMIN })).body.code, 'INVALID_POLICY');
+    assert.equal((await api('/api/mcp/keys', { as: P1 })).status, 403);
+    assert.equal((await mcp(pCreated.body.secret, rpc(1, 'ping'))).body.error.data.reason, 'owner_invalid');
+    assert.equal((await mcp(secret, rpc(1, 'ping'))).status, 200);
+    assert.equal((await api('/api/mcp/keys', { method: 'POST', as: STAFF, json: { name: 'Unverändert', right: 'read' } })).status, 201);
+    assert.equal((await api('/api/mcp/keys', { as: ADMIN })).status, 200);
+    assert.equal((await savePolicy({})).status, 200, 'an admin can repair a damaged policy');
 
     /* ----- the rest of the app is as it was ----- */
 
@@ -295,6 +375,9 @@ async function testLocalMode(seenSecrets, responses) {
     assert.equal(created.status, 201, created.text);
     assert.equal(created.body.key.owner, 'lokal');
     seenSecrets.push(created.body.secret);
+    assert.equal((await api('/api/mcp/policy')).status, 200);
+    const localPolicy = (await api('/api/mcp/policy')).body;
+    assert.equal((await api('/api/mcp/policy', { method: 'PUT', json: localPolicy })).status, 200);
     const listed = await api('/api/mcp/keys');
     assert.equal(listed.body.scope, 'all');
     assert.equal(listed.body.keys.length, 1);
