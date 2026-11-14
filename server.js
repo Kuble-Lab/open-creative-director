@@ -963,7 +963,7 @@ app.delete('/api/users/:email', (req, res) => {
 
 /* ---------- agent access (MCP) ---------- */
 
-// Keys of the agent access: admins and internal people (lib/mcp/key-routes.js).
+// Agent keys: admins, internal people and enabled participants; the policy is admin-only (lib/mcp/key-routes.js).
 registerKeyRoutes(app, { keys: mcp.keys, usage: (key) => mcp.accounting.monthSpentUsd(key.id) });
 
 /* ---------- teams (trainings with a USD budget per person) ---------- */

@@ -165,6 +165,9 @@ async function main() {
     assert.equal(store.update(created.key.id, { owner: BOB }).owner, ALICE);
     assert.throws(() => store.update(created.key.id, { maxRunUsd: -5 }), (error) => error.code === 'INVALID_LIMIT');
     assert.equal(store.get(created.key.id).maxRunUsd, 1, 'a refused change changes nothing');
+    assert.throws(() => store.update(created.key.id, { name: 'Must not leak into cache', maxRunUsd: 2, maxMonthUsd: -1 }), (error) => error.code === 'INVALID_LIMIT');
+    assert.equal(store.get(created.key.id).name, 'Neu benannt', 'a failed multi-field patch leaves the cache unchanged');
+    assert.equal(store.get(created.key.id).maxRunUsd, 1);
     assert.throws(() => store.update('k0000000000000000', { name: 'x' }), keysLib.KeyNotFoundError);
 
     const revoked = store.revoke(created.key.id, BOB);

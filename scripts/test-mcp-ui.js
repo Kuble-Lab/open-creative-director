@@ -45,18 +45,29 @@ function testHelpers() {
   const command = helpers.claudeCommand('https://app.example.com/mcp', '<Schlüssel>');
   assert.equal(command, 'claude mcp add --transport http open-creator https://app.example.com/mcp --header "Authorization: Bearer <Schlüssel>"');
 
-  // Who sees the menu entry: admins and internal people, the local mode; not participants and guests.
+  // Who sees the menu entry: admins, internal people, participants and the local mode; never guests.
   assert.equal(helpers.allowed({ active: false }), true, 'local mode');
   assert.equal(helpers.allowed({ active: true, isAdmin: true, role: 'admin' }), true);
   assert.equal(helpers.allowed({ active: true, isAdmin: false, role: 'user' }), true, 'internal person');
-  assert.equal(helpers.allowed({ active: true, isAdmin: false, role: 'participant' }), false);
+  assert.equal(helpers.allowed({ active: true, isAdmin: false, role: 'participant' }), true);
   assert.equal(helpers.allowed({ active: true, isAdmin: false, role: 'guest' }), false);
   assert.equal(helpers.allowed({ active: true, isAdmin: false, role: 'anonymous' }), false);
+  assert.equal(helpers.effectiveLimitText(5, 1), '$1.00 wirksam (gespeichert: $5.00)');
+  assert.equal(helpers.effectiveLimitText(5, 5), '$5.00');
+  assert.equal(helpers.effectiveLimitText(5, undefined), '$5.00');
+  assert.equal(helpers.effectiveLimitText(5, 0), '$0.00 wirksam (gespeichert: $5.00)');
+  const participant = { enabled: true, defaultRunUsd: 1, defaultMonthUsd: 5, maxRunUsd: 5, maxMonthUsd: 25, defaultExpiresInDays: 30, maxExpiresInDays: 90, keysPerOwner: 3 };
+  const elements = Object.fromEntries(Object.entries(participant).map(([name, value]) => [name, { value: String(value), checked: value }]));
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.policyValues({ elements }))), { participant });
+  elements.keysPerOwner.value = '1.5';
+  assert.equal(helpers.policyValues({ elements }), null);
+  elements.keysPerOwner.value = '';
+  assert.equal(helpers.policyValues({ elements }), null);
 }
 
 function testErrors() {
-  const keysSource = read('lib', 'mcp', 'keys.js') + read('lib', 'mcp', 'key-routes.js');
-  const codes = new Set([...keysSource.matchAll(/'((?:INVALID_(?:NAME|RIGHT|LIMIT|EXPIRY)|TOO_MANY_KEYS|KEY_NOT_FOUND|KEY_REVOKED|KEY_STORE_UNAVAILABLE|FORBIDDEN_FOR_ROLE))'/g)].map((match) => match[1]));
+  const keysSource = read('lib', 'mcp', 'keys.js') + read('lib', 'mcp', 'key-routes.js') + read('lib', 'mcp', 'policy.js');
+  const codes = new Set([...keysSource.matchAll(/'((?:INVALID_(?:NAME|RIGHT|LIMIT|EXPIRY|POLICY)|TOO_MANY_KEYS|KEY_NOT_FOUND|KEY_REVOKED|KEY_STORE_UNAVAILABLE|FORBIDDEN_FOR_ROLE))'/g)].map((match) => match[1]));
   assert.ok(codes.size >= 8, `the key API names its error codes (${[...codes].join(', ')})`);
   for (const lang of ['de', 'en', 'es']) {
     const window = load(lang);
@@ -105,6 +116,13 @@ function testWiring() {
   const index = read('public', 'index.html');
   const app = readAppSource();
   const source = read('public', 'mcp-ui.js');
+  assert.match(source, /request\('GET', '\/api\/mcp\/policy'/);
+  assert.match(source, /request\('PUT', '\/api\/mcp\/policy'/);
+  assert.match(source, /isPolicyAdmin/);
+  assert.match(source, /effectiveMaxRunUsd/);
+  assert.match(source, /effectiveMaxMonthUsd/);
+  assert.match(source, /maxKeys: bounds\.keysPerOwner/);
+  assert.match(source, /const limit = Number\.isFinite\(key\.effectiveMaxMonthUsd\)/, 'monthly usage uses the effective ceiling');
   const ids = new Set([...index.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
   const wanted = [...source.matchAll(/document\.getElementById\('([^']+)'\)/g)].map((match) => match[1]);
   assert.deepEqual(wanted.filter((id) => !ids.has(id)), [], 'mcp-ui.js reads only ids that index.html has');
