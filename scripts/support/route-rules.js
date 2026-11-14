@@ -22,6 +22,19 @@
 //   folder      the project folder: visible only with an entry the caller may see (404), rename / delete need
 //               admin rights or that every entry is the caller's
 const ROUTE_RULES = {
+  // Public OAuth discovery/grants; authorization requires an eligible confirmed owner.
+  'GET /.well-known/oauth-protected-resource': 'public',
+  'GET /.well-known/oauth-protected-resource/mcp': 'public',
+  'GET /.well-known/oauth-authorization-server': 'public',
+  'GET /.well-known/openid-configuration': 'public',
+  'OPTIONS /oauth/register': 'public',
+  'POST /oauth/register': 'public',
+  'OPTIONS /oauth/token': 'public',
+  'POST /oauth/token': 'public',
+  'OPTIONS /oauth/revoke': 'public',
+  'POST /oauth/revoke': 'public',
+  'GET /oauth/authorize': 'identified',
+  'POST /oauth/authorize': 'identified',
   // Personal Suno connection; anonymous callers receive 401, no shared fallback.
   'GET /api/suno/status': 'identified',
   'POST /api/suno/connect': 'identified',
@@ -192,6 +205,18 @@ const ROUTE_RULES = {
 //   forbidden   403 with the code FORBIDDEN_FOR_ROLE (internal resource, Higgsfield ...)
 //   own         only their own data
 const PARTICIPANT_RULES = {
+  'GET /.well-known/oauth-protected-resource': 'public',
+  'GET /.well-known/oauth-protected-resource/mcp': 'public',
+  'GET /.well-known/oauth-authorization-server': 'public',
+  'GET /.well-known/openid-configuration': 'public',
+  'OPTIONS /oauth/register': 'public',
+  'POST /oauth/register': 'public',
+  'OPTIONS /oauth/token': 'public',
+  'POST /oauth/token': 'public',
+  'OPTIONS /oauth/revoke': 'public',
+  'POST /oauth/revoke': 'public',
+  'GET /oauth/authorize': 'own', // enabled policy and active team; guests are refused
+  'POST /oauth/authorize': 'own',
   // Personal Suno connection; anonymous callers receive 401, no shared fallback.
   'GET /api/suno/status': 'own',
   'POST /api/suno/connect': 'own',

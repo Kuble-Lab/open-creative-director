@@ -107,6 +107,8 @@ app.use((req, res, next) => {
   }
   return apiMonitor.middleware(req, res, next);
 });
+// Consent sees the same recorded person as the rest of the app, before the shared body parsers.
+mcp.oauth.mountLoggedIn(app);
 app.use(compression({
   filter: (req, res) => {
     const type = String(res.getHeader('Content-Type') || '');
@@ -964,7 +966,7 @@ app.delete('/api/users/:email', (req, res) => {
 /* ---------- agent access (MCP) ---------- */
 
 // Agent keys: admins, internal people and enabled participants; the policy is admin-only (lib/mcp/key-routes.js).
-registerKeyRoutes(app, { keys: mcp.keys, usage: (key) => mcp.accounting.monthSpentUsd(key.id) });
+registerKeyRoutes(app, { keys: mcp.keys, oauth: mcp.oauth, usage: (key) => mcp.accounting.monthSpentUsd(key.id) });
 
 /* ---------- teams (trainings with a USD budget per person) ---------- */
 

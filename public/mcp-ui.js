@@ -381,6 +381,10 @@
       slot.append(h('p', { class: 'settings-hint', text: state.loadError ? tr('mcp.loadFailed', { error: state.loadError }) : tr('mcp.loading') }));
       return;
     }
+    if (state.data.oauth?.enabled) slot.append(
+      h('h3', { class: 'settings-section-title', text: tr('mcp.oauth.title') }),
+      h('p', { class: 'settings-hint', text: tr('mcp.oauth.hint') })
+    );
     const input = h('input', { id: 'mcpAddress', class: 'settings-input mcp-address', type: 'text', readonly: true, value: addressOf(), spellcheck: 'false', autocomplete: 'off', 'aria-describedby': 'mcpAddressHint' });
     input.addEventListener('focus', () => input.select());
     const copy = copyButton(tr('mcp.copyAddress'), () => addressOf(), () => input);
@@ -448,11 +452,11 @@
       h(
         'div',
         { class: 'mcp-key-head' },
-        h('h4', { class: 'mcp-key-name', id: titleId, text: key.name }),
+        h('h4', { class: 'mcp-key-name', id: titleId, text: key.kind === 'oauth' ? key.clientName : key.name }),
         h('span', { class: `mcp-badge is-${key.right === 'start' ? 'start' : 'read'}`, text: tr(`mcp.right.${key.right === 'start' ? 'start' : 'read'}`) }),
         h('span', { class: `mcp-badge is-status-${status.id}`, text: status.label })
       ),
-      h('div', { class: 'mcp-key-sub' }, h('code', { class: 'mcp-prefix', text: `${key.prefix}…` }), showOwner ? h('span', { class: 'mcp-owner', title: key.owner, text: tr('mcp.owner', { owner: key.owner }) }) : null)
+      h('div', { class: 'mcp-key-sub' }, key.kind === 'oauth' ? h('span', { class: 'mcp-badge', text: tr('mcp.oauth.connection') }) : h('code', { class: 'mcp-prefix', text: `${key.prefix}…` }), showOwner ? h('span', { class: 'mcp-owner', title: key.owner, text: tr('mcp.owner', { owner: key.owner }) }) : null)
     );
 
     const used = typeof key.monthUsedUsd === 'number' && Number.isFinite(key.monthUsedUsd) ? key.monthUsedUsd : null;

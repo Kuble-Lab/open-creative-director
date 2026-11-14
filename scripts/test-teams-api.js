@@ -720,6 +720,16 @@ async function testRulesTable(ctx) {
       assert.equal(response.body.feature, 'mcp');
     }
   }
+  // OAuth consent is behind whoami too: guests are refused before client lookup; eligible participants
+  // still need a valid client request and a signed consent form. No redirect is possible without a client.
+  for (const email of [P1, GUEST]) {
+    const get = await call(email, 'GET', '/oauth/authorize');
+    assert.equal(get.status, email === GUEST ? 403 : 400, `OAuth authorize GET as ${email}`);
+    assert.equal(get.headers.get('location'), null);
+    const post = await call(email, 'POST', '/oauth/authorize', {});
+    assert.equal(post.status, 403, `OAuth authorize POST without a consent proof as ${email}`);
+    assert.equal(post.headers.get('location'), null);
+  }
   // own computers as render nodes (WP46): participants and guests connect computers of their own and see only those
   for (const email of [P1, GUEST]) {
     const mine = await call(email, 'GET', '/api/render-agents');
