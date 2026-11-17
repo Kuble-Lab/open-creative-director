@@ -17,6 +17,12 @@ Der Node läuft über die persönliche Suno-Verbindung der Person, die den Lauf 
 
 `audio` ist der Song (Suno liefert zwei Fassungen als Varianten), `lyrics` der gesungene Text für «Songtext-Zeiten». Damit passt der Node an die Stelle des Song-Uploads in den HUD-Musikvideos.
 
+## Vorlage «Musikvideo im HUD-Stil (Song direkt mit Suno)»
+
+Die Vorlage `music-video-hud-suno-direct` ist der Film von `music-video-hud-suno`, aber ohne Upload: Der Node «Song erstellen (Suno)» steht an der Stelle des Song-Uploads (`n1`). Das Songpaket (`n28`) speist ihn, sein Ausgang `lyrics` geht an «Songtext-Zeiten» (`n3`), sein Ausgang `audio` an alle Stellen, die den Song brauchen, und an einen eigenen Ausgang «Song» (`n32`). Die App-Ansicht hat vier Schritte: 1 Songpaket lesen, 2 Song von Suno anhören, 3 Board, Figurenblatt und Bilder freigeben, 4 der Rest. Es wird eine Fassung geholt (`takes: 1`), und der Download-Credit ist erlaubt (`allow_download_credit: true`, im Formular abschaltbar), weil der Film ohne die Datei nicht weitergeht. Die Vorlage `music-video-hud-suno` mit Upload bleibt für alle, die kein Suno-Konto verbunden haben.
+
+In der Vorlage «Song mit Suno» steht der Schalter «Download-Credit erlauben» seit dieser Änderung auch im Formular der App-Ansicht.
+
 ## Stand der Abnahme
 
 Erster echter Lauf am 17.11.2026 auf Maniak (Premier-Konto): Die Tool-Namen `audio-create`, `audio-retrieve` und `audio-download` stimmen. Ein Song kostete 10 Suno-Credits. `audio-retrieve` liefert keine Datei; die Datei kommt über `audio-download`, das einen Download-Credit verlangt (`requires_credit`, dann `confirm: true`). Ein wiederholter Download desselben Songs wurde nicht nochmals belastet. Der Link zeigt auf `suno-data-uploads.s3.amazonaws.com`. Die Tests verwenden weiterhin simulierte Suno-Antworten.

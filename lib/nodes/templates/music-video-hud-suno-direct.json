@@ -1,0 +1,1225 @@
+{
+  "id": "music-video-hud-suno-direct",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Music video in the HUD style (song made by Suno)",
+  "description": "The same film as “Music video in the HUD style (your song)”, and Suno makes the song inside the workflow: you write the idea only once and upload nothing. Connect your Suno account once in the account menu under Suno; the song uses your own Suno credits (about 10 per song and one download credit) and the app charges nothing for it. Step 1 makes the Suno song pack from the idea and the singer (by default Claudia): the four blocks TITLE, STYLE, EXCLUDE and LYRICS, written by Claude Fable 5.2 for about 6 US cents. You read the pack, then step 2 has Suno make the song from it and you listen to it. Then the song is analysed, ElevenLabs finds when each line is sung, a language model (by default Claude Fable 5.2) plans the film from the same idea, Nano Banana 2.1 makes a character sheet (for Claudia with three official images of Claudia from claudia.gallery as references) and one picture per unit, H3 Max on fal.ai makes the lip sync and a clip for every other unit (turbo, 768P, 5 s; with a lower share of motion in the plan some units are stills with a parallax effect instead), ffmpeg cuts the base film and a render node draws the HUD in the look HUD Blue or Kuble (the karaoke line is off by default). About 6.3 US dollars per minute of song according to the planner (about 9.5 for 90 seconds, about 12.5 for two minutes; the clips and the lip sync are the biggest parts). Before each start the app shows the paid steps with their estimate, and nothing is charged before you confirm. Step 3 makes the board (the plan with the graphic of every line and the estimate for your whole film), the character sheet and the pictures for about 1.5 US dollars per minute of song; you approve them before step 4 makes the expensive rest. The end card says that the film is AI-generated and credits the figure. The planner board estimates pictures at the Nano Banana 2.1 list price. Choose GPT Image 2.6 Sunburst in “Image model”; picture-node prices stay unknown until a run of that model exists. Changing this setting keeps the plan and approvals.",
+  "requires": [
+    "openrouter",
+    "ffmpeg",
+    "elevenlabs",
+    "fal",
+    "rendernode"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n25",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Idea for song and video",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n26",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Singer (voice and persona)",
+        "params": {
+          "text": "Claudia, an adult AI pop singer in her late twenties. Voice: deadpan, clipped spoken verses rising into euphoric sung choruses, close and dry, every word crisp. Persona: deadpan and curious."
+        }
+      },
+      {
+        "id": "n27",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 250,
+        "title": "Request",
+        "params": {
+          "template": "IDEA\n{{a}}\n\nSINGER (voice and persona)\n{{b}}"
+        }
+      },
+      {
+        "id": "n28",
+        "type": "llm.chat",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 250,
+        "title": "Suno song pack",
+        "params": {
+          "model": "anthropic/claude-fable-5.2",
+          "system": "You write a complete Suno song pack for an AI pop singer. The user gives an idea and the singer (voice and persona). Answer in plain text with exactly these four blocks and nothing else:\n\nTITLE\n<a short title>\n\nSTYLE\n<one line for Suno's style field, at most 900 characters: genre and sub-genre, BPM, time signature, key (and a lift for the chorus if it helps), the main instruments and sound design, and the vocal delivery of the singer in concrete words, e.g. \"deadpan female spoken-word verses, close and dry, clipped and confident, rising into euphoric sung choruses, every word crisp and intelligible\">\n\nEXCLUDE\n<a comma-separated list for Suno's exclude field, e.g. \"rap, rock guitar, lo-fi, male lead vocal, mumbled vocals, big room EDM, dubstep\">\n\nLYRICS\n<the lyrics for Suno's lyrics field>\n\nRules for the lyrics:\n- The topic is obvious in the first two lines; one listen must be enough. Obscure references belong in the video, not in the words.\n- Sections in square brackets: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Drop], [Outro]. Sung parts may go in round brackets. Short stage directions in square brackets are allowed, e.g. [darker, the bass drops out].\n- Spoken verse lines are natural sentences of 10 to 13 syllables with the stressed words where speech stresses them; couplets rhyme on the last word. Sung hooks have 4 to 8 syllables and repeat.\n- Every line gives the video something to show: a number, a place, an object, a thing someone says. Numbers and abbreviations are written the way they are sung (\"two thousand and forty-eight\", \"A G I\").\n- Length: 1800 to 2400 characters in total (about two and a half minutes; Suno cuts everything after about 3000).\n- Write in the language of the idea unless the user asks for another one.\n- No real people, brands or song quotes.",
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n29",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 80,
+        "params": {
+          "label": "Suno song pack"
+        }
+      },
+      {
+        "id": "n1",
+        "type": "suno.song",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 520,
+        "title": "Song (Suno)",
+        "params": {
+          "pack": "",
+          "takes": 1,
+          "version": 1,
+          "allow_download_credit": true
+        }
+      },
+      {
+        "id": "n2",
+        "type": "audio.beats",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 60,
+        "params": {}
+      },
+      {
+        "id": "n3",
+        "type": "audio.lyrics_timing",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 360,
+        "params": {
+          "lyrics": "",
+          "method": "auto",
+          "voices": "auto"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "music_video.hud_plan",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": 200,
+        "params": {
+          "model": "",
+          "brief": "",
+          "figure": "NAME: Claudia\nFULL: a 28-year-old Caucasian American woman with a grown-up angular face, defined cheekbones and a strong jawline, pale skin and light freckles, a glossy black blunt jaw-length bob with heavy straight bangs and one clay-orange streak through the bangs, a small flat clay-orange eight-pointed star hair clip, a thin headset microphone at her cheek\nSHORT: a Caucasian American woman in her late twenties with pale skin and a glossy black blunt bob with heavy straight bangs and one clay-orange streak, a thin headset microphone\nLOOKS: editorial pop-star wardrobe that changes per chapter (for example a white cropped puff-sleeve shirt with a black pleated coated-nylon skirt, a liquid-chrome bodysuit, a glossy cobalt-blue patent-leather trench over white satin); the clay-orange streak and the star clip are the only clay accents on her\nFACE: a deadpan, curious resting face; when she sings, her mouth opens wide\nNEVER: a second Claudia, the word young, a microphone in front of her mouth when she sings\nCREDIT: Claudia by anabology (claudia.gallery)",
+          "style": "",
+          "theme": "hud",
+          "accent": "#3B82F6",
+          "hud_language": "en",
+          "brief_language": "en",
+          "official_images": true,
+          "listen": true,
+          "cuts_from_song": true,
+          "cuts_per_minute": 24,
+          "max_units": 50,
+          "lipsync_seconds_per_minute": 22,
+          "motion_share": 1,
+          "clip_seconds": 5,
+          "broll_share": 0.35,
+          "allow_plain": false
+        }
+      },
+      {
+        "id": "n5",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 60,
+        "title": "Character sheet",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "3:4",
+          "count": 1
+        }
+      },
+      {
+        "id": "n6",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 620,
+        "title": "Sung prompts with the sheet",
+        "params": {
+          "template": "The attached image is the character sheet of the main person. If this person appears in the picture, keep the face, hair, build and every accessory exactly as on the sheet, but take framing, pose, expression, clothes, place and light from the description, not from the sheet. {{a}}"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 920,
+        "title": "Story prompts with the sheet",
+        "params": {
+          "template": "The attached image is the character sheet of the main person. If this person appears in the picture, keep the face, hair, build and every accessory exactly as on the sheet, but take framing, pose, expression, clothes, place and light from the description, not from the sheet. {{a}}"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 2720,
+        "y": 1220,
+        "title": "Still prompts with the sheet",
+        "params": {
+          "template": "The attached image is the character sheet of the main person. If this person appears in the picture, keep the face, hair, build and every accessory exactly as on the sheet, but take framing, pose, expression, clothes, place and light from the description, not from the sheet. {{a}}"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 620,
+        "title": "Sung images",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n10",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 920,
+        "title": "Story images",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n11",
+        "type": "image.edit",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 1220,
+        "title": "Still images",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n12",
+        "type": "fal.h3_lipsync",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 620,
+        "title": "Sung clips (lip sync)",
+        "params": {
+          "resolution": "768P",
+          "transcription": false,
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n13",
+        "type": "fal.h3_video",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 920,
+        "title": "Story clips (H3 Max turbo)",
+        "params": {
+          "prompt": "",
+          "model": "turbo",
+          "resolution": "768P",
+          "aspect_ratio": "16:9",
+          "duration": 5,
+          "prompt_expansion": "balanced",
+          "seed": null,
+          "safety": true
+        }
+      },
+      {
+        "id": "n14",
+        "type": "fal.depth_map",
+        "typeVersion": 1,
+        "x": 3600,
+        "y": 1220,
+        "title": "Depth maps (parallax)",
+        "params": {
+          "enabled": true
+        }
+      },
+      {
+        "id": "n15",
+        "type": "image.to_video",
+        "typeVersion": 1,
+        "x": 4040,
+        "y": 1220,
+        "title": "Still clips (parallax)",
+        "params": {
+          "duration": 5,
+          "match_audio": false,
+          "fps": 24,
+          "zoom": "parallax_in",
+          "parallax_strength": 30
+        }
+      },
+      {
+        "id": "n16",
+        "type": "music_video.edit",
+        "typeVersion": 1,
+        "x": 4480,
+        "y": 920,
+        "title": "Base cut (no captions)",
+        "params": {
+          "transition": "cut",
+          "resolution": "1080p",
+          "fps": "24",
+          "fit": "crop",
+          "fade_out": 0,
+          "captions": "off",
+          "captions_position": "bottom"
+        }
+      },
+      {
+        "id": "n17",
+        "type": "music_video.hud_render",
+        "typeVersion": 1,
+        "x": 4920,
+        "y": 920,
+        "params": {
+          "theme": "auto",
+          "accent": "#3B82F6",
+          "karaoke": false,
+          "effects": "strong",
+          "grain": 0.35,
+          "glitch": 0.6,
+          "variation": 0,
+          "endcard": true,
+          "quality": "standard"
+        }
+      },
+      {
+        "id": "n18",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5360,
+        "y": 880,
+        "params": {
+          "label": "Music video"
+        }
+      },
+      {
+        "id": "n19",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5360,
+        "y": 1100,
+        "params": {
+          "label": "Contact sheet"
+        }
+      },
+      {
+        "id": "n20",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 60,
+        "params": {
+          "label": "Board"
+        }
+      },
+      {
+        "id": "n21",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 280,
+        "params": {
+          "label": "Character sheet"
+        }
+      },
+      {
+        "id": "n22",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 620,
+        "params": {
+          "label": "Sung images"
+        }
+      },
+      {
+        "id": "n23",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 920,
+        "params": {
+          "label": "Story images"
+        }
+      },
+      {
+        "id": "n24",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 5800,
+        "y": 1220,
+        "params": {
+          "label": "Still images"
+        }
+      },
+      {
+        "id": "n31",
+        "type": "input.image_model",
+        "typeVersion": 1,
+        "x": 3160,
+        "y": 60,
+        "title": "Image model",
+        "params": {
+          "model": "google/gemini-nano-banana-2.1"
+        }
+      },
+      {
+        "id": "n32",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 680,
+        "params": {
+          "label": "Song"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n2",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n3",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "analysis"
+        },
+        "to": {
+          "node": "n4",
+          "port": "analysis"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n3",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n4",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n4",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n4",
+          "port": "sheet_prompt"
+        },
+        "to": {
+          "node": "n5",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n4",
+          "port": "performance_prompts"
+        },
+        "to": {
+          "node": "n6",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "story_prompts"
+        },
+        "to": {
+          "node": "n7",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n4",
+          "port": "still_prompts"
+        },
+        "to": {
+          "node": "n8",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n6",
+          "port": "text"
+        },
+        "to": {
+          "node": "n9",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n9",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n7",
+          "port": "text"
+        },
+        "to": {
+          "node": "n10",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n10",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n8",
+          "port": "text"
+        },
+        "to": {
+          "node": "n11",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n11",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e43",
+        "from": {
+          "node": "n4",
+          "port": "sheet_refs"
+        },
+        "to": {
+          "node": "n5",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n9",
+          "port": "image"
+        },
+        "to": {
+          "node": "n12",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n4",
+          "port": "performance_audio"
+        },
+        "to": {
+          "node": "n12",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n10",
+          "port": "image"
+        },
+        "to": {
+          "node": "n13",
+          "port": "first_frame"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n4",
+          "port": "story_motion"
+        },
+        "to": {
+          "node": "n13",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n11",
+          "port": "image"
+        },
+        "to": {
+          "node": "n14",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n11",
+          "port": "image"
+        },
+        "to": {
+          "node": "n15",
+          "port": "image"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n14",
+          "port": "depth"
+        },
+        "to": {
+          "node": "n15",
+          "port": "depth"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n16",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e24",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n16",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e25",
+        "from": {
+          "node": "n13",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "story"
+        }
+      },
+      {
+        "id": "e26",
+        "from": {
+          "node": "n12",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "performance"
+        }
+      },
+      {
+        "id": "e27",
+        "from": {
+          "node": "n15",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "still_clips"
+        }
+      },
+      {
+        "id": "e28",
+        "from": {
+          "node": "n16",
+          "port": "video"
+        },
+        "to": {
+          "node": "n17",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e29",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n17",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e30",
+        "from": {
+          "node": "n4",
+          "port": "graphics"
+        },
+        "to": {
+          "node": "n17",
+          "port": "graphics"
+        }
+      },
+      {
+        "id": "e31",
+        "from": {
+          "node": "n17",
+          "port": "video"
+        },
+        "to": {
+          "node": "n18",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e32",
+        "from": {
+          "node": "n17",
+          "port": "sheet"
+        },
+        "to": {
+          "node": "n19",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e33",
+        "from": {
+          "node": "n4",
+          "port": "board"
+        },
+        "to": {
+          "node": "n20",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e34",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n21",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e35",
+        "from": {
+          "node": "n9",
+          "port": "image"
+        },
+        "to": {
+          "node": "n22",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e36",
+        "from": {
+          "node": "n10",
+          "port": "image"
+        },
+        "to": {
+          "node": "n23",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e37",
+        "from": {
+          "node": "n11",
+          "port": "image"
+        },
+        "to": {
+          "node": "n24",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e38",
+        "from": {
+          "node": "n25",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n27",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e39",
+        "from": {
+          "node": "n26",
+          "port": "text"
+        },
+        "to": {
+          "node": "n27",
+          "port": "b"
+        }
+      },
+      {
+        "id": "e40",
+        "from": {
+          "node": "n27",
+          "port": "text"
+        },
+        "to": {
+          "node": "n28",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e41",
+        "from": {
+          "node": "n28",
+          "port": "text"
+        },
+        "to": {
+          "node": "n29",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e42",
+        "from": {
+          "node": "n25",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e44",
+        "from": {
+          "node": "n31",
+          "port": "model"
+        },
+        "to": {
+          "node": "n5",
+          "port": "model"
+        }
+      },
+      {
+        "id": "e45",
+        "from": {
+          "node": "n31",
+          "port": "model"
+        },
+        "to": {
+          "node": "n9",
+          "port": "model"
+        }
+      },
+      {
+        "id": "e46",
+        "from": {
+          "node": "n31",
+          "port": "model"
+        },
+        "to": {
+          "node": "n10",
+          "port": "model"
+        }
+      },
+      {
+        "id": "e47",
+        "from": {
+          "node": "n31",
+          "port": "model"
+        },
+        "to": {
+          "node": "n11",
+          "port": "model"
+        }
+      },
+      {
+        "id": "e48",
+        "from": {
+          "node": "n28",
+          "port": "text"
+        },
+        "to": {
+          "node": "n1",
+          "port": "pack"
+        }
+      },
+      {
+        "id": "e49",
+        "from": {
+          "node": "n1",
+          "port": "lyrics"
+        },
+        "to": {
+          "node": "n3",
+          "port": "lyrics"
+        }
+      },
+      {
+        "id": "e50",
+        "from": {
+          "node": "n1",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n32",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 1400,
+        "y": 1040,
+        "w": 400,
+        "h": 780,
+        "text": "Write the idea once: it feeds the song pack and the film. If you like, change the singer (voice and persona). Connect your Suno account once: account menu → Suno → Connect. Step 1 makes only the Suno song pack, one answer of Claude Fable 5.2 with TITLE, STYLE, EXCLUDE and LYRICS for about 6 US cents. Step 2: the node Song (Suno) makes the song from the pack with your own Suno credits (about 10 per song and one download credit; without “Allow download credit” the node stops when Suno asks for one). The lyrics of the pack go to the line times. The same pack is never made twice: raise “Version” in the node Song (Suno) for another song. Step 3 makes the board (the plan of the film with the graphic of every line and the estimate), the character sheet and one picture per unit, for about 1.5 US dollars per minute of song: look at them and change the idea or the figure if they are not right. Step 4 (“Approve and finish” in the app view) makes the lip sync, the clips, the parallax of any stills, the cut and the HUD. In the node view press ▶ on the output node Suno song pack first, then on the output node Song, then run everything (or the output nodes Board, Character sheet, Sung images, Story images and Still images first); the pack and the song come from the cache. A song of up to about 3 minutes fits the default settings (50 units); for a longer one raise the clip length in the plan."
+      },
+      {
+        "id": "t2",
+        "x": 1400,
+        "y": 1860,
+        "w": 400,
+        "h": 940,
+        "text": "The pieces that have to agree: the clip length of the plan (5 s) is also the duration of the story clips and of the parallax clips; the pictures are 16:9 (the character sheet 3:4); the cut is 1080p at 24 frames per second with hard cuts and no captions, because the HUD draws the words itself (switch the karaoke line on in the form). All image nodes use Nano Banana 2.1. The prompts of the plan already contain the identity text of the figure, so the three text nodes in front of the picture nodes only tell the image model that the attached image is the character sheet and what to take from it. Style sets the look of the plan and, through “auto” in the node Draw music video HUD, of the render. The singer of the song pack and the figure of the film are two fields: if you change one, change the other one to match. If your account may not use Claude Fable 5.2, choose another model in the node Suno song pack. Rules for the figure Claudia (Claudia by anabology, claudia.gallery): say that the film is made with AI (the end card does it: keep it on), credit her, keep her an adult and make nothing explicit. She is fan work about Claude and has no connection to Anthropic. The planner board estimates pictures at the Nano Banana 2.1 list price. Choose GPT Image 2.6 Sunburst in “Image model”; picture-node prices stay unknown until a run of that model exists. Changing this setting keeps the plan and approvals."
+      },
+      {
+        "id": "t3",
+        "x": 1400,
+        "y": 380,
+        "w": 400,
+        "h": 80,
+        "text": "1. ▶ on Suno song pack: makes only the pack."
+      },
+      {
+        "id": "t4",
+        "x": 1400,
+        "y": 820,
+        "w": 400,
+        "h": 80,
+        "text": "2. ▶ on Song: Suno makes the song."
+      },
+      {
+        "id": "t5",
+        "x": 1400,
+        "y": 920,
+        "w": 400,
+        "h": 80,
+        "text": "3. “Run all” makes the video."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Music video in the HUD style (song made by Suno)",
+    "description": "Write your idea once and get a music video in the HUD style, with the song made by Suno through your own Suno account: nothing to download or upload. Step 1 writes the song pack, step 2 has Suno make the song, step 3 makes the board, the character sheet and the pictures for your approval, step 4 the rest: a photoreal AI singer with lip sync, cuts on the beat and a graphic for every lyric line. Before each start you see the paid steps and their estimate.",
+    "inputs": [
+      {
+        "node": "n25",
+        "param": "prompt",
+        "label": "Idea for song and video (story, mood, setting)"
+      },
+      {
+        "node": "n26",
+        "param": "text",
+        "label": "Singer: voice and persona (default: Claudia)"
+      },
+      {
+        "node": "n1",
+        "param": "allow_download_credit",
+        "label": "Allow the Suno download credit (needed to fetch the song file)"
+      },
+      {
+        "node": "n4",
+        "param": "figure",
+        "label": "Figure (optional, default: Claudia)"
+      },
+      {
+        "node": "n4",
+        "param": "theme",
+        "label": "Style"
+      },
+      {
+        "node": "n17",
+        "param": "karaoke",
+        "label": "Subtitles (karaoke line)"
+      },
+      {
+        "node": "n17",
+        "param": "effects",
+        "label": "Effects"
+      },
+      {
+        "node": "n4",
+        "param": "hud_language",
+        "label": "Language of the graphics and the AI label"
+      },
+      {
+        "node": "n31",
+        "param": "model",
+        "label": "Image model"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n18",
+        "label": "Music video"
+      },
+      {
+        "node": "n19",
+        "label": "Contact sheet"
+      },
+      {
+        "node": "n29",
+        "label": "Suno song pack",
+        "approve": true,
+        "hint": "Read the song pack. “Approve and go on with step 2” has Suno make the song from it with your own Suno account (about 10 Suno credits and one download credit)."
+      },
+      {
+        "node": "n32",
+        "label": "Song",
+        "approve": 2,
+        "hint": "Listen to the song. “Approve and go on with step 3” makes the board, the character sheet and the pictures. For another song raise “Version” in the node Song (Suno)."
+      },
+      {
+        "node": "n20",
+        "label": "Board",
+        "approve": 3
+      },
+      {
+        "node": "n21",
+        "label": "Character sheet",
+        "approve": 3
+      },
+      {
+        "node": "n22",
+        "label": "Sung images",
+        "approve": 3
+      },
+      {
+        "node": "n23",
+        "label": "Story images",
+        "approve": 3
+      },
+      {
+        "node": "n24",
+        "label": "Still images",
+        "approve": 3
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Musikvideo im HUD-Stil (Song direkt mit Suno)",
+      "description": "Derselbe Film wie «Musikvideo im HUD-Stil (eigener Song)», und Suno erstellt den Song im Workflow: Die Idee gibst du nur einmal ein und lädst nichts hoch. Verbinde dein Suno-Konto einmal im Account-Menü unter «Suno»; der Song braucht deine eigenen Suno-Credits (etwa 10 pro Song und einen Download-Credit), die App berechnet dafür nichts. Schritt 1 macht aus der Idee und der Sängerin (standardmässig Claudia) das Suno-Songpaket: die vier Blöcke TITLE, STYLE, EXCLUDE und LYRICS, geschrieben von Claude Fable 5.2 für etwa 6 US-Cent. Du liest das Paket, dann lässt Schritt 2 Suno daraus den Song erstellen und du hörst ihn an. Danach wird der Song analysiert, ElevenLabs findet die Zeiten jeder gesungenen Zeile, ein Sprachmodell (standardmässig Claude Fable 5.2) plant den Film aus derselben Idee, Nano Banana 2.1 macht ein Figurenblatt (für Claudia mit drei offiziellen Bildern von Claudia aus claudia.gallery als Referenz) und ein Bild pro Einheit, H3 Max auf fal.ai macht den Lippensync und für jede andere Einheit einen Clip (turbo, 768P, 5 s; mit weniger «Anteil Bewegung» im Plan werden einige Einheiten stattdessen Standbilder mit Parallaxe-Effekt), ffmpeg schneidet den Grundfilm und ein Render-Node zeichnet das HUD im Look HUD Blue oder Kuble (die Karaoke-Zeile ist standardmässig aus). Rund 6.3 US-Dollar pro Minute Song laut Planer (etwa 9.5 für 90 Sekunden, etwa 12.5 für zwei Minuten; Clips und Lippensync sind die grössten Teile). Vor jedem Start zeigt die App die bezahlten Schritte mit ihrer Schätzung, und vor deiner Bestätigung wird nichts berechnet. Schritt 3 macht das Board (der Plan mit der Grafik jeder Zeile und der Schätzung für den ganzen Film), das Figurenblatt und die Bilder für etwa 1.5 US-Dollar pro Minute Song; du gibst sie frei, bevor Schritt 4 den teuren Rest macht. Die Endkarte sagt, dass der Film KI-generiert ist, und nennt die Figur im Credit. Das Planer-Board schätzt Bilder mit dem Listenpreis von Nano Banana 2.1. GPT Image 2.6 Sunburst wählst du unter «Bildmodell»; die Preise der Bild-Nodes bleiben bis zu einem Lauf mit diesem Modell unbekannt. Der Wechsel erhält den Plan und die Freigaben.",
+      "node.n1": "Song (Suno)",
+      "node.n25": "Idee für Song und Video",
+      "node.n26": "Sängerin (Stimme und Persona)",
+      "node.n27": "Anfrage",
+      "node.n28": "Suno-Songpaket",
+      "node.n5": "Figurenblatt",
+      "node.n6": "Gesangs-Prompts mit Figurenblatt",
+      "node.n7": "Handlungs-Prompts mit Figurenblatt",
+      "node.n8": "Standbild-Prompts mit Figurenblatt",
+      "node.n9": "Gesangsbilder",
+      "node.n10": "Handlungsbilder",
+      "node.n11": "Standbilder",
+      "node.n12": "Gesangsclips (Lippensync)",
+      "node.n13": "Handlungsclips (H3 Max turbo)",
+      "node.n14": "Tiefenbilder (Parallaxe)",
+      "node.n15": "Standbild-Clips (Parallaxe)",
+      "node.n16": "Grundschnitt (ohne Untertitel)",
+      "note.t1": "Schreibe die Idee nur einmal: Sie speist das Songpaket und den Film. Ändere bei Bedarf die Sängerin (Stimme und Persona). Verbinde einmal dein Suno-Konto: Account-Menü → Suno → Verbinden. Schritt 1 macht nur das Suno-Songpaket, eine Antwort von Claude Fable 5.2 mit TITLE, STYLE, EXCLUDE und LYRICS für etwa 6 US-Cent. Schritt 2: Der Node «Song (Suno)» erstellt aus dem Paket den Song mit deinen eigenen Suno-Credits (etwa 10 pro Song und ein Download-Credit; ohne «Download-Credit erlauben» hält der Node an, wenn Suno einen verlangt). Der Songtext des Pakets geht an die Zeilenzeiten. Dasselbe Paket wird nie zweimal erstellt: Erhöhe im Node «Song (Suno)» die «Variante» für einen anderen Song. Schritt 3 macht das Board (der Plan des Films mit der Grafik jeder Zeile und der Schätzung), das Figurenblatt und ein Bild pro Einheit, für etwa 1.5 US-Dollar pro Minute Song: Sieh sie dir an und ändere die Idee oder die Figur, wenn sie nicht stimmen. Schritt 4 («Freigeben und fertigstellen» in der App-Ansicht) macht den Lippensync, die Clips, die Parallaxe allfälliger Standbilder, den Schnitt und das HUD. In der Node-Ansicht drückst du zuerst ▶ auf dem Ausgabe-Node «Suno-Songpaket», dann auf dem Ausgabe-Node «Song» und führst dann alles aus (oder zuerst die Ausgabe-Nodes «Board», «Figurenblatt», «Gesangsbilder», «Handlungsbilder» und «Standbilder»); das Paket und der Song kommen aus dem Cache. Ein Song bis etwa 3 Minuten passt zu den Standardeinstellungen (50 Einheiten); für einen längeren erhöhst du die Clip-Länge im Plan.",
+      "note.t2": "Was zusammenpassen muss: Die Clip-Länge des Plans (5 s) ist auch die Dauer der Handlungsclips und der Parallaxe-Clips; die Bilder sind 16:9 (das Figurenblatt 3:4); der Schnitt ist 1080p mit 24 Bildern pro Sekunde, harten Schnitten und ohne Untertitel, weil das HUD die Wörter selbst zeichnet (die Karaoke-Zeile schaltest du im Formular ein). Alle Bild-Nodes nutzen standardmässig Nano Banana 2.1. Die Prompts des Plans enthalten den Identitätstext der Figur schon; die drei Text-Nodes vor den Bild-Nodes sagen dem Bildmodell nur, dass das angehängte Bild das Figurenblatt ist und was es davon übernehmen soll. «Stil» legt den Look des Plans und, über «auto» im Node «Musikvideo-HUD zeichnen», des Renders fest. Die Sängerin des Songpakets und die Figur des Films sind zwei Felder: Wenn du eines änderst, passe das andere an. Darf dein Konto Claude Fable 5.2 nicht nutzen, wähle im Node «Suno-Songpaket» ein anderes Modell. Regeln für die Figur Claudia (Claudia by anabology, claudia.gallery): Sage, dass der Film mit KI gemacht ist (die Endkarte tut es, lass sie an), nenne sie im Credit, lass sie erwachsen und mache nichts Explizites. Sie ist Fan-Arbeit über Claude und hat keine Verbindung zu Anthropic. Das Planer-Board schätzt Bilder mit dem Listenpreis von Nano Banana 2.1. GPT Image 2.6 Sunburst wählst du unter «Bildmodell»; die Preise der Bild-Nodes bleiben bis zu einem Lauf mit diesem Modell unbekannt. Der Wechsel erhält den Plan und die Freigaben.",
+      "note.t3": "1. ▶ auf «Suno-Songpaket»: macht nur das Paket.",
+      "note.t4": "2. ▶ auf «Song»: Suno erstellt den Song.",
+      "note.t5": "3. «Alles ausführen» macht das Video.",
+      "app.title": "Musikvideo im HUD-Stil (Song direkt mit Suno)",
+      "app.description": "Schreibe deine Idee einmal und erhalte ein Musikvideo im HUD-Stil, den Song erstellt Suno über dein eigenes Suno-Konto: kein Herunterladen, kein Hochladen. Schritt 1 schreibt das Songpaket, Schritt 2 lässt Suno den Song erstellen, Schritt 3 macht das Board, das Figurenblatt und die Bilder zur Freigabe, Schritt 4 den Rest: eine fotorealistische KI-Sängerin mit Lippensync, Schnitte im Takt und eine Grafik für jede Textzeile. Vor jedem Start siehst du die bezahlten Schritte und ihre Schätzung.",
+      "app.input.n25.prompt": "Idee für Song und Video (Geschichte, Stimmung, Ort)",
+      "app.input.n26.text": "Sängerin: Stimme und Persona (Standard: Claudia)",
+      "app.input.n4.figure": "Figur (optional, Standard: Claudia)",
+      "app.input.n4.theme": "Stil",
+      "app.input.n17.karaoke": "Untertitel (Karaoke-Zeile)",
+      "app.input.n17.effects": "Effekte",
+      "app.input.n4.hud_language": "Sprache der Grafiken und der KI-Kennzeichnung",
+      "app.output.n18": "Musikvideo",
+      "app.output.n19": "Kontaktbogen",
+      "app.output.n29": "Suno-Songpaket",
+      "app.output.n20": "Board",
+      "app.output.n21": "Figurenblatt",
+      "app.output.n22": "Gesangsbilder",
+      "app.output.n23": "Handlungsbilder",
+      "app.output.n24": "Standbilder",
+      "app.hint.n29": "Lies das Songpaket. «Freigeben und weiter mit Schritt 2» lässt Suno daraus den Song erstellen, mit deinem eigenen Suno-Konto (etwa 10 Suno-Credits und ein Download-Credit).",
+      "param.n18.label": "Musikvideo",
+      "param.n19.label": "Kontaktbogen",
+      "param.n20.label": "Board",
+      "param.n21.label": "Figurenblatt",
+      "param.n22.label": "Gesangsbilder",
+      "param.n23.label": "Handlungsbilder",
+      "param.n24.label": "Standbilder",
+      "param.n29.label": "Suno-Songpaket",
+      "node.n31": "Bildmodell",
+      "app.input.n31.model": "Bildmodell",
+      "app.input.n1.allow_download_credit": "Suno-Download-Credit erlauben (nötig, um die Songdatei zu holen)",
+      "app.output.n32": "Song",
+      "param.n32.label": "Song",
+      "app.hint.n32": "Höre den Song an. «Freigeben und weiter mit Schritt 3» macht das Board, das Figurenblatt und die Bilder. Für einen anderen Song erhöhst du im Node «Song (Suno)» die «Variante»."
+    },
+    "es": {
+      "name": "Videoclip en estilo HUD (canción creada con Suno)",
+      "description": "El mismo vídeo que «Videoclip en estilo HUD (tu propia canción)», y Suno crea la canción dentro del flujo: escribes la idea una sola vez y no subes nada. Conecta tu cuenta de Suno una vez en el menú de la cuenta, en «Suno»; la canción usa tus propios créditos de Suno (unos 10 por canción y un crédito de descarga) y la app no cobra nada por ella. El paso 1 crea a partir de la idea y de la cantante (por defecto Claudia) el paquete de canción para Suno: los cuatro bloques TITLE, STYLE, EXCLUDE y LYRICS, escritos por Claude Fable 5.2 por unos 6 centavos de dólar. Lees el paquete, luego el paso 2 hace que Suno cree la canción y la escuchas. Después se analiza la canción, ElevenLabs encuentra cuándo se canta cada línea, un modelo de lenguaje (por defecto Claude Fable 5.2) planifica el vídeo a partir de la misma idea, Nano Banana 2.1 crea una hoja del personaje (para Claudia, con tres imágenes oficiales de Claudia de claudia.gallery como referencia) y una imagen por unidad, H3 Max en fal.ai crea la sincronización labial y un clip para cada una de las demás unidades (turbo, 768P, 5 s; si bajas esa proporción en el plan, algunas unidades son imágenes fijas con efecto de paralaje), ffmpeg corta el vídeo base y un nodo de render dibuja el HUD con el aspecto HUD Blue o Kuble (la línea de karaoke está desactivada por defecto). Unos 6,3 dólares por minuto de canción según el planificador (unos 9,5 para 90 segundos, unos 12,5 para dos minutos; los clips y la sincronización labial son las partes más caras). Antes de cada inicio la app muestra los pasos de pago con su estimación, y no se cobra nada antes de que confirmes. El paso 3 crea el tablero (el plan con el gráfico de cada línea y la estimación de todo el vídeo), la hoja del personaje y las imágenes por alrededor de 1,5 dólares por minuto de canción; tú los apruebas antes de que el paso 4 haga el resto, que es lo caro. La tarjeta final indica que el vídeo está generado con IA y da el crédito de la figura. El tablero estima las imágenes con el precio de lista de Nano Banana 2.1. Elige GPT Image 2.6 Sunburst en «Modelo de imagen»; los precios de los nodos de imagen siguen desconocidos hasta que exista una ejecución con ese modelo. El cambio conserva el plan y las aprobaciones.",
+      "node.n1": "Canción (Suno)",
+      "node.n25": "Idea para la canción y el vídeo",
+      "node.n26": "Cantante (voz y personaje)",
+      "node.n27": "Petición",
+      "node.n28": "Paquete de canción para Suno",
+      "node.n5": "Hoja del personaje",
+      "node.n6": "Prompts de canto con la hoja",
+      "node.n7": "Prompts de la historia con la hoja",
+      "node.n8": "Prompts de imágenes fijas con la hoja",
+      "node.n9": "Imágenes de canto",
+      "node.n10": "Imágenes de la historia",
+      "node.n11": "Imágenes fijas",
+      "node.n12": "Clips de canto (sincronización labial)",
+      "node.n13": "Clips de la historia (H3 Max turbo)",
+      "node.n14": "Mapas de profundidad (paralaje)",
+      "node.n15": "Clips de imágenes fijas (paralaje)",
+      "node.n16": "Montaje base (sin subtítulos)",
+      "note.t1": "Escribe la idea una sola vez: alimenta el paquete de canción y el vídeo. Si quieres, cambia la cantante (voz y personaje). Conecta una vez tu cuenta de Suno: menú de la cuenta → Suno → Conectar. El paso 1 crea solo el paquete de canción para Suno, una respuesta de Claude Fable 5.2 con TITLE, STYLE, EXCLUDE y LYRICS por unos 6 centavos de dólar. Paso 2: el nodo «Canción (Suno)» crea la canción a partir del paquete con tus propios créditos de Suno (unos 10 por canción y un crédito de descarga; sin «Permitir crédito de descarga» el nodo se detiene cuando Suno pide uno). La letra del paquete va a los tiempos de las líneas. El mismo paquete nunca se crea dos veces: sube la «Versión» en el nodo «Canción (Suno)» para otra canción. El paso 3 crea el tablero (el plan del vídeo con el gráfico de cada línea y la estimación), la hoja del personaje y una imagen por unidad, por alrededor de 1,5 dólares por minuto de canción: míralos y cambia la idea o la figura si no son correctas. El paso 4 («Aprobar y terminar» en la vista de app) crea la sincronización labial, los clips, el paralaje de las imágenes fijas que haya, el montaje y el HUD. En la vista de nodos pulsa primero ▶ en el nodo de salida «Paquete de canción para Suno», luego en el nodo de salida «Canción» y ejecuta después todo (o primero los nodos de salida Tablero, Hoja del personaje, Imágenes de canto, Imágenes de la historia e Imágenes fijas); el paquete y la canción salen de la caché. Una canción de hasta unos 3 minutos encaja con los ajustes predefinidos (50 unidades); para una más larga sube la duración del clip en el plan.",
+      "note.t2": "Lo que tiene que coincidir: la duración de clip del plan (5 s) es también la duración de los clips de la historia y de los clips de paralaje; las imágenes son 16:9 (la hoja del personaje 3:4); el montaje es 1080p a 24 fotogramas por segundo, con cortes secos y sin subtítulos, porque el HUD dibuja las palabras él mismo (la línea de karaoke se activa en el formulario). Todos los nodos de imagen usan Nano Banana 2.1 por defecto. Los prompts del plan ya contienen el texto de identidad de la figura, así que los tres nodos de texto delante de los nodos de imagen solo le dicen al modelo de imagen que la imagen adjunta es la hoja del personaje y qué debe tomar de ella. «Estilo» fija el aspecto del plan y, mediante «auto» en el nodo «Dibujar HUD del videoclip», el del render. La cantante del paquete de canción y la figura del vídeo son dos campos: si cambias uno, adapta el otro. Si tu cuenta no puede usar Claude Fable 5.2, elige otro modelo en el nodo «Paquete de canción para Suno». Reglas para la figura Claudia (Claudia by anabology, claudia.gallery): indica que el vídeo está hecho con IA (la tarjeta final lo hace: déjala activada), da su crédito, mantenla adulta y no hagas nada explícito. Es un trabajo de fans sobre Claude y no tiene ninguna relación con Anthropic. El tablero estima las imágenes con el precio de lista de Nano Banana 2.1. Elige GPT Image 2.6 Sunburst en «Modelo de imagen»; los precios de los nodos de imagen siguen desconocidos hasta que exista una ejecución con ese modelo. El cambio conserva el plan y las aprobaciones.",
+      "note.t3": "1. ▶ en «Paquete de canción para Suno»: crea solo el paquete.",
+      "note.t4": "2. ▶ en «Canción»: Suno crea la canción.",
+      "note.t5": "3. «Ejecutar todo» crea el vídeo.",
+      "app.title": "Videoclip en estilo HUD (canción creada con Suno)",
+      "app.description": "Escribe tu idea una sola vez y recibe un videoclip en estilo HUD; Suno crea la canción con tu propia cuenta de Suno: sin descargar ni subir nada. El paso 1 escribe el paquete de canción, el paso 2 hace que Suno cree la canción, el paso 3 crea el tablero, la hoja del personaje y las imágenes para tu aprobación, el paso 4 el resto: una cantante de IA fotorrealista con sincronización labial, cortes al ritmo y un gráfico para cada línea de la letra. Antes de cada inicio ves los pasos de pago y su estimación.",
+      "app.input.n25.prompt": "Idea para la canción y el vídeo (historia, ambiente, lugar)",
+      "app.input.n26.text": "Cantante: voz y personaje (por defecto: Claudia)",
+      "app.input.n4.figure": "Figura (opcional, por defecto: Claudia)",
+      "app.input.n4.theme": "Estilo",
+      "app.input.n17.karaoke": "Subtítulos (línea de karaoke)",
+      "app.input.n17.effects": "Efectos",
+      "app.input.n4.hud_language": "Idioma de los gráficos y de la indicación de IA",
+      "app.output.n18": "Videoclip",
+      "app.output.n19": "Hoja de contactos",
+      "app.output.n29": "Paquete de canción para Suno",
+      "app.output.n20": "Tablero",
+      "app.output.n21": "Hoja del personaje",
+      "app.output.n22": "Imágenes de canto",
+      "app.output.n23": "Imágenes de la historia",
+      "app.output.n24": "Imágenes fijas",
+      "app.hint.n29": "Lee el paquete de canción. «Aprobar y seguir con el paso 2» hace que Suno cree la canción con tu propia cuenta de Suno (unos 10 créditos de Suno y un crédito de descarga).",
+      "param.n18.label": "Videoclip",
+      "param.n19.label": "Hoja de contactos",
+      "param.n20.label": "Tablero",
+      "param.n21.label": "Hoja del personaje",
+      "param.n22.label": "Imágenes de canto",
+      "param.n23.label": "Imágenes de la historia",
+      "param.n24.label": "Imágenes fijas",
+      "param.n29.label": "Paquete de canción para Suno",
+      "node.n31": "Modelo de imagen",
+      "app.input.n31.model": "Modelo de imagen",
+      "app.input.n1.allow_download_credit": "Permitir el crédito de descarga de Suno (necesario para obtener el archivo)",
+      "app.output.n32": "Canción",
+      "param.n32.label": "Canción",
+      "app.hint.n32": "Escucha la canción. «Aprobar y seguir con el paso 3» crea el tablero, la hoja del personaje y las imágenes. Para otra canción sube la «Versión» en el nodo «Canción (Suno)»."
+    }
+  }
+}
