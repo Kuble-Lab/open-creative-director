@@ -10,7 +10,7 @@ Der Node läuft über die persönliche Suno-Verbindung der Person, die den Lauf 
 
 - Der offizielle Suno-MCP ist in der Beta und veröffentlicht seine Tool-Schemas nicht. Der Node liest darum vor dem Erstellen die Live-Tool-Liste (`tools/list`) und ordnet Songtext, Stil, Titel und Ausschluss den Feldern zu, die Suno wirklich anbietet. Fehlt das Erstell-Tool oder ein Pflichtfeld, bricht er ab, bevor Credits ausgegeben werden. Kennt Suno kein Ausschlussfeld, wird EXCLUDE weggelassen und im Protokoll genannt.
 - Dasselbe Paket derselben Person ist ein Song: Der Schlüssel aus Person, Paket und «Variante» geht als Idempotenzschlüssel an Suno, und die gelieferten Song-IDs werden unter `data/suno/songs/` gemerkt. Ein Lauf nach Zeitüberschreitung oder Abbruch holt denselben Song ab und erstellt nichts neu. Für einen neuen Song aus demselben Paket wird «Variante» erhöht.
-- Verlangt Suno für die Datei einen Download-Credit, hält der Node an. Erst mit dem Schalter «Download-Credit erlauben» bestätigt er den Download.
+- Verlangt Suno für die Datei einen Download-Credit, bestätigt der Node den Download, solange der Schalter «Download-Credit erlauben» an ist. Er ist seit dem 17.11.2026 standardmässig an (Entscheid Gustavo) und steht direkt auf der Node-Karte; ausgeschaltet hält der Node an. Bestehende Workflows behalten ihren gespeicherten Wert.
 - Die Datei wird nur per HTTPS von Suno-Hosts (`suno.ai`, `suno.com`, dazu `SUNO_AUDIO_HOSTS`) geladen, mit Grössenlimit und Prüfung des Dateityps.
 
 ## Ausgänge
