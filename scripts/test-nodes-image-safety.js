@@ -113,6 +113,17 @@ async function main() {
       }
     }
     patch(gemini, 'accepts', () => false);
+    // A connected model, rather than the param/config, starts the existing safety ladder and records the actual fallback.
+    for (const type of ['image.generate', 'image.edit']) {
+      calls.length = journal.length = 0;
+      answer = async () => { if (calls.length <= 3) throw blocked(); return response; };
+      const def = registry.get(type);
+      const gpt = 'openai/gpt-image-2';
+      const result = await def.execute(ctx({ imageModel: gpt, imageModels: [gpt, MODEL] }), { prompt: textValue(prompt), images: listValue('image', [ref]), model: textValue(MODEL) }, registry.normalizeParams(def, { model: gpt }));
+      assert.deepEqual(calls.map((call) => call.model), [MODEL, MODEL, MODEL, FALLBACK]);
+      assert.equal(result.cost.model, FALLBACK);
+      assert.equal(result.variants[0].image.imageSafetyFallback, true);
+    }
     assert.doesNotMatch(generate.softenImagePrompt('clone needle vein blood kill shoot drug naked klonen Nadel Vene Blut töten schiessen Drogen nackt clonar aguja vena sangre matar disparar droga desnuda'), /\b(clone|needle|vein|blood|kill|shoot|drug|naked|klonen|Nadel|Vene|Blut|töten|schiessen|Drogen|nackt|clonar|aguja|vena|sangre|matar|disparar|droga|desnuda)\b/i);
     // a picture without a person (the B-roll of the HUD) gets no person from the softening
     assert.match(generate.softenImagePrompt('WS, rows of empty mannequins, glass bursting on the beat. no text.'), /\. No people, calm, non-violent\.$/);
