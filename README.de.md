@@ -440,15 +440,20 @@ location /supercomputer/ {
 | --- | --- | --- |
 | `list_templates` | Lesen | Vorlagen mit Eingängen und Kostenspanne |
 | `list_workflows` | Lesen | Eigene und geteilte Workflows |
-| `get_workflow` | Lesen | Nodes, Eingänge, letzte Ergebnisse als Links |
+| `get_workflow` | Lesen | Adresse in der App (`url`), Nodes, Eingänge, letzte Ergebnisse als Links; mit `include_graph` der Graph (Nodes mit Parametern und Anschlüssen, Verbindungen) |
+| `list_node_types` | Lesen | Node-Typen, die sich hinzufügen lassen, mit Anschlüssen; mit `types` auch ihre Parameter |
 | `estimate_run` | Lesen | Kostenschätzung der Engine mit den bezahlten Schritten |
 | `get_run` | Lesen | Status, Fortschritt, Ergebnisse als Links (kann bis 30 s warten) |
 | `upload_asset` | Lesen und starten | Bild, Video oder Audio als Eingang: Base64 bis 15 MB, grössere Dateien über einen einmaligen Upload-Link |
-| `create_from_template` | Lesen und starten | Legt aus einer Vorlage einen Workflow an und füllt die Eingänge |
+| `create_from_template` | Lesen und starten | Legt aus einer Vorlage einen Workflow an und füllt die Eingänge; fehlen Pflicht-Eingänge, entsteht ein Entwurf (`missing_inputs`) statt einer Ablehnung |
+| `create_workflow` | Lesen und starten | Legt einen leeren Workflow an |
+| `edit_workflow` | Lesen und starten | Ändert den Graphen nach den Regeln des Editors: Nodes hinzufügen und entfernen, verbinden und trennen, Parameter und Titel setzen, Eingänge des Workflows festlegen. Alle Schritte eines Aufrufs oder keiner; es läuft nichts |
 | `run_workflow` | Lesen und starten | Startet einen Lauf; verlangt `max_usd`, den höchsten Betrag, den der Agent zu zahlen bereit ist |
 | `cancel_run` | Lesen und starten | Bricht einen Lauf dieses Schlüssels ab |
 
-Ein Schlüssel «Nur lesen» sieht und nutzt die fünf Lese-Werkzeuge. `run_workflow` lehnt mit einem verständlichen Grund ab, und es wird nichts belastet, wenn die Schätzung über `max_usd` oder über dem Limit pro Lauf liegt, wenn der Kalendermonat das Monatslimit überschreiten würde (gebuchte Kosten des Schlüssels plus Reservierungen laufender Läufe), wenn ein bezahlter Schritt keinen bekannten Preis hat, wenn der Workflow Higgsfield nutzt (für Agents gesperrt), wenn der Schlüssel schon zwei Läufe laufen hat oder wenn das Budget der Person nicht reicht.
+Jede Antwort zu einem Workflow nennt seine Adresse in der App (`url`, `<Basis>/#w=<id>`). `edit_workflow` handelt als die Person: Es erreicht ihre Workflows und die mit ihr geteilten, lehnt Node-Typen mit Credit-Preis (Higgsfield) und Datei-Parameter ab (den Parameter mit `expose_input` zum Eingang machen und die Datei in `inputs` mitgeben) und meldet, ob der Workflow danach starten kann.
+
+Ein Schlüssel «Nur lesen» sieht und nutzt die Lese-Werkzeuge. `run_workflow` lehnt mit einem verständlichen Grund ab, und es wird nichts belastet, wenn die Schätzung über `max_usd` oder über dem Limit pro Lauf liegt, wenn der Kalendermonat das Monatslimit überschreiten würde (gebuchte Kosten des Schlüssels plus Reservierungen laufender Läufe), wenn ein bezahlter Schritt keinen bekannten Preis hat, wenn der Workflow Higgsfield nutzt (für Agents gesperrt), wenn der Schlüssel schon zwei Läufe laufen hat oder wenn das Budget der Person nicht reicht.
 
 **Links.** Ergebnisse kommen als `GET /mcp/files/<token>` (signiert, 24 Stunden gültig, eine Datei, ohne Anmeldung; nur Medien, kein SVG und kein JSON). Grosse Uploads gehen an `PUT /mcp/upload/<token>` (15 Minuten gültig, einmal, bis 500 MB, SVG bis 10 MB, dieselben Typregeln wie beim normalen Upload). Links beginnen mit `PUBLIC_BASE_URL`, auch mit Unterpfad; ohne diese Variable gilt die Adresse der Anfrage. Das Signaturgeheimnis liegt in `data/mcp-link-secret` (Modus 600). Ein Upload-Link verfällt, sobald der Schlüssel widerrufen oder die Person nicht mehr zulässig ist; ein Ergebnis-Link ist signiert und hält keinen Zustand auf dem Server, er gilt also seine 24 Stunden.
 
