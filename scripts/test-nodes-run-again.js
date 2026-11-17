@@ -268,7 +268,10 @@ async function testController() {
     handlers.sse({ type: 'run_approval', runId: 'run-1', approval: { nodeId: 's', maxUsd: 1.1, requiredUsd: 2 } });
     handlers.sse({ type: 'run_accounting', runId: 'run-1', accounting: { bookedUsd: 0.5, reservedUsd: 0.6, openJobs: 1, financiallyComplete: false } });
     await sleep(10);
-    assert.match(runSlot.textContent, /Wartet auf Freigabe/);
+    // a run that waits for the approval stands out: its own state of the summary, a button that is the primary one, one toast
+    assert.match(runSlot.textContent, /Wartet auf deine Freigabe/);
+    assert.equal(toasts.filter((entry) => entry.message.includes('wartet auf deine Freigabe')).length, 1, 'one toast says that the run waits, not one per event');
+    assert.equal(toasts.find((entry) => entry.message.includes('wartet auf deine Freigabe')).kind, 'warn');
     assert.match(runSlot.textContent, /Gebucht/);
     assert.match(runSlot.textContent, /Reserviert/);
     assert.match(runSlot.textContent, /Abrechnung offen/);
