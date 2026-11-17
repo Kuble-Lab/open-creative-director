@@ -189,6 +189,11 @@
         "node": "n2",
         "param": "text",
         "label": "Singer: voice and persona (default: Claudia)"
+      },
+      {
+        "node": "n6",
+        "param": "allow_download_credit",
+        "label": "Allow the Suno download credit (needed when Suno asks for one to fetch the song file)"
       }
     ],
     "outputs": [
@@ -219,7 +224,8 @@
       "param.n5.label": "Suno-Songpaket",
       "node.n6": "Song (Suno)",
       "app.output.n7": "Song",
-      "param.n7.label": "Song"
+      "param.n7.label": "Song",
+      "app.input.n6.allow_download_credit": "Suno-Download-Credit erlauben (nötig, wenn Suno für die Songdatei einen verlangt)"
     },
     "es": {
       "name": "Canción con Suno",
@@ -237,7 +243,8 @@
       "param.n5.label": "Paquete de canción para Suno",
       "node.n6": "Canción (Suno)",
       "app.output.n7": "Canción",
-      "param.n7.label": "Canción"
+      "param.n7.label": "Canción",
+      "app.input.n6.allow_download_credit": "Permitir el crédito de descarga de Suno (necesario si Suno pide uno para el archivo)"
     }
   }
 }

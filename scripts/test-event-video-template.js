@@ -316,7 +316,7 @@ function testOtherCacheKeys() {
   const calibratedLines = [];
   for (const other of templates.loadTemplates()) {
     // templates added later have no keys to keep; the digest covers the ones that existed
-    if (other.id === 'event-video' || other.id === 'genjutsu-people-in-video' || other.id === 'suno-song') continue;
+    if (other.id === 'event-video' || other.id === 'genjutsu-people-in-video' || other.id === 'suno-song' || other.id === 'music-video-hud-suno-direct') continue;
     for (const lang of LANGS) {
       for (const node of templates.resolveTemplate(other.id, { lang }).graph.nodes) {
         const def = registry.get(node.type);
