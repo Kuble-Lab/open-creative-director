@@ -1,5 +1,15 @@
 # Node View — Implementation Notes
 
+## Camcorder frame and optional chorus words (2026-11-17)
+
+Camcorder is a third table in `themes.js`, using the existing mono font, base devices and beat-effects engine. Its optional presentation adapter adds a tape frame (fixed UTC epoch plus song time, never wall time). The post-pass dispatches `vhs` alongside `rgb` and `prism`: narrow tracking bands keep off the cut's face zone; optional planar chroma blur and faint grid lines use filters available in ffmpeg 6.1 and 9. An explicit filter inventory can disable blur/grid while retaining portable crop/overlay tracking. Grain is 1.6 times HUD Blue. No extra page effects or fonts.
+
+`chorus_words` is a select (`off`/`on`), matching the requested CLI values and existing effect-level controls, with `cacheOmitDefault`. A whole-song schedule uses the engine's detected chorus parts and karaoke word timings; slices retain global directions, emphasis and timestamps. Pure rectangle subtraction reserves the face and small devices, shrinks words down to 64 px and skips those that cannot fit. Entrances are clipped inside their reserved rooms. Tracked face boxes and the current camera/effects transform supplement the inferred cut zones; footage-copy effects hide the word conservatively. Large line displays are suppressed in chorus parts because two layers of large type are unreadable; the sung word wins. Karaoke pauses only while the word is shown. New DOM text uses `textContent`.
+
+Legacy inline state/view/runtime remain untouched. Only Camcorder and active chorus chunks load the adapter. The additive Camcorder section of the theme source is omitted from legacy inline scripts, keeping old chunk pages byte-identical without shipping a duplicate engine. Tests pin pre-change page SHA-256 values, node keys and existing planner prompt fingerprints. Templates keep their app inputs and saved keys; the existing registry-derived style selector includes Camcorder. The chorus option is available in the render node and preview CLI.
+
+Licence: the Apache-2.0 HyperFrames catalogue files `camcorder-hud.html` and `caption-kinetic-slam.html` were consulted only as visual references. All added markup, CSS and JavaScript was written anew for this MIT engine; no catalogue code, class names, comments or dependency was copied.
+
 ## HUD planner and one image model setting (2026-11-17)
 
 The HUD planner defaults to Claude Fable 5.2 (8/40 USD per million input/output tokens); explainer, research, scene and event planners keep GPT-6 Astra. The two Suno pack templates name Fable explicitly. The planner's blank model parameter and saved plan keys stay unchanged. The existing Anthropic OpenRouter path already fits: 64,000 initial / 128,000 maximum tokens, medium then low reasoning, JSON object response format with the existing 400 retry.

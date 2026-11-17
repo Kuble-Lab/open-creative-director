@@ -1,0 +1,16 @@
+/* Consumer tape lettering, measured with the existing mono face. Device geometry stays in the theme table. */
+#stage{--hi:255,255,255;--hs:rgba(0,0,0,.8)}
+#l-dev .dv{--ink:var(--tape-ink);--dim:var(--tape-dim);--hair:rgba(255,255,255,.6);--shade:rgba(0,0,0,.7);text-shadow:0 1px 3px #000}
+#l-dev .num,#l-dev .big,#l-dev .mult,#l-dev .strk,#l-dev .tstate,#l-dev .pnum,#l-dev .display:not(.serif) .drow{font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:0}
+/* Lift the subtitle band above the larger date and time stamp. */
+.kar{bottom:150px}
+#l-tape{color:var(--tape-ink);font:500 40px/1.3 'JetBrains Mono',monospace;text-shadow:0 1px 3px #000,1px 0 2px #000,-1px 0 2px #000;pointer-events:none}
+.tape-rec{position:absolute;left:48px;top:38px;display:flex;align-items:center;gap:18px}
+#tape-dot{display:inline-block;width:24px;height:24px;border-radius:50%;background:#E5484D;box-shadow:0 0 4px #000}
+.tape-power{position:absolute;right:50px;top:40px;width:84px;height:38px;border:4px solid var(--tape-ink);filter:drop-shadow(0 1px 2px #000)}
+.tape-power::after{content:'';position:absolute;right:-12px;top:8px;width:8px;height:14px;background:var(--tape-ink)}
+.tape-power i{position:absolute;inset:5px;background:repeating-linear-gradient(90deg,var(--tape-ink) 0 14px,transparent 14px 19px)}
+#tape-date{position:absolute;left:48px;bottom:38px;white-space:pre}
+.tape-clock{position:absolute;right:50px;bottom:38px;text-align:right}
+.tape-mode{font-size:27px;margin-bottom:6px}
+#l-words{--word-ink:var(--tape-ink);font-family:'JetBrains Mono',monospace;font-weight:700}

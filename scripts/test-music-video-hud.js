@@ -1400,7 +1400,7 @@ async function testNode(binaries, group) {
   const portsOf = (list) => list.map((port) => [port.id, port.type, Boolean(port.required)]);
   assert.deepEqual(portsOf(def.inputs), [['video', 'video', true], ['audio', 'audio', true], ['graphics', 'text', true]]);
   assert.deepEqual(portsOf(def.outputs), [['video', 'video', false], ['sheet', 'image', false]]);
-  assert.deepEqual(real.normalizeParams(def, {}), { theme: 'auto', accent: '#3B82F6', karaoke: false, effects: 'strong', grain: 0.35, glitch: 0.6, variation: 0, endcard: true, quality: 'standard' });
+  assert.deepEqual(real.normalizeParams(def, {}), { theme: 'auto', accent: '#3B82F6', karaoke: false, chorus_words: 'off', effects: 'strong', grain: 0.35, glitch: 0.6, variation: 0, endcard: true, quality: 'standard' });
   // WP45, WP49: the beat effects, strong by default; off makes the film of before (scripts/test-music-video-hud-effects.js)
   assert.deepEqual(def.params.find((param) => param.id === 'effects').options, ['off', 'subtle', 'strong', 'wild']);
   assert.deepEqual(real.checkParams(def, real.normalizeParams(def, { effects: 'wild' })), []);
@@ -1412,7 +1412,7 @@ async function testNode(binaries, group) {
   assert.equal(def.params.find((param) => param.id === 'variation').cacheOmitDefault, true);
   assert.equal(def.cacheStampAdopts, undefined, 'an entry from before the stamp is not taken');
   assert.deepEqual(def.params.find((param) => param.id === 'quality').options, ['draft', 'standard', 'high']);
-  assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['auto', 'hud', 'kuble'], 'the styles: the one of the plan (auto) is the default, HUD Blue and Kuble force one');
+  assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['auto', 'hud', 'kuble', 'camcorder'], 'the styles: the one of the plan (auto) is the default, the three named styles force one');
   assert.equal(def.params.find((param) => param.id === 'theme').default, 'auto');
   assert.equal(real.normalizeParams(def, { theme: 'kuble' }).theme, 'kuble');
   assert.equal(real.normalizeParams(def, { theme: 'hud' }).theme, 'hud');
@@ -1720,10 +1720,12 @@ async function testNode(binaries, group) {
       const ctx = makeCtx();
       // 12 s of film: one chunk; the card is off and the karaoke line is off
       const plain = JSON.parse(planFor(12));
-      const result = await exec(ctx, { video, audio: song, graphics: textValue(JSON.stringify(plain)) }, { karaoke: false, endcard: false, quality: 'draft', grain: 0, glitch: 0 });
+      const result = await exec(ctx, { video, audio: song, graphics: textValue(JSON.stringify(plain)) }, { karaoke: false, chorus_words: 'on', endcard: false, quality: 'draft', grain: 0, glitch: 0 });
       assert.equal(submits.length, 1);
       const page = JSON.parse(/window\.__HUD_DATA=(.*?);<\/script>/s.exec(submits[0].html)[1]);
       assert.deepEqual(page.options, { karaoke: false, endcard: false });
+      assert.equal(page.chorus, undefined, 'this plan has no detected chorus: the page is unchanged');
+      assert.equal(ctx.logs.filter((line) => /Chorus words: no chorus with usable word times/.test(line)).length, 1);
       assert.equal(page.graphics.endcard, null);
       const info = await probe(assets.assetFilePath(result.variants[0].video));
       near(Number(info.format.duration), 12, 0.06, 'no card: the film ends with the last cut');
@@ -1937,7 +1939,7 @@ const kubleOf = (input, options) => graphicsLib.prepareGraphics(input, { theme: 
 const kubleDemo = kubleOf(demoInput);
 
 function testKubleTable() {
-  assert.deepEqual(themes.NAMES, ['hud', 'kuble']);
+  assert.deepEqual(themes.NAMES, ['hud', 'kuble', 'camcorder']);
   assert.equal(themes.DEFAULT, 'hud');
   // the colours of Kuble v2 (dark first): Night Ink, Ink and its two greys, Kuble Blue (and its light form for writing and glow), the one amber
   const expected = { night: '#05070C', ink: '#F2F4F8', ink2: '#B4BCCC', ink3: '#8892A6', blue: '#2E5CFF', blueText: '#4E7BFF', amber: '#F7901F' };

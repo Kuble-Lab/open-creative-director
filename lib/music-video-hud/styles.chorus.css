@@ -1,0 +1,6 @@
+/* The room clips every entrance, so a moving word cannot cross its reserved free space. */
+#l-words{position:absolute;display:flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:none;font-family:'Anton',sans-serif;font-weight:400;line-height:1.25;white-space:pre;text-shadow:0 2px 5px #000;contain:paint}
+#l-words[hidden],#l-tape[hidden]{display:none}
+#l-words span{display:block;transform-origin:center}
+[data-theme="kuble"] #l-words{font-family:'Montserrat',sans-serif;font-weight:900;--word-ink:#F2F4F8}
+[data-theme="camcorder"] #l-words{font-family:'JetBrains Mono',monospace;font-weight:700;--word-ink:var(--tape-ink)}

@@ -1785,7 +1785,7 @@ async function testDefinition() {
   assert.deepEqual(real.normalizeParams(def, { cuts_per_minute: 99, max_units: 999, lipsync_seconds_per_minute: -3, motion_share: 5, clip_seconds: 1 }), {
     ...real.normalizeParams(def, {}), cuts_per_minute: 40, max_units: 120, lipsync_seconds_per_minute: 0, motion_share: 1, clip_seconds: 2
   });
-  assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['hud', 'kuble'], 'the planner writes one of the two styles (auto is for the renderer)');
+  assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['hud', 'kuble', 'camcorder'], 'the planner writes one of the three styles (auto is for the renderer)');
   assert.deepEqual(def.params.find((param) => param.id === 'hud_language').options, ['en', 'de', 'es']);
   assert.deepEqual(real.checkParams(def, real.normalizeParams(def, { theme: 'neon', hud_language: 'fr' })), ['param theme: "neon" is not a valid option', 'param hud_language: "fr" is not a valid option']);
   assert.deepEqual(real.checkParams(def, real.normalizeParams(def, { theme: 'kuble', hud_language: 'de' })), []);
@@ -1794,9 +1794,9 @@ async function testDefinition() {
     const name = { cuts_per_minute: 'cutsPerMinute', max_units: 'maxUnits', lipsync_seconds_per_minute: 'lipsyncSecondsPerMinute', motion_share: 'motionShare', clip_seconds: 'clipSeconds' }[id];
     assert.deepEqual([param.min, param.max, param.default], [...hudPlan.RANGES[name], hudPlan.DEFAULTS[name]], `${id}: the range of the node is the one of the planner`);
   }
-  // the renderer takes "auto" besides the two styles
+  // the renderer takes "auto" besides the three styles
   const renderTheme = render.params.find((param) => param.id === 'theme');
-  assert.deepEqual([renderTheme.options, renderTheme.default], [['auto', 'hud', 'kuble'], 'auto']);
+  assert.deepEqual([renderTheme.options, renderTheme.default], [['auto', 'hud', 'kuble', 'camcorder'], 'auto']);
 
   // an installation without ffmpeg or a language model cannot use it
   const ffmpegLib = require('../lib/ffmpeg');
