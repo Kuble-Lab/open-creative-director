@@ -697,8 +697,8 @@ function renderToolsMenu() {
       onClick: () => setRenderMode(!state.renderMode)
     }));
   }
-  // Creating and changing brandings is admin-only in the user management (the tools refuse everybody else).
-  if (OCAccess.canAdminister()) {
+  // Everybody may make brandings: an admin's is shared with the internal people, everybody else's is their own.
+  {
     el.toolsMenu.appendChild(toolsMenuOption({
       name: t('tools.brandingInterview'),
       icon: '🎨',

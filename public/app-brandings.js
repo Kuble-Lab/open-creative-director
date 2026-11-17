@@ -504,10 +504,12 @@ function renderBrandingsManager() {
       }, { disabled: !state.currentId || attached || inProject || state.streaming })
     );
 
-    if (OCAccess.canAdminister()) card.appendChild(brandingSpeakerBlock(branding));
+    // The server says who may change a branding: admins everything, everybody else their own.
+    const editable = typeof branding.editable === 'boolean' ? branding.editable : OCAccess.canAdminister();
+    if (editable) card.appendChild(brandingSpeakerBlock(branding));
 
     const confirming = state.pendingBrandingDeleteId === branding.id;
-    if (OCAccess.canAdminister()) {
+    if (editable) {
       actions.appendChild(
         managerAction(confirming ? t('common.reallyDelete') : t('common.delete'), () => {
           if (!confirming) {
@@ -626,7 +628,8 @@ async function deleteBranding(id) {
   if (sessionBrandingIds().includes(id)) {
     await updateCurrentSessionBrandings(sessionBrandingIds().filter((brandingId) => brandingId !== id));
   }
-  if (state.detail?.session?.folder && projectBrandingIds().includes(id)) {
+  // the project profile is admin territory: everybody else leaves it alone (a deleted branding simply drops out)
+  if (OCAccess.canAdminister() && state.detail?.session?.folder && projectBrandingIds().includes(id)) {
     const folder = state.detail.session.folder;
     const data = await api(`/api/folders/${encodeURIComponent(folder)}/profile`, {
       method: 'PUT',
@@ -650,7 +653,7 @@ async function openBrandingsModal() {
   showBrandingImportFeedback('');
   el.brandingsModal.classList.remove('hidden');
   el.brandingsClose.focus();
-  if (OCAccess.canAdminister() && brandingVoices.state !== 'ready') loadBrandingVoices().catch(() => {});
+  if (brandingVoices.state !== 'ready') loadBrandingVoices().catch(() => {});
   el.brandingsList.innerHTML = '';
   el.brandingsList.appendChild(textNode('div', 'branding-manager-empty', t('branding.loading')));
   try {

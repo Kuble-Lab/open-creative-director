@@ -494,12 +494,15 @@ async function run(iso) {
     assert.equal(gone.code, 'BRANDING_NOT_FOUND');
     assert.deepEqual(gone.data, { branding: 'no-such-branding' });
 
-    // rights: participants and guests have no brandings
+    // rights: participants and guests use their own brandings; somebody else's does not exist for them
     const refused = await errorOf(exec('input.branding', makeCtx({ user: GUEST }), {}, { branding: created.id }));
-    assert.ok(refused instanceof access.RoleRestrictedError);
-    assert.equal(refused.feature, 'brandings');
-    assert.equal(refused.code, 'FORBIDDEN_FOR_ROLE');
-    // the list of the select: the brandings for a normal account, none for a restricted one
+    assert.equal(refused.code, 'BRANDING_NOT_FOUND');
+    assert.match(refused.message, /belongs to somebody else/);
+    const guestOwn = await brandings.createBranding({ name: 'Guest brand', owner: GUEST });
+    assert.equal(JSON.parse((await exec('input.branding', makeCtx({ user: GUEST }), {}, { branding: guestOwn.id })).variants[0].brand.value).name, 'Guest brand');
+    assert.deepEqual((await iso.request('/api/nodes/options/brandings', { as: GUEST })).body.options, [{ value: guestOwn.id, label: 'Guest brand' }]);
+    await brandings.deleteBranding(guestOwn.id);
+    // the list of the select: the brandings for a normal account, only their own for a restricted one
     const listed = await iso.request('/api/nodes/options/brandings', { as: ADMIN });
     assert.equal(listed.status, 200, listed.text);
     assert.deepEqual(listed.body.options.map((option) => option.label).sort(), ['Acme', 'Bare', 'Vector only']);

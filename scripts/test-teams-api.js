@@ -835,7 +835,7 @@ async function testRulesTable(ctx) {
   assert.equal(models.status, 200);
   assert.ok(!models.body.options?.some((option) => chatgpt.BRAIN_MODELS.includes(option.value)));
 
-  // brandings and roles: none for participants
+  // brandings: participants and guests have their own, never the shared ones of the house or somebody else's; roles: none
   const created = await tools.executeTool({ sessionId: ctx.chat.id, config: {}, emit: () => {}, user: ADMIN }, 'create_branding', { name: 'Hausbranding' });
   assert.match(created.toolResult, /Branding erstellt/);
   const brandingId = (await api('/api/brandings', { as: STAFF })).body.brandings[0].id;
@@ -845,6 +845,69 @@ async function testRulesTable(ctx) {
   for (const url of [`/api/brandings/${brandingId}`, `/api/brandings/${brandingId}/export`, `/api/brandings/${brandingId}/assets/logo.png`]) {
     assert.equal((await call(P1, 'GET', url)).status, 404, url);
     if (!url.endsWith('logo.png')) assert.equal((await api(url, { as: STAFF })).status, 200, `${url} for internal people`);
+  }
+  assert.equal((await call(P1, 'PATCH', `/api/brandings/${brandingId}`, { speaker: null })).status, 404);
+  assert.equal((await call(P1, 'DELETE', `/api/brandings/${brandingId}`)).status, 404);
+  {
+    const access = iso.load('lib/access');
+    const brandingTools = iso.load('lib/tools/definitions').toolDefinitions(access.viewerOf({ kubleUser: P1 })).map((definition) => definition.function.name);
+    for (const name of ['create_branding', 'update_branding', 'add_branding_asset', 'import_branding_asset']) assert.ok(brandingTools.includes(name), `${name} is offered to a participant`);
+    assert.ok(!brandingTools.includes('import_gts_asset'));
+    const p1Chat = (await call(P1, 'POST', '/api/sessions', {})).body.session;
+    const asP1 = (name, args) => tools.executeTool({ sessionId: p1Chat.id, config: {}, emit: () => {}, user: P1 }, name, args);
+    assert.match((await asP1('create_branding', { name: 'Meine Marke' })).toolResult, /Branding erstellt/);
+    assert.match((await asP1('update_branding', { branding_id: 'Meine Marke', patch: { colors: [{ name: 'Rot', hex: '#CC0000' }], voice: { tone: 'frisch', language: 'de', dos: '', donts: '' } } })).toolResult, /aktualisiert/);
+    await assert.rejects(() => asP1('update_branding', { branding_id: brandingId, patch: { name: 'x' } }), /nicht gefunden/);
+    await assert.rejects(() => asP1('update_branding', { branding_id: 'Hausbranding', patch: { name: 'x' } }), /nicht gefunden/);
+    const mine = (await call(P1, 'GET', '/api/brandings')).body.brandings;
+    assert.deepEqual(mine.map((item) => [item.name, item.editable, item.own]), [['Meine Marke', true, true]]);
+    const mineId = mine[0].id;
+    assert.equal((await call(P1, 'GET', `/api/brandings/${mineId}`)).body.editable, true);
+    assert.equal((await call(P1, 'GET', `/api/brandings/${mineId}/export`, undefined, { raw: true })).status, 200);
+    assert.deepEqual((await call(GUEST, 'GET', '/api/brandings')).body.brandings, [], 'a guest does not see the branding of a participant');
+    assert.equal((await call(P2, 'GET', `/api/brandings/${mineId}`)).status, 404, 'nor does another participant of the same team');
+    assert.equal((await api('/api/brandings', { as: STAFF })).body.brandings.length, 1, 'nor do internal people');
+    assert.equal((await api('/api/brandings', { as: ADMIN })).body.brandings.find((item) => item.id === mineId).owner, P1);
+    // the select of the node and the node itself
+    assert.deepEqual((await call(P1, 'GET', '/api/nodes/options/brandings')).body.options, [{ value: mineId, label: 'Meine Marke' }]);
+    assert.deepEqual((await call(GUEST, 'GET', '/api/nodes/options/brandings')).body.options, []);
+    const brandingNode = iso.load('lib/nodes/registry').registry.get('input.branding');
+    const ran = await brandingNode.execute({ user: P1, log() {} }, {}, { branding: mineId });
+    assert.equal(JSON.parse(ran.variants[0].brand.value).name, 'Meine Marke');
+    await assert.rejects(brandingNode.execute({ user: P1, log() {} }, {}, { branding: brandingId }), (err) => err.code === 'BRANDING_NOT_FOUND' && /belongs to somebody else/.test(err.message));
+    await assert.rejects(brandingNode.execute({ user: P2, log() {} }, {}, { branding: mineId }), (err) => err.code === 'BRANDING_NOT_FOUND');
+    // the chat: attach one's own, never somebody else's; the prompt holds it only for those who may see it
+    assert.equal((await call(P1, 'PATCH', `/api/sessions/${p1Chat.id}`, { brandings: [brandingId] })).status, 400);
+    assert.equal((await call(P1, 'PATCH', `/api/sessions/${p1Chat.id}`, { brandings: [mineId] })).status, 200);
+    assert.deepEqual((await call(P1, 'GET', `/api/sessions/${p1Chat.id}`)).body.session.brandings, [mineId]);
+    const brain = iso.load('lib/brain');
+    assert.match(await brain.brandingsSection([mineId, brandingId], access.viewerOf({ kubleUser: P1 })), /Meine Marke/);
+    assert.doesNotMatch(await brain.brandingsSection([mineId, brandingId], access.viewerOf({ kubleUser: P1 })), /Hausbranding/);
+    assert.equal(await brain.brandingsSection([mineId], access.viewerOf({ kubleUser: P2 })), '');
+    assert.equal((await call(P2, 'DELETE', `/api/brandings/${mineId}`)).status, 404);
+    // the ZIP import: a participant's import is their own branding
+    const zip = await new Promise((resolve, reject) => {
+      const output = new (require('stream').PassThrough)();
+      const chunks = [];
+      output.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      output.on('error', reject);
+      output.on('end', () => resolve(Buffer.concat(chunks)));
+      const archive = require('archiver')('zip');
+      archive.on('error', reject);
+      archive.pipe(output);
+      archive.append(Buffer.from(':root { --color-primary: #112233; }'), { name: 'tokens.css' });
+      archive.append(Buffer.from('# Importmarke\n\nSchreibe klar.'), { name: 'README.md' });
+      archive.finalize().catch(reject);
+    });
+    const imported = await call(P1, 'POST', '/api/brandings/import', undefined, { body: zip, headers: { 'content-type': 'application/zip', 'x-file-name': 'marke.zip' } });
+    assert.equal(imported.status, 201, imported.text);
+    const afterImport = (await call(P1, 'GET', '/api/brandings')).body.brandings;
+    assert.equal(afterImport.length, 2);
+    assert.ok(afterImport.every((item) => item.own && item.editable));
+    assert.equal((await api('/api/brandings', { as: STAFF })).body.brandings.length, 1, 'the import of a participant is not shared');
+    for (const item of afterImport.filter((entry) => entry.id !== mineId)) assert.equal((await call(P1, 'DELETE', `/api/brandings/${item.id}`)).status, 200);
+    assert.equal((await call(P1, 'DELETE', `/api/brandings/${mineId}`)).status, 200);
+    assert.deepEqual((await call(P1, 'GET', '/api/brandings')).body.brandings, []);
   }
   assert.deepEqual((await call(P1, 'GET', '/api/roles')).body.roles, []);
   assert.equal((await call(P1, 'GET', '/api/roles/default')).status, 200);

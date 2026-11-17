@@ -731,29 +731,70 @@ async function testMemoryIsolation({ api, iso, store }) {
   }
 }
 
-// The chat tools must not do what the admin-only routes forbid: brandings are global and admin-maintained.
+// Brandings belong to a person (lib/brandings.js): an admin's are shared with the internal people and only admins change
+// them; everybody else makes, changes and deletes their own, which nobody else sees. The chat tools and the routes agree.
 async function testChatToolsAdminOnly({ api, iso }) {
   const tools = iso.load('lib/tools');
   const chat = (await api('/api/sessions', { method: 'POST', as: BOB, json: {} })).body.session;
   const run = (email, name, args) => tools.executeTool({ sessionId: chat.id, config: {}, emit: () => {}, user: email }, name, args);
-  const calls = [
-    ['create_branding', { name: 'Fremdes Branding' }],
-    ['update_branding', { branding_id: 'abc', patch: { name: 'x' } }],
-    ['add_branding_asset', { branding_id: 'abc', session_asset_id: 'abc', target: 'logo' }]
-  ];
-  for (const email of [BOB, ALICE, null, 'lokal']) {
-    for (const [name, args] of calls) {
-      await assert.rejects(() => run(email, name, args), /nur fuer Admins/, `${name} as ${email || 'anonymous'}`);
-    }
+  const list = async (email) => (await api('/api/brandings', { as: email })).body.brandings;
+
+  // without a login nothing can be made
+  await assert.rejects(() => run(null, 'create_branding', { name: 'Anonym' }), /Ohne Anmeldung/);
+  assert.equal((await api('/api/brandings/import', { method: 'POST', as: null, json: {} })).status, 403);
+  assert.equal((await list(BOB)).length, 0, 'nothing was created');
+
+  // an admin's branding is shared: internal people see and use it, only admins change it
+  assert.match((await run(ADMIN, 'create_branding', { name: 'Admin Branding' })).toolResult, /Branding erstellt/);
+  const shared = (await list(BOB))[0];
+  assert.equal(shared.name, 'Admin Branding');
+  assert.equal(shared.editable, false);
+  assert.equal(shared.own, false);
+  assert.equal((await list(ADMIN))[0].editable, true);
+  assert.match((await run(BOSS, 'update_branding', { branding_id: shared.id, patch: { description: 'neu' } })).toolResult, /aktualisiert/);
+  for (const email of [BOB, ALICE]) {
+    await assert.rejects(() => run(email, 'update_branding', { branding_id: shared.id, patch: { name: 'x' } }), /nur von Admins/, `update_branding as ${email}`);
+    await assert.rejects(() => run(email, 'add_branding_asset', { branding_id: shared.id, session_asset_id: 'abc', target: 'logo' }), /nur von Admins/);
+    assert.equal((await api(`/api/brandings/${shared.id}`, { method: 'PATCH', as: email, json: { speaker: null } })).status, 403);
+    assert.equal((await api(`/api/brandings/${shared.id}`, { method: 'DELETE', as: email })).status, 403);
   }
-  assert.equal((await api('/api/brandings', { as: BOB })).body.brandings.length, 0, 'nothing was created');
-  const created = await run(ADMIN, 'create_branding', { name: 'Admin Branding' });
-  assert.match(created.toolResult, /Branding erstellt/);
-  assert.equal((await api('/api/brandings', { as: BOB })).body.brandings.length, 1);
-  const id = (await api('/api/brandings', { as: BOB })).body.brandings[0].id;
-  assert.match((await run(BOSS, 'update_branding', { branding_id: id, patch: { description: 'neu' } })).toolResult, /aktualisiert/);
+  assert.equal((await api(`/api/brandings/${shared.id}`, { method: 'DELETE', as: null })).status, 403);
   // reading stays open: importing a branding file into the chat is not a change
-  await assert.rejects(() => run(BOB, 'import_branding_asset', { branding_id: id, filename: 'fehlt.png' }), (err) => !/nur fuer Admins/.test(err.message));
+  await assert.rejects(() => run(BOB, 'import_branding_asset', { branding_id: shared.id, filename: 'fehlt.png' }), (err) => /Branding-Asset nicht gefunden/.test(err.message));
+
+  // everybody else makes their own: only they (and admins) see and change it
+  assert.match((await run(BOB, 'create_branding', { name: 'Bobs Marke' })).toolResult, /Branding erstellt/);
+  const bobs = (await list(BOB)).find((item) => item.name === 'Bobs Marke');
+  assert.ok(bobs && bobs.editable && bobs.own, 'Bob sees his branding and may change it');
+  assert.equal('owner' in bobs, false);
+  assert.deepEqual((await list(ALICE)).map((item) => item.name), ['Admin Branding'], 'Alice does not see the branding of Bob');
+  const adminView = (await list(ADMIN)).find((item) => item.id === bobs.id);
+  assert.ok(adminView.editable && !adminView.own);
+  assert.equal(adminView.owner, BOB);
+  assert.match((await run(BOB, 'update_branding', { branding_id: 'Bobs Marke', patch: { description: 'meins' } })).toolResult, /aktualisiert/);
+  assert.equal((await api(`/api/brandings/${bobs.id}`, { method: 'PATCH', as: BOB, json: { speaker: null } })).status, 200);
+  await assert.rejects(() => run(ALICE, 'update_branding', { branding_id: bobs.id, patch: { name: 'x' } }), /nicht gefunden/);
+  await assert.rejects(() => run(ALICE, 'update_branding', { branding_id: 'Bobs Marke', patch: { name: 'x' } }), /nicht gefunden/);
+  await assert.rejects(() => run(ALICE, 'import_branding_asset', { branding_id: bobs.id, filename: 'a.png' }), /nicht gefunden/);
+  for (const url of [`/api/brandings/${bobs.id}`, `/api/brandings/${bobs.id}/export`, `/api/brandings/${bobs.id}/assets/a.png`]) {
+    assert.equal((await api(url, { as: ALICE })).status, 404, url);
+  }
+  assert.equal((await api(`/api/brandings/${bobs.id}`, { method: 'PATCH', as: ALICE, json: { speaker: null } })).status, 404);
+  assert.equal((await api(`/api/brandings/${bobs.id}`, { method: 'DELETE', as: ALICE })).status, 404);
+  // attaching to a chat: one's own and the shared one, never somebody else's
+  assert.equal((await api(`/api/sessions/${chat.id}`, { method: 'PATCH', as: BOB, json: { brandings: [bobs.id, shared.id] } })).status, 200);
+  const aliceChat = (await api('/api/sessions', { method: 'POST', as: ALICE, json: {} })).body.session;
+  assert.equal((await api(`/api/sessions/${aliceChat.id}`, { method: 'PATCH', as: ALICE, json: { brandings: [bobs.id] } })).status, 400);
+  // the owner may not be changed through a patch
+  await assert.rejects(() => run(BOB, 'update_branding', { branding_id: bobs.id, patch: { owner: ALICE } }), /Unbekanntes Branding-Feld/);
+  // the limit of own brandings
+  const brandings = iso.load('lib/brandings');
+  for (let i = 1; i < brandings.MAX_OWNED_BRANDINGS; i += 1) await run(BOB, 'create_branding', { name: `Bob ${i}` });
+  await assert.rejects(() => run(BOB, 'create_branding', { name: 'Zu viel' }), /bereits 10 eigene Brandings/);
+  assert.match((await run(ADMIN, 'create_branding', { name: 'Admins haben kein Limit' })).toolResult, /Branding erstellt/);
+  // the owner deletes their own
+  assert.equal((await api(`/api/brandings/${bobs.id}`, { method: 'DELETE', as: BOB })).status, 200);
+  assert.equal((await list(BOB)).some((item) => item.id === bobs.id), false);
 }
 
 /* ---------- admin-only routes ---------- */
@@ -806,9 +847,6 @@ const ADMIN_ONLY_ROUTES = [
   ['PUT', '/api/roles/abc', { name: 'x', prompt: 'y' }],
   ['DELETE', '/api/roles/abc'],
   ['POST', '/api/roles/generate', { name: 'x', brief: 'y' }],
-  ['POST', '/api/brandings/import', {}],
-  ['PATCH', '/api/brandings/abc', { speaker: null }],
-  ['DELETE', '/api/brandings/abc'],
   ['PUT', '/api/folders/Leer/profile', { guidelines: 'x' }],
   ['POST', '/api/folders/Leer/profile/context-files', { name: 'a.md', text: 'x' }],
   ['DELETE', '/api/folders/Leer/profile/context-files/abc'],

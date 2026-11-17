@@ -1078,17 +1078,16 @@ function renderAccount() {
   OCShell.refresh();
 }
 
-// Participants and guests: no entry into what the server refuses them (brandings, GTS, ChatGPT subscription models,
-// custom templates). The server still enforces it; this only keeps them out of dead ends. Admins and internal
+// Participants and guests: no entry into what the server refuses them (GTS, ChatGPT subscription models,
+// custom templates). Brandings they have: their own. The server still enforces it; this only keeps them out of dead ends. Admins and internal
 // people see everything as before.
 function renderRestrictedView(me) {
   const restricted = Boolean(me.active && me.restricted);
   document.body.classList.toggle('restricted-view', restricted);
-  el.brandingsBtn.classList.toggle('hidden', restricted);
-  for (const list of [el.contextBrandings, el.folderProfileBrandings]) list.closest('.modal-section')?.classList.toggle('hidden', restricted);
+  el.folderProfileBrandings.closest('.modal-section')?.classList.toggle('hidden', restricted);
   const contextTitle = el.contextModal.querySelector('.modal-head h2');
   if (contextTitle) {
-    const key = restricted ? 'context.titleRestricted' : 'context.title';
+    const key = 'context.title'; // participants and guests have brandings of their own too
     contextTitle.setAttribute('data-i18n', key);
     contextTitle.textContent = t(key);
   }
