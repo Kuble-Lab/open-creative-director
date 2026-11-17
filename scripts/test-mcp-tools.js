@@ -4,12 +4,14 @@
 // isolated copy of the app (temp data folders, ephemeral port). The nodes are doubles in a private registry (no provider is
 // contacted, nothing is paid); a fetch guard refuses everything except localhost.
 //
-//   R  rights: a read key sees and can use only the five reading tools, a start key all nine; visibility is the person's
+//   R  rights: a read key sees and can use only the reading tools, a start key all of them; visibility is the person's
 //   L  limits of run_workflow: max_usd, limit per run, month (booked + reserved), unknown cost, Higgsfield, two runs at a
 //      time (also when asked at once), the budget error of the service as a sentence
 //   U  upload_asset: base64 up to 15 MB, one-time link (once, expired, too large, wrong type, revoked key), SVG becomes a PNG
 //   F  result links: valid, expired, another file, changed token, no login needed
 //   J  cost journal: runs of a key book on the person with keyId and keyName (never the key), month usage per key
+//   E  editing: list_node_types, create_workflow, edit_workflow (add, connect, replace, remove, params, inputs; all or none; the rules
+//      of the editor; Higgsfield, strangers and read keys refused), a draft from a template with inputs missing, the address of a workflow
 //   W  the whole way: upload, create_from_template, estimate_run, run_workflow, get_run, links; cancel_run
 
 const assert = require('assert/strict');
@@ -81,7 +83,7 @@ async function main() {
     await iso.cleanup();
   }
   assert.deepEqual(guard.attempts, [], 'no network access outside localhost');
-  console.log('MCP-Werkzeuge: Rechte, Limits (Lauf, Monat, unbekannte Kosten, Higgsfield, zwei Läufe), Upload, Ergebnis-Links und Kostenjournal sind korrekt.');
+  console.log('MCP-Werkzeuge: Rechte, Limits (Lauf, Monat, unbekannte Kosten, Higgsfield, zwei Läufe), Upload, Ergebnis-Links, Kostenjournal, Bearbeiten (Nodes, Verbindungen, Parameter, Entwurf) und Workflow-Links sind korrekt.');
   console.log('test-mcp-tools.js: ok');
 }
 
@@ -362,8 +364,8 @@ async function run(iso, holder) {
 
   /* ============ R: rights and visibility ============ */
 
-  const readNames = ['estimate_run', 'get_run', 'get_workflow', 'list_templates', 'list_workflows', 'suno_audio', 'suno_library', 'suno_status'];
-  const startNames = ['cancel_run', 'create_from_template', 'run_workflow', 'upload_asset'];
+  const readNames = ['estimate_run', 'get_run', 'get_workflow', 'list_node_types', 'list_templates', 'list_workflows', 'suno_audio', 'suno_library', 'suno_status'];
+  const startNames = ['cancel_run', 'create_from_template', 'create_workflow', 'edit_workflow', 'run_workflow', 'upload_asset'];
   const readList = (await rpc(reader.secret, 'tools/list')).json.result.tools;
   assert.deepEqual(readList.map((item) => item.name), readNames, 'a read key lists the reading tools only');
   assert.ok(readList.every((item) => item.annotations.readOnlyHint === true));
@@ -700,7 +702,13 @@ async function run(iso, holder) {
   const noUploads = makeKey({ name: 'Ohne Upload', right: 'start' });
   secrets.push(noUploads.secret);
   await refused(noUploads.secret, 'create_from_template', { template_id: 'paid-image', inputs: { Photo: 'upload-001' } }, /Call upload_asset first/);
-  await refused(starter.secret, 'create_from_template', { template_id: 'paid-image' }, /Missing|missing/);
+  // a required input left out: the workflow is made as a draft that says what is missing; it does not start like that
+  const draft = await ok(starter.secret, 'create_from_template', { template_id: 'paid-image', name: 'Entwurf Bild' });
+  assert.equal(draft.draft, true);
+  assert.deepEqual(draft.missing_inputs, [{ id: 'n1.asset', label: 'Photo', type: 'image' }]);
+  assert.equal(draft.url, `https://creator.example.com/studio/#w=${draft.workflow_id}`);
+  assert.match(draft.next, /draft/);
+  await refused(starter.secret, 'run_workflow', { workflow_id: draft.workflow_id, max_usd: 1 }, /not valid|missing|cannot run/i);
   await refused(starter.secret, 'create_from_template', { template_id: 'nope' }, /Not found/);
   const countBefore = (await wfStore.listWorkflows()).length;
   await refused(starter.secret, 'create_from_template', { template_id: 'paid-image', inputs: { Nope: 'x' } }, /Unknown input/);
@@ -964,6 +972,153 @@ async function run(iso, holder) {
   await assert.rejects(llm.completeText({ user: authenticated.viewer.email, model: 'unlisted/model', restrictedModels: ['allowed/model'], prompt: 'x' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'models');
   await assert.rejects(realRegistry.get('input.branding').execute({ user: authenticated.viewer.email, log() {} }, {}, { branding: 'internal-brand' }), (err) => err.code === 'BRANDING_NOT_FOUND');
   assert.equal(iso.load('lib/mcp/workflow-tools').describeError({ code: 'FORBIDDEN_FOR_ROLE', feature: 'models', message: 'Model blocked' }).includes('models'), true);
+
+
+  /* ============ E: editing a workflow ============ */
+
+  const editor = makeKey({ name: 'Bauer', right: 'start', maxRunUsd: 2, maxMonthUsd: 20 });
+  secrets.push(editor.secret);
+  const urlOf = (id) => `https://creator.example.com/studio/#w=${id}`;
+
+  // the catalogue: what the person can add; Higgsfield is not offered to an agent; params on request
+  const catalogue = await ok(reader.secret, 'list_node_types', {});
+  const typeIds = catalogue.node_types.map((item) => item.type);
+  assert.ok(typeIds.includes('input.text') && typeIds.includes('t.upper') && typeIds.includes('output.result'));
+  assert.ok(!typeIds.includes('t.hf'), 'Higgsfield types are not offered through agent access');
+  assert.ok(catalogue.node_types.every((item) => item.params === undefined), 'the list has no params');
+  const upperType = catalogue.node_types.find((item) => item.type === 't.upper');
+  assert.deepEqual(upperType.inputs, [{ id: 'in', type: 'text', required: true }]);
+  assert.deepEqual(upperType.outputs, [{ id: 'out', type: 'text' }]);
+  const detail = await ok(reader.secret, 'list_node_types', { types: ['text.join', 'nope.type'] });
+  assert.equal(detail.count, 1);
+  assert.deepEqual(detail.unknown, ['nope.type']);
+  assert.deepEqual(detail.node_types[0].params, [{ id: 'separator', kind: 'text', default: '\n' }]);
+  assert.equal((await ok(reader.secret, 'list_node_types', { query: 'join' })).node_types.some((item) => item.type === 'text.join'), true);
+
+  // a read key cannot edit or create
+  const editTool = await rpc(reader.secret, 'tools/call', { name: 'edit_workflow', arguments: { workflow_id: free.id, operations: [{ op: 'remove_node', node: 'b' }] } });
+  assert.ok(editTool.json.error || editTool.json.result.isError, 'a read key cannot edit');
+  assert.equal((await wfStore.readWorkflow(free.id)).graph.nodes.length, 3);
+
+  // a draft from a template whose required text is missing, then rewired: a new node takes the place of the input
+  const textDraft = await ok(editor.secret, 'create_from_template', { template_id: 'free-text', name: 'Umgebaut' });
+  assert.equal(textDraft.draft, true);
+  assert.deepEqual(textDraft.missing_inputs.map((item) => item.id), ['n1.prompt']);
+  assert.equal(textDraft.url, urlOf(textDraft.workflow_id));
+  const before = await ok(editor.secret, 'get_workflow', { workflow_id: textDraft.workflow_id, include_graph: true });
+  assert.equal(before.url, urlOf(textDraft.workflow_id));
+  assert.deepEqual(before.graph.edges, [{ id: 'e1', from: 'n1.prompt', to: 'n2.in' }, { id: 'e2', from: 'n2.out', to: 'n3.inputs' }]);
+  assert.deepEqual(before.graph.nodes.find((item) => item.id === 'n2').inputs, [{ id: 'in', type: 'text', required: true, from: ['n1.prompt'] }]);
+  assert.deepEqual(before.graph.nodes.find((item) => item.id === 'n1').workflow_inputs, ['prompt']);
+  assert.equal((await ok(editor.secret, 'get_workflow', { workflow_id: textDraft.workflow_id })).graph, undefined, 'the graph only on request');
+
+  // an input that takes one connection is not rewired without replace; nothing is changed by a refused call
+  await refused(editor.secret, 'edit_workflow', {
+    workflow_id: textDraft.workflow_id,
+    operations: [{ op: 'add_node', type: 'input.text', ref: 'src', params: { text: 'hallo welt' } }, { op: 'connect', from: { node: 'src', port: 'text' }, to: { node: 'n2', port: 'in' } }]
+  }, /Operation 2 \(connect\).*takes one connection.*n1\.prompt.*replace/);
+  const untouched = await wfStore.readWorkflow(textDraft.workflow_id);
+  assert.equal(untouched.rev, before.rev, 'a refused edit saves nothing');
+  assert.equal(untouched.graph.nodes.length, 3);
+
+  const rebuilt = await ok(editor.secret, 'edit_workflow', {
+    workflow_id: textDraft.workflow_id,
+    rev: before.rev,
+    operations: [
+      { op: 'add_node', type: 'input.text', ref: 'src', params: { text: 'hallo welt' }, label: 'Quelle' },
+      { op: 'connect', from: { node: 'src', port: 'text' }, to: { node: 'n2', port: 'in' }, replace: true },
+      { op: 'remove_node', node: 'n1' }
+    ]
+  });
+  assert.equal(rebuilt.url, urlOf(textDraft.workflow_id));
+  assert.equal(rebuilt.changed, true);
+  assert.equal(rebuilt.rev, before.rev + 1);
+  assert.deepEqual(rebuilt.created_nodes, { src: 'n4' });
+  assert.deepEqual(rebuilt.removed_nodes, ['n1']);
+  assert.deepEqual(rebuilt.removed_edges, ['e1']);
+  assert.equal(rebuilt.added_edges.length, 1);
+  assert.equal(rebuilt.state.valid, true);
+  assert.equal(rebuilt.state.can_start, true);
+  const after = await ok(editor.secret, 'get_workflow', { workflow_id: textDraft.workflow_id, include_graph: true });
+  assert.deepEqual(after.graph.nodes.map((item) => item.id), ['n2', 'n3', 'n4']);
+  assert.equal(after.graph.nodes.find((item) => item.id === 'n4').label, 'Quelle');
+  assert.equal(after.graph.nodes.find((item) => item.id === 'n4').params.text, 'hallo welt');
+  assert.deepEqual(after.graph.nodes.find((item) => item.id === 'n2').inputs[0].from, ['n4.text']);
+  assert.deepEqual(after.inputs.map((item) => item.id), ['n4.text'], 'the input of the removed node is gone; the new input node is the input now');
+  const rebuiltRun = await ok(editor.secret, 'run_workflow', { workflow_id: textDraft.workflow_id, max_usd: 0 });
+  assert.equal(rebuiltRun.url, urlOf(textDraft.workflow_id));
+  const rebuiltDone = await finish(editor.secret, rebuiltRun.run_id);
+  assert.equal(rebuiltDone.status, 'completed');
+  assert.equal(rebuiltDone.workflow_url, urlOf(textDraft.workflow_id));
+  assert.equal(rebuiltDone.results[0].items[0].text, 'HALLO WELT');
+
+  // a stale rev is refused
+  await refused(editor.secret, 'edit_workflow', { workflow_id: textDraft.workflow_id, rev: before.rev, operations: [{ op: 'set_label', node: 'n4', label: 'x' }] }, /changed in the meantime.*rev/);
+
+  // an empty workflow, built from nothing; a param becomes an input of the workflow
+  const blank = await ok(editor.secret, 'create_workflow', { name: 'Von Grund auf' });
+  assert.equal(blank.url, urlOf(blank.workflow_id));
+  assert.equal((await wfStore.readWorkflow(blank.workflow_id)).owner, STAFF1);
+  const built = await ok(editor.secret, 'edit_workflow', {
+    workflow_id: blank.workflow_id,
+    operations: [
+      { op: 'add_node', type: 'input.text', ref: 'a', params: { text: 'eins' } },
+      { op: 'add_node', type: 'input.text', ref: 'b', params: { text: 'zwei' } },
+      { op: 'add_node', type: 'text.join', ref: 'j', params: { separator: ' + ' } },
+      { op: 'add_node', type: 't.upper', ref: 'u' },
+      { op: 'add_node', type: 'output.result', ref: 'o', params: { label: 'Fertig' } },
+      { op: 'connect', from: { node: 'a', port: 'text' }, to: { node: 'j', port: 'items' } },
+      { op: 'connect', from: { node: 'b', port: 'text' }, to: { node: 'j', port: 'items' } },
+      { op: 'connect', from: { node: 'j', port: 'text' }, to: { node: 'u', port: 'in' } },
+      { op: 'connect', from: { node: 'u', port: 'out' }, to: { node: 'o', port: 'inputs' } },
+      { op: 'expose_input', node: 'b', param: 'text', label: 'Zweites Wort' }
+    ]
+  });
+  assert.deepEqual(built.created_nodes, { a: 'n1', b: 'n2', j: 'n3', u: 'n4', o: 'n5' });
+  assert.equal(built.state.can_start, true);
+  const builtView = await ok(editor.secret, 'get_workflow', { workflow_id: blank.workflow_id });
+  assert.deepEqual(builtView.inputs.map((item) => item.label), ['Text input', 'Zweites Wort'], 'the input nodes stay inputs when one is added by hand');
+  const builtRun = await ok(editor.secret, 'run_workflow', { workflow_id: blank.workflow_id, max_usd: 0, inputs: { 'Zweites Wort': 'drei' } });
+  assert.equal((await finish(editor.secret, builtRun.run_id)).results[0].items[0].text, 'EINS + DREI');
+
+  // the rules of the editor: every refusal names the operation and leaves the workflow as it was
+  const builtRev = (await wfStore.readWorkflow(blank.workflow_id)).rev;
+  const bad = (operations, pattern) => refused(editor.secret, 'edit_workflow', { workflow_id: blank.workflow_id, operations }, pattern);
+  await bad([{ op: 'add_node', type: 'nope.type' }], /does not exist/);
+  await bad([{ op: 'add_node', type: 't.hf' }], /not available for this account through agent access/);
+  await bad([{ op: 'add_node', type: 'text.join', params: { nope: 1 } }], /has no param "nope"/);
+  await bad([{ op: 'set_params', node: 'n1', params: { text: 5 === 5 ? ['x'] : '' } }], /must be a text/);
+  await bad([{ op: 'connect', from: { node: 'n4', port: 'out' }, to: { node: 'n3', port: 'items' } }], /close a loop/);
+  await bad([{ op: 'connect', from: { node: 'n1', port: 'text' }, to: { node: 'n3', port: 'items' } }], /exists already/);
+  await bad([{ op: 'connect', from: { node: 'n1', port: 'nope' }, to: { node: 'n4', port: 'in' } }], /has no output "nope" \(it has: text:text\)/);
+  await bad([{ op: 'connect', from: { node: 'n1', port: 'text' }, to: { node: 'n1', port: 'text' } }], /has no input|itself/);
+  await bad([{ op: 'remove_node', node: 'zz' }], /there is no node "zz"/);
+  await bad([{ op: 'disconnect', edge: 'e99' }], /no connection with the id/);
+  await bad([{ op: 'set_label', node: 'n1', label: 'ok' }, { op: 'explode' }], /arguments|unknown "op"|must be one of/);
+  await bad([{ op: 'add_node', type: 'input.media_list', params: { assets: [] } }], /holds files and cannot be set here/);
+  assert.equal((await wfStore.readWorkflow(blank.workflow_id)).rev, builtRev, 'refused edits change nothing');
+
+  // disconnect and unexpose; a workflow that lost a required connection says so and does not start
+  const cut = await ok(editor.secret, 'edit_workflow', {
+    workflow_id: blank.workflow_id,
+    operations: [{ op: 'disconnect', to: { node: 'n4', port: 'in' } }, { op: 'unexpose_input', node: 'n2', param: 'text' }, { op: 'set_params', node: 'n3', params: { separator: ' - ' } }]
+  });
+  assert.equal(cut.removed_edges.length, 1);
+  assert.equal(cut.state.valid, false);
+  assert.equal(cut.state.can_start, false);
+  assert.ok(cut.state.issues.length > 0);
+  await refused(editor.secret, 'run_workflow', { workflow_id: blank.workflow_id, max_usd: 0 }, /cannot run|not valid/);
+
+  // visibility: a stranger's private workflow does not exist, a shared one can be changed as in the app
+  await refused(editor.secret, 'edit_workflow', { workflow_id: foreignPrivate.id, operations: [{ op: 'set_label', node: 'a', label: 'x' }] }, /Not found/);
+  await refused(editor.secret, 'get_workflow', { workflow_id: foreignPrivate.id, include_graph: true }, /Not found/);
+  const sharedEdit = await ok(editor.secret, 'edit_workflow', { workflow_id: sharedWithAll.id, operations: [{ op: 'set_label', node: 'b', label: 'Gross' }] });
+  assert.equal(sharedEdit.changed, true);
+  assert.equal((await wfStore.readWorkflow(sharedWithAll.id)).updatedBy, STAFF1);
+
+  // the list carries the address too
+  const listed = await ok(editor.secret, 'list_workflows', { query: 'Von Grund auf' });
+  assert.equal(listed.workflows[0].url, urlOf(blank.workflow_id));
 
   // no key shows up in any answer
   const output = everything.join('\n');

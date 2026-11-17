@@ -432,17 +432,22 @@ location /supercomputer/ {
 | --- | --- | --- |
 | `list_templates` | read | Templates with inputs and cost range |
 | `list_workflows` | read | Own and shared workflows |
-| `get_workflow` | read | Nodes, inputs, latest results as links |
+| `get_workflow` | read | Address in the app (`url`), nodes, inputs, latest results as links; with `include_graph` the graph (nodes with params and ports, connections) |
+| `list_node_types` | read | Node types that can be added, with ports; with `types` also their params |
 | `estimate_run` | read | Cost estimate of the engine with the paid steps |
 | `get_run` | read | Status, progress, results as links (can wait up to 30 s) |
 | `upload_asset` | read and start | Image, video or audio as an input: base64 up to 15 MB, larger files through a one-time upload link |
-| `create_from_template` | read and start | Creates a workflow from a template and fills its inputs |
+| `create_from_template` | read and start | Creates a workflow from a template and fills its inputs; required inputs left out make a draft (`missing_inputs`) instead of a refusal |
+| `create_workflow` | read and start | Creates an empty workflow |
+| `edit_workflow` | read and start | Changes the graph with the rules of the editor: add and remove nodes, connect and disconnect, set params and labels, choose the inputs of the workflow. All operations of a call or none; nothing runs |
 | `run_workflow` | read and start | Starts a run; requires `max_usd`, the most the agent accepts to pay |
 | `cancel_run` | read and start | Cancels a run of this key |
 
+Every answer about a workflow carries its address in the app (`url`, `<base>/#w=<id>`). `edit_workflow` acts as the person: it reaches their workflows and those shared with them, refuses node types priced in credits (Higgsfield) and file params (expose the param with `expose_input` and give the file in `inputs`), and reports whether the workflow can run afterwards.
+
 `create_from_template` and `run_workflow` accept optional `file_marks` for app file inputs with per-file AI marks: an object from asset id, `session_id/asset_id` or `wf/asset_id` to `never` or `always`. Omit `auto`. Unknown files and invalid marks are refused before changing the workflow; marks follow copied files into its storage.
 
-A *Read only* key sees and uses the five read tools. `run_workflow` refuses with a readable reason, and charges nothing, when the estimate is above `max_usd` or above the limit per run, when the calendar month would exceed the monthly limit (booked costs of the key plus reservations of running runs), when a paid step has no known price, when the workflow uses Higgsfield (blocked for agents), when the key already has two runs in progress, or when the budget of the person does not cover it.
+A *Read only* key sees and uses the read tools. `run_workflow` refuses with a readable reason, and charges nothing, when the estimate is above `max_usd` or above the limit per run, when the calendar month would exceed the monthly limit (booked costs of the key plus reservations of running runs), when a paid step has no known price, when the workflow uses Higgsfield (blocked for agents), when the key already has two runs in progress, or when the budget of the person does not cover it.
 
 **Links.** Results are delivered as `GET /mcp/files/<token>` (signed, valid 24 hours, one file, no login; only media, no SVG or JSON). Large uploads go to `PUT /mcp/upload/<token>` (valid 15 minutes, once, up to 500 MB, SVG up to 10 MB, same type rules as the normal upload). Links begin with `PUBLIC_BASE_URL`, also with a sub-path; without it the address of the request is used. The signing secret lives in `data/mcp-link-secret` (mode 600). An upload link stops working as soon as the key is revoked or the person is no longer eligible; a result link is signed and keeps no state on the server, so it stays valid for its 24 hours.
 
