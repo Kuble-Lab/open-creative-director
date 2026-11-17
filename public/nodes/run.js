@@ -827,7 +827,7 @@
       parts.runAll = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-run-all', dataset: { tKey: 'nodes.run.allTitle' } }, icon('play', 12), el('span', { class: 'nv-btn-text', dataset: { tText: 'nodes.run.all' } }));
       parts.runSel = el('button', { type: 'button', class: 'nv-btn nv-run-sel', dataset: { tKey: 'nodes.run.selectionTitle' } }, icon('skip', 13), el('span', { class: 'nv-btn-text' }));
       parts.cancel = el('button', { type: 'button', class: 'nv-btn nv-run-cancel hidden', dataset: { tKey: 'nodes.run.cancelTitle' } }, icon('stop', 12), el('span', { class: 'nv-btn-text', dataset: { tText: 'nodes.run.cancel' } }));
-      parts.resume = el('button', { type: 'button', class: 'nv-btn hidden', text: T('nodes.run.resume') });
+      parts.resume = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-run-resume hidden', text: T('nodes.run.resume') });
       parts.resume.addEventListener('click', () => approveRun());
       parts.summary = el('span', { class: 'nv-run-summary hidden', role: 'status' });
       parts.runAll.addEventListener('click', () => startRun({ mode: 'all', force: false }));
@@ -852,6 +852,16 @@
 
     function selectedNodeIds() {
       return [...S().selection.nodes];
+    }
+
+    // The mark in front of the title of the tab while a run waits for an approval ('' takes it away); the title itself stays whatever the page set.
+    let awaitingRunId = null;
+    let titleMark = '';
+    function markTitle(mark) {
+      if (typeof document === 'undefined' || mark === titleMark) return;
+      const plain = titleMark && document.title.startsWith(`${titleMark} · `) ? document.title.slice(titleMark.length + 3) : document.title;
+      document.title = mark ? `${mark} · ${plain}` : plain;
+      titleMark = mark;
     }
 
     function updateTopbar() {
@@ -887,8 +897,17 @@
         state = last.status;
         title = `${T(`nodes.run.result.${last.status}`)} · ${last.user || ''} · ${last.startedAt ? new Date(last.startedAt).toLocaleString() : ''}`;
       }
-      parts.resume.classList.toggle('hidden', runState.status !== 'awaiting_approval');
-      if (runState.status === 'awaiting_approval') text = T('nodes.run.awaiting', { amount: runState.approval?.requiredUsd == null ? T('nodes.run.confirm.unknown') : money(runState.approval.requiredUsd) });
+      // A run that waits for a new spending limit does nothing until the person approves: it must not look like a run that works.
+      // The summary and the button stand out, and on the change into the wait a toast and the title of the tab say so (once).
+      const awaiting = runState.status === 'awaiting_approval';
+      parts.resume.classList.toggle('hidden', !awaiting);
+      if (awaiting) {
+        text = T('nodes.run.awaiting', { amount: runState.approval?.requiredUsd == null ? T('nodes.run.confirm.unknown') : money(runState.approval.requiredUsd) });
+        state = 'awaiting';
+      }
+      if (awaiting && awaitingRunId !== runState.runId) ui.toast(T('nodes.run.awaitingToast', { button: T('nodes.run.resume') }), { kind: 'warn', timeout: 20000 });
+      awaitingRunId = awaiting ? runState.runId : null;
+      markTitle(awaiting ? T('nodes.run.awaitingTitle') : '');
       const accounting = runState.accounting || (!runState.runId ? recentRuns[0]?.accounting : null);
       if (accounting) {
         const a = accounting;

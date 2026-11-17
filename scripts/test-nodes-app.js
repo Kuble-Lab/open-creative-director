@@ -901,7 +901,7 @@ function testI18n() {
   vm.runInNewContext(read('public/nodes/i18n-nodes.js'), context);
   const source = read('public/nodes/i18n-nodes.js');
   const keys = new Set();
-  for (const match of source.matchAll(/\[\s*'(nodes\.[A-Za-z0-9_.]+)',/g)) keys.add(match[1]);
+  for (const match of source.matchAll(/\[\s*['"](nodes\.[A-Za-z0-9_.]+)['"],/g)) keys.add(match[1]);
   for (const file of ['public/nodes/app-mode.js', 'public/nodes/asset-picker.js']) {
     for (const match of read(file).matchAll(/\bT\('(nodes\.[A-Za-z0-9_.]+)'/g)) assert.ok(keys.has(match[1]), `${file}: i18n key ${match[1]} exists`);
   }

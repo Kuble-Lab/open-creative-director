@@ -1733,15 +1733,43 @@
       return rows;
     }
 
+    // Approves a new spending limit for the run that waits (the question of the node view in short: one amount).
+    async function approveLimit() {
+      const run = s && s.run;
+      if (!run || run.status !== 'awaiting_approval' || !run.approval) return;
+      const required = run.approval.requiredUsd;
+      const base = required == null ? Number(run.approval.maxUsd) || 0 : required;
+      const suggested = Math.ceil((Math.max(base * 1.25, base + 0.1) - 1e-9) * 20) / 20;
+      const answer = await ui.promptDialog({ title: T('nodes.run.resume'), label: T('nodes.run.maxUsd'), value: String(suggested), confirmLabel: T('nodes.run.resume'), maxLength: 12 });
+      if (answer === null) return;
+      const maxUsd = Number(String(answer).replace(',', '.'));
+      if (!String(answer).trim() || !Number.isFinite(maxUsd) || maxUsd < 0) { ui.toast(T('nodes.run.invalidLimit'), { kind: 'error' }); return; }
+      try { await api.resumeRun(s.id, run.runId, { maxUsd, requireKnownPrices: required != null }); }
+      catch (error) { ui.toast((error && error.message) || T('nodes.run.invalidLimit'), { kind: 'error' }); }
+    }
+
     function renderStatus() {
       if (!s || !s.refs) return;
       const box = s.refs.statusBox;
       const run = s.run;
       box.textContent = '';
-      box.dataset.status = run.active ? 'running' : run.status;
+      const awaiting = run.status === 'awaiting_approval';
+      box.dataset.status = awaiting ? 'awaiting' : run.active ? 'running' : run.status;
       const hasRun = run.runId || run.active;
       box.classList.toggle('hidden', !hasRun);
       if (!hasRun) return;
+      if (awaiting) {
+        // The run stands still until a new spending limit is approved (a run with a limit: started in the node view or by an agent).
+        // The app view says so and offers the approval; before, it looked like a run that works.
+        const required = run.approval && run.approval.requiredUsd;
+        const amount = required == null ? T('nodes.run.confirm.unknown') : `$${Number(required).toFixed(2)}`;
+        const head = el('div', { class: 'nv-appstatus-head' });
+        head.append(el('span', { class: 'nv-status-dot' }), el('span', { class: 'nv-appstatus-text', text: T('nodes.run.awaiting', { amount }) }));
+        const approve = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-run-resume', text: T('nodes.run.resume') });
+        approve.addEventListener('click', () => approveLimit());
+        box.append(head, el('div', { class: 'nv-appstatus-now', text: T('nodes.run.resumeIntro') }), approve);
+        return;
+      }
       const progress = runLib.progressOf(run);
       const head = el('div', { class: 'nv-appstatus-head' });
       head.append(el('span', { class: 'nv-status-dot' }));
