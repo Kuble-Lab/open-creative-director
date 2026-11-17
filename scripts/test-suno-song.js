@@ -13,7 +13,7 @@ const OWNER = 'a@example.com';
 const SCHEMA = { type: 'object', properties: { lyrics: {}, style: {}, title: {}, negative_tags: {}, idempotency_key: {}, description: {} } };
 
 function mockSuno({ tools = [{ name: 'audio-create', inputSchema: SCHEMA }, { name: 'audio-retrieve', inputSchema: {} }, { name: 'audio-download', inputSchema: {} }],
-  connected = true, pendingPolls = 1, clipUrl = true, credit = false, listFails = false } = {}) {
+  connected = true, pendingPolls = 1, clipUrl = true, credit = false, listFails = false, confirmFails = 0 } = {}) {
   const calls = [];
   const polls = new Map();
   return {
@@ -31,6 +31,7 @@ function mockSuno({ tools = [{ name: 'audio-create', inputSchema: SCHEMA }, { na
       }
       if (name === 'audio-download') {
         if (credit && !args.confirm) return { structuredContent: { status: 'requires_credit' } };
+        if (args.confirm && confirmFails-- > 0) throw Object.assign(new Error('Suno konnte diese Anfrage nicht ausführen.'), { status: 502, detail: 'not ready' });
         return { structuredContent: { status: 'complete', download_url: `https://cdn1.suno.ai/dl/${args.id}.mp3` } };
       }
       throw new Error(`unexpected tool ${name}`);
@@ -103,6 +104,13 @@ const fast = { sleep: async () => {}, pollMs: 1 };
   assert.equal(songs[0].url, 'https://cdn1.suno.ai/dl/clip-a.mp3');
   assert.equal(suno.calls.filter((call) => call.args.confirm === true).length, 1);
 
+  suno = mockSuno({ clipUrl: false, credit: true, confirmFails: 2 });
+  songs = await song.createSong({ suno, owner: OWNER, pack, key: 'k', allowDownloadCredit: true, takes: 1, ...fast });
+  assert.equal(songs[0].url, 'https://cdn1.suno.ai/dl/clip-a.mp3', 'a download that Suno still prepares is asked for again');
+  assert.equal(suno.calls.filter((call) => call.name === 'audio-create').length, 1);
+  suno = mockSuno({ clipUrl: false, credit: true, confirmFails: 3 });
+  await assert.rejects(song.createSong({ suno, owner: OWNER, pack, key: 'k', allowDownloadCredit: true, takes: 1, ...fast }), /nicht ausführen/);
+
   suno = mockSuno({ pendingPolls: 1e9 });
   let clock = 0;
   await assert.rejects(song.createSong({ suno, owner: OWNER, pack, key: 'k', ...fast, now: () => (clock += 60000), timeoutMs: 180000 }), { code: 'SUNO_TIMEOUT' });
@@ -114,6 +122,8 @@ const fast = { sleep: async () => {}, pollMs: 1 };
   const audio = (type = 'audio/mpeg', url) => async (target) => ({ ok: true, status: 200, url: url || target, headers: new Headers({ 'content-type': type }), arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer });
   assert.equal((await song.fetchAudio('https://cdn1.suno.ai/a.mp3', { fetchImpl: audio() })).ext, '.mp3');
   assert.equal((await song.fetchAudio('https://cdn1.suno.ai/a.wav', { fetchImpl: audio('audio/wav') })).ext, '.wav');
+  assert.equal((await song.fetchAudio('https://suno-data-uploads.s3.amazonaws.com/x/a.mp3?X-Amz-Signature=1', { fetchImpl: audio() })).ext, '.mp3', 'the bucket of the download links of Suno');
+  await assert.rejects(song.fetchAudio('https://other-bucket.s3.amazonaws.com/a.mp3', { fetchImpl: audio() }), { code: 'SUNO_AUDIO_HOST' });
   await assert.rejects(song.fetchAudio('https://evil.example/a.mp3', { fetchImpl: audio() }), { code: 'SUNO_AUDIO_HOST' });
   await assert.rejects(song.fetchAudio('https://notsuno.ai/a.mp3', { fetchImpl: audio() }), { code: 'SUNO_AUDIO_HOST' });
   await assert.rejects(song.fetchAudio('https://cdn1.suno.ai/a.mp3', { fetchImpl: audio('audio/mpeg', 'https://evil.example/a.mp3') }), { code: 'SUNO_AUDIO_HOST' });
