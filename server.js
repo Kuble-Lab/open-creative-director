@@ -107,6 +107,8 @@ app.use((req, res, next) => {
   }
   return apiMonitor.middleware(req, res, next);
 });
+// Consent sees the same recorded person as the rest of the app, before the shared body parsers.
+mcp.oauth.mountLoggedIn(app);
 app.use(compression({
   filter: (req, res) => {
     const type = String(res.getHeader('Content-Type') || '');
@@ -115,6 +117,8 @@ app.use(compression({
   }
 }));
 app.use(express.json({ limit: '60mb' }));
+// Personal provider connections require the confirmed identity from whoami.
+require('./lib/suno-routes').registerSunoRoutes(app);
 // Usage and cost monitoring page: superadmins only, everybody else gets a plain 404.
 app.use((req, res, next) => {
   let page;
@@ -961,8 +965,8 @@ app.delete('/api/users/:email', (req, res) => {
 
 /* ---------- agent access (MCP) ---------- */
 
-// Keys of the agent access: admins and internal people (lib/mcp/key-routes.js).
-registerKeyRoutes(app, { keys: mcp.keys, usage: (key) => mcp.accounting.monthSpentUsd(key.id) });
+// Agent keys: admins, internal people and enabled participants; the policy is admin-only (lib/mcp/key-routes.js).
+registerKeyRoutes(app, { keys: mcp.keys, oauth: mcp.oauth, usage: (key) => mcp.accounting.monthSpentUsd(key.id) });
 
 /* ---------- teams (trainings with a USD budget per person) ---------- */
 

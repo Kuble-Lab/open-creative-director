@@ -318,7 +318,7 @@ Externe Agents (Claude Code, Codex, eigene Bots) können über einen [MCP](https
 
 **Einrichten**
 
-1. Öffne **Menü → Agent-Zugang (MCP)** (Admins und interne Personen; im lokalen Modus alle). Der Dialog zeigt die Adresse des Endpunkts, deine Schlüssel mit Recht, Limits, Verbrauch im Monat, letzter Benutzung und Ablauf sowie ein Formular für einen neuen Schlüssel.
+1. Öffne **Menü → Agent-Zugang (MCP)** (Admins, interne Personen und Mitglieder aktiver Teams; im lokalen Modus alle). Der Dialog zeigt die Adresse des Endpunkts, deine Schlüssel mit Recht, Limits, Verbrauch im Monat, letzter Benutzung und Ablauf sowie ein Formular für einen neuen Schlüssel.
 2. Lege einen Schlüssel an: Name, Recht («Nur lesen» oder «Lesen und starten»), Limit pro Lauf, Limit pro Monat und Gültigkeit. Der Schlüssel wird **einmal** angezeigt; kopiere ihn sofort. Gespeichert wird nur ein Hash.
 3. Trage Adresse und Schlüssel im Agent ein. Für Claude Code:
 
@@ -331,9 +331,107 @@ Externe Agents (Claude Code, Codex, eigene Bots) können über einen [MCP](https
 **Schlüssel**
 
 - Format `ocd_k1_` plus 43 Zeichen (256 Bit Zufall). `data/mcp-keys.json` (Modus 600) enthält den SHA-256-Hash, ein kurzes Präfix für die Liste, Name, Besitzer, Recht, Limits, Erstellung, letzte Benutzung, Ablauf und Widerruf. Der Schlüssel erscheint nie in einem Log, einer Fehlermeldung oder im Kostenjournal.
-- Standard: 2 USD pro Lauf, 20 USD pro Monat, 90 Tage. Obergrenzen: 1000 USD pro Lauf, 10000 USD pro Monat, 365 Tage; höchstens 25 gültige Schlüssel pro Person.
-- Ein Schlüssel handelt als seine Person und sieht dieselben Workflows, Vorlagen und Teams, nie mehr. Er gilt nicht mehr, sobald die Person weder Admin noch intern ist oder aus der Team-Liste entfernt wurde. Teilnehmende und Gäste bekommen keine Schlüssel. Ohne Benutzerverwaltung (`AUTH_WHOAMI_URL` nicht gesetzt) handelt der Schlüssel als lokale Person, und alle, die die App erreichen, können Schlüssel anlegen.
+- Standard für Admins/Interne: 2 USD pro Lauf, 20 USD pro Monat, 90 Tage. Obergrenzen: 1000 USD pro Lauf, 10000 USD pro Monat, 365 Tage; höchstens 25 gültige Schlüssel pro Person.
+- Ein Schlüssel handelt als seine Person und sieht dieselben Workflows, Vorlagen und Teams, nie mehr. Teilnehmende brauchen die Mitgliedschaft in einem aktiven Team und eine aktivierte Richtlinie. Entfernen oder Archivieren des Teams sperrt den Zugang sofort, sofern keine andere berechtigte Rolle besteht. Gäste bekommen keine Schlüssel. Interne müssen weiterhin in der Personenliste stehen. Ohne Benutzerverwaltung (`AUTH_WHOAMI_URL` nicht gesetzt) handelt der Schlüssel als lokale Person; alle, die die App erreichen, können Schlüssel anlegen.
 - Admins sehen und widerrufen alle Schlüssel, alle anderen nur ihre eigenen. Ein Widerruf wirkt sofort. API: `GET` und `POST /api/mcp/keys`, `PATCH` und `DELETE /api/mcp/keys/:id` (Fehler `INVALID_NAME`, `INVALID_RIGHT`, `INVALID_LIMIT`, `INVALID_EXPIRY`, `TOO_MANY_KEYS`, `KEY_NOT_FOUND`, `KEY_REVOKED`, `FORBIDDEN_FOR_ROLE`).
+
+
+**Richtlinie für Teilnehmende.** Admins (auch der lokale Nutzer) konfigurieren «Limits für Teilnehmende» im Agent-Dialog oder über `GET /api/mcp/policy` und `PUT /api/mcp/policy`. Andere Rollen erhalten 403. Vollständiger Request und Response: `{ "participant": { "enabled": true, "defaultRunUsd": 1, "defaultMonthUsd": 5, "maxRunUsd": 5, "maxMonthUsd": 25, "defaultExpiresInDays": 30, "maxExpiresInDays": 90, "keysPerOwner": 3 } }`. Beträge sind endliche Zahlen ab null, Vorgaben höchstens die Obergrenzen und Obergrenzen höchstens die globalen Schlüssel-Limits. Tage sind ganze Zahlen 1–365, Schlüssel pro Person 1–25. Ungültige Richtlinien ergeben 400 `INVALID_POLICY`.
+
+`data/mcp-policy.json` wird atomar mit Modus 0600 geschrieben. Fehlt die Datei, gelten diese Vorgaben; eine unlesbare oder ungültige Datei sperrt Teilnehmende, während Admins/Interne unverändert Zugang haben. Für Teilnehmende gelten standardmässig 1/5 USD, 30 Tage und höchstens drei gültige Schlüssel; Obergrenzen sind 5/25 USD und 90 Tage. `GET /api/mcp/keys` liefert rollengerechte `defaults`, `limits` (inklusive `keysPerOwner`) und `role`. Zu hohe Limits beim Anlegen/Ändern ergeben `INVALID_LIMIT`, eine zu lange Gültigkeit `INVALID_EXPIRY`, der vierte gültige Schlüssel `TOO_MANY_KEYS`, deaktivierter Zugang `FORBIDDEN_FOR_ROLE`. Auch wenn ein Admin einen fremden Schlüssel ändert, zählt die aktuelle Rolle des Besitzers.
+
+Bei jeder Authentifizierung werden die wirksamen Lauf-/Monatslimits auf das Minimum aus gespeichertem Wert und aktueller Obergrenze gekappt, auch bei früher als interne Person angelegten Schlüsseln. Gespeicherte Werte und Ablauf bleiben erhalten. Verwaltungsansichten ergänzen `effectiveMaxRunUsd`, `effectiveMaxMonthUsd`, `ownerRole` (`admin`, `internal`, `participant`, `local` oder null) und zeigen gekappte Werte. Intern enthalten authentifizierte Schlüssel wirksame `maxRunUsd`/`maxMonthUsd` sowie separate `storedMaxRunUsd`/`storedMaxMonthUsd`. Gesenkte Obergrenzen wirken ab der nächsten Anfrage. **Das Team-Budget und Guthaben gelten immer und können einen Lauf unterhalb des Schlüssel-Limits ablehnen.** Higgsfield bleibt für Agents gesperrt, selbst wenn Teilnehmende es in der Oberfläche nutzen dürfen.
+
+### OAuth: bestehende Anmeldung und Claude-Connectoren
+
+Füge die öffentliche MCP-URL in claude.ai oder in der Claude-App als **Custom Connector** hinzu. Der Browser verwendet die bestehende nginx-Anmeldung mit `auth_request`; `createWhoamiMiddleware` bestätigt die Person. Danach zeigt die App Client-Name, Rückkehr-Host, Person, Rollenvorgaben und die Auswahl Lesen/Starten. Nach der Zustimmung geht ein Code an den Client zurück. Bestehende Bearer-Schlüssel `ocd_k1_` funktionieren weiter.
+
+OAuth ist nur mit Benutzerverwaltung (`AUTH_WHOAMI_URL`) und einer öffentlichen HTTPS-Basis aktiv (HTTP-Loopback ist erlaubt). `MCP_OAUTH=off` schaltet es aus. Ohne Benutzerverwaltung bleiben Discovery bei 404 und der bisherige Bearer-Header erhalten. Setze `PUBLIC_BASE_URL=https://dein-host.example/supercomputer`: **Issuer** ist die gesamte Basis, **Resource** ist `<Basis>/mcp`. Der Proxy entfernt das Präfix; die App-Routen enthalten es nicht.
+
+- Öffentliche GET-Discovery (JSON, CORS `*`, no-store): `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`. Der MCP-401-Header enthält die öffentliche URL `resource_metadata`.
+- Öffentliche POST-Routen: `/oauth/register` (RFC 7591, JSON), `/oauth/token` (Code-/Refresh-Grants, formularcodiert), `/oauth/revoke` (RFC 7009, formularcodiert; Token-Widerruf antwortet immer 200). Body-Limit 64 KB; OPTIONS und CORS erlauben öffentliche Clients ohne Cookies. IP-Limits: Registrierung 10/Stunde und 200/Tag gesamt, Token und Revoke je 60/Minute; 429 mit `Retry-After`.
+- Geschützte GET/POST-Route `/oauth/authorize`: bestätigte bestehende Anmeldung erforderlich; skriptfreie Zustimmung DE/EN/ES, signierter 10-Minuten-CSRF-Nachweis für Person und Anfrage, Same-Origin-POST und Schutz gegen Einbettung/Referrer. Unbekannte Clients oder unregistrierte Redirects erhalten nie eine Weiterleitung. PKCE **S256** ist Pflicht; Implicit-/Password-Grants und Client-Secrets sind nicht unterstützt.
+- Authorize-Limits pro Person: GET 30/Minute, Zustimmungs-POST 10/Minute; darüber folgt eine Fehlerseite mit 429 und `Retry-After`. CIMD-Auflösungen derselben URL teilen einen Abruf; höchstens vier URLs werden gleichzeitig abgerufen, weitere sofort abgewiesen. Fehler bleiben 60 Sekunden im Cache; positiver und negativer Cache enthalten je höchstens 500 Einträge.
+- Öffentliche Clients registrieren 1–5 HTTPS-/HTTP-Loopback-Redirects oder verwenden ein HTTPS-**Client ID Metadata Document**. Abruf erst nach Anmeldung, ohne Redirects, höchstens 5 Sekunden/64 KB, eine Stunde im Cache. Alle DNS-Adressen müssen öffentlich sein; der eingebaute HTTPS-Transport bindet den Abruf an diese Adressen gegen DNS-Rebinding. Nur HTTPS-Port 443 ist erlaubt. Redirects stimmen als Zeichenfolge exakt überein, einzige Ausnahme ist der Port eines HTTP-Loopback-Callbacks ([RFC 8252](https://www.rfc-editor.org/rfc/rfc8252)).
+- `data/mcp-oauth-clients.json`: höchstens 500 öffentliche Clients; ungenutzte Clients ohne aktive Verbindung verfallen nach 30 Tagen und werden bei Registrierung bereinigt. Die ältesten Clients ohne aktive Verbindung können verdrängt werden. `data/mcp-keys.json` enthält auch Verbindungen mit `kind: "oauth"`, Client, Besitzer, Resource und Rollenvorgaben (90 Tage Admins/Interne, Richtlinienvorgabe 30 Tage für Teilnehmende). Schlüssel und Verbindungen zählen gemeinsam. Erneute Zustimmung derselben Person für denselben Client verwendet eine aktive Verbindung mit derselben ID und Monatsabrechnung weiter, setzt Recht, Name, Limits und Ablauf gemäss neuer Zustimmung/Rollenvorgabe und macht alle bisherigen Tokens und Codes ungültig. Abgelaufene oder widerrufene Verbindungen bleiben unverändert. Wirksame Limits und Besitzerrolle werden bei jeder Nutzung geprüft. Team-Budget gilt immer; Higgsfield bleibt gesperrt.
+- `data/mcp-oauth-tokens.json`: nur SHA-256-Hashes von Zugangsdaten. Access-Tokens gelten höchstens eine Stunde, Refresh-Tokens rotieren bis zum Verbindungsablauf. Codes gelten 60 Sekunden; ihre Hashes bleiben nur im Speicher. Neustart macht offene Codes ungültig. Pro Verbindung bleiben höchstens fünf Access-Tokens und die neuesten 20 verbrauchten Refresh-Hashes auch nach Neustart erhalten; ältere Zugangsdaten werden ungültig. Beim Speichern werden Tokens widerrufener, gelöschter oder abgelaufener Verbindungen entfernt. Wiederverwendung eines Codes oder noch gespeicherten verbrauchten Refresh-Tokens widerruft die ganze Verbindung. Refresh ist pro Verbindung auf 30 pro Stunde begrenzt; darüber folgt 429 `temporarily_unavailable` mit `Retry-After`, ohne das Token zu verbrauchen. `data/mcp-oauth-secret` enthält den dauerhaften HMAC-Serverschlüssel (keine Client-Zugangsdaten). Alle OAuth-/Schlüsseldateien verwenden Modus 0600 und, wo anwendbar, atomare Schreibvorgänge. Zugangsdaten werden nie geloggt.
+- Der Dialog zeigt **Verbindung (OAuth)** mit Client-Name, Status, änderbaren Limits und letzter Nutzung neben Schlüsseln. **Widerrufen**, `DELETE /api/mcp/keys/:id` und `/oauth/revoke` sperren sofort die ganze Verbindung samt Access-/Refresh-Tokens. Andere Audiences werden abgewiesen. Ohne `resource` gilt diese App; normalisierter Issuer und Resource werden auf die MCP-Resource abgebildet. Scope-Einschränkungen beim Refresh bleiben bei weiteren Rotationen bestehen; `mcp:start` beinhaltet Lesen. Unbekannte Authorize-Scopes werden ignoriert; ohne unterstützten Scope folgt `invalid_scope`. OAuth-Aufrufe von Start-Werkzeugen mit reinen Lese-Tokens ergeben 403 mit `insufficient_scope`; manuelle Bearer-Schlüssel behalten die bisherigen Werkzeugfehler.
+
+Umgesetzt sind die [MCP-Authorization-Anforderungen (2025-11-25)](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) und Discovery/DCR für [Revision 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). Offline-HTTP-/Sicherheitstests: `node scripts/test-mcp-oauth.js`.
+
+### nginx: Pfadpräfix und Discovery an der Host-Wurzel
+
+Genau `/<prefix>/oauth/token`, `/<prefix>/oauth/register`, `/<prefix>/oauth/revoke` und `^~ /<prefix>/.well-known/` von der Anmeldung freigeben, zusätzlich zu den bisherigen exakten MCP-Pfaden. **`/<prefix>/oauth/authorize` muss HINTER der bestehenden Anmeldung bleiben.** Die drei Wurzel-Aliasse unten gehen auf App-Pfade ohne Präfix. Bestehende Cookies und whoami-Konfiguration erhalten. Ersetze `supercomputer` und den Upstream-Port für deine Installation. nginx-Access-/Error-Logs dürfen bei OAuth/MCP weder Query-Strings noch Request-Bodies oder Authorization-Header enthalten (für Access-Logs `$uri` statt `$request`/`$request_uri` verwenden); Callback-Queries enthalten Codes.
+
+Der Proxy muss `X-Real-IP` und `X-Forwarded-For` überschreiben, weil die IP-Limits diesen Headern vertrauen.
+
+```nginx
+# Example: public /supercomputer, app on loopback without the prefix.
+# Keep the existing auth_request/login settings on the protected locations.
+location = /supercomputer/mcp {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/mcp;
+}
+location ^~ /supercomputer/mcp/ {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/mcp/;
+}
+location = /supercomputer/oauth/token {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/oauth/token;
+}
+location = /supercomputer/oauth/register {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/oauth/register;
+}
+location = /supercomputer/oauth/revoke {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/oauth/revoke;
+}
+location ^~ /supercomputer/.well-known/ {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/.well-known/;
+}
+location = /.well-known/oauth-protected-resource/supercomputer/mcp {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/.well-known/oauth-protected-resource/mcp;
+}
+location = /.well-known/oauth-authorization-server/supercomputer {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/.well-known/oauth-authorization-server;
+}
+location = /.well-known/openid-configuration/supercomputer {
+    auth_request off;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/.well-known/openid-configuration;
+}
+# Existing protected location: DO NOT disable auth_request here.
+# /supercomputer/oauth/authorize must pass the existing login before reaching the app.
+location /supercomputer/ {
+    # Replace this URI with your existing login subrequest URI; keep its error_page/cookies/headers.
+    auth_request /_existing_auth_request;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:3111/;
+}
+```
 
 **Werkzeuge**
 

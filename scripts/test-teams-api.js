@@ -360,6 +360,20 @@ async function testTeamAdminApi(ctx) {
 /* ---------- identities ---------- */
 
 async function testIdentities({ api, teamA, teamB }) {
+  // Personal Suno access is available to participants and guests, independently of admin settings.
+  for (const email of [P1, GUEST]) {
+    assert.deepEqual((await api('/api/suno/status', { as: email })).body, { connected: false });
+    for (const endpoint of ['account', 'usage', 'library']) {
+      assert.equal((await api('/api/suno/' + endpoint, { as: email })).status, 409);
+    }
+    assert.equal((await api('/api/suno/oauth/callback?state=foreign&code=invalid', { as: email })).status, 400);
+    // No configured public base or trusted Origin: writes must fail before contacting Suno.
+    for (const [method, endpoint] of [['POST', 'connect'], ['DELETE', 'auth']]) {
+      const result = await api('/api/suno/' + endpoint, { method, as: email, json: {} });
+      assert.ok([403, 503].includes(result.status));
+    }
+  }
+
   const p1 = (await api('/api/me', { as: P1 })).body;
   assert.equal(p1.identified, true);
   assert.equal(p1.role, 'participant');
@@ -697,14 +711,24 @@ async function testRulesTable(ctx) {
   assert.match(gts.body.error, /GTS/);
   assert.equal((await call(GUEST, 'GET', '/api/gts/search?q=test')).status, 403);
   assert.equal((await api('/api/gts/search?q=test', { as: STAFF })).status, 503, 'internal people: as before (no token here)');
-  // agent access (WP27): keys are for admins and internal people; participants and guests get 403 on every route
-  for (const email of [P1, GUEST]) {
+  // Agent access: guests remain forbidden; participants use their policy and own keys.
+  for (const email of [GUEST]) {
     for (const [method, url, json] of [['GET', '/api/mcp/keys'], ['POST', '/api/mcp/keys', { name: 'X', right: 'read' }], ['PATCH', '/api/mcp/keys/kaaaaaaaaaaaaaaaa', { name: 'X' }], ['DELETE', '/api/mcp/keys/kaaaaaaaaaaaaaaaa']]) {
       const response = await call(email, method, url, json);
       assert.equal(response.status, 403, `${method} ${url} as ${email}`);
       assert.equal(response.body.code, 'FORBIDDEN_FOR_ROLE');
       assert.equal(response.body.feature, 'mcp');
     }
+  }
+  // OAuth consent is behind whoami too: guests are refused before client lookup; eligible participants
+  // still need a valid client request and a signed consent form. No redirect is possible without a client.
+  for (const email of [P1, GUEST]) {
+    const get = await call(email, 'GET', '/oauth/authorize');
+    assert.equal(get.status, email === GUEST ? 403 : 400, `OAuth authorize GET as ${email}`);
+    assert.equal(get.headers.get('location'), null);
+    const post = await call(email, 'POST', '/oauth/authorize', {});
+    assert.equal(post.status, 403, `OAuth authorize POST without a consent proof as ${email}`);
+    assert.equal(post.headers.get('location'), null);
   }
   // own computers as render nodes (WP46): participants and guests connect computers of their own and see only those
   for (const email of [P1, GUEST]) {

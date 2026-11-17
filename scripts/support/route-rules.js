@@ -16,12 +16,34 @@
 //   superadmin  superadmins only; 404 for everybody else
 //   identified  any identified person (403 for anonymous callers)
 //   internal    admins and internal people (403 for participants, guests and anonymous callers); the single local user
-//               without user management (agent access keys, lib/mcp/key-routes.js)
+//               without user management; agent keys additionally admit enabled active participants
 //   session     access rule of the chat: 404 unless usable; 403 if managing / sharing rights are missing
 //   workflow    access rule of the workflow (same)
 //   folder      the project folder: visible only with an entry the caller may see (404), rename / delete need
 //               admin rights or that every entry is the caller's
 const ROUTE_RULES = {
+  // Public OAuth discovery/grants; authorization requires an eligible confirmed owner.
+  'GET /.well-known/oauth-protected-resource': 'public',
+  'GET /.well-known/oauth-protected-resource/mcp': 'public',
+  'GET /.well-known/oauth-authorization-server': 'public',
+  'GET /.well-known/openid-configuration': 'public',
+  'OPTIONS /oauth/register': 'public',
+  'POST /oauth/register': 'public',
+  'OPTIONS /oauth/token': 'public',
+  'POST /oauth/token': 'public',
+  'OPTIONS /oauth/revoke': 'public',
+  'POST /oauth/revoke': 'public',
+  'GET /oauth/authorize': 'identified',
+  'POST /oauth/authorize': 'identified',
+  // Personal Suno connection; anonymous callers receive 401, no shared fallback.
+  'GET /api/suno/status': 'identified',
+  'POST /api/suno/connect': 'identified',
+  'GET /api/suno/oauth/callback': 'identified',
+  'DELETE /api/suno/auth': 'identified',
+  'GET /api/suno/account': 'identified',
+  'GET /api/suno/usage': 'identified',
+  'GET /api/suno/library': 'identified',
+
   'GET /refs/:file': 'public', // Seedance needs a public URL; the file name is an unguessable token
   'GET /api/prompt-presets': 'open',
   'POST /api/prompt-presets/custom': 'admin',
@@ -36,10 +58,12 @@ const ROUTE_RULES = {
   'DELETE /api/admins/:email': 'admin',
   'GET /api/me': 'public',
   'GET /api/team': 'identified',
-  'GET /api/mcp/keys': 'internal',
-  'POST /api/mcp/keys': 'internal',
-  'PATCH /api/mcp/keys/:id': 'internal',
-  'DELETE /api/mcp/keys/:id': 'internal',
+  'GET /api/mcp/policy': 'admin',
+  'PUT /api/mcp/policy': 'admin',
+  'GET /api/mcp/keys': 'identified',
+  'POST /api/mcp/keys': 'identified',
+  'PATCH /api/mcp/keys/:id': 'identified',
+  'DELETE /api/mcp/keys/:id': 'identified',
   'GET /api/teams/mine': 'identified',
   'GET /api/teams': 'admin',
   'POST /api/teams': 'admin',
@@ -181,6 +205,27 @@ const ROUTE_RULES = {
 //   forbidden   403 with the code FORBIDDEN_FOR_ROLE (internal resource, Higgsfield ...)
 //   own         only their own data
 const PARTICIPANT_RULES = {
+  'GET /.well-known/oauth-protected-resource': 'public',
+  'GET /.well-known/oauth-protected-resource/mcp': 'public',
+  'GET /.well-known/oauth-authorization-server': 'public',
+  'GET /.well-known/openid-configuration': 'public',
+  'OPTIONS /oauth/register': 'public',
+  'POST /oauth/register': 'public',
+  'OPTIONS /oauth/token': 'public',
+  'POST /oauth/token': 'public',
+  'OPTIONS /oauth/revoke': 'public',
+  'POST /oauth/revoke': 'public',
+  'GET /oauth/authorize': 'own', // enabled policy and active team; guests are refused
+  'POST /oauth/authorize': 'own',
+  // Personal Suno connection; anonymous callers receive 401, no shared fallback.
+  'GET /api/suno/status': 'own',
+  'POST /api/suno/connect': 'own',
+  'GET /api/suno/oauth/callback': 'own',
+  'DELETE /api/suno/auth': 'own',
+  'GET /api/suno/account': 'own',
+  'GET /api/suno/usage': 'own',
+  'GET /api/suno/library': 'own',
+
   'GET /refs/:file': 'public',
   'GET /api/prompt-presets': 'filtered', // no custom (team) templates
   'POST /api/prompt-presets/custom': 'admin',
@@ -195,10 +240,12 @@ const PARTICIPANT_RULES = {
   'DELETE /api/admins/:email': 'admin',
   'GET /api/me': 'filtered', // adds participant, teams and budget
   'GET /api/team': 'filtered', // the members of their own teams
-  'GET /api/mcp/keys': 'forbidden', // agent access: admins and internal people only
-  'POST /api/mcp/keys': 'forbidden',
-  'PATCH /api/mcp/keys/:id': 'forbidden',
-  'DELETE /api/mcp/keys/:id': 'forbidden',
+  'GET /api/mcp/policy': 'admin',
+  'PUT /api/mcp/policy': 'admin',
+  'GET /api/mcp/keys': 'filtered', // active participants only; guests are forbidden
+  'POST /api/mcp/keys': 'filtered',
+  'PATCH /api/mcp/keys/:id': 'filtered',
+  'DELETE /api/mcp/keys/:id': 'filtered',
   'GET /api/teams/mine': 'own',
   'GET /api/teams': 'admin',
   'POST /api/teams': 'admin',
