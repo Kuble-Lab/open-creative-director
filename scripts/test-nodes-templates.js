@@ -535,7 +535,7 @@ async function main() {
         assert.deepEqual([nodeIn(doc, id).type, { ...nodeIn(doc, id).params, model: undefined }], [nodeIn(packDoc, id).type, { ...nodeIn(packDoc, id).params, model: undefined }], `${id} is ${id} of the Suno song pack`);
       }
       assert.equal(nodeIn(doc, 'n4').params.model, 'anthropic/claude-fable-5.2');
-      assert.deepEqual(nodeIn(doc, 'n6').params, { pack: '', takes: 2, version: 1, allow_download_credit: false }, 'no download credit is spent without the person switching it on');
+      assert.deepEqual(nodeIn(doc, 'n6').params, { pack: '', takes: 2, version: 1, allow_download_credit: true }, 'the download credit is allowed by default (decision of 2026-11-17): the song cannot be fetched without it');
       assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n7', 'n5']);
       assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n2.text', 'n6.allow_download_credit'], 'the switch of the download credit is in the form: without it the app view could not get past it');
       assert.equal(templates.resolveTemplate('suno-song', { lang: 'de' }).name, 'Song mit Suno');

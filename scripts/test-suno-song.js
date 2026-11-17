@@ -134,6 +134,11 @@ const fast = { sleep: async () => {}, pollMs: 1 };
   const registry = require('../lib/nodes/registry');
   const def = registry.defaultRegistry ? registry.defaultRegistry.get('suno.song') : null;
   const { createDefinition } = require('../lib/nodes/nodes-suno');
+  {
+    // the switch of the download credit is on by default and stands on the card of the node (decision of 2026-11-17)
+    const credit = createDefinition().params.find((param) => param.id === 'allow_download_credit');
+    assert.deepEqual([credit.kind, credit.default, credit.inline], ['boolean', true, true]);
+  }
   if (def) {
     assert.equal(def.paid, false, 'Suno bills the person, not the app');
     assert.equal(registry.providerOf(def), 'suno');

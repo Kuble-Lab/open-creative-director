@@ -76,7 +76,7 @@
           "pack": "",
           "takes": 2,
           "version": 1,
-          "allow_download_credit": false
+          "allow_download_credit": true
         }
       },
       {
@@ -166,7 +166,7 @@
         "y": 760,
         "w": 520,
         "h": 520,
-        "text": "Connect your Suno account once: account menu → Suno → Connect. Write the idea and, if you like, change the singer. Claude Fable 5.2 writes the four blocks TITLE, STYLE, EXCLUDE and LYRICS, and the node Song (Suno) makes the song from them with your own Suno credits. To change the pack first, run “Suno song pack” alone, open its menu (right click) and choose “Use as text”: edit the text there and then run “Song (Suno)”. The same pack is never made twice; raise “Version” in the node Song (Suno) for a new song from the same pack. If Suno asks for a download credit, the node stops and says so: switch on “Allow download credit” and run it again, nothing is made again. The default singer is Claudia (Claudia by anabology, claudia.gallery): credit her and say that the song is made with AI."
+        "text": "Connect your Suno account once: account menu → Suno → Connect. Write the idea and, if you like, change the singer. Claude Fable 5.2 writes the four blocks TITLE, STYLE, EXCLUDE and LYRICS, and the node Song (Suno) makes the song from them with your own Suno credits. To change the pack first, run “Suno song pack” alone, open its menu (right click) and choose “Use as text”: edit the text there and then run “Song (Suno)”. The same pack is never made twice; raise “Version” in the node Song (Suno) for a new song from the same pack. Fetching the song file costs one Suno download credit when Suno asks for it; “Allow download credit” on the node is on by default. Switched off, the node stops there and says so; switch it on and run it again, nothing is made again. The default singer is Claudia (Claudia by anabology, claudia.gallery): credit her and say that the song is made with AI."
       }
     ],
     "viewport": {
@@ -215,7 +215,7 @@
       "node.n2": "Sängerin (Stimme und Persona)",
       "node.n3": "Anfrage",
       "node.n4": "Suno-Songpaket",
-      "note.t1": "Verbinde einmal dein Suno-Konto: Account-Menü → Suno → Verbinden. Schreibe die Idee und ändere bei Bedarf die Sängerin. Claude Fable 5.2 schreibt die vier Blöcke TITLE, STYLE, EXCLUDE und LYRICS, und der Node «Song (Suno)» erstellt daraus den Song mit deinen eigenen Suno-Credits. Willst du das Paket vorher ändern, führe zuerst nur «Suno-Songpaket» aus, öffne sein Menü (Rechtsklick) und wähle «Als Text übernehmen»: Bearbeite den Text dort und führe danach «Song (Suno)» aus. Dasselbe Paket wird nie zweimal erstellt; erhöhe im Node «Song (Suno)» die «Variante» für einen neuen Song aus demselben Paket. Verlangt Suno einen Download-Credit, hält der Node an und sagt es: Schalte «Download-Credit erlauben» ein und führe ihn nochmals aus, es wird nichts neu erstellt. Standardsängerin ist Claudia (Claudia by anabology, claudia.gallery): Nenne sie im Credit und sage, dass der Song mit KI gemacht ist.",
+      "note.t1": "Verbinde einmal dein Suno-Konto: Account-Menü → Suno → Verbinden. Schreibe die Idee und ändere bei Bedarf die Sängerin. Claude Fable 5.2 schreibt die vier Blöcke TITLE, STYLE, EXCLUDE und LYRICS, und der Node «Song (Suno)» erstellt daraus den Song mit deinen eigenen Suno-Credits. Willst du das Paket vorher ändern, führe zuerst nur «Suno-Songpaket» aus, öffne sein Menü (Rechtsklick) und wähle «Als Text übernehmen»: Bearbeite den Text dort und führe danach «Song (Suno)» aus. Dasselbe Paket wird nie zweimal erstellt; erhöhe im Node «Song (Suno)» die «Variante» für einen neuen Song aus demselben Paket. Das Holen der Songdatei kostet einen Suno-Download-Credit, wenn Suno ihn verlangt; «Download-Credit erlauben» auf dem Node ist standardmässig an. Ausgeschaltet hält der Node dort an und sagt es; schalte ihn ein und führe den Node nochmals aus, es wird nichts neu erstellt. Standardsängerin ist Claudia (Claudia by anabology, claudia.gallery): Nenne sie im Credit und sage, dass der Song mit KI gemacht ist.",
       "app.title": "Song mit Suno",
       "app.description": "Schreibe deine Idee und wähle die Sängerin: Du erhältst einen fertigen Song, erstellt von Suno mit deinem eigenen Suno-Konto und deinen Credits.",
       "app.input.n1.prompt": "Idee für den Song",
@@ -234,7 +234,7 @@
       "node.n2": "Cantante (voz y personaje)",
       "node.n3": "Petición",
       "node.n4": "Paquete de canción para Suno",
-      "note.t1": "Conecta una vez tu cuenta de Suno: menú de la cuenta → Suno → Conectar. Escribe la idea y, si quieres, cambia la cantante. Claude Fable 5.2 escribe los cuatro bloques TITLE, STYLE, EXCLUDE y LYRICS, y el nodo «Canción (Suno)» crea la canción con tus propios créditos de Suno. Para cambiar antes el paquete, ejecuta solo «Paquete de canción para Suno», abre su menú (clic derecho) y elige «Usar como texto»: edita el texto allí y ejecuta después «Canción (Suno)». El mismo paquete nunca se crea dos veces; sube la «Versión» en el nodo «Canción (Suno)» para una canción nueva con el mismo paquete. Si Suno pide un crédito de descarga, el nodo se detiene y lo dice: activa «Permitir crédito de descarga» y ejecútalo otra vez, no se crea nada de nuevo. La cantante por defecto es Claudia (Claudia by anabology, claudia.gallery): menciónala en los créditos y di que la canción está hecha con IA.",
+      "note.t1": "Conecta una vez tu cuenta de Suno: menú de la cuenta → Suno → Conectar. Escribe la idea y, si quieres, cambia la cantante. Claude Fable 5.2 escribe los cuatro bloques TITLE, STYLE, EXCLUDE y LYRICS, y el nodo «Canción (Suno)» crea la canción con tus propios créditos de Suno. Para cambiar antes el paquete, ejecuta solo «Paquete de canción para Suno», abre su menú (clic derecho) y elige «Usar como texto»: edita el texto allí y ejecuta después «Canción (Suno)». El mismo paquete nunca se crea dos veces; sube la «Versión» en el nodo «Canción (Suno)» para una canción nueva con el mismo paquete. Obtener el archivo cuesta un crédito de descarga de Suno cuando Suno lo pide; «Permitir crédito de descarga» en el nodo está activado por defecto. Desactivado, el nodo se detiene ahí y lo dice; actívalo y ejecútalo otra vez, no se crea nada de nuevo. La cantante por defecto es Claudia (Claudia by anabology, claudia.gallery): menciónala en los créditos y di que la canción está hecha con IA.",
       "app.title": "Canción con Suno",
       "app.description": "Escribe tu idea y elige la cantante: recibes una canción terminada, creada por Suno con tu propia cuenta y tus créditos de Suno.",
       "app.input.n1.prompt": "Idea para la canción",
