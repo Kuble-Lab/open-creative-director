@@ -1572,8 +1572,12 @@ async function testShots() {
       assert.deepEqual([shot.index, shot.start, shot.end, shot.kind, shot.section], [index, unit.start, unit.end, unit.kind, unit.section]);
       const plate = result.content.units[index].plate;
       const composition = unit.kind === 'performance' && ['left', 'right'].includes(shot.subject) ? ` Composition: the singer stands in the ${shot.subject} third of the frame, the other half is calm background.` : '';
-      assert.equal(shot.prompt, result.content.units[index].withFigure ? plate + composition : `${plate.replace(/[\s.]+$/, '')}. ${hudPlan.NO_FIGURE_NOTE}`);
-      assert.equal(shot.motion, result.content.units[index].motion);
+      // the figure is silent outside the sung units: the plate and the motion prompt of a story or still unit with her end with it (a sung unit, the only
+      // one with a lip sync, and a unit without her do not)
+      const silent = result.content.units[index].withFigure && shot.kind !== 'performance';
+      assert.equal(shot.prompt, result.content.units[index].withFigure ? plate + composition + (silent ? ` ${hudPlan.SILENT_PLATE}` : '') : `${plate.replace(/[\s.]+$/, '')}. ${hudPlan.NO_FIGURE_NOTE}`);
+      assert.equal(shot.motion, result.content.units[index].motion + (silent && result.content.units[index].motion ? ` ${hudPlan.SILENT_MOTION}` : ''));
+      assert.equal(/lips/.test(`${shot.prompt} ${shot.motion}`), silent, `shot ${index}: only a unit with the figure that is not sung is told to keep the lips closed`);
       assert.equal(shot.framing, result.content.units[index].framing);
       assert.equal(shot.cuts, unit.cuts.length);
       assert.equal(shot.character, 'Mira');
