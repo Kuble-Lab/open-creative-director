@@ -19,4 +19,4 @@ Der Node läuft über die persönliche Suno-Verbindung der Person, die den Lauf 
 
 ## Stand der Abnahme
 
-Die Tests verwenden simulierte Suno-Antworten; es wurden keine Credits verbraucht. Die Tool-Namen `audio-create`, `audio-retrieve` und `audio-download` stammen aus den Chat-Werkzeugen und sind gegen das Live-Konto noch nicht bestätigt. Ein erster echter Lauf mit einem verbundenen Suno-Konto gehört zur Abnahme.
+Erster echter Lauf am 17.11.2026 auf Maniak (Premier-Konto): Die Tool-Namen `audio-create`, `audio-retrieve` und `audio-download` stimmen. Ein Song kostete 10 Suno-Credits. `audio-retrieve` liefert keine Datei; die Datei kommt über `audio-download`, das einen Download-Credit verlangt (`requires_credit`, dann `confirm: true`). Ein wiederholter Download desselben Songs wurde nicht nochmals belastet. Der Link zeigt auf `suno-data-uploads.s3.amazonaws.com`. Die Tests verwenden weiterhin simulierte Suno-Antworten.
