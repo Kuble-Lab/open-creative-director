@@ -143,13 +143,13 @@ async function tokens(h, client) {
   let r = await h.exchange(client, c, { resource: ISSUER }); assert.equal(r.status, 200); const first = r.json;
   assert.equal(first.expires_in, 3600); assert.equal(first.scope, 'mcp:read mcp:start'); assert.equal(r.headers.get('cache-control'), 'no-store');
   r = await h.rpc(first.access_token, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } }); assert.equal(r.status, 200); check(r.json.result.serverInfo);
-  r = await h.rpc(first.access_token); assert.equal(r.status, 200); assert.equal(r.json.result.tools.length, 9); checks++;
+  r = await h.rpc(first.access_token); assert.equal(r.status, 200); assert.equal(r.json.result.tools.length, 12); // 9 + the three read-only Suno tools checks++;
   assert.equal(h.keys.authenticate(first.access_token).ok, false);
   const manual = h.keys.create({ owner: ADMIN, name: 'manual', right: 'read' });
-  r = await h.rpc(manual.secret); assert.equal(r.status, 200); assert.equal(r.json.result.tools.length, 5);
+  r = await h.rpc(manual.secret); assert.equal(r.status, 200); assert.equal(r.json.result.tools.length, 8); // 5 + the three read-only Suno tools
   check(!h.mcp.oauth.tokens.authenticate(manual.secret, RESOURCE).ok);
   r = await h.refresh(client, first.refresh_token, { scope: 'mcp:read' }); assert.equal(r.status, 200); const second = r.json;
-  assert.notEqual(second.refresh_token, first.refresh_token); r = await h.rpc(second.access_token); assert.equal(r.json.result.tools.length, 5);
+  assert.notEqual(second.refresh_token, first.refresh_token); r = await h.rpc(second.access_token); assert.equal(r.json.result.tools.length, 8);
   r = await h.rpc(second.access_token, 'tools/call', { name: 'run_workflow', arguments: { workflow_id: 'wf1', max_usd: 0 } });
   assert.equal(r.status, 403); check(r.headers.get('www-authenticate').includes('insufficient_scope'));
   r = await h.refresh(client, second.refresh_token, { scope: 'mcp:read mcp:start' }); assert.equal(r.status, 400);

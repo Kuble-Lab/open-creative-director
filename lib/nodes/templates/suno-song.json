@@ -1,0 +1,243 @@
+{
+  "id": "suno-song",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Song with Suno",
+  "description": "Turn an idea into a finished song without leaving the app: Claude Fable 5.2 writes the Suno song pack (TITLE, STYLE, EXCLUDE and LYRICS, for a few US cents), and Suno makes the song from it through your own Suno account. Connect it once in the account menu under Suno; the song uses your own Suno credits and the app charges nothing for it. Suno makes two takes: choose the one you like. You can read and change the pack before the song is made. The finished song is in your files and can go straight into the template “Music video in the HUD style (your song)”. The default singer is Claudia (voice: deadpan, clipped spoken verses rising into euphoric sung choruses).",
+  "requires": [
+    "openrouter"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Idea for the song",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Singer (voice and persona)",
+        "params": {
+          "text": "Claudia, an adult AI pop singer in her late twenties. Voice: deadpan, clipped spoken verses rising into euphoric sung choruses, close and dry, every word crisp. Persona: deadpan and curious."
+        }
+      },
+      {
+        "id": "n3",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 220,
+        "title": "Request",
+        "params": {
+          "template": "IDEA\n{{a}}\n\nSINGER (voice and persona)\n{{b}}"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "llm.chat",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 220,
+        "title": "Suno song pack",
+        "params": {
+          "model": "anthropic/claude-fable-5.2",
+          "system": "You write a complete Suno song pack for an AI pop singer. The user gives an idea and the singer (voice and persona). Answer in plain text with exactly these four blocks and nothing else:\n\nTITLE\n<a short title>\n\nSTYLE\n<one line for Suno's style field, at most 900 characters: genre and sub-genre, BPM, time signature, key (and a lift for the chorus if it helps), the main instruments and sound design, and the vocal delivery of the singer in concrete words, e.g. \"deadpan female spoken-word verses, close and dry, clipped and confident, rising into euphoric sung choruses, every word crisp and intelligible\">\n\nEXCLUDE\n<a comma-separated list for Suno's exclude field, e.g. \"rap, rock guitar, lo-fi, male lead vocal, mumbled vocals, big room EDM, dubstep\">\n\nLYRICS\n<the lyrics for Suno's lyrics field>\n\nRules for the lyrics:\n- The topic is obvious in the first two lines; one listen must be enough. Obscure references belong in the video, not in the words.\n- Sections in square brackets: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Drop], [Outro]. Sung parts may go in round brackets. Short stage directions in square brackets are allowed, e.g. [darker, the bass drops out].\n- Spoken verse lines are natural sentences of 10 to 13 syllables with the stressed words where speech stresses them; couplets rhyme on the last word. Sung hooks have 4 to 8 syllables and repeat.\n- Every line gives the video something to show: a number, a place, an object, a thing someone says. Numbers and abbreviations are written the way they are sung (\"two thousand and forty-eight\", \"A G I\").\n- Length: 1800 to 2400 characters in total (about two and a half minutes; Suno cuts everything after about 3000).\n- Write in the language of the idea unless the user asks for another one.\n- No real people, brands or song quotes.",
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 520,
+        "params": {
+          "label": "Suno song pack"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "suno.song",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 120,
+        "title": "Song (Suno)",
+        "params": {
+          "pack": "",
+          "takes": 2,
+          "version": 1,
+          "allow_download_credit": false
+        }
+      },
+      {
+        "id": "n7",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 160,
+        "params": {
+          "label": "Song"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n3",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "text"
+        },
+        "to": {
+          "node": "n3",
+          "port": "b"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "text"
+        },
+        "to": {
+          "node": "n4",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "text"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n4",
+          "port": "text"
+        },
+        "to": {
+          "node": "n6",
+          "port": "pack"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n6",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n7",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 80,
+        "y": 760,
+        "w": 520,
+        "h": 520,
+        "text": "Connect your Suno account once: account menu → Suno → Connect. Write the idea and, if you like, change the singer. Claude Fable 5.2 writes the four blocks TITLE, STYLE, EXCLUDE and LYRICS, and the node Song (Suno) makes the song from them with your own Suno credits. To change the pack first, run “Suno song pack” alone, open its menu (right click) and choose “Use as text”: edit the text there and then run “Song (Suno)”. The same pack is never made twice; raise “Version” in the node Song (Suno) for a new song from the same pack. If Suno asks for a download credit, the node stops and says so: switch on “Allow download credit” and run it again, nothing is made again. The default singer is Claudia (Claudia by anabology, claudia.gallery): credit her and say that the song is made with AI."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Song with Suno",
+    "description": "Write your idea and choose the singer: you get a finished song, made by Suno with your own Suno account and credits.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Idea for the song"
+      },
+      {
+        "node": "n2",
+        "param": "text",
+        "label": "Singer: voice and persona (default: Claudia)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n7",
+        "label": "Song"
+      },
+      {
+        "node": "n5",
+        "label": "Suno song pack"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Song mit Suno",
+      "description": "Mache aus einer Idee einen fertigen Song, ohne die App zu verlassen: Claude Fable 5.2 schreibt das Suno-Songpaket (TITLE, STYLE, EXCLUDE und LYRICS, für wenige US-Cent), und Suno erstellt daraus den Song über dein eigenes Suno-Konto. Verbinde es einmal im Account-Menü unter «Suno»; der Song braucht deine eigenen Suno-Credits, die App berechnet dafür nichts. Suno liefert zwei Fassungen: Wähle die, die dir gefällt. Das Paket kannst du lesen und ändern, bevor der Song entsteht. Der fertige Song liegt in deinen Dateien und passt direkt in die Vorlage «Musikvideo im HUD-Stil (eigener Song)». Standardsängerin ist Claudia (Stimme: trocken, abgehackte Sprechstrophen, die in euphorische gesungene Refrains steigen).",
+      "node.n1": "Idee für den Song",
+      "node.n2": "Sängerin (Stimme und Persona)",
+      "node.n3": "Anfrage",
+      "node.n4": "Suno-Songpaket",
+      "note.t1": "Verbinde einmal dein Suno-Konto: Account-Menü → Suno → Verbinden. Schreibe die Idee und ändere bei Bedarf die Sängerin. Claude Fable 5.2 schreibt die vier Blöcke TITLE, STYLE, EXCLUDE und LYRICS, und der Node «Song (Suno)» erstellt daraus den Song mit deinen eigenen Suno-Credits. Willst du das Paket vorher ändern, führe zuerst nur «Suno-Songpaket» aus, öffne sein Menü (Rechtsklick) und wähle «Als Text übernehmen»: Bearbeite den Text dort und führe danach «Song (Suno)» aus. Dasselbe Paket wird nie zweimal erstellt; erhöhe im Node «Song (Suno)» die «Variante» für einen neuen Song aus demselben Paket. Verlangt Suno einen Download-Credit, hält der Node an und sagt es: Schalte «Download-Credit erlauben» ein und führe ihn nochmals aus, es wird nichts neu erstellt. Standardsängerin ist Claudia (Claudia by anabology, claudia.gallery): Nenne sie im Credit und sage, dass der Song mit KI gemacht ist.",
+      "app.title": "Song mit Suno",
+      "app.description": "Schreibe deine Idee und wähle die Sängerin: Du erhältst einen fertigen Song, erstellt von Suno mit deinem eigenen Suno-Konto und deinen Credits.",
+      "app.input.n1.prompt": "Idee für den Song",
+      "app.input.n2.text": "Sängerin: Stimme und Persona (Standard: Claudia)",
+      "app.output.n5": "Suno-Songpaket",
+      "param.n5.label": "Suno-Songpaket",
+      "node.n6": "Song (Suno)",
+      "app.output.n7": "Song",
+      "param.n7.label": "Song"
+    },
+    "es": {
+      "name": "Canción con Suno",
+      "description": "Convierte una idea en una canción terminada sin salir de la app: Claude Fable 5.2 escribe el paquete de canción para Suno (TITLE, STYLE, EXCLUDE y LYRICS, por unos pocos centavos de dólar) y Suno crea la canción con tu propia cuenta de Suno. Conéctala una vez en el menú de la cuenta, en «Suno»; la canción usa tus propios créditos de Suno y la app no cobra nada por ella. Suno hace dos tomas: elige la que te guste. Puedes leer y cambiar el paquete antes de crear la canción. La canción terminada queda en tus archivos y sirve directamente para la plantilla «Videoclip en estilo HUD (tu canción)». La cantante por defecto es Claudia.",
+      "node.n1": "Idea para la canción",
+      "node.n2": "Cantante (voz y personaje)",
+      "node.n3": "Petición",
+      "node.n4": "Paquete de canción para Suno",
+      "note.t1": "Conecta una vez tu cuenta de Suno: menú de la cuenta → Suno → Conectar. Escribe la idea y, si quieres, cambia la cantante. Claude Fable 5.2 escribe los cuatro bloques TITLE, STYLE, EXCLUDE y LYRICS, y el nodo «Canción (Suno)» crea la canción con tus propios créditos de Suno. Para cambiar antes el paquete, ejecuta solo «Paquete de canción para Suno», abre su menú (clic derecho) y elige «Usar como texto»: edita el texto allí y ejecuta después «Canción (Suno)». El mismo paquete nunca se crea dos veces; sube la «Versión» en el nodo «Canción (Suno)» para una canción nueva con el mismo paquete. Si Suno pide un crédito de descarga, el nodo se detiene y lo dice: activa «Permitir crédito de descarga» y ejecútalo otra vez, no se crea nada de nuevo. La cantante por defecto es Claudia (Claudia by anabology, claudia.gallery): menciónala en los créditos y di que la canción está hecha con IA.",
+      "app.title": "Canción con Suno",
+      "app.description": "Escribe tu idea y elige la cantante: recibes una canción terminada, creada por Suno con tu propia cuenta y tus créditos de Suno.",
+      "app.input.n1.prompt": "Idea para la canción",
+      "app.input.n2.text": "Cantante: voz y personaje (por defecto: Claudia)",
+      "app.output.n5": "Paquete de canción para Suno",
+      "param.n5.label": "Paquete de canción para Suno",
+      "node.n6": "Canción (Suno)",
+      "app.output.n7": "Canción",
+      "param.n7.label": "Canción"
+    }
+  }
+}

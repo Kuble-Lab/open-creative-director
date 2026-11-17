@@ -53,6 +53,7 @@ const EXPECTED = [
   'series-shots',
   'song-from-idea',
   'storyboard-clips',
+  'suno-song',
   'suno-song-pack',
   'talking-portrait',
   'text-on-video',
@@ -510,6 +511,27 @@ async function main() {
       assert.match(templates.resolveTemplate('suno-song-pack', { lang: 'es' }).name, /Suno/);
     }
 
+    // suno-song: the pack of suno-song-pack (same nodes, word for word) goes into "Create song (Suno)"; the song and the pack are results.
+    // Suno bills the person's own account, so the template needs no key of the operator beyond the language model.
+    assert.deepEqual(types('suno-song'), ['input.prompt', 'input.text', 'text.template', 'llm.chat', 'output.result', 'suno.song', 'output.result']);
+    assert.deepEqual(byId['suno-song'].requires, ['openrouter']);
+    assert.deepEqual(edgesOf('suno-song'), ['n1.prompt>n3.a', 'n2.text>n3.b', 'n3.text>n4.prompt', 'n4.text>n5.inputs', 'n4.text>n6.pack', 'n6.audio>n7.inputs']);
+    {
+      const nodeIn = (template, id) => template.graph.nodes.find((node) => node.id === id);
+      const doc = byId['suno-song'];
+      const packDoc = byId['suno-song-pack'];
+      for (const id of ['n1', 'n2', 'n3', 'n4']) {
+        // the pack is written by Claude Fable 5.2 here (decision of 2026-11-17); everything else is the song pack word for word
+        assert.deepEqual([nodeIn(doc, id).type, { ...nodeIn(doc, id).params, model: undefined }], [nodeIn(packDoc, id).type, { ...nodeIn(packDoc, id).params, model: undefined }], `${id} is ${id} of the Suno song pack`);
+      }
+      assert.equal(nodeIn(doc, 'n4').params.model, 'anthropic/claude-fable-5.2');
+      assert.deepEqual(nodeIn(doc, 'n6').params, { pack: '', takes: 2, version: 1, allow_download_credit: false }, 'no download credit is spent without the person switching it on');
+      assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n7', 'n5']);
+      assert.equal(templates.resolveTemplate('suno-song', { lang: 'de' }).name, 'Song mit Suno');
+      assert.equal(templates.resolveTemplate('suno-song', { lang: 'en' }).name, 'Song with Suno');
+      assert.equal(templates.resolveTemplate('suno-song', { lang: 'es' }).name, 'Canción con Suno');
+    }
+
     // music-video-hud-suno: the Suno song pack and the film of the first template in one workflow. One idea feeds the pack and the planner (like
     // the template with the song by ElevenLabs); the song is uploaded between the steps. The pack is step 1, the board, the sheet and the pictures
     // step 2: the film does not depend on the pack, the person makes the song at Suno in between
@@ -694,7 +716,7 @@ async function main() {
       assert.equal(new Set(templates.ORDER).size, templates.ORDER.length);
       // WP44: the three films in the HUD style and the Suno pack follow the older music videos (the one with the song by Suno right after the one
       // with the song by ElevenLabs), the dubbing stays last
-      assert.deepEqual(templates.ORDER.slice(templates.ORDER.indexOf('music-video')), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack', 'dub-clip']);
+      assert.deepEqual(templates.ORDER.slice(templates.ORDER.indexOf('music-video')), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'suno-song-pack', 'suno-song', 'dub-clip']);
 
       // the new ones: shapes, cheap defaults, usable for participants (no Higgsfield, no credits)
       assert.deepEqual(types('image-to-video'), ['input.image', 'input.prompt', 'video.seedance', 'output.result']);
