@@ -322,14 +322,15 @@ function testOtherCacheKeys() {
         const def = registry.get(node.type);
         lines.push(`${other.id}/${lang}/${node.id}: ${engine.computeCacheKey(def, registry.normalizeParams(def, node.params || {}), {})}`);
         const previous = { ...node.params };
-        if (['suno-song-pack', 'music-video-hud-suno'].includes(other.id) && node.type === 'llm.chat' && previous.model === 'openai/gpt-6-astra') previous.model = 'anthropic/claude-opus-5.5';
+        if (['suno-song-pack', 'music-video-hud-suno'].includes(other.id) && node.type === 'llm.chat' && previous.model === 'anthropic/claude-fable-5.2') previous.model = 'anthropic/claude-opus-5.5';
+        if (node.type === 'input.image_model') continue; // New HUD selector: no counterpart in the historical digest.
         calibratedLines.push(`${other.id}/${lang}/${node.id}: ${engine.computeCacheKey(def, registry.normalizeParams(def, previous), {})}`);
       }
     }
   }
-  assert.equal(lines.length, 927);
-  assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), '4ef027c3cc9a886ed88a61e713da66575eaba95ecdac866d34f7450426595922');
-  // Only the two Suno pack model parameters change existing template keys.
+  assert.equal(lines.length, 936);
+  assert.equal(crypto.createHash('sha256').update(lines.join('\n')).digest('hex'), '87ace662814d38f1ac02f090dab909e9ab69f1d7348a1357e49280d1eac33ad2');
+  // The new selectors and two Fable song pack parameters change the template digest; existing event and explainer keys stay pinned.
   assert.equal(crypto.createHash('sha256').update(calibratedLines.join('\n')).digest('hex'), 'b1fa95d24bed7fc4fc58116bf4721ad7c5573e5b2d7e718683fada926fc5ac9f');
 }
 

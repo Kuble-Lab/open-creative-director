@@ -355,6 +355,24 @@ async function run(iso) {
     assert.equal(explainerNodes.chooseModel(withAstra, { model: '' }), 'openai/gpt-6-astra');
     assert.deepEqual(withAstra.logs, []);
 
+    // Only the HUD supplies a different default; account and subscription fallbacks use that id in their logs.
+    const fable = require('../lib/nodes/nodes-music-video-hud').HUD_DEFAULT_MODEL;
+    assert.equal(fable, 'anthropic/claude-fable-5.2');
+    assert.equal(explainerNodes.chooseModel(staff, {}, fable), fable);
+    const noFable = makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed'], defaultBrain: 'vendor/allowed' } });
+    assert.equal(explainerNodes.chooseModel(noFable, {}, fable), 'vendor/allowed');
+    assert.ok(noFable.logs[0].includes(`${fable} is not available for your account`));
+    const withFable = makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed', fable] } });
+    assert.equal(explainerNodes.chooseModel(withFable, {}, fable), fable);
+    assert.deepEqual(withFable.logs, []);
+    const withKey = or.hasKey;
+    try {
+      or.hasKey = () => false;
+      const subscription = makeCtx({ config: { defaultBrain: 'chatgpt/gpt-5.6-sol' } });
+      assert.equal(explainerNodes.chooseModel(subscription, {}, fable), 'chatgpt/gpt-5.6-sol');
+      assert.ok(subscription.logs[0].includes(`so ${fable} cannot be used`));
+    } finally { or.hasKey = withKey; }
+
     // through the nodes: the restricted person's call carries the allowed model
     answers.research.push({ __result: { text: 'x', citations: [], citationSpans: [] } });
     await exec('llm.research', makeCtx({ user: GUEST, config: { restrictedBrainModels: ['vendor/allowed'], defaultBrain: 'vendor/allowed' } }), { topic: text('x') }, {});

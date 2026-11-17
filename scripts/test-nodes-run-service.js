@@ -482,7 +482,8 @@ async function run(iso) {
     ['n3.lyrics', 'text', false],
     ['n17.karaoke', 'boolean', false],
     ['n17.effects', 'select', false],
-    ['n4.hud_language', 'select', false]
+    ['n4.hud_language', 'select', false],
+    ['n31.model', 'select', false]
   ]);
   assert.deepEqual(hudFilm.inputs.find((input) => input.id === 'n4.theme').options, ['hud', 'kuble']);
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.theme').label, 'Stil');
@@ -502,7 +503,8 @@ async function run(iso) {
     ['n4.theme', 'select', false],
     ['n17.karaoke', 'boolean', false],
     ['n17.effects', 'select', false],
-    ['n4.hud_language', 'select', false]
+    ['n4.hud_language', 'select', false],
+    ['n31.model', 'select', false]
   ]);
   assert.deepEqual([hudSong.name, hudSong.paid, hudSong.cost.kind], ['Musikvideo im HUD-Stil (Song von ElevenLabs)', true, 'unknown']);
   const sunoPack = realTemplates.find((item) => item.id === 'suno-song-pack');
@@ -519,7 +521,8 @@ async function run(iso) {
     ['n3.lyrics', 'text', false],
     ['n17.karaoke', 'boolean', false],
     ['n17.effects', 'select', false],
-    ['n4.hud_language', 'select', false]
+    ['n4.hud_language', 'select', false],
+    ['n31.model', 'select', false]
   ]);
   assert.deepEqual(hudSuno.outputs.map((output) => output.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
   assert.deepEqual([hudSuno.name, hudSuno.paid, hudSuno.cost.kind], ['Musikvideo im HUD-Stil (Song von Suno)', true, 'unknown']);

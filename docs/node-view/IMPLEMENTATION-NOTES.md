@@ -1,5 +1,11 @@
 # Node View — Implementation Notes
 
+## HUD planner and one image model setting (2026-11-17)
+
+The HUD planner defaults to Claude Fable 5.2 (8/40 USD per million input/output tokens); explainer, research, scene and event planners keep GPT-6 Astra. The two Suno pack templates name Fable explicitly. The planner's blank model parameter and saved plan keys stay unchanged. The existing Anthropic OpenRouter path already fits: 64,000 initial / 128,000 maximum tokens, medium then low reasoning, JSON object response format with the existing 400 retry.
+
+A free `input.image_model` feeds the optional text input `model` of the four image nodes in each HUD template and is exposed in the app form using the existing dynamic select widget. The input has no param link: workflows without a model connection keep their node and item keys. A blank selector stamps the configured model. One setting changes the pictures while keeping the paid plan, brief, board and approvals. Estimates and cost history use the effective image model; GPT Image 2.6 Sunburst and Flare have 16 references and unknown list prices. The board deliberately retains the Nano Banana 2.1 price assumption; image-node estimates stay unknown until a same-model run supplies history. Recomputed fixture totals are roughly 6.3 USD per minute, 9.5 for 90 seconds and 12.5 for two minutes; the pack is about 6 cents.
+
 Status: v1 as built, plus phase 2c (Higgsfield lip sync, voice change, motion transfer and speech; 2026-09-29) the fal.ai / MiniMax H3 Max nodes (2026-09-29, §2.7) the Prompt node with its quick pick (2026-09-29, §2.8) the port hover help with visible multi-inputs (2026-09-30, §2.9) and the clarity of the Motion graphics node (2026-09-30, §2.10). Companion to [SPEC.md](SPEC.md). The SPEC is the design that was implemented; this file records the architecture as it ended up, every relevant deviation from the SPEC, a recipe for adding node types, the tests, the decisions taken and the backlog. **Where the SPEC and the code disagree, the code wins.**
 
 ---
