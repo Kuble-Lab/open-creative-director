@@ -218,7 +218,7 @@ async function run(iso, output) {
     { question: '' },
     { question: '   ' },
     { question: 7 },
-    { question: 'x'.repeat(2001) },
+    { question: 'x'.repeat(10001) },
     { canvas: null },
     { canvas: { nodes: 'no' } },
     { canvas: { nodes: [], edges: {} } },
@@ -239,7 +239,7 @@ async function run(iso, output) {
     const stranger = await ask(privateFlow.id, OTHER, { lang });
     assert.deepEqual([stranger.status, stranger.body.code, stranger.body.error], [404, 'WORKFLOW_NOT_FOUND', missing.body.error], `${lang}: the same sentence for a missing and a foreign workflow`);
     const empty = await ask(flow.id, STAFF, { lang, question: ' ' });
-    const long = await ask(flow.id, STAFF, { lang, question: 'x'.repeat(2001) });
+    const long = await ask(flow.id, STAFF, { lang, question: 'x'.repeat(10001) });
     const broken = await ask(flow.id, STAFF, { lang, canvas: null });
     for (const [name, answer] of [['missing', missing], ['empty', empty], ['long', long], ['broken', broken]]) {
       assert.equal(/^(Workflow not found|question is|canvas)/.test(answer.body.error), false, `${lang}.${name}: ${answer.body.error}`);
@@ -247,7 +247,7 @@ async function run(iso, output) {
       assert.equal(answer.body.code, name === 'missing' ? 'WORKFLOW_NOT_FOUND' : 'INVALID_REQUEST');
       refusals[`${name}:${answer.body.error}`] = lang;
     }
-    assert.match(long.body.error, /2000/);
+    assert.match(long.body.error, /10000/);
   }
   assert.equal(Object.keys(refusals).length, 12, 'every sentence exists once per language');
   assert.match((await ask('wf-does-not-exist', STAFF, { lang: 'de' })).body.error, /nicht gefunden/);
