@@ -392,7 +392,11 @@ async function main() {
       const hudDoc = byId['music-video-hud'];
       const hudNode = (id) => hudDoc.graph.nodes.find((node) => node.id === id);
       // every param of every node is one of the node with a valid value (nothing is dropped by the import)
-      for (const node of hudDoc.graph.nodes) assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), node.params, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
+      for (const node of hudDoc.graph.nodes) {
+        // The new cache-omitted switch is intentionally absent from the saved template; normalization supplies its exact default.
+        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.params;
+        assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), expected, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
+      }
       // Nano Banana 2.1 is set on the node of the character sheet and on every node of the pictures (the choice of the owner, not the default of the
       // settings); the sheet is a portrait (the prompt is a head-and-shoulders portrait), the pictures are 16:9, one per unit
       for (const id of ['n5', 'n9', 'n10', 'n11']) assert.equal(hudNode(id).params.model, 'google/gemini-nano-banana-2.1', `${id}: Nano Banana 2.1`);
@@ -470,7 +474,10 @@ async function main() {
     {
       const elevenDoc = byId['music-video-hud-elevenlabs'];
       const elevenNode = (id) => elevenDoc.graph.nodes.find((node) => node.id === id);
-      for (const node of elevenDoc.graph.nodes) assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), node.params, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
+      for (const node of elevenDoc.graph.nodes) {
+        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.params;
+        assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), expected, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
+      }
       // the chain from the analysis to the film is the one of the first template, node by node (only the place on the canvas differs)
       for (let number = 2; number <= 24; number += 1) {
         const [a, b] = [byId['music-video-hud'], elevenDoc].map((doc) => doc.graph.nodes.find((node) => node.id === `n${number}`));

@@ -485,7 +485,7 @@ async function run(iso) {
     ['n4.hud_language', 'select', false],
     ['n31.model', 'select', false]
   ]);
-  assert.deepEqual(hudFilm.inputs.find((input) => input.id === 'n4.theme').options, ['hud', 'kuble']);
+  assert.deepEqual(hudFilm.inputs.find((input) => input.id === 'n4.theme').options, ['hud', 'kuble', 'camcorder']);
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n4.theme').label, 'Stil');
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').label, 'Untertitel (Karaoke-Zeile)');
   assert.equal(hudFilm.inputs.find((input) => input.id === 'n17.karaoke').value, undefined, 'a switch holds no value in the list');
