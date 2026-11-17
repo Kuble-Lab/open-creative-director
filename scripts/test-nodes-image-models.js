@@ -29,7 +29,7 @@ const graphLib = require('../public/nodes/graph');
 const { createRegistry } = require('../lib/nodes/registry');
 const { createEventBus } = require('../lib/nodes/events');
 const { createWorkflowsStore } = require('../lib/nodes/workflows-store');
-const { createEngine } = require('../lib/nodes/engine');
+const { createEngine, resolveNodeInputs, computeCacheKey, computeItemKeys } = require('../lib/nodes/engine');
 
 const root = path.resolve(__dirname, '..');
 const PNG = Buffer.from(
@@ -40,6 +40,8 @@ const PNG_B64 = PNG.toString('base64');
 
 const GPT = 'openai/gpt-image-2';
 const NANO = 'google/gemini-3-pro-image';
+const SUNBURST = 'openai/gpt-image-2.6-sunburst';
+const FLARE = 'openai/gpt-image-2.6-flare';
 const NANO_21 = 'google/gemini-nano-banana-2.1';
 const ONE_REF = 'vendor/one-ref';
 const TEXT_ONLY = 'vendor/text-only';
@@ -86,14 +88,14 @@ const imageResponse = (cost = 0.04) => ({ data: [{ b64_json: PNG_B64, media_type
 /* ---------- config ---------- */
 
 function testConfig() {
-  assert.deepEqual(DEFAULT_CONFIG.imageModels, [GPT, NANO, NANO_21]);
+  assert.deepEqual(DEFAULT_CONFIG.imageModels, [GPT, NANO, NANO_21, SUNBURST]);
   // the model of imageModel always comes first, whatever the list says; duplicates and unusable entries are dropped
   assert.deepEqual(normaliseImageModels([NANO, GPT, NANO], GPT), [GPT, NANO]);
   assert.deepEqual(normaliseImageModels([NANO], 'vendor/other'), ['vendor/other', NANO]);
   assert.deepEqual(normaliseImageModels(['', 7, null, 'no-slash', 'has space/x', `vendor/${'x'.repeat(250)}`, ' vendor/ok '], GPT), [GPT, 'vendor/ok']);
   // missing or not a list: the default list (the operator did not choose)
-  assert.deepEqual(normaliseImageModels(undefined, GPT), [GPT, NANO, NANO_21]);
-  assert.deepEqual(normaliseImageModels('x/y', GPT), [GPT, NANO, NANO_21]);
+  assert.deepEqual(normaliseImageModels(undefined, GPT), [GPT, NANO, NANO_21, SUNBURST]);
+  assert.deepEqual(normaliseImageModels('x/y', GPT), [GPT, NANO, NANO_21, SUNBURST]);
   // an empty list is a choice: only the model of the configuration
   assert.deepEqual(normaliseImageModels([], GPT), [GPT]);
   const loaded = loadConfig();
@@ -144,6 +146,11 @@ async function testModelLibrary() {
   assert.equal(imageModels.estimateUsd(NANO_21), 0.034);
   assert.equal(imageModels.displayName(NANO_21), 'Nano Banana 2.1');
   assert.equal(imageModels.isAllowed({ imageModel: GPT, imageModels: DEFAULT_CONFIG.imageModels }, NANO_21), true, 'on the default list');
+  for (const [id, name] of [[SUNBURST, 'GPT Image 2.6 Sunburst'], [FLARE, 'GPT Image 2.6 Flare']]) {
+    assert.deepEqual(imageModels.referenceLimits(id), { min: 0, max: 16 });
+    assert.equal(imageModels.estimateUsd(id), null);
+    assert.equal(imageModels.displayName(id), name);
+  }
   assert.equal(imageModels.estimateUsd(GPT), null, 'the price of GPT Image 2 depends on the quality the provider picks');
   assert.equal(imageModels.estimateUsd(ONE_REF), null);
   assert.equal(imageModels.estimateUsd(''), null);
@@ -275,6 +282,64 @@ async function main() {
       return (node.validate(registry.normalizeParams(node, rawParams), ports) || []).map((issue) => (typeof issue === 'string' ? { message: issue } : issue));
     };
 
+    /* ----- one connected model setting, with no change to unconnected saved nodes ----- */
+    {
+      baseMocks();
+      await imageModels.load();
+      const selection = def('input.image_model');
+      assert.equal(selection.category, 'input');
+      assert.ok(!selection.paid && !selection.provider);
+      assert.deepEqual(selection.params[0], { id: 'model', kind: 'select', optionsSource: 'image-edit-models', default: '', inline: true });
+      assert.equal((await run('input.image_model', makeCtx(), {}, { model: `  ${NANO}  ` })).variants[0].model.value, NANO);
+      assert.equal((await run('input.image_model', makeCtx(), {}, {})).variants[0].model.value, GPT);
+      assert.deepEqual(await selection.cacheStamp({ model: '' }, makeCtx()), { imageModel: GPT });
+      assert.deepEqual(await selection.cacheStamp({ model: '' }, makeCtx({ ...CONFIG, imageModel: NANO })), { imageModel: NANO });
+      assert.equal(await selection.cacheStamp({ model: NANO }, makeCtx()), undefined);
+      const defaults = registry.normalizeParams(selection, {});
+      assert.notEqual(computeCacheKey(selection, defaults, {}, await selection.cacheStamp(defaults, makeCtx())), computeCacheKey(selection, defaults, {}, await selection.cacheStamp(defaults, makeCtx({ ...CONFIG, imageModel: NANO }))));
+      for (const type of ['image.generate', 'image.edit']) {
+        const node = def(type);
+        assert.deepEqual(node.inputs.find((port) => port.id === 'model'), { id: 'model', type: 'text' });
+        const params = registry.normalizeParams(node, { prompt: 'cup', model: NANO, count: 2 });
+        const images = type === 'image.edit' ? { images: list('image', [image1]) } : {};
+        for (const [value, expected] of [[`  ${GPT}  `, GPT], ['  ', NANO]]) {
+          payloads.length = 0;
+          const result = await run(type, makeCtx(), { prompt: text('cup'), ...images, model: text(value) }, params);
+          assert.equal(payloads.length, 2);
+          assert.equal(payloads[0].model, expected);
+          assert.equal(result.cost.model, expected);
+        }
+        payloads.length = 0;
+        await run(type, makeCtx(), { prompt: text('cup'), ...images, model: text('') }, { model: '' });
+        assert.equal(payloads[0].model, GPT, 'blank input and param use configuration');
+        payloads.length = 0;
+        await assert.rejects(run(type, makeCtx(), { prompt: text('cup'), ...images, model: text(NOT_LISTED) }, params), { code: 'IMAGE_MODEL_NOT_ALLOWED' });
+        await assert.rejects(run(type, makeCtx(), { prompt: text('cup'), images: list('image', [image1, image2]), model: text(ONE_REF) }, params), { code: 'TOO_MANY_REFERENCES' });
+        assert.equal(payloads.length, 0, 'invalid override never reaches the provider');
+        // A restrictive fallback must not reject references accepted by the connected model.
+        assert.deepEqual(issuesOf(type, { model: ONE_REF }, { images: { count: 2 }, model: { connected: true } }), []);
+        await run(type, makeCtx(), { prompt: text('cup'), images: list('image', [image1, image2]), model: text(GPT) }, { model: ONE_REF });
+        const context = { config: CONFIG, inputs: {}, connected: new Set(['model']) };
+        assert.deepEqual(node.cost.estimate(params, context), { usd: 0.268 }, 'unresolved connection keeps template fallback estimate');
+        assert.deepEqual(node.cost.estimate(params, { ...context, inputs: { model: text(` ${NANO} `) } }), { usd: 0.268 });
+        assert.equal(node.cost.estimate(params, { ...context, inputs: { model: text(SUNBURST) } }), null, 'unknown GPT Image list price is never zero');
+        const historyContext = { ...context, workflow: { graph: { nodes: [{ id: 'old', type }] } }, results: { nodes: { old: { history: [{ createdAt: '2026-11-17', params: { model: NANO, count: 1 }, cost: { usd: 0.07, model: SUNBURST }, variants: [{}] }] } } } };
+        assert.deepEqual(node.cost.estimate(params, { ...historyContext, inputs: { model: text(SUNBURST) } }), { usd: 0.14 }, 'history matches the effective model, not the parameter');
+        assert.equal(node.cost.estimate(params, { ...historyContext, inputs: { model: text(FLARE) } }), null, 'another GPT Image model cannot borrow that price');
+        assert.deepEqual(node.cost.estimate(params, { ...context, inputs: { model: text(' ') } }), node.cost.estimate(params, { config: CONFIG }), 'blank input keeps the old estimate');
+        const prior = { ...node, inputs: node.inputs.filter((port) => port.id !== 'model') };
+        const options = { node: { id: 'pic' }, params, edges: type === 'image.edit' ? [{ from: { node: 'seed', port: 'image' }, to: { node: 'pic', port: 'images' } }] : [], outputsOf: () => ({ image: image1 }), maxListItems: 50 };
+        const before = resolveNodeInputs({ ...options, ports: { inputs: prior.inputs } });
+        const after = resolveNodeInputs({ ...options, ports: { inputs: node.inputs } });
+        assert.deepEqual(after, before);
+        assert.ok(!('model' in after.inputs));
+        assert.equal(computeCacheKey(node, params, after.inputs), computeCacheKey(prior, params, before.inputs));
+        const mapped = { inputs: { ...after.inputs, prompt: list('text', [text('cup'), text('bowl')]) }, mapped: ['prompt'], mapLength: 2 };
+        assert.deepEqual(computeItemKeys(node, params, mapped), computeItemKeys(prior, params, mapped), 'unconnected item keys stay unchanged');
+        assert.notEqual(computeCacheKey(node, params, { ...after.inputs, model: text(GPT) }), computeCacheKey(node, params, after.inputs));
+      }
+    }
+
     /* ----- descriptors: ids stay, the model is a param, edit has a limit that follows it ----- */
     {
       baseMocks();
@@ -378,11 +443,15 @@ async function main() {
       await run('image.generate', makeCtx(), { prompt: text('x') }, { model: GPT });
       await run('image.generate', makeCtx(), { prompt: text('x') });
       await run('image.edit', makeCtx(), { prompt: text('x'), images: list('image', [image1]) }, { model: NANO });
+      await run('image.generate', makeCtx(), { prompt: text('x'), model: text(NANO) }, { model: GPT });
+      await run('image.edit', makeCtx(), { prompt: text('x'), images: list('image', [image1]), model: text(GPT) }, { model: NANO });
       assert.deepEqual(seen, [
         { name: 'generate_image', imageEstimateUsd: 0.134, model: NANO },
         { name: 'generate_image', imageEstimateUsd: undefined, model: GPT },
         { name: 'generate_image', imageEstimateUsd: undefined, model: GPT },
-        { name: 'edit_image', imageEstimateUsd: 0.134, model: NANO }
+        { name: 'edit_image', imageEstimateUsd: 0.134, model: NANO },
+        { name: 'generate_image', imageEstimateUsd: 0.134, model: NANO },
+        { name: 'edit_image', imageEstimateUsd: undefined, model: GPT }
       ], 'a known price goes along, an unknown one is not passed (never 0)');
       // the configured model counts too: Nano Banana Pro as the standard reserves its price
       seen.length = 0;

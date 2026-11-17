@@ -3,11 +3,13 @@
   "imageModels": [
     "openai/gpt-image-2",
     "google/gemini-3-pro-image",
-    "google/gemini-nano-banana-2.1"
+    "google/gemini-nano-banana-2.1",
+    "openai/gpt-image-2.6-sunburst"
   ],
   "videoModel": "bytedance/seedance-2.5",
   "brainModels": [
     "openai/gpt-6-astra",
+    "anthropic/claude-fable-5.2",
     "anthropic/claude-opus-5.5",
     "anthropic/claude-sonnet-5.5",
     "anthropic/claude-opus-4.6",

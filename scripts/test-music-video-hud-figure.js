@@ -174,10 +174,11 @@ function keysOf(doc) {
 // The graph of a template as main had it before WP50: without the edge of the reference images and without the switch of the planner.
 function asOnMain(doc) {
   const copy = JSON.parse(JSON.stringify(doc));
-  copy.graph.edges = copy.graph.edges.filter((edge) => edge.from.port !== 'sheet_refs');
+  copy.graph.nodes = copy.graph.nodes.filter((node) => node.type !== 'input.image_model');
+  copy.graph.edges = copy.graph.edges.filter((edge) => edge.from.node !== 'n31' && edge.from.port !== 'sheet_refs');
   for (const node of copy.graph.nodes) {
     if (node.type === 'music_video.hud_plan') delete node.params.official_images;
-    if (node.type === 'llm.chat' && node.params.model === 'openai/gpt-6-astra') node.params.model = 'anthropic/claude-opus-5.5';
+    if (node.type === 'llm.chat' && node.params.model === 'anthropic/claude-fable-5.2') node.params.model = 'anthropic/claude-opus-5.5';
   }
   return copy;
 }
@@ -200,13 +201,33 @@ const MAIN_KEYS_WP52 = {
 function testKeys() {
   for (const id of HUD_TEMPLATES) {
     const doc = templateDoc(id);
+    const selector = doc.graph.nodes.find((node) => node.type === 'input.image_model');
+    assert.equal(selector.id, 'n31');
+    assert.equal(selector.title, 'Image model');
+    assert.deepEqual(selector.params, { model: 'google/gemini-nano-banana-2.1' });
+    assert.deepEqual(doc.graph.edges.filter((edge) => edge.from.node === selector.id).map((edge) => [edge.from.port, edge.to.node, edge.to.port]), ['n5', 'n9', 'n10', 'n11'].map((node) => ['model', node, 'model']));
+    assert.ok(doc.app.inputs.some((entry) => entry.node === selector.id && entry.param === 'model' && entry.label === 'Image model'));
+    const field = require('../lib/nodes/run-service').inputDescriptors(doc.graph, doc.app, registry).find((entry) => entry.id === 'n31.model');
+    assert.equal(field.type, 'select');
+    assert.equal(field.hasValue, true);
+    assert.equal(field.required, false);
+    for (const [lang, label] of [['de', 'Bildmodell'], ['es', 'Modelo de imagen']]) {
+      assert.equal(doc.i18n[lang]['node.n31'], label);
+      assert.equal(doc.i18n[lang]['app.input.n31.model'], label);
+    }
+
     // a workflow saved from the template of main: every key as before the deploy (the planner, the sheet, the pictures, the clips, the cut, the render)
     assert.deepEqual(keysOf(asOnMain(doc)), MAIN_KEYS[id], `${id}: a workflow of main keeps its keys`);
     // a new workflow from the template of now: the planner (the switch) and the sheet (the images) are new, everything else would follow from their results
     const now = keysOf(doc);
+    // New template pins: four model-input fingerprints and the free selector; the saved planner key above is unchanged.
+    assert.deepEqual(Object.fromEntries(['n5', 'n9', 'n10', 'n11', 'n31'].map((key) => [key, now[key]])), { n5: 'b5521611aa23', n9: '3544fd6ab7a7', n10: '7b96c7a5bc3a', n11: '35aff85b6015', n31: '375af8ae4ee2' });
+    if (id === 'music-video-hud-suno') assert.equal(now.n28, '0a5672e6ed67', 'explicit Fable pack model');
+    selector.params.model = 'openai/gpt-image-2.6-sunburst';
+    assert.equal(keysOf(doc).n4, now.n4, 'changing the image model preserves the approved plan key');
     const changed = Object.keys(now).filter((nodeId) => now[nodeId] !== MAIN_KEYS[id][nodeId]);
-    assert.deepEqual(changed, id === 'music-video-hud-suno' ? ['n28', 'n4', 'n5'] : ['n4', 'n5'], `${id}: the planner, sheet and Astra song pack differ`);
-    if (id === 'music-video-hud-suno') assert.notEqual(now.n28, MAIN_KEYS_WP52[id].n28, 'the Astra song pack has a new key');
+    assert.deepEqual(changed, id === 'music-video-hud-suno' ? ['n28', 'n4', 'n5', 'n9', 'n10', 'n11', 'n31'] : ['n4', 'n5', 'n9', 'n10', 'n11', 'n31'], `${id}: the planner switch, picture model inputs, selector and Fable song pack differ`);
+    if (id === 'music-video-hud-suno') assert.notEqual(now.n28, MAIN_KEYS_WP52[id].n28, 'the Fable song pack has a new key');
   }
   // the switch at its default is no part of the key; on, it is
   const def = registry.get('music_video.hud_plan');
@@ -217,8 +238,10 @@ function testKeys() {
   // WP52a: every key of the templates as on main before WP52a, and the two new settings at their defaults are no part of a key; changed, they are
   for (const id of HUD_TEMPLATES) {
     const doc = JSON.parse(JSON.stringify(templateDoc(id)));
-    for (const node of doc.graph.nodes) if (node.type === 'llm.chat' && node.params.model === 'openai/gpt-6-astra') node.params.model = 'anthropic/claude-opus-5.5';
-    assert.deepEqual(keysOf(doc), MAIN_KEYS_WP52[id], `${id}: only the explicit Astra model changes keys since WP52a`);
+    doc.graph.nodes = doc.graph.nodes.filter((node) => node.type !== 'input.image_model');
+    doc.graph.edges = doc.graph.edges.filter((edge) => edge.from.node !== 'n31');
+    for (const node of doc.graph.nodes) if (node.type === 'llm.chat' && node.params.model === 'anthropic/claude-fable-5.2') node.params.model = 'anthropic/claude-opus-5.5';
+    assert.deepEqual(keysOf(doc), MAIN_KEYS_WP52[id], `${id}: saved workflows without the selector keep their keys since WP52a`);
   }
   assert.equal(keyOf(saved), keyOf({ ...saved, broll_share: 0.35, allow_plain: false }));
   assert.notEqual(keyOf(saved), keyOf({ ...saved, broll_share: 0.5 }));
@@ -241,7 +264,7 @@ function testTemplates() {
     assert.equal(plan.params.figure, CLAUDIA_TEXT, `${id}: Claudia is the default`);
     assert.equal(figures.figureOf(hudPlan.parseFigure(plan.params.figure))?.id, 'claudia');
     const into = doc.graph.edges.filter((edge) => edge.to.node === sheet.id).map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.port}`);
-    assert.deepEqual(into, [`${plan.id}.sheet_prompt>prompt`, `${plan.id}.sheet_refs>images`], `${id}: the prompt and the images of the sheet come from the planner`);
+    assert.deepEqual(into, [`${plan.id}.sheet_prompt>prompt`, `${plan.id}.sheet_refs>images`, 'n31.model>model'], `${id}: the prompt and the images of the sheet come from the planner`);
     assert.deepEqual([sheet.params.model, sheet.params.aspect_ratio], ['google/gemini-nano-banana-2.1', '3:4']);
     // the pictures of the units still take the sheet, nothing else
     for (const edit of doc.graph.nodes.filter((node) => node.type === 'image.edit')) {

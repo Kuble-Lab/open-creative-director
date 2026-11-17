@@ -1640,7 +1640,7 @@ async function testPrice() {
 
   // the real tables of the other nodes: nothing is copied into the planner
   {
-    const real = hudNode.hudPrices(explainerNodes.DEFAULT_MODEL);
+    const real = hudNode.hudPrices(hudNode.HUD_DEFAULT_MODEL);
     assert.equal(real.image, imageModels.estimateUsd(hudNode.PLATE_IMAGE_MODEL));
     assert.equal(real.image, 0.034, 'Nano Banana 2.1, per image (OpenRouter list price)');
     assert.equal(real.lipsync(5), 0.4, '0.08 USD per second of lip sync');
@@ -1648,7 +1648,7 @@ async function testPrice() {
     assert.equal(real.lipsync(20), 1.92, 'above 15 s the price is 1.2 times higher');
     assert.equal(real.clipPerSecond, 0.04, 'H3 turbo, 768P');
     assert.equal(real.depth, 0.01);
-    assert.deepEqual(real.llm, { inputPerMillion: 10, outputPerMillion: 50, charsPerToken: 3 }, 'GPT-6 Astra');
+    assert.deepEqual(real.llm, { inputPerMillion: 8, outputPerMillion: 40, charsPerToken: 3 }, 'Claude Fable 5.2');
     assert.equal(hudNode.hudPrices('vendor/unknown-model').llm, null, 'a model without a price: the language model is unknown');
 
     // the songs of 60 and 120 s at the default settings (every unit that is not sung is a clip) and with the share of motion of the songs (0.3: stills that
@@ -1673,11 +1673,11 @@ async function testPrice() {
       assert.ok(of('s60').total >= 6.3 && of('s60').total <= 7.1, `60 s: ${of('s60').total} USD`);
       assert.ok(of('fast').total >= 11.8 && of('fast').total <= 13.2, `120 s: ${of('fast').total} USD`);
       // WP52a: the language model with its thinking (PLAN_THINKING_TOKENS) and the answer without the identity texts
-      assert.ok(of('s60').parts.llm >= 0.95 && of('s60').parts.llm <= 1.375 && of('fast').parts.llm >= 1.375 && of('fast').parts.llm <= 1.875, `the language model: about 1.1 and 1.6 USD (${of('s60').parts.llm}, ${of('fast').parts.llm})`);
+      assert.ok(of('s60').parts.llm >= 0.76 && of('s60').parts.llm <= 1.1 && of('fast').parts.llm >= 1.1 && of('fast').parts.llm <= 1.5, `the language model: about 0.9 and 1.3 USD (${of('s60').parts.llm}, ${of('fast').parts.llm})`);
       assert.ok(average >= 6 && average <= 6.7, `${average.toFixed(2)} USD per minute of song`);
-      assert.match(def.description, /about 6\.5 USD per minute of song at the default settings/, 'the guide in the description is the one measured here');
-      assert.match(def.description, /about 13 USD for two minutes/);
-      assert.match(def.description, /about 1\.1 USD for a minute of song and 1\.6 USD for two/);
+      assert.match(def.description, /about 6\.3 USD per minute of song at the default settings/, 'the guide in the description is the one measured here');
+      assert.match(def.description, /about 12\.5 USD for two minutes/);
+      assert.match(def.description, /about 0\.9 USD for a minute of song and 1\.3 USD for two/);
       // the clips and the lip sync are the biggest parts, nothing is spent on depth maps
       for (const row of rows) {
         const { parts } = row.cost;
@@ -1687,7 +1687,7 @@ async function testPrice() {
     {
       const { rows, average } = priced({});
       assert.ok(average >= 3.9 && average <= 4.5, `${average.toFixed(2)} USD per minute of song at a share of motion of 0.3`);
-      assert.match(def.description, /about 4\.2 USD per minute at 0\.3/);
+      assert.match(def.description, /about 4\.1 USD per minute at 0\.3/);
       // there the lip sync is the biggest part
       for (const row of rows) assert.ok(row.cost.parts.lipsync > row.cost.parts.plates && row.cost.parts.lipsync > row.cost.parts.clips, `${row.name}: ${JSON.stringify(row.cost.parts)}`);
     }
@@ -1695,7 +1695,7 @@ async function testPrice() {
 
   // the board: the same numbers, one block for every unit
   {
-    const real = hudNode.hudPrices(explainerNodes.DEFAULT_MODEL);
+    const real = hudNode.hudPrices(hudNode.HUD_DEFAULT_MODEL);
     const { grid } = gridOf('s72');
     const figure = figureOf();
     const { result } = await plan('s72', [answerFor('s72')], { prices: real });
@@ -1835,8 +1835,10 @@ async function testDefinition() {
     const params = real.normalizeParams(def, {});
     const context = (extra = {}) => ({ config: {}, inputs: inputs(), connected: new Set(['analysis', 'timing', 'brief', 'figure']), ...extra });
     const estimate = def.cost.estimate(params, context());
-    // WP52a: with the thinking at the effort medium about 1.1 USD for a minute of song
-    assert.ok(estimate && estimate.usd > 0.875 && estimate.usd < 1.5, JSON.stringify(estimate));
+    // WP52a: with the thinking at the effort medium about 0.9 USD for a minute of song
+    assert.ok(estimate && estimate.usd > 0.7 && estimate.usd < 1.2, JSON.stringify(estimate));
+    assert.equal(estimate.usd, Math.round(def.cost.estimate({ ...params, model: 'openai/gpt-6-astra' }, context()).usd * 0.8 * 1e4) / 1e4, 'Fable costs 80% of Astra for the same prompt and token budget');
+    assert.deepEqual(def.cost.estimate(params, context({ config: { restrictedBrainModels: ['anthropic/claude-fable-5.2'] } })), estimate);
     // it is the price of the model for the size of this song, not a guess from an earlier run
     const long = songOf('fast');
     const bigger = def.cost.estimate(params, context({ inputs: inputs({ analysis: { type: 'text', value: JSON.stringify(long.analysis) }, timing: { type: 'text', value: JSON.stringify(long.timing) } }) }));
@@ -1852,7 +1854,7 @@ async function testDefinition() {
     assert.equal(def.cost.estimate(params, context({ inputs: inputs({ analysis: { type: 'text', value: 'nothing' } }) })), null, 'an unreadable analysis');
     assert.equal(def.cost.estimate({ ...params, model: 'vendor/unknown-model' }, context()), null, 'no price for the model');
     assert.ok(def.cost.estimate({ ...params, model: 'anthropic/claude-sonnet-5.5' }, context()) === null || def.cost.estimate({ ...params, model: 'anthropic/claude-sonnet-5.5' }, context()).usd > 0);
-    assert.equal(def.cost.estimate(params, context({ config: { restrictedBrainModels: ['vendor/other-model'] } })), null, 'a person whose list lacks Astra gets another model');
+    assert.equal(def.cost.estimate(params, context({ config: { restrictedBrainModels: ['vendor/other-model'] } })), null, 'a person whose list lacks Fable gets another model');
     delete process.env.OPENROUTER_API_KEY;
     assert.equal(def.cost.estimate(params, context()), null, 'without OpenRouter the model is the one of the settings');
   } finally {
@@ -2351,7 +2353,7 @@ async function testNode() {
       process.env.OPENROUTER_API_KEY = 'test-key-for-the-estimate-0123456789';
       reset();
       await exec(makeCtx(), inputs(), { model: '' });
-      assert.equal(calls[0].model, 'openai/gpt-6-astra', 'GPT-6 Astra is the default');
+      assert.equal(calls[0].model, 'anthropic/claude-fable-5.2', 'Claude Fable 5.2 is the default');
       delete process.env.OPENROUTER_API_KEY;
       reset();
       const ctx = makeCtx();
