@@ -520,8 +520,10 @@ async function main() {
       const doc = byId['suno-song'];
       const packDoc = byId['suno-song-pack'];
       for (const id of ['n1', 'n2', 'n3', 'n4']) {
-        assert.deepEqual([nodeIn(doc, id).type, nodeIn(doc, id).params], [nodeIn(packDoc, id).type, nodeIn(packDoc, id).params], `${id} is ${id} of the Suno song pack`);
+        // the pack is written by Claude Fable 5.2 here (decision of 2026-11-17); everything else is the song pack word for word
+        assert.deepEqual([nodeIn(doc, id).type, { ...nodeIn(doc, id).params, model: undefined }], [nodeIn(packDoc, id).type, { ...nodeIn(packDoc, id).params, model: undefined }], `${id} is ${id} of the Suno song pack`);
       }
+      assert.equal(nodeIn(doc, 'n4').params.model, 'anthropic/claude-fable-5.2');
       assert.deepEqual(nodeIn(doc, 'n6').params, { pack: '', takes: 2, version: 1, allow_download_credit: false }, 'no download credit is spent without the person switching it on');
       assert.deepEqual(doc.app.outputs.map((entry) => entry.node), ['n7', 'n5']);
       assert.equal(templates.resolveTemplate('suno-song', { lang: 'de' }).name, 'Song mit Suno');
