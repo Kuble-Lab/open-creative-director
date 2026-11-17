@@ -322,7 +322,9 @@ async function run(iso) {
     reset();
     assert.deepEqual(statuses(await start(neutral.id)), { b: 'cached', plan: 'cached' });
 
-    assert.equal((await resolveStamp(def, { branding: branding.id }, {}, null, { user: GUEST })).stamp, undefined, 'a guest has no brandings: nothing is read');
+    const guestStamp = (await resolveStamp(def, { branding: branding.id }, {}, null, { user: GUEST })).stamp;
+    assert.match(guestStamp, /^st:/, 'somebody else\'s branding is missing for a guest');
+    assert.notEqual(guestStamp, (await resolveStamp(def, { branding: branding.id }, {}, null, { user: STAFF })).stamp, 'and never the stamp of the branding itself');
     const missing = await resolveStamp(def, { branding: 'gone-1' }, {}, null, { user: STAFF });
     assert.match(missing.stamp, /^st:/);
     assert.notEqual(missing.stamp, (await resolveStamp(def, { branding: branding.id }, {}, null, { user: STAFF })).stamp);
@@ -371,7 +373,9 @@ async function run(iso) {
     assert.equal((await ask(STAFF, undefined)).stamp, undefined, 'no brand: nothing to add');
     assert.equal((await ask(STAFF, JSON.stringify({ fonts: [{ family: 'System', asset: null }] }))).stamp, undefined, 'a system font: nothing to add');
     assert.equal((await ask(STAFF, 'not json')).stamp, undefined);
-    assert.equal((await ask(GUEST, brandText)).stamp, undefined, 'a guest gets the system font');
+    const guestFont = (await ask(GUEST, brandText)).stamp;
+    assert.match(guestFont, /^st:/);
+    assert.notEqual(guestFont, (await ask(STAFF, brandText)).stamp, 'a guest gets the system font: the file of somebody else\'s branding is not read');
     const lostFont = JSON.stringify({ fonts: [{ family: 'Brand', asset: { branding: fonted.id, file: 'missing.woff2' } }] });
     assert.match((await ask(STAFF, lostFont)).stamp, /^st:/, 'a font file that is gone is a stamp of its own');
     assert.equal(def.cacheStampAdopts, true, 'an old entry is taken once: a deploy does not paint the scenes again');

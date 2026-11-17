@@ -1249,11 +1249,11 @@ async function run(iso, { eleven, setVoiceBytes }) {
     assert.ok(!html.includes("@font-face{font-family:'Big Serif'"), 'a font file of 500 KB is not embedded');
     assert.ok(ctx.logs.some((line) => /font: Big Serif: 500 KB is above 400 KB: the system font is used/.test(line)), ctx.logs.join(' | '));
     assert.ok(Buffer.byteLength(html) < 2 * 1024 * 1024);
-    // a participant has no brandings: the system font, with a log
+    // a participant does not see the branding of somebody else: the system font, with a log
     reset();
     const guest = makeCtx({ user: P1, config: { restrictedBrainModels: ['openai/gpt-6-astra'] } });
     await exec('explainer.scene', guest, baseInputs(0, { brand: brandText }), { vision_check: false });
-    assert.ok(guest.logs.some((line) => /Brandings are not available for your account: the system font is used/.test(line)));
+    assert.ok(guest.logs.some((line) => /could not be read \(Branding nicht gefunden.*the system font is used/.test(line)), guest.logs.join(' | '));
     assert.ok(!renders[0].html.includes('@font-face'));
     // a brand text that is not JSON: the neutral look
     reset();

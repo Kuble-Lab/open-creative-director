@@ -443,7 +443,25 @@ function truncateCharacters(value, maxLength) {
   return [...String(value || '').trim()].slice(0, maxLength).join('');
 }
 
-async function validateExistingBrandingIds(values) {
+// The attached brandings the viewer may see (a chat shared with them can hold somebody else's; a deleted one is left out too).
+async function visibleBrandingIds(ids, viewer) {
+  const list = Array.isArray(ids) ? ids : [];
+  if (!viewer || !viewer.active) return list;
+  const visible = [];
+  for (const id of list) {
+    try {
+      await brandings.readVisibleBranding(id, viewer);
+      visible.push(id);
+    } catch (_) {
+      /* not theirs, or gone */
+    }
+  }
+  return visible;
+}
+
+// The IDs of brandings to attach. With a viewer every one must be visible to that person (somebody else's branding
+// does not exist for them).
+async function validateExistingBrandingIds(values, viewer = null) {
   if (!Array.isArray(values)) throw new TypeError('brandings muss ein Array sein');
   if (values.length > 2) throw new Error('Es duerfen maximal 2 Brandings angehaengt werden');
   const ids = [];
@@ -455,7 +473,10 @@ async function validateExistingBrandingIds(values) {
     if (!store.isValidId(id)) throw new Error(`Ungueltige Branding-ID: ${id}`);
     if (!ids.includes(id)) ids.push(id);
   }
-  for (const id of ids) await brandings.readBranding(id);
+  for (const id of ids) {
+    if (viewer) await brandings.readVisibleBranding(id, viewer);
+    else await brandings.readBranding(id);
+  }
   return ids;
 }
 
@@ -1540,14 +1561,24 @@ app.get('/api/gts/search', async (req, res) => {
 
 app.get('/api/brandings', async (req, res) => {
   try {
-    res.json({ brandings: isRestricted(req) ? [] : await brandings.listBrandings() });
+    // What the caller may see: participants and guests their own, internal people the shared ones and their own, admins all.
+    res.json({ brandings: await brandings.listBrandings({ viewer: access.viewerOf(req) }), maxOwned: brandings.MAX_OWNED_BRANDINGS });
   } catch (err) {
     fail(res, 500, err.message);
   }
 });
 
+// Everybody with a login may import: an admin's import is a shared branding, everybody else's is their own.
 app.post('/api/brandings/import', brandingZipBody, async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  let owner;
+  try {
+    owner = brandings.ownerForNew(access.viewerOf(req));
+    if (owner && (await brandings.countOwnedBy(owner)) >= brandings.MAX_OWNED_BRANDINGS) {
+      return fail(res, 409, `Du hast bereits ${brandings.MAX_OWNED_BRANDINGS} eigene Brandings. Lösche zuerst eines, das du nicht mehr brauchst.`);
+    }
+  } catch (err) {
+    return fail(res, err.code === 'BRANDING_FORBIDDEN' ? 403 : 500, err.message);
+  }
   const rawFilename = String(req.get('x-file-name') || '').trim();
   let filename = rawFilename;
   try {
@@ -1559,11 +1590,13 @@ app.post('/api/brandings/import', brandingZipBody, async (req, res) => {
     const result = await brandingImport.importBrandingZip({
       buffer: req.body,
       filename,
-      name: typeof req.query.name === 'string' ? req.query.name : ''
+      name: typeof req.query.name === 'string' ? req.query.name : '',
+      owner
     });
     res.status(201).json(result);
   } catch (err) {
     const known = err instanceof brandingImport.BrandingImportError;
+    if (err.code === 'BRANDING_LIMIT') return fail(res, 409, err.message);
     fail(res, known ? err.status : 500, known ? err.message : `Branding-Import fehlgeschlagen: ${err.message}`);
   }
 });
@@ -1683,12 +1716,9 @@ app.post('/api/roles/generate', async (req, res) => {
 app.get('/api/brandings/:id/export', async (req, res) => {
   const id = requireBrandingId(req, res);
   if (!id) return;
-  if (isRestricted(req)) return fail(res, 404, 'Branding nicht gefunden');
   try {
-    const [branding, summary] = await Promise.all([
-      brandings.readBranding(id),
-      brandings.brandingSummary(id)
-    ]);
+    const branding = await brandings.readVisibleBranding(id, access.viewerOf(req));
+    const summary = await brandings.brandingSummary(id);
     const readme = [
       `# Branding-Export: ${branding.name}`,
       '',
@@ -1717,8 +1747,8 @@ app.get('/api/brandings/:id/export', async (req, res) => {
 app.get('/api/brandings/:id/assets/:filename', async (req, res) => {
   const id = requireBrandingId(req, res);
   if (!id) return;
-  if (isRestricted(req)) return fail(res, 404, 'Branding nicht gefunden');
   try {
+    await brandings.readVisibleBranding(id, access.viewerOf(req));
     const buffer = await brandings.readBrandingAsset(id, req.params.filename);
     const mime = BRANDING_ASSET_MIME[path.extname(req.params.filename).toLowerCase()] || 'application/octet-stream';
     res.type(mime).send(buffer);
@@ -1731,9 +1761,10 @@ app.get('/api/brandings/:id/assets/:filename', async (req, res) => {
 app.get('/api/brandings/:id', async (req, res) => {
   const id = requireBrandingId(req, res);
   if (!id) return;
-  if (isRestricted(req)) return fail(res, 404, 'Branding nicht gefunden');
   try {
-    res.json(await brandings.readBranding(id));
+    const viewer = access.viewerOf(req);
+    const branding = await brandings.readVisibleBranding(id, viewer);
+    res.json({ ...branding, editable: brandings.editableBy(branding, viewer) });
   } catch (err) {
     fail(res, err.code === 'BRANDING_NOT_FOUND' ? 404 : 500, err.message);
   }
@@ -1742,7 +1773,6 @@ app.get('/api/brandings/:id', async (req, res) => {
 // The speaker voice of a branding (WP38f): { speaker: { voiceId, name } } sets it, { speaker: null } removes it. This is the only field
 // the editor of the app changes; the rest of a branding is made through the Director (update_branding) or the import.
 app.patch('/api/brandings/:id', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
   const id = requireBrandingId(req, res);
   if (!id) return;
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
@@ -1751,21 +1781,22 @@ app.patch('/api/brandings/:id', async (req, res) => {
     return fail(res, 400, extra.length ? `Unbekanntes Feld: ${extra[0]}` : 'speaker fehlt (Objekt { voiceId, name } oder null)');
   }
   try {
+    await brandings.readEditableBranding(id, access.viewerOf(req)); // admins and the owner
     res.json(await brandings.updateBranding(id, { speaker: body.speaker }));
   } catch (err) {
-    fail(res, err.code === 'BRANDING_NOT_FOUND' ? 404 : 400, err.message);
+    fail(res, err.code === 'BRANDING_NOT_FOUND' ? 404 : err.code === 'BRANDING_FORBIDDEN' ? 403 : 400, err.message);
   }
 });
 
 app.delete('/api/brandings/:id', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
   const id = requireBrandingId(req, res);
   if (!id) return;
   try {
+    await brandings.readEditableBranding(id, access.viewerOf(req)); // admins and the owner
     await brandings.deleteBranding(id);
     res.json({ ok: true });
   } catch (err) {
-    fail(res, err.code === 'BRANDING_NOT_FOUND' ? 404 : 500, err.message);
+    fail(res, err.code === 'BRANDING_NOT_FOUND' ? 404 : err.code === 'BRANDING_FORBIDDEN' ? 403 : 500, err.message);
   }
 });
 
@@ -1927,7 +1958,7 @@ app.put('/api/folders/:name/profile', async (req, res) => {
   }
 
   try {
-    const validatedBrandings = await validateExistingBrandingIds(attachedBrandings);
+    const validatedBrandings = await validateExistingBrandingIds(attachedBrandings, access.viewerOf(req));
     const profile = await store.writeFolderProfile(name, {
       guidelines: guidelines.trim(),
       contextBrains: contextBrains.map((id) => id.trim()),
@@ -2099,10 +2130,10 @@ app.patch('/api/sessions/:id', async (req, res) => {
     if (access.viewerOf(req).active && hasFolder && typeof changes.folder === 'string' && !(await canUseFolder(req, changes.folder.trim()))) {
       return fail(res, 404, 'Projekt nicht gefunden');
     }
-    // Brandings and custom roles are internal resources: participants and guests may only clear them.
-    if (hasBrandings && Array.isArray(changes.brandings) && changes.brandings.length && !requireUnrestricted(req, res, 'brandings', 'Brandings sind für dein Konto nicht verfügbar.')) return;
+    // Custom roles are internal resources: participants and guests may only clear them. Brandings: everybody attaches
+    // what they may see (participants and guests their own, see lib/brandings.js).
     if (hasRole && changes.role !== null && !requireUnrestricted(req, res, 'roles', 'Eigene Rollen sind für dein Konto nicht verfügbar.')) return;
-    const validatedBrandings = hasBrandings ? await validateExistingBrandingIds(changes.brandings) : null;
+    const validatedBrandings = hasBrandings ? await validateExistingBrandingIds(changes.brandings, access.viewerOf(req)) : null;
     if (hasRole && changes.role !== null && !(await roles.getRole(changes.role.trim()))) {
       return fail(res, 400, 'Rolle nicht gefunden');
     }
@@ -2222,7 +2253,7 @@ app.get('/api/sessions/:id', async (req, res) => {
           { viewer, budgetStatus }
         ),
         videoModelPreference: videoModels.publicPreference(session, viewer),
-        brandings: viewer.active && access.isRestricted(viewer) ? [] : session.brandings,
+        brandings: await visibleBrandingIds(session.brandings, viewer),
         contextFiles: session.contextFiles,
         role: viewer.active && access.isRestricted(viewer) ? null : session.role || null,
         ...(viewer.active ? access.describe(session, viewer) : {})

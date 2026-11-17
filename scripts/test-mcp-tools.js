@@ -962,7 +962,7 @@ async function run(iso, holder) {
   assert.equal(authenticated.viewer.email, P);
   await assert.rejects(llm.completeText({ user: authenticated.viewer.email, model: 'chatgpt/gpt-5.6-sol', prompt: 'x' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'chatgpt');
   await assert.rejects(llm.completeText({ user: authenticated.viewer.email, model: 'unlisted/model', restrictedModels: ['allowed/model'], prompt: 'x' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'models');
-  await assert.rejects(realRegistry.get('input.branding').execute({ user: authenticated.viewer.email, log() {} }, {}, { branding: 'internal-brand' }), (err) => err.code === 'FORBIDDEN_FOR_ROLE' && err.feature === 'brandings');
+  await assert.rejects(realRegistry.get('input.branding').execute({ user: authenticated.viewer.email, log() {} }, {}, { branding: 'internal-brand' }), (err) => err.code === 'BRANDING_NOT_FOUND');
   assert.equal(iso.load('lib/mcp/workflow-tools').describeError({ code: 'FORBIDDEN_FOR_ROLE', feature: 'models', message: 'Model blocked' }).includes('models'), true);
 
   // no key shows up in any answer

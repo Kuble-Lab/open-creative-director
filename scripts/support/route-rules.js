@@ -108,7 +108,7 @@ const ROUTE_RULES = {
   'GET /api/admin/monitoring/export': 'superadmin',
   'GET /api/gts/search': 'open',
   'GET /api/brandings': 'open',
-  'POST /api/brandings/import': 'admin',
+  'POST /api/brandings/import': 'identified', // an admin's import is shared, everybody else's is their own
   'GET /api/roles': 'open',
   'GET /api/roles/default': 'open',
   'POST /api/roles': 'admin',
@@ -118,8 +118,8 @@ const ROUTE_RULES = {
   'GET /api/brandings/:id/export': 'open',
   'GET /api/brandings/:id/assets/:filename': 'open',
   'GET /api/brandings/:id': 'open',
-  'PATCH /api/brandings/:id': 'admin', // the speaker voice (WP38f)
-  'DELETE /api/brandings/:id': 'admin',
+  'PATCH /api/brandings/:id': 'open', // the speaker voice (WP38f): admins and the owner of the branding
+  'DELETE /api/brandings/:id': 'open', // admins and the owner of the branding
   'GET /api/folders': 'folder',
   'POST /api/folders': 'open', // an empty project holds nothing private
   'PATCH /api/folders/:name': 'folder',
@@ -288,19 +288,19 @@ const PARTICIPANT_RULES = {
   'GET /api/admin/monitoring': 'superadmin',
   'GET /api/admin/monitoring/export': 'superadmin',
   'GET /api/gts/search': 'forbidden',
-  'GET /api/brandings': 'empty',
-  'POST /api/brandings/import': 'admin',
+  'GET /api/brandings': 'own',
+  'POST /api/brandings/import': 'own',
   'GET /api/roles': 'empty', // only the standard role (GET /api/roles/default)
   'GET /api/roles/default': 'public',
   'POST /api/roles': 'admin',
   'PUT /api/roles/:id': 'admin',
   'DELETE /api/roles/:id': 'admin',
   'POST /api/roles/generate': 'admin',
-  'GET /api/brandings/:id/export': 'notfound',
-  'GET /api/brandings/:id/assets/:filename': 'notfound',
-  'GET /api/brandings/:id': 'notfound',
-  'PATCH /api/brandings/:id': 'admin',
-  'DELETE /api/brandings/:id': 'admin',
+  'GET /api/brandings/:id/export': 'own',
+  'GET /api/brandings/:id/assets/:filename': 'own',
+  'GET /api/brandings/:id': 'own',
+  'PATCH /api/brandings/:id': 'own',
+  'DELETE /api/brandings/:id': 'own',
   'GET /api/folders': 'own', // projects they created or that hold something shared with them
   'POST /api/folders': 'own',
   'PATCH /api/folders/:name': 'own',
