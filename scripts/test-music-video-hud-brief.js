@@ -102,7 +102,10 @@ const WP51_ADDED = [
 ];
 // Composition is asserted in test-music-video-hud-plan; remove only that new suffix for the historical snapshots.
 const withoutComposition = (text) => String(text).replace(/ Composition: the singer stands in the (?:left|right) third of the frame, the other half is calm background\./g, '');
-const withoutWp51 = (text) => WP51_ADDED.reduce((out, added) => out.split(added).join('').split(JSON.stringify(added).slice(1, -1)).join(''), withoutComposition(text));
+// The figure is silent outside the sung units (a rule of the prompt, an ending of the plates and of the motion prompts): asserted in
+// test-music-video-hud-plan, removed here for the historical snapshots.
+const SILENT_ADDED = [`\n${hudPlan.SILENT_RULE}`, ` ${hudPlan.SILENT_PLATE}`, ` ${hudPlan.SILENT_MOTION}`];
+const withoutWp51 = (text) => [...WP51_ADDED, ...SILENT_ADDED].reduce((out, added) => out.split(added).join('').split(JSON.stringify(added).slice(1, -1)).join(''), withoutComposition(text));
 // The estimates read the length of the prompt: with the additions (403 characters, about 134 tokens of input) the language model costs some 0.0005 USD
 // more; these four are the ones of WP51.
 const WP51_ESTIMATES = {
@@ -110,6 +113,15 @@ const WP51_ESTIMATES = {
   'planner.b.cost': { sha256: '86e06bb76c3174254bb0bd28e4e6a884fe98d76f994ec434e76bdacab29701b4', length: 176 },
   'planner.c.cost': { sha256: '76d1f1af1af2f8fcbaf224a7de994d86891c611af28a06cf4623910dc8821fb7', length: 179 },
   'node.estimate': { sha256: 'a7da4973a2945e2a9661a36f0aa867fc4e31b53831eb3e86b65c8118c6ddd55c', length: 14 }
+};
+
+// The rule of the silent figure makes the prompt 323 characters longer (108 tokens of input, some 0.0005 USD more for the language model): these four
+// estimates are the ones with it.
+const SILENT_ESTIMATES = {
+  'planner.a.cost': { sha256: 'c5386326cd731e12dda708e7c49e3a5cd495f1f7e8fdf07960ea00a70b3314bc', length: 190 },
+  'planner.b.cost': { sha256: '8019dd6eea4d14af775068ab7695f12834617397aaa2e7b61931a4e1977595e9', length: 189 },
+  'planner.c.cost': { sha256: 'bf31d5d98e00efecc358c86a59ad88f7cc64f48d3533196b8e6d7a3be2069051', length: 192 },
+  'node.estimate': { sha256: 'fbc2e3bf29f4d4fc4b622c36c19e1c71a3230250f26b844d2c5b31918ff0d0ee', length: 14 }
 };
 
 async function testGolden() {
@@ -125,7 +137,7 @@ async function testGolden() {
   ].sort(), 'WP52a changes the planner, its prompts and its estimate, nothing else');
   // The fixtures with full briefs have their own requests, costs and shots; the boards and all other snapshots stay byte for byte.
   const emptyRetryBoard = { sha256: 'fd6831b59014f05e69ec26322467eafbd05d5d54f354f015483a008c7c18bbb9', length: 11594 };
-  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], LISTEN[name] || (name === 'planner.c.board' ? emptyRetryBoard : null) || WP52A[name] || WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte (or of WP52a)`);
+  for (const [name, print] of Object.entries(BEFORE_WP48)) assert.deepEqual(now[name], SILENT_ESTIMATES[name] || LISTEN[name] || (name === 'planner.c.board' ? emptyRetryBoard : null) || WP52A[name] || WP51_ESTIMATES[name] || print, `${name}: the text of before WP48, byte for byte (or of WP52a)`);
   // the additions are in the prompt of every run of the planner
   for (const name of ['a', 'b', 'c']) for (const added of WP51_ADDED) assert.ok(texts[`planner.${name}.requests`].includes(JSON.stringify(added).slice(1, -1)), `${name}: the target of a tag is asked for`);
   // the three runs with a given idea: one request each (the second run and the third ask twice for the answer, as before), never one for a brief
@@ -175,6 +187,19 @@ function testMarks() {
   assert.equal(lyricsTiming.hasChoirMarks(['One line', ...directions].join('\n')), false);
   assert.deepEqual(lines('(Break it down)\n(Fade away with me)'), ['choir: Break it down', 'choir: Fade away with me'], 'a direction word next to real words: sung');
   assert.deepEqual(lines('[Choir]\n(ahh)\n(Sail on)\nSail away'), ['choir: Sail on', 'choir: Sail away']);
+  // a named section in which every sung line stands in parentheses has no lead beside them: the figure sings it (a language model wrote the whole
+  // chorus of a Suno text in parentheses, and the chorus got no lip sync); a section with a lead keeps its backing vocals, so does a text without sections
+  assert.deepEqual(
+    lines('[Intro]\n[a single mouse click]\n(Hands off. Hands off.)\nI am Claudia.\n\n[Pre-Chorus]\n(M C P, my superpower)\n(One plug, every door)\n\n[Chorus]\n(Stop typing)\n(ahh)\n(Let me take control)\n\n[Verse 2]\nBook the flight\n(to Lisbon)\n[Outro]\n(Claudia runs it all)'),
+    ['choir: Hands off. Hands off.', 'I am Claudia.', 'M C P, my superpower', 'One plug, every door', 'Stop typing', 'Let me take control', 'Book the flight', 'choir: to Lisbon', 'Claudia runs it all']
+  );
+  assert.equal(lyricsTiming.hasChoirMarks('[Chorus]\n(Stop typing)\n(Let me take control)'), false, 'a chorus in parentheses is the chorus of the figure');
+  // a stage direction in square brackets does not start a section: the echo after it stays a backing vocal of its verse
+  assert.deepEqual(lines('[Verse]\nOne line\n[whispered, the bass drops out]\n(Two line)'), ['One line', 'choir: Two line']);
+  // explicit marks win: a section of a choir and "Choir:" stay a choir, also in parentheses
+  assert.deepEqual(lines('[Chorus]\nChoir: (Sail on)\n(Sail away)'), ['choir: Sail on', 'choir: Sail away']);
+  assert.deepEqual(lines('[Backing Vocals]\n(Sail on)\n[darker]\n(Sail away)'), ['choir: Sail on', 'choir: Sail away']);
+  assert.deepEqual(lines('[Verse | 20 s]\nOne line\n[Chorus | 20 s]\n(Three line)\n(Four line)'), ['One line', 'Three line', 'Four line'], 'a song plan too');
   // a song plan: its sections come from the parser of the plan, a section of a choir is marked like in a pasted text
   assert.deepEqual(lines('[Verse | 20 s]\n+ 100 BPM, warm synths\nOne line\n[Backing Vocals | 8 s]\nTwo line\n[Chorus | 20 s]\nThree line\n(Four line)\n(ahh)'), ['One line', 'choir: Two line', 'Three line', 'choir: Four line']);
   // the texts for the alignment: the lines of the choir too (their words are sung, the lines next to them need them to keep their times)

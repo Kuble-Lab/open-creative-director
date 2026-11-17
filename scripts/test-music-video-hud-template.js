@@ -69,7 +69,7 @@ LYRICS
 
 Rules for the lyrics:
 - The topic is obvious in the first two lines; one listen must be enough. Obscure references belong in the video, not in the words.
-- Sections in square brackets: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Drop], [Outro]. Sung parts may go in round brackets. Short stage directions in square brackets are allowed, e.g. [darker, the bass drops out].
+- Sections in square brackets: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Drop], [Outro]. Everything the singer sings herself is written plainly, without round brackets, also every line of the chorus. Round brackets are only for short backing vocals that other voices sing behind her (an echo, a crowd shout); never put a whole section in round brackets: the video shows her singing only the lines outside them. Short stage directions in square brackets are allowed, e.g. [darker, the bass drops out].
 - Spoken verse lines are natural sentences of 10 to 13 syllables with the stressed words where speech stresses them; couplets rhyme on the last word. Sung hooks have 4 to 8 syllables and repeat.
 - Every line gives the video something to show: a number, a place, an object, a thing someone says. Numbers and abbreviations are written the way they are sung ("two thousand and forty-eight", "A G I").
 - Length: 1800 to 2400 characters in total (about two and a half minutes; Suno cuts everything after about 3000).
