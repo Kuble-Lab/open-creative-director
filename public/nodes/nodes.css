@@ -5064,6 +5064,8 @@ button.nv-scene-preview:focus-visible {
 
 .nv-field.is-inline .nv-field-head {
   flex: 1;
+  /* the "App" badge stays with the label: beside the switch of the value it read as the name of that switch */
+  justify-content: flex-start;
 }
 
 .nv-expose {
