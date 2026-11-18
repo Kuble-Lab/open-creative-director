@@ -526,7 +526,7 @@ async function run(iso) {
   ]);
   assert.deepEqual(hudSuno.outputs.map((output) => output.node), ['n18', 'n19', 'n29', 'n20', 'n21', 'n22', 'n23', 'n24']);
   assert.deepEqual([hudSuno.name, hudSuno.paid, hudSuno.cost.kind], ['Musikvideo im HUD-Stil (Song von Suno)', true, 'unknown']);
-  for (const [query, lang, expected] of [['Suno', 'de', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']], ['Songpaket', 'de', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']], ['Suno song pack', 'en', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']], ['paquete de canción', 'es', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']]]) {
+  for (const [query, lang, expected] of [['Suno', 'de', ['ad-spot', 'ad-spot-portrait', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']], ['Songpaket', 'de', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']], ['Suno song pack', 'en', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']], ['paquete de canción', 'es', ['music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song']]]) {
     const hits = (await realService.listRunnable(v.s1, { query, lang })).items.filter((item) => item.kind === 'template').map((item) => item.id);
     assert.deepEqual(hits, expected, `"${query}" (${lang}) finds the song pack: ${hits}`);
   }
