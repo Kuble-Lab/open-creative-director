@@ -4798,6 +4798,21 @@ button.nv-scene-preview:focus-visible {
   display: block;
   width: 100%;
   height: 32px;
+  /* the controls of the browser in the dark theme of the interface, not as a white pill */
+  color-scheme: dark;
+  border-radius: 16px;
+}
+
+/* a row with a voice: the player gets the width of the row (in the narrow preview column only its play button fits), the text
+   stands under it */
+.nv-scene-row[data-kind='audio'] .nv-scene-preview.is-audio {
+  grid-column: 3 / -1;
+  width: 100%;
+  max-width: none;
+}
+
+.nv-scene-row[data-kind='audio'] .nv-scene-main {
+  grid-column: 1 / -1;
 }
 
 .nv-scene-main {
