@@ -6525,6 +6525,169 @@ button.nv-scene-preview:focus-visible {
   color: var(--text-faint);
 }
 
+.nv-appresults-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nv-appviewsw {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.nv-appviewsw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.nv-appviewsw-btn:hover {
+  color: var(--text);
+}
+
+.nv-appviewsw-btn[aria-pressed='true'] {
+  background: var(--line);
+  color: var(--text);
+}
+
+.nv-appviewsw-btn:focus-visible,
+.nv-appgal-frame:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nv-appgal {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.nv-appgal-tile {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+}
+
+.nv-appgal-tile:hover .nv-appleaf-tools {
+  opacity: 1;
+}
+
+.nv-appgal-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  background: #0b0d0f;
+  overflow: hidden;
+}
+
+.nv-appgal-frame.is-clickable {
+  cursor: zoom-in;
+}
+
+.nv-appgal-frame .nv-media-image,
+.nv-appgal-frame .nv-media-video,
+.nv-appgal-frame .nv-model {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+@media (max-width: 560px) {
+  .nv-appgal {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+.nv-appgal-frame .nv-media-audio {
+  width: calc(100% - 20px);
+}
+
+.nv-appgal-play {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  pointer-events: none;
+}
+
+.nv-appgal-text {
+  align-self: stretch;
+  width: 100%;
+  padding: 12px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nv-appgal-wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+
+.nv-appgal-tile.is-empty {
+  border-style: dashed;
+}
+
+.nv-appgal-tile.is-empty .nv-appgal-frame {
+  background: transparent;
+}
+
+.nv-appgal-label {
+  padding: 8px 10px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nv-appgal-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .nv-appoutputs {
   display: flex;
   flex-direction: column;
