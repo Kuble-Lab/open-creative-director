@@ -70,7 +70,8 @@
           "presenter": "off",
           "verify": true,
           "script": "",
-          "feedback": {}
+          "feedback": {},
+          "narration_edits": {}
         }
       },
       {

@@ -106,6 +106,67 @@
     return { port, count: variant[port].items.length, aligned, rows };
   }
 
+  /* ---------- the text of a scene, typed in the table ---------- */
+
+  // A node whose definition has a param of kind `notes` with `edits` (the explainer planner: the narration) lets a person type the text
+  // of single scenes: { s3: { text, was } }. The table of that node, and of a node that takes one of its lists (`lists`) straight from
+  // it (the voice, the picture), shows the text of each row as a field. The param is the one of the planner in both cases.
+
+  const clean = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
+  const editsParamOf = (def) => ((def && def.params) || []).find((param) => param.kind === 'notes' && param.edits && param.source) || null;
+
+  // Where the texts of the rows of a node are edited: { nodeId, param } (the node itself, else the node one of its text inputs comes
+  // straight from), or null. `port`: the output the table lists; `typeOf(nodeId)` gives the definition of another node.
+  function editTarget({ nodeId, def, port, inputPorts, edges, typeOf }) {
+    const own = editsParamOf(def);
+    if (own && (own.lists || []).includes(port)) return { nodeId, param: own };
+    for (const input of inputPorts || []) {
+      if (!isTextPort(input)) continue;
+      const edge = (edges || []).find((item) => item.to && item.to.node === nodeId && item.to.port === input.id);
+      if (!edge) continue;
+      const param = editsParamOf(typeOf ? typeOf(edge.from.node) : null);
+      if (param && (param.lists || []).includes(edge.from.port)) return { nodeId: edge.from.node, param };
+    }
+    return null;
+  }
+
+  // The field of every row, or null where the rows cannot be edited (no script, another number of scenes). One entry per row:
+  // null for a row without a text of its own (the sources card), else
+  //   { nodeId, param, id, text, original, value, changed, pending }
+  // `text` is what the result holds, `original` what it held before a typed text, `value` what the field shows (the typed text, else
+  // `text`), `changed` that a text is typed, `pending` that the result does not hold it yet (the workflow has to run).
+  //   target: editTarget(); variant: the selected variant of its node; params: the params of its node; count: the rows of the table
+  function sceneEdits({ target, variant, params, count }) {
+    if (!target || !isObject(variant)) return null;
+    const source = textOf(variant[target.param.source]);
+    let script = null;
+    try { script = JSON.parse(source); } catch (_) { return null; }
+    const scenes = isObject(script) && Array.isArray(script.scenes) ? script.scenes : null;
+    if (!scenes || scenes.length !== count) return null;
+    const field = target.param.edits;
+    const typed = isObject(params) && isObject(params[target.param.id]) ? params[target.param.id] : {};
+    const before = isObject(script.edits) ? script.edits : {};
+    return scenes.map((scene) => {
+      if (!isObject(scene) || typeof scene.id !== 'string' || !scene.id || scene.role === 'sources' || typeof scene[field] !== 'string') return null;
+      const text = scene[field];
+      const original = isObject(before[scene.id]) && typeof before[scene.id][field] === 'string' ? before[scene.id][field] : text;
+      const entry = typed[scene.id];
+      const edit = typeof entry === 'string' ? entry : isObject(entry) && typeof entry.text === 'string' ? entry.text : null;
+      const changed = edit !== null && clean(edit) !== '';
+      return { nodeId: target.nodeId, param: target.param.id, id: scene.id, text, original, value: changed ? edit : text, changed, pending: changed ? clean(edit) !== clean(text) : clean(text) !== clean(original) };
+    });
+  }
+
+  // The value of the param after a text was typed for the scene of `edit` (an entry of sceneEdits): the text with what it replaces; an
+  // empty text or the original one takes the entry away. `current` is not changed.
+  function withEdit(current, edit, value) {
+    const next = {};
+    for (const [id, entry] of Object.entries(isObject(current) ? current : {})) if (id !== edit.id) next[id] = entry;
+    const text = String(value ?? '').trim();
+    if (text && clean(text) !== clean(edit.original)) next[edit.id] = { text, was: edit.original };
+    return next;
+  }
+
   // The request of the run mode 'items': the numbers (from 0) of the rows, once each and in order
   function itemsRequest(nodeId, indexes) {
     const items = [...new Set((indexes || []).filter((value) => Number.isInteger(value) && value >= 0))].sort((a, b) => a - b);
@@ -147,5 +208,5 @@
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
   }
 
-  return { sceneTable, itemsRequest, itemCost, selectionCost, mainText, kindOf, clock, MAX_ROWS };
+  return { sceneTable, itemsRequest, itemCost, selectionCost, mainText, kindOf, clock, editTarget, sceneEdits, withEdit, MAX_ROWS };
 });

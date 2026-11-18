@@ -96,7 +96,8 @@
           "presenter": "intro_outro",
           "verify": true,
           "script": "",
-          "feedback": {}
+          "feedback": {},
+          "narration_edits": {}
         }
       },
       {

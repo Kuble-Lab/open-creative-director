@@ -307,9 +307,10 @@
   // The groups of notes in a graph: [{ node, param, kind: 'script', followers: [{ node, param }] }]. `defOf(type)` gives the definition.
   function feedbackTargets(graph, defOf) {
     const out = [];
-    const notesOf = (node) => (defOf(node.type)?.params || []).filter((param) => param.kind === 'notes');
+    // (a param of typed texts, `edits`, holds no notes: it is edited in the scene list of the node editor)
+    const notesOf = (node) => (defOf(node.type)?.params || []).filter((param) => param.kind === 'notes' && !param.edits);
     for (const node of graph.nodes || []) {
-      const param = notesOf(node).find((item) => item.source);
+      const param = notesOf(node).find((item) => item.source && !item.edits);
       if (!param) continue;
       const lists = new Set(param.lists || []);
       const followers = [];

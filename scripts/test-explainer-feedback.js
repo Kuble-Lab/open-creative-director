@@ -301,7 +301,7 @@ async function planNode() {
   const ctx1 = makeCtx({ cached: v0, earlier: [v0] });
   const second = await exec(ctx1, { feedback: { s3: 'kürzer' } });
   assert.deepEqual(kinds(), ['revise', 'verify'], 'no new plan: one revision and its check');
-  assert.deepEqual(ctx1.asked, [{ feedback: {} }], 'the base is the result without notes');
+  assert.deepEqual(ctx1.asked, [{ feedback: {}, narration_edits: {} }], 'the base is the result without notes');
   assert.match(calls[0].options.prompt, /Scene s3:/);
   assert.ok(!/Scene s2:/.test(calls[0].options.prompt));
   const checked = JSON.parse(/Script to check:\n([\s\S]*?)\n\n<data/.exec(calls[1].options.prompt)[1]);

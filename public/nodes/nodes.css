@@ -4815,6 +4815,50 @@ button.nv-scene-preview:focus-visible {
   overflow: hidden;
 }
 
+.nv-scene-edit {
+  width: 100%;
+  min-height: 72px;
+  font-size: 12px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+/* a row with a text field: the field gets the whole width of the row, under the number and the preview */
+.nv-scene-row.has-edit .nv-scene-main {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.nv-scene-row.has-edit .nv-scene-meta {
+  align-items: center;
+  margin-top: 5px;
+}
+
+.nv-scene-edited {
+  color: var(--text-dim);
+  white-space: normal;
+}
+
+.nv-scene-edited.is-redo {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.nv-scene-reset {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-dim);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.nv-scene-reset:hover,
+.nv-scene-reset:focus-visible {
+  color: var(--text);
+}
+
 .nv-scene-text.is-empty {
   color: var(--text-faint);
   font-style: italic;
