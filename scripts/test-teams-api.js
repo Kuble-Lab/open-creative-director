@@ -636,6 +636,7 @@ async function testSharing(ctx) {
     ['POST', `/api/workflows/${id}/runs`, { mode: 'selection', nodeIds: ['n1'], force: true }],
     ['POST', `/api/workflows/${id}/assistant`, { question: 'Hallo', canvas: { nodes: [], edges: [] } }],
     ['GET', `/api/workflows/${id}/runs`],
+    ['GET', `/api/workflows/${id}/costs`],
     ['GET', `/api/workflows/${id}/runs/run-1`],
     ['POST', `/api/workflows/${id}/runs/run-1/cancel`, {}],
     ['POST', `/api/workflows/${id}/runs/run-1/resume`, { maxUsd: 5 }],

@@ -597,6 +597,7 @@
     let planTimer = null;
     let planToken = 0;
     let recentRuns = [];
+    let costTotals = null; // what the workflow has cost over all its runs (GET .../costs), or null while unknown
     let tickTimer = null;
     let pollTimer = null;
     let paintTimer = 0;
@@ -852,10 +853,13 @@
       parts.resume = el('button', { type: 'button', class: 'nv-btn nv-btn-primary nv-run-resume hidden', text: T('nodes.run.resume') });
       parts.resume.addEventListener('click', () => approveRun());
       parts.summary = el('span', { class: 'nv-run-summary hidden', role: 'status' });
+      // the total of all runs so far; a click shows what it is made of (the inspector of the workflow)
+      parts.total = el('button', { type: 'button', class: 'nv-run-total hidden' });
+      parts.total.addEventListener('click', () => canvas().setSelection({ nodes: [], notes: [], groups: [], edge: null }));
       parts.runAll.addEventListener('click', () => startRun({ mode: 'all', force: false }));
       parts.runSel.addEventListener('click', () => runSelection());
       parts.cancel.addEventListener('click', () => cancelRun());
-      host.append(parts.summary, parts.resume, parts.cancel, parts.runSel, parts.runAll);
+      host.append(parts.total, parts.summary, parts.resume, parts.cancel, parts.runSel, parts.runAll);
       relabelTopbar();
     }
 
@@ -941,6 +945,12 @@
       parts.summary.title = title;
       parts.summary.dataset.state = state;
       parts.summary.classList.toggle('hidden', !has || !text);
+      const spent = has && costTotals && costTotals.count > 0;
+      parts.total.classList.toggle('hidden', !spent);
+      if (spent) {
+        parts.total.textContent = T('nodes.cost.total.chip', { amount: money(costTotals.totalUsd) });
+        parts.total.title = T('nodes.cost.total.hint');
+      }
     }
 
     /* ----- ticker and polling ----- */
@@ -1089,6 +1099,21 @@
       }
     }
 
+    async function loadCostTotals() {
+      const id = workflowId();
+      if (!id || !api.workflowCosts) return;
+      try {
+        const totals = await api.workflowCosts(id);
+        if (workflowId() !== id) return;
+        costTotals = totals;
+        updateTopbar();
+        const inspector = OCD.editor.getInspector();
+        if (inspector && inspector.refreshRun) inspector.refreshRun();
+      } catch (_) {
+        /* The total is an extra: the last known one stays until the next load. */
+      }
+    }
+
     async function loadRecentRuns() {
       const id = workflowId();
       if (!id) return;
@@ -1096,6 +1121,7 @@
         const payload = await api.listRuns(id, 5);
         if (workflowId() !== id) return;
         recentRuns = payload.runs || [];
+        loadCostTotals();
         if (recentRuns.some(pendingAccounting)) startTimers();
         else stopTimers();
         updateTopbar();
@@ -1631,6 +1657,7 @@
           approval: runState.approval || null,
           progress,
           recent: recentRuns,
+          totals: costTotals,
           hasOutputs: hasOutputResults()
         };
       },
@@ -1648,6 +1675,7 @@
       cancel: cancelRun,
       lengthNote,
       costText,
+      money,
       formatDuration,
       titleOf
     };
@@ -1734,6 +1762,7 @@
         plan = null;
         planRev = null;
         recentRuns = [];
+        costTotals = null;
         if (payload && payload.activeRun) {
           runState = { ...createRunState(), runId: typeof payload.activeRun === 'string' ? payload.activeRun : payload.activeRun.runId, active: true, status: 'running' };
           startTimers();
@@ -1749,6 +1778,7 @@
         runState = createRunState();
         plan = null;
         recentRuns = [];
+        costTotals = null;
         updateTopbar();
       });
       bus.on('reconcile', (payload) => {

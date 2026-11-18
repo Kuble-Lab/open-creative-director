@@ -307,6 +307,7 @@ const FOREIGN_WORKFLOW_ROUTES = (id) => [
   ['POST', `/api/workflows/${id}/runs`, { mode: 'all' }],
   ['POST', `/api/workflows/${id}/assistant`, { question: 'Hallo', canvas: { nodes: [], edges: [] } }],
   ['GET', `/api/workflows/${id}/runs`],
+  ['GET', `/api/workflows/${id}/costs`],
   ['GET', `/api/workflows/${id}/runs/run-1`],
   ['POST', `/api/workflows/${id}/runs/run-1/cancel`, {}],
   ['POST', `/api/workflows/${id}/runs/run-1/resume`, { maxUsd: 5 }],

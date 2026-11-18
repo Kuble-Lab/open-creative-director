@@ -83,6 +83,8 @@ async function waitFor(predicate, label, timeoutMs = 4000) {
   }
 }
 
+const costRows = []; // the cost journal the routes read (GET .../costs)
+
 async function main() {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-nodes-api-'));
   const bus = createEventBus();
@@ -135,6 +137,7 @@ async function main() {
     store: wfStore,
     registry,
     events: bus,
+    readCosts: async () => costRows,
     maxUploadBytes: 2048,
     pingMs: 40,
     resolveTemplate: (id, options) => {
@@ -653,6 +656,26 @@ async function main() {
       assert.equal(record.json.nodes.b.status, 'done');
       assert.equal((await api('GET', `/api/workflows/${runsId}/runs/r-unknown`)).status, 404);
       assert.equal((await api('GET', `/api/workflows/${runsId}/runs/bad%20id`)).status, 400);
+
+      // costs: the total over all runs comes from the journal lines of the backing session, other sessions do not count
+      const emptyCosts = await api('GET', `/api/workflows/${runsId}/costs`);
+      assert.equal(emptyCosts.status, 200);
+      assert.equal(emptyCosts.json.totalUsd, 0);
+      assert.equal(emptyCosts.json.count, 0);
+      const costSession = (await wfStore.readWorkflow(runsId)).sessionId;
+      costRows.push(
+        { ts: '2026-01-02T10:00:00.000Z', sessionId: costSession, type: 'image', model: 'img-a', cost: 0.5, user: 'a@example.com' },
+        { ts: '2026-01-03T10:00:00.000Z', sessionId: costSession, type: 'video', model: 'vid-a', cost: 2.25, user: 'b@example.com', credits: 900 },
+        { ts: '2026-01-01T10:00:00.000Z', sessionId: 'other-session', type: 'video', model: 'vid-a', cost: 99, user: 'a@example.com' }
+      );
+      const filledCosts = await api('GET', `/api/workflows/${runsId}/costs`);
+      assert.equal(filledCosts.json.totalUsd, 2.75);
+      assert.equal(filledCosts.json.count, 2);
+      assert.equal(filledCosts.json.credits, 900);
+      assert.equal(filledCosts.json.firstAt, '2026-01-02T10:00:00.000Z');
+      assert.deepEqual(filledCosts.json.byType.map((row) => [row.type, row.usd, row.count]), [['video', 2.25, 1], ['image', 0.5, 1]]);
+      costRows.length = 0;
+      assert.equal((await api('GET', '/api/workflows/wf-does-not-exist/costs')).status, 404);
       const cancelDone = await api('POST', `/api/workflows/${runsId}/runs/${runId}/cancel`, {});
       assert.deepEqual(cancelDone.json, { ok: false });
 
