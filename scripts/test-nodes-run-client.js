@@ -338,6 +338,16 @@ function testDescribePlan() {
   assert.equal(run.budgetLine(info, T, money), null, 'no line without a budget');
 }
 
+function testSkippedMessage() {
+  const T = (key, data) => `${key}${data ? `:${data.name}` : ''}`;
+  const titleOf = (id) => ({ n3: 'Branding' })[id] || id;
+  assert.equal(run.skippedMessage('blocked by n3', { T, titleOf }), 'nodes.run.blockedBy:Branding', 'the node in front is named by its title');
+  assert.equal(run.skippedMessage('blocked by n3', { T, titleOf, causeOf: () => 'No such branding.' }), 'nodes.run.blockedBy:Branding No such branding.', 'the inspector adds the cause');
+  assert.equal(run.skippedMessage('blocked by n3', { T, titleOf, causeOf: () => null }), 'nodes.run.blockedBy:Branding', 'no cause known: the name alone');
+  assert.equal(run.skippedMessage('something else', { T }), 'something else');
+  assert.equal(run.skippedMessage('', { T }), 'nodes.run.skipped');
+}
+
 function testDisplayStatus() {
   const d = run.displayStatus;
   assert.deepEqual(d({ run: { status: 'running' }, planNode: { status: 'stale' }, hasResults: true, category: 'image' }), { status: 'running' }, 'live status wins');
@@ -537,6 +547,7 @@ const tests = [
   testFormatting,
   testDescribePlan,
   testDisplayStatus,
+  testSkippedMessage,
   testErrorData,
   testTextResultOf,
   testRunRequest,

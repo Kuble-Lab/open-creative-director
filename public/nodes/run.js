@@ -471,6 +471,16 @@
     return shown;
   }
 
+  // The text of a skipped node. The engine says "blocked by <node id>": the node is named by its title, and with causeOf
+  // the reason it failed follows, so nobody has to look for a node called "n3" first.
+  function skippedMessage(message, { T, titleOf = (id) => id, causeOf = null } = {}) {
+    const blocked = /^blocked by (\S+)$/.exec(message || '');
+    if (!blocked) return message || T('nodes.run.skipped');
+    const text = T('nodes.run.blockedBy', { name: titleOf(blocked[1]) });
+    const cause = causeOf ? String(causeOf(blocked[1]) || '').trim() : '';
+    return cause ? `${text} ${cause}` : text;
+  }
+
   function buildRunRequest({ mode, nodeIds, force, rev, nodeId, items, retry }) {
     const request = { mode, force: Boolean(force) };
     if (retry) request.retry = true;
@@ -565,6 +575,7 @@
     budgetLine,
     displayStatus,
     localizeError,
+    skippedMessage,
     buildRunRequest
   };
 
@@ -712,6 +723,20 @@
       return { message: ui.issueText({ code: shown.code, data, port: shown.port, message: shown.message }, variant), fix };
     }
 
+    // The inspector also says why the node in front failed (see skippedMessage).
+    const skippedText = (message, { withCause = false } = {}) =>
+      skippedMessage(message, {
+        T,
+        titleOf,
+        causeOf: withCause
+          ? (nodeId) => {
+              const blocker = nodeOf(nodeId);
+              const run = blocker ? runState.nodes[nodeId] : null;
+              return run && run.status === 'error' ? shownFor(blocker, defOf(nodeId), run, null, false).message : null;
+            }
+          : null
+      });
+
     function slotFor(node) {
       const st = S();
       const def = st.reg.types.get(node.type) || null;
@@ -741,10 +766,7 @@
         slot.message = translated;
         slot.fix = invalid.fix;
       }
-      if (status === 'skipped') {
-        const blocked = /^blocked by (\S+)$/.exec(shown.message || '');
-        slot.message = blocked ? T('nodes.run.blockedBy', { name: titleOf(blocked[1]) }) : shown.message || T('nodes.run.skipped');
-      }
+      if (status === 'skipped') slot.message = skippedText(shown.message);
       if ((status === 'running' || status === 'waiting_job') && run && run.startedAt) slot.since = run.startedAt;
       if (isActive(status) && run && run.progress) slot.progress = run.progress;
       if (status === 'waiting_job' && run && !run.progress) slot.tooltip = T('nodes.statusHint.waiting_job');
@@ -1582,7 +1604,7 @@
           node,
           def,
           status: shown.status,
-          message: (invalid ? invalid.message : shown.message) || null,
+          message: (invalid ? invalid.message : shown.status === 'skipped' ? skippedText(shown.message, { withCause: true }) : shown.message) || null,
           fix: invalid ? invalid.fix : null,
           renderText: run && ['running', 'waiting_job', 'done'].includes(shown.status) ? renderText(run.render, T) : '',
           run: run || null,
