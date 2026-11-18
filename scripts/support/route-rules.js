@@ -181,6 +181,7 @@ const ROUTE_RULES = {
   'POST /api/workflows/:id/runs': 'workflow',
   'POST /api/workflows/:id/assistant': 'workflow',
   'GET /api/workflows/:id/runs': 'workflow',
+  'GET /api/workflows/:id/costs': 'workflow',
   'GET /api/workflows/:id/outputs.zip': 'workflow',
   'GET /api/workflows/:id/runs/:runId': 'workflow',
   'POST /api/workflows/:id/runs/:runId/cancel': 'workflow',
@@ -362,6 +363,7 @@ const PARTICIPANT_RULES = {
   'POST /api/workflows/:id/runs': 'same', // plus the budget (402) and no Higgsfield nodes (403)
   'POST /api/workflows/:id/assistant': 'same', // plus the budget (402), their model list, no Higgsfield nodes in the catalogue
   'GET /api/workflows/:id/runs': 'same',
+  'GET /api/workflows/:id/costs': 'same',
   'GET /api/workflows/:id/outputs.zip': 'same',
   'GET /api/workflows/:id/runs/:runId': 'same',
   'POST /api/workflows/:id/runs/:runId/cancel': 'same',

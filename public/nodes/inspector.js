@@ -570,6 +570,38 @@
       zip.addEventListener('click', () => cb.run.downloadZip());
       buttons.append(all, again, zip);
       wrap.append(buttons);
+      // What the workflow has cost so far, all runs together: the total first, then what it is made of.
+      const totals = info.totals;
+      if (totals && totals.count > 0) {
+        wrap.append(el('h3', { class: 'nv-insp-heading nv-insp-subheading', text: ui.T('nodes.cost.total.heading') }));
+        const box = el('div', {});
+        box.append(el('div', { class: 'nv-cost-total-amount', text: cb.run.money(totals.totalUsd) }));
+        const since = totals.firstAt ? new Date(totals.firstAt).toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+        const notes = [ui.T('nodes.cost.total.allRuns'), since ? ui.T('nodes.cost.total.since', { date: since }) : ''];
+        if (totals.credits > 0) notes.push(ui.T('nodes.cost.total.credits', { credits: Math.round(totals.credits).toLocaleString() }));
+        box.append(el('div', { class: 'nv-cost-total-note', text: notes.filter(Boolean).join(' · ') }));
+        const kindLabel = (type) => {
+          const key = `nodes.cost.kind.${type}`;
+          const label = ui.T(key);
+          return label === key ? type : label;
+        };
+        const rows = el('div', { class: 'nv-cost-rows' });
+        for (const row of totals.byType || []) {
+          rows.append(el('div', { class: 'nv-cost-row' }, el('span', { class: 'nv-cost-row-main', text: kindLabel(row.type) }), el('span', { class: 'nv-cost-row-count', text: `${row.count}×` }), el('span', { class: 'nv-cost-row-usd', text: cb.run.money(row.usd) })));
+        }
+        box.append(rows);
+        if ((totals.byModel || []).length) {
+          const detail = el('details', { class: 'nv-cost-models' });
+          detail.append(el('summary', { text: ui.T('nodes.cost.total.byModel') }));
+          const list = el('div', { class: 'nv-cost-rows' });
+          for (const row of totals.byModel) {
+            list.append(el('div', { class: 'nv-cost-row' }, el('span', { class: 'nv-cost-row-main', text: row.model, title: `${kindLabel(row.type)} · ${row.model}` }), el('span', { class: 'nv-cost-row-count', text: `${row.count}×` }), el('span', { class: 'nv-cost-row-usd', text: cb.run.money(row.usd) })));
+          }
+          detail.append(list);
+          box.append(detail);
+        }
+        wrap.append(box);
+      }
       if (info.recent.length) {
         wrap.append(el('h3', { class: 'nv-insp-heading nv-insp-subheading', text: ui.T('nodes.run.recent') }));
         const list = el('div', { class: 'nv-runs' });

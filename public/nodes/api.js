@@ -157,6 +157,7 @@
     plan: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs/plan`, withUiLanguage(body)),
     startRun: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs`, withUiLanguage(body)),
     getRun: (id, runId) => request('GET', `/api/workflows/${enc(id)}/runs/${enc(runId)}`),
+    workflowCosts: (id) => request('GET', `/api/workflows/${enc(id)}/costs`),
     listRuns: (id, limit) => request('GET', `/api/workflows/${enc(id)}/runs${limit ? `?limit=${enc(limit)}` : ''}`),
     cardPreview: (id, nodeId, text_overrides) => request('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/card-preview`, { text_overrides }),
     resumeRun: (id, runId, body) => request('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/resume`, withUiLanguage(body)),

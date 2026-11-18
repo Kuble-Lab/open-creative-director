@@ -8133,3 +8133,85 @@ button.nv-scene-preview:focus-visible {
 @media (max-width: 640px) {
   .nv-cardpreview-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- cost of the workflow so far (all runs) ---------- */
+
+.nv-run-total {
+  flex: none;
+  margin-right: 8px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nv-run-total:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.nv-cost-total-amount {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-cost-total-note {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.nv-cost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.nv-cost-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.nv-cost-row-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-cost-row-count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-cost-row-usd {
+  min-width: 6ch;
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-cost-models {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.nv-cost-models summary {
+  cursor: pointer;
+}
