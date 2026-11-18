@@ -1,0 +1,313 @@
+{
+  "id": "sketch-illustration",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Sketch illustration with one accent colour",
+  "description": "Describe a situation and get an illustration in a fixed drawing style: a loose pencil and ink sketch in white and grey with strong cobalt blue as the only colour. An LLM turns the situation into a scene, the style is added word for word, so every picture of a series looks the same. Optionally add pictures as a style reference; the style text can be changed.",
+  "requires": [
+    "openrouter"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 80,
+        "title": "Situation",
+        "params": {
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Style",
+        "params": {
+          "text": "Hand-drawn editorial illustration, a loose pencil and ink sketch on white paper: fine dark blue-grey outlines, energetic and slightly rough hatching and cross-hatching with visible scribbled strokes, soft watercolour-like washes. Strictly monochrome in white and light greys with one single accent colour, a strong cobalt blue (about #1f33c8), used boldly for clothing, a few chosen objects and the deepest shadows. No other colour anywhere: skin, hair and faces stay paper-white with light grey and blue-grey shading. People are drawn semi-realistically with natural proportions and warm, friendly, lively faces. The surroundings are only hinted at with a few loose sketch lines and pale blue washes that fade into the white paper towards the edges, with plenty of white space. No text, no letters, no logos, no frame."
+        }
+      },
+      {
+        "id": "n3",
+        "type": "text.template",
+        "typeVersion": 1,
+        "x": 520,
+        "y": 220,
+        "title": "Request",
+        "params": {
+          "template": "SITUATION\n{{a}}\n\nSTYLE\n{{b}}"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "llm.chat",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 220,
+        "title": "Image prompt",
+        "params": {
+          "model": "",
+          "system": "You write one prompt for an image model. The user gives a SITUATION and a STYLE. The image model must show the situation as one illustration in exactly that style.\n\nAnswer in English with the finished prompt only, as plain text without headings, quotes or comments, in this order:\n1. One paragraph for the scene, 60 to 110 words: who is there (number, approximate age, what they wear, posture and facial expression), what they are doing, where they are, and the framing (e.g. medium shot at eye level). Stay with what the situation says; add only what a picture needs. Name the two or three things that carry the accent colour of the style (usually clothing and one object). Describe people with dignity and without clichés; children look like real, self-confident children. Nothing violent, frightening or humiliating is shown: a difficult situation is told through posture, distance and expression.\n2. The line: Style: followed by the STYLE word for word, unchanged and complete.\n3. The line: If a reference image is attached, take only its drawing style, line quality and colour scheme from it. Do not copy its people, objects, composition or lettering.\n\nRules:\n- No text in the image. If the situation asks for words in the picture, leave them out.\n- No real people, brands or logos.\n- Never mention colours other than the ones in the STYLE.",
+          "prompt": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "input.media_list",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 620,
+        "title": "Style reference (optional)",
+        "params": {
+          "kind": "image",
+          "assets": []
+        }
+      },
+      {
+        "id": "n6",
+        "type": "input.image_model",
+        "typeVersion": 1,
+        "x": 960,
+        "y": 960,
+        "title": "Image model",
+        "params": {
+          "model": ""
+        }
+      },
+      {
+        "id": "n7",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 220,
+        "title": "Illustration",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "4:3",
+          "count": 1
+        }
+      },
+      {
+        "id": "n8",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": 220,
+        "params": {
+          "label": "Illustration"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1400,
+        "y": 700,
+        "params": {
+          "label": "Image prompt"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n3",
+          "port": "a"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "text"
+        },
+        "to": {
+          "node": "n3",
+          "port": "b"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "text"
+        },
+        "to": {
+          "node": "n4",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "text"
+        },
+        "to": {
+          "node": "n7",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n5",
+          "port": "items"
+        },
+        "to": {
+          "node": "n7",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n6",
+          "port": "model"
+        },
+        "to": {
+          "node": "n7",
+          "port": "model"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n7",
+          "port": "image"
+        },
+        "to": {
+          "node": "n8",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "text"
+        },
+        "to": {
+          "node": "n9",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 80,
+        "y": 760,
+        "w": 520,
+        "h": 460,
+        "text": "Describe the situation in one or two sentences, in any language (for example: “Two children explain their idea to a teacher who is listening”). The node “Image prompt” turns it into a scene and adds the style word for word; “Illustration” draws it. The style is plain text in the node “Style”: change the accent colour or the drawing technique there and every picture follows. For a closer match, put one to three pictures in the style you want into “Style reference (optional)”: only their drawing style and colours are taken over, not their content. Use only pictures you are allowed to use. “Image model” chooses the model for the drawing; blank uses the configured one. For several pictures of one series, keep the style and the reference the same and change only the situation."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Sketch illustration",
+    "description": "Describe a situation and get an illustration as a pencil and ink sketch in white, grey and cobalt blue.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Situation (who does what, where)"
+      },
+      {
+        "node": "n7",
+        "param": "aspect_ratio",
+        "label": "Format"
+      },
+      {
+        "node": "n5",
+        "param": "assets",
+        "label": "Style reference (optional, up to 3 pictures)"
+      },
+      {
+        "node": "n2",
+        "param": "text",
+        "label": "Style (drawing technique and accent colour)"
+      },
+      {
+        "node": "n6",
+        "param": "model",
+        "label": "Image model"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n8",
+        "label": "Illustration"
+      },
+      {
+        "node": "n9",
+        "label": "Image prompt"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Illustration im Skizzenstil (eine Akzentfarbe)",
+      "description": "Beschreibe eine Situation und erhalte eine Illustration in einem festen Zeichenstil: lockere Bleistift- und Tuscheskizze in Weiss und Grau mit kräftigem Kobaltblau als einziger Farbe. Ein LLM macht aus der Situation eine Szene, der Stil wird Wort für Wort angehängt, darum sieht jedes Bild einer Serie gleich aus. Auf Wunsch gibst du Bilder als Stilreferenz mit; den Stiltext kannst du ändern.",
+      "node.n1": "Situation",
+      "node.n2": "Stil",
+      "node.n3": "Anfrage",
+      "node.n4": "Bildprompt",
+      "node.n5": "Stilreferenz (optional)",
+      "node.n6": "Bildmodell",
+      "node.n7": "Illustration",
+      "note.t1": "Beschreibe die Situation in ein, zwei Sätzen, in beliebiger Sprache (zum Beispiel: «Zwei Kinder erklären einer Lehrerin ihre Idee, sie hört zu»). Der Node «Bildprompt» macht daraus eine Szene und hängt den Stil Wort für Wort an; «Illustration» zeichnet sie. Der Stil steht als normaler Text im Node «Stil»: Ändere dort die Akzentfarbe oder die Zeichentechnik, und jedes Bild folgt. Für eine genauere Übereinstimmung legst du ein bis drei Bilder im gewünschten Stil in «Stilreferenz (optional)»: Übernommen werden nur Zeichenstil und Farben, nicht der Inhalt. Verwende nur Bilder, die du nutzen darfst. «Bildmodell» wählt das Modell für die Zeichnung; leer gilt das eingestellte. Für mehrere Bilder einer Serie lässt du Stil und Referenz gleich und änderst nur die Situation.",
+      "app.title": "Illustration im Skizzenstil",
+      "app.description": "Beschreibe eine Situation und erhalte eine Illustration als Bleistift- und Tuscheskizze in Weiss, Grau und Kobaltblau.",
+      "app.input.n1.prompt": "Situation (wer macht was, wo)",
+      "app.input.n7.aspect_ratio": "Format",
+      "app.input.n5.assets": "Stilreferenz (optional, bis 3 Bilder)",
+      "app.input.n2.text": "Stil (Zeichentechnik und Akzentfarbe)",
+      "app.input.n6.model": "Bildmodell",
+      "app.output.n8": "Illustration",
+      "param.n8.label": "Illustration",
+      "app.output.n9": "Bildprompt",
+      "param.n9.label": "Bildprompt"
+    },
+    "es": {
+      "name": "Ilustración en estilo boceto (un color de acento)",
+      "description": "Describe una situación y recibe una ilustración en un estilo de dibujo fijo: boceto suelto a lápiz y tinta en blanco y gris con un azul cobalto intenso como único color. Un LLM convierte la situación en una escena y el estilo se añade palabra por palabra, por eso todas las imágenes de una serie se ven iguales. Si quieres, añade imágenes como referencia de estilo; el texto del estilo se puede cambiar.",
+      "node.n1": "Situación",
+      "node.n2": "Estilo",
+      "node.n3": "Petición",
+      "node.n4": "Prompt de imagen",
+      "node.n5": "Referencia de estilo (opcional)",
+      "node.n6": "Modelo de imagen",
+      "node.n7": "Ilustración",
+      "note.t1": "Describe la situación en una o dos frases, en cualquier idioma (por ejemplo: «Dos niños explican su idea a una profesora que escucha»). El nodo «Prompt de imagen» la convierte en una escena y añade el estilo palabra por palabra; «Ilustración» la dibuja. El estilo es texto normal en el nodo «Estilo»: cambia allí el color de acento o la técnica de dibujo y todas las imágenes lo siguen. Para un parecido mayor, pon de una a tres imágenes con el estilo deseado en «Referencia de estilo (opcional)»: solo se toman el estilo de dibujo y los colores, no el contenido. Usa solo imágenes que tengas permiso de usar. «Modelo de imagen» elige el modelo del dibujo; vacío se usa el configurado. Para varias imágenes de una serie, deja el estilo y la referencia iguales y cambia solo la situación.",
+      "app.title": "Ilustración en estilo boceto",
+      "app.description": "Describe una situación y recibe una ilustración como boceto a lápiz y tinta en blanco, gris y azul cobalto.",
+      "app.input.n1.prompt": "Situación (quién hace qué y dónde)",
+      "app.input.n7.aspect_ratio": "Formato",
+      "app.input.n5.assets": "Referencia de estilo (opcional, hasta 3 imágenes)",
+      "app.input.n2.text": "Estilo (técnica de dibujo y color de acento)",
+      "app.input.n6.model": "Modelo de imagen",
+      "app.output.n8": "Ilustración",
+      "param.n8.label": "Ilustración",
+      "app.output.n9": "Prompt de imagen",
+      "param.n9.label": "Prompt de imagen"
+    }
+  }
+}
