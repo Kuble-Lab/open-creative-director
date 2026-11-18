@@ -1,0 +1,627 @@
+{
+  "id": "ad-spot",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Advertising spot",
+  "description": "Turn a brief into a finished advertising spot in landscape (16:9): Fable plans it shot by shot with a hook in the first two seconds, an image model draws each shot (your product photos go along as reference, so the product looks like yours), Seedance films them, ElevenLabs speaks the voice-over, and an animated end card shows logo, claim and call to action in your brand. Music is your choice: instrumental music of exactly the length (ElevenLabs) or a sung jingle (Suno, with your own Suno account; then the voice only speaks the closing line). About 3 to 5 US dollars for 15 seconds and 6 to 10 for 30 (the clips are most of it). The run asks for confirmation first. In the app view it stops twice: after the storyboard and after the pictures, before the expensive clips are made. To change the plan, edit the script in the field Script (edited) of Plan advertising spot and run that node again (no model call, no cost).",
+  "requires": [
+    "openrouter",
+    "elevenlabs",
+    "rendernode",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.prompt",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 120,
+        "title": "Brief",
+        "params": {
+          "prompt": "Aurora, a sparkling iced tea with real peach and no added sugar. For people in their twenties and thirties who want something fresh in the afternoon. What should stay in mind: tastes like summer, zero sugar. Web address: aurora-tea.example"
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.media_list",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 460,
+        "title": "Product photos (optional)",
+        "params": {
+          "kind": "image",
+          "assets": []
+        }
+      },
+      {
+        "id": "n3",
+        "type": "input.branding",
+        "typeVersion": 1,
+        "x": 60,
+        "y": 760,
+        "title": "Branding",
+        "params": {
+          "branding": ""
+        }
+      },
+      {
+        "id": "n4",
+        "type": "ad.plan",
+        "typeVersion": 1,
+        "x": 480,
+        "y": 120,
+        "title": "Plan advertising spot",
+        "params": {
+          "model": "",
+          "brief": "",
+          "length_seconds": 15,
+          "format": "landscape",
+          "language": "auto",
+          "tone": "bold",
+          "music": "instrumental",
+          "script": ""
+        }
+      },
+      {
+        "id": "n5",
+        "type": "image.generate",
+        "typeVersion": 1,
+        "x": 920,
+        "y": 60,
+        "title": "Pictures of the shots",
+        "params": {
+          "model": "",
+          "prompt": "",
+          "aspect_ratio": "16:9",
+          "count": 1
+        }
+      },
+      {
+        "id": "n6",
+        "type": "video.seedance",
+        "typeVersion": 1,
+        "x": 1360,
+        "y": 60,
+        "title": "Clips of the shots",
+        "params": {
+          "prompt": "",
+          "duration": 5,
+          "aspect_ratio": "16:9",
+          "resolution": "720p"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "audio.tts",
+        "typeVersion": 1,
+        "x": 920,
+        "y": 460,
+        "title": "Voice-over",
+        "params": {
+          "text": "",
+          "voice_id": "21m00Tcm4TlvDq8ikWAM",
+          "model_id": "eleven_v4"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "ad.music",
+        "typeVersion": 1,
+        "x": 920,
+        "y": 760,
+        "title": "Music or jingle",
+        "params": {
+          "length": 15,
+          "model": "music_v2_5",
+          "version": 1,
+          "allow_download_credit": true
+        }
+      },
+      {
+        "id": "n9",
+        "type": "ad.soundtrack",
+        "typeVersion": 1,
+        "x": 1360,
+        "y": 560,
+        "title": "Sound of the spot",
+        "params": {
+          "music_volume": 0.5,
+          "voice_volume": 1,
+          "ducking": true,
+          "fade_out": 0.8
+        }
+      },
+      {
+        "id": "n10",
+        "type": "ad.endcard",
+        "typeVersion": 1,
+        "x": 1360,
+        "y": 900,
+        "title": "End card",
+        "params": {
+          "format": "auto",
+          "quality": "standard"
+        }
+      },
+      {
+        "id": "n11",
+        "type": "music_video.edit",
+        "typeVersion": 1,
+        "x": 1800,
+        "y": 300,
+        "title": "Cut the spot",
+        "params": {
+          "transition": "cut",
+          "resolution": "1080p",
+          "fps": "30",
+          "fit": "crop",
+          "fade_out": 0,
+          "captions": "off",
+          "captions_position": "bottom"
+        }
+      },
+      {
+        "id": "n12",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 2240,
+        "y": 300,
+        "params": {
+          "label": "Advertising spot"
+        }
+      },
+      {
+        "id": "n13",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 920,
+        "y": 1080,
+        "params": {
+          "label": "Storyboard"
+        }
+      },
+      {
+        "id": "n14",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1360,
+        "y": 1200,
+        "params": {
+          "label": "Pictures of the shots"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "prompt"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brief"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n4",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n2",
+          "port": "items"
+        },
+        "to": {
+          "node": "n4",
+          "port": "product"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n4",
+          "port": "image_prompts"
+        },
+        "to": {
+          "node": "n5",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n2",
+          "port": "items"
+        },
+        "to": {
+          "node": "n5",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n6",
+          "port": "first_frame"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n4",
+          "port": "motion_prompts"
+        },
+        "to": {
+          "node": "n6",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n4",
+          "port": "voiceover"
+        },
+        "to": {
+          "node": "n7",
+          "port": "text"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n3",
+          "port": "voice"
+        },
+        "to": {
+          "node": "n7",
+          "port": "voice"
+        }
+      },
+      {
+        "id": "e10",
+        "from": {
+          "node": "n4",
+          "port": "music_prompt"
+        },
+        "to": {
+          "node": "n8",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e11",
+        "from": {
+          "node": "n4",
+          "port": "jingle_pack"
+        },
+        "to": {
+          "node": "n8",
+          "port": "pack"
+        }
+      },
+      {
+        "id": "e12",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n8",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e13",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n9",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e14",
+        "from": {
+          "node": "n7",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n9",
+          "port": "voice"
+        }
+      },
+      {
+        "id": "e15",
+        "from": {
+          "node": "n8",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n9",
+          "port": "music"
+        }
+      },
+      {
+        "id": "e16",
+        "from": {
+          "node": "n4",
+          "port": "script"
+        },
+        "to": {
+          "node": "n10",
+          "port": "script"
+        }
+      },
+      {
+        "id": "e17",
+        "from": {
+          "node": "n3",
+          "port": "brand"
+        },
+        "to": {
+          "node": "n10",
+          "port": "brand"
+        }
+      },
+      {
+        "id": "e18",
+        "from": {
+          "node": "n3",
+          "port": "logo"
+        },
+        "to": {
+          "node": "n10",
+          "port": "logo"
+        }
+      },
+      {
+        "id": "e19",
+        "from": {
+          "node": "n9",
+          "port": "audio"
+        },
+        "to": {
+          "node": "n11",
+          "port": "song"
+        }
+      },
+      {
+        "id": "e20",
+        "from": {
+          "node": "n4",
+          "port": "shots"
+        },
+        "to": {
+          "node": "n11",
+          "port": "shots"
+        }
+      },
+      {
+        "id": "e21",
+        "from": {
+          "node": "n6",
+          "port": "video"
+        },
+        "to": {
+          "node": "n11",
+          "port": "story"
+        }
+      },
+      {
+        "id": "e22",
+        "from": {
+          "node": "n10",
+          "port": "video"
+        },
+        "to": {
+          "node": "n11",
+          "port": "still_clips"
+        }
+      },
+      {
+        "id": "e23",
+        "from": {
+          "node": "n11",
+          "port": "video"
+        },
+        "to": {
+          "node": "n12",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e24",
+        "from": {
+          "node": "n4",
+          "port": "storyboard"
+        },
+        "to": {
+          "node": "n13",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e25",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n14",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 480,
+        "y": 620,
+        "w": 400,
+        "h": 420,
+        "text": "Write the brief: the product, who it is for, what should stay in mind, and the web address for the end card. Add up to four product photos and choose a branding (logo, colours, fonts, voice). Length and Music are set in Plan advertising spot: 15 seconds make 4 shots, 30 seconds 9. Music \"jingle\" needs your own Suno account (account menu, Suno, Connect) and uses about 10 Suno credits; \"instrumental\" needs a paid ElevenLabs plan. Run the planner alone first and read the storyboard. A shot you do not like: change its lines in Script (edited) and run the planner again."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.6
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Advertising spot",
+    "description": "Describe the product and what should stay in mind, add product photos and your branding. You approve the storyboard and the pictures before the clips are filmed.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "prompt",
+        "label": "Brief: product, audience, what should stay in mind, web address"
+      },
+      {
+        "node": "n2",
+        "param": "assets",
+        "label": "Product photos (optional, up to 4)"
+      },
+      {
+        "node": "n3",
+        "param": "branding",
+        "label": "Branding"
+      },
+      {
+        "node": "n4",
+        "param": "length_seconds",
+        "label": "Length (seconds)"
+      },
+      {
+        "node": "n4",
+        "param": "music",
+        "label": "Music: instrumental, jingle (Suno) or none"
+      },
+      {
+        "node": "n4",
+        "param": "tone",
+        "label": "Tone"
+      },
+      {
+        "node": "n4",
+        "param": "language",
+        "label": "Language"
+      },
+      {
+        "node": "n7",
+        "param": "voice_id",
+        "label": "Voice (if the branding has none)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n12",
+        "label": "Advertising spot"
+      },
+      {
+        "node": "n13",
+        "label": "Storyboard",
+        "approve": true,
+        "hint": "Read the storyboard: hook, shots, voice-over and the end card. “Approve and go on with step 2” draws the pictures of the shots. To change the plan, edit the brief and start again."
+      },
+      {
+        "node": "n14",
+        "label": "Pictures of the shots",
+        "approve": 2,
+        "hint": "Look at the pictures of the shots. “Approve and go on with step 3” films the clips, makes voice and music and cuts the spot. That is the expensive part."
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Werbespot",
+      "description": "Aus einem Briefing wird ein fertiger Werbespot im Querformat (16:9): Fable plant ihn Einstellung für Einstellung mit einem Hook in den ersten zwei Sekunden, ein Bildmodell zeichnet jede Einstellung (deine Produktfotos gehen als Referenz mit, damit das Produkt aussieht wie deines), Seedance filmt sie, ElevenLabs spricht den Sprechertext, und ein animiertes Schlussbild zeigt Logo, Claim und Handlungsaufruf in deiner Marke. Die Musik wählst du: Instrumentalmusik in exakt der Länge (ElevenLabs) oder ein gesungener Jingle (Suno, mit deinem eigenen Suno-Konto; dann spricht die Stimme nur den Schlusssatz). Etwa 3 bis 5 US-Dollar für 15 Sekunden und 6 bis 10 für 30 (die Clips machen den grössten Teil aus). Der Lauf fragt zuerst nach einer Bestätigung. In der App-Ansicht hält er zweimal an: nach dem Storyboard und nach den Bildern, bevor die teuren Clips entstehen. Um den Plan zu ändern, bearbeite das Skript im Feld Skript (bearbeitet) von Werbespot planen und starte diesen Node erneut (kein Modellaufruf, keine Kosten).",
+      "node.n1": "Briefing",
+      "node.n2": "Produktfotos (optional)",
+      "node.n3": "Branding",
+      "node.n4": "Werbespot planen",
+      "node.n5": "Bilder der Einstellungen",
+      "node.n6": "Clips der Einstellungen",
+      "node.n7": "Sprecher",
+      "node.n8": "Musik oder Jingle",
+      "node.n9": "Ton des Spots",
+      "node.n10": "Schlussbild",
+      "node.n11": "Spot schneiden",
+      "param.n1.prompt": "Aurora, ein prickelnder Eistee mit echtem Pfirsich und ohne Zuckerzusatz. Für Leute zwischen zwanzig und vierzig, die am Nachmittag etwas Frisches wollen. Was hängen bleiben soll: schmeckt nach Sommer, null Zucker. Webadresse: aurora-tea.example",
+      "param.n12.label": "Werbespot",
+      "param.n13.label": "Storyboard",
+      "param.n14.label": "Bilder der Einstellungen",
+      "note.t1": "Schreibe das Briefing: das Produkt, für wen es ist, was hängen bleiben soll und die Webadresse für das Schlussbild. Füge bis zu vier Produktfotos hinzu und wähle ein Branding (Logo, Farben, Schriften, Stimme). Länge und Musik stellst du in Werbespot planen ein: 15 Sekunden ergeben 4 Einstellungen, 30 Sekunden 9. Musik «jingle» braucht dein eigenes Suno-Konto (Kontomenü, Suno, Verbinden) und kostet etwa 10 Suno-Credits; «instrumental» braucht ein bezahltes ElevenLabs-Abo. Starte zuerst nur den Planer und lies das Storyboard. Gefällt dir eine Einstellung nicht: ändere ihre Zeilen im Feld Skript (bearbeitet) und starte den Planer erneut.",
+      "app.title": "Werbespot",
+      "app.description": "Beschreibe das Produkt und was hängen bleiben soll, füge Produktfotos und dein Branding hinzu. Du gibst das Storyboard und die Bilder frei, bevor die Clips gefilmt werden.",
+      "app.input.n1.prompt": "Briefing: Produkt, Zielgruppe, was hängen bleiben soll, Webadresse",
+      "app.input.n2.assets": "Produktfotos (optional, bis zu 4)",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.length_seconds": "Länge (Sekunden)",
+      "app.input.n4.music": "Musik: instrumental, Jingle (Suno) oder keine",
+      "app.input.n4.tone": "Tonalität",
+      "app.input.n4.language": "Sprache",
+      "app.input.n7.voice_id": "Stimme (falls das Branding keine hat)",
+      "app.output.n12": "Werbespot",
+      "app.output.n13": "Storyboard",
+      "app.output.n14": "Bilder der Einstellungen",
+      "app.hint.n13": "Lies das Storyboard: Hook, Einstellungen, Sprechertext und Schlussbild. «Freigeben und weiter mit Schritt 2» zeichnet die Bilder der Einstellungen. Um den Plan zu ändern, passe das Briefing an und starte neu.",
+      "app.hint.n14": "Sieh dir die Bilder der Einstellungen an. «Freigeben und weiter mit Schritt 3» filmt die Clips, macht Stimme und Musik und schneidet den Spot. Das ist der teure Teil."
+    },
+    "es": {
+      "name": "Anuncio",
+      "description": "Convierte un briefing en un anuncio terminado en horizontal (16:9): Fable lo planifica plano a plano con un gancho en los dos primeros segundos, un modelo de imagen dibuja cada plano (tus fotos del producto van como referencia, para que el producto se vea como el tuyo), Seedance los filma, ElevenLabs dice la locución y una tarjeta final animada muestra logotipo, lema y llamada a la acción con tu marca. La música la eliges tú: música instrumental de la duración exacta (ElevenLabs) o un jingle cantado (Suno, con tu propia cuenta de Suno; entonces la voz solo dice la frase final). Unos 3 a 5 dólares estadounidenses por 15 segundos y 6 a 10 por 30 (los clips son la mayor parte). La ejecución pide confirmación primero. En la vista de app se detiene dos veces: después del storyboard y después de las imágenes, antes de hacer los clips caros. Para cambiar el plan, edita el guion en el campo Guion (editado) de Planificar anuncio y ejecuta ese nodo otra vez (sin llamada al modelo, sin coste).",
+      "node.n1": "Briefing",
+      "node.n2": "Fotos del producto (opcional)",
+      "node.n3": "Branding",
+      "node.n4": "Planificar anuncio",
+      "node.n5": "Imágenes de los planos",
+      "node.n6": "Clips de los planos",
+      "node.n7": "Locución",
+      "node.n8": "Música o jingle",
+      "node.n9": "Sonido del anuncio",
+      "node.n10": "Tarjeta final",
+      "node.n11": "Montar el anuncio",
+      "param.n1.prompt": "Aurora, un té helado con gas, con melocotón de verdad y sin azúcar añadido. Para gente de entre veinte y cuarenta años que quiere algo fresco por la tarde. Lo que debe quedar: sabe a verano, cero azúcar. Dirección web: aurora-tea.example",
+      "param.n12.label": "Anuncio",
+      "param.n13.label": "Storyboard",
+      "param.n14.label": "Imágenes de los planos",
+      "note.t1": "Escribe el briefing: el producto, para quién es, lo que debe quedar y la dirección web para la tarjeta final. Añade hasta cuatro fotos del producto y elige un branding (logotipo, colores, fuentes, voz). Duración y Música se ajustan en Planificar anuncio: 15 segundos dan 4 planos, 30 segundos 9. La música «jingle» necesita tu propia cuenta de Suno (menú de la cuenta, Suno, Conectar) y usa unos 10 créditos de Suno; «instrumental» necesita un plan de pago de ElevenLabs. Ejecuta primero solo el planificador y lee el storyboard. Si un plano no te gusta: cambia sus líneas en Guion (editado) y ejecuta el planificador otra vez.",
+      "app.title": "Anuncio",
+      "app.description": "Describe el producto y lo que debe quedar, añade fotos del producto y tu branding. Apruebas el storyboard y las imágenes antes de filmar los clips.",
+      "app.input.n1.prompt": "Briefing: producto, público, lo que debe quedar, dirección web",
+      "app.input.n2.assets": "Fotos del producto (opcional, hasta 4)",
+      "app.input.n3.branding": "Branding",
+      "app.input.n4.length_seconds": "Duración (segundos)",
+      "app.input.n4.music": "Música: instrumental, jingle (Suno) o ninguna",
+      "app.input.n4.tone": "Tono",
+      "app.input.n4.language": "Idioma",
+      "app.input.n7.voice_id": "Voz (si el branding no tiene)",
+      "app.output.n12": "Anuncio",
+      "app.output.n13": "Storyboard",
+      "app.output.n14": "Imágenes de los planos",
+      "app.hint.n13": "Lee el storyboard: gancho, planos, locución y tarjeta final. «Aprobar y seguir con el paso 2» dibuja las imágenes de los planos. Para cambiar el plan, edita el briefing y empieza de nuevo.",
+      "app.hint.n14": "Mira las imágenes de los planos. «Aprobar y seguir con el paso 3» filma los clips, hace voz y música y monta el anuncio. Es la parte cara."
+    }
+  }
+}

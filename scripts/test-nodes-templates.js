@@ -26,6 +26,8 @@ const nodesBasic = require('../lib/nodes/nodes-basic');
 const { textValue, listValue } = require('../lib/nodes/types');
 
 const EXPECTED = [
+  'ad-spot',
+  'ad-spot-portrait',
   'dub-clip',
   'event-video',
   'explainer-script',
@@ -87,6 +89,10 @@ function requirementsOf(type) {
   else if (type === 'event_video.render') keys.push('rendernode');
   else if (['audio.tts', 'audio.music', 'audio.music_plan', 'audio.lyrics_timing'].includes(type)) keys.push('elevenlabs');
   else if (type.startsWith('fal.')) keys.push('fal');
+  // the advertising spot: the planner is a language model, the instrumental music is ElevenLabs, the end card draws on a render node
+  else if (type === 'ad.plan') keys.push('openrouter');
+  else if (type === 'ad.music') keys.push('elevenlabs');
+  else if (type === 'ad.endcard') keys.push('rendernode');
   else if (type === 'video.motion_graphics') keys.push('rendernode');
   else if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) keys.push('higgsfield');
   const def = nodeRegistry.get(type);
@@ -184,7 +190,10 @@ async function main() {
       // the song made by Suno is a step of its own: the pack, the song, then the board and the pictures
       'music-video-hud-suno-direct': ['n29', 'n32@2', 'n20@3', 'n21@3', 'n22@3', 'n23@3', 'n24@3'],
       // WP53: the event video shows the music, the board and the chosen shots before the AI clips, the depth maps, the voice, the cut and the render
-      'event-video': ['n23', 'n24', 'n25']
+      'event-video': ['n23', 'n24', 'n25'],
+      // the advertising spot: the storyboard first, then the pictures of the shots, before the clips are paid
+      'ad-spot': ['n13', 'n14@2'],
+      'ad-spot-portrait': ['n13', 'n14@2']
     };
     assert.deepEqual(Object.fromEntries(all.map((template) => [template.id, markedIn(template.app)]).filter(([, nodes]) => nodes.length)), MARKED);
     for (const lang of ['en', 'de', 'es']) {
@@ -212,7 +221,7 @@ async function main() {
     assert.ok(types('image-to-ad').includes('llm.image_describer') && types('image-to-ad').includes('audio.tts') && types('image-to-ad').includes('video.merge_audio'));
     // a new workflow starts with the default speech model (Eleven v4), like a new node
     const speechNodes = all.flatMap((template) => template.graph.nodes.filter((item) => item.type === 'audio.tts').map((item) => ({ id: template.id, params: item.params })));
-    assert.deepEqual(speechNodes.map((item) => item.id).sort(), ['event-video', 'image-to-ad', 'talking-portrait']);
+    assert.deepEqual(speechNodes.map((item) => item.id).sort(), ['ad-spot', 'ad-spot-portrait', 'event-video', 'image-to-ad', 'talking-portrait']);
     for (const item of speechNodes) assert.equal(item.params.model_id, 'eleven_v4', `${item.id}: the voice speaks with the default model`);
     assert.ok(types('series-shots').includes('input.text_list') && types('series-shots').includes('video.concat'));
     assert.ok(byId['series-shots'].graph.nodes.find((node) => node.type === 'input.text_list').params.text.split('\n').length === 3);
@@ -694,7 +703,7 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['ad-spot', 'ad-spot-portrait', 'event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
       // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
       for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
