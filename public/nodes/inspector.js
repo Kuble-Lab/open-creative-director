@@ -513,7 +513,8 @@
         if (row.edit && cb.onParam) {
           // the text of the scene as a field (the planner takes it word for word: only this scene is made again)
           const edit = row.edit;
-          const area = el('textarea', { class: 'nv-input nv-textarea nv-scene-edit', rows: 3, spellcheck: 'true', maxlength: 1500, 'aria-label': ui.T('nodes.scenes.editText', { n: row.number }), title: ui.T('nodes.scenes.editHint') });
+          item.classList.add('has-edit');
+          const area = el('textarea', { class: 'nv-input nv-textarea nv-scene-edit', rows: 4, spellcheck: 'true', maxlength: 1500, 'aria-label': ui.T('nodes.scenes.editText', { n: row.number }), title: ui.T('nodes.scenes.editHint') });
           area.value = edit.value;
           const save = (value) => {
             const next = OCD.sceneTable.withEdit(data.edits, edit, value);

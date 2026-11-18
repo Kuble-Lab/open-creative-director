@@ -3096,7 +3096,7 @@
     ['nodes.scenes.editText', 'Sprechtext der Szene {n}', 'Narration of scene {n}', 'Texto hablado de la escena {n}'],
     ['nodes.scenes.editHint', 'Sprechtext direkt ändern: Er wird Wort für Wort übernommen. Beim nächsten Lauf entstehen nur Stimme, Bild und Schnitt dieser Szene neu, alles andere kommt aus dem Cache.', 'Change the narration here: it is taken word for word. The next run makes only the voice, the picture and the cut of this scene again; everything else comes from the cache.', 'Cambia aquí el texto hablado: se toma palabra por palabra. En la próxima ejecución solo se rehacen la voz, la imagen y el montaje de esta escena; lo demás sale de la caché.'],
     ['nodes.scenes.edited', 'Eigener Text', 'Own text', 'Texto propio'],
-    ['nodes.scenes.editPending', 'Geändert, noch nicht erzeugt', 'Changed, not made yet', 'Cambiado, aún sin generar'],
+    ['nodes.scenes.editPending', 'Noch nicht erzeugt', 'Not made yet', 'Aún sin generar'],
     ['nodes.scenes.editPendingHint', 'Workflow ausführen: Nur diese Szene wird neu gesprochen, gezeichnet und geschnitten.', 'Run the workflow: only this scene is spoken, drawn and cut again.', 'Ejecuta el flujo: solo esta escena se vuelve a locutar, dibujar y montar.'],
     ['nodes.scenes.editReset', 'Zurücksetzen', 'Reset', 'Restablecer'],
     ['nodes.scenes.duration', 'Dauer', 'Length', 'Duración'],
