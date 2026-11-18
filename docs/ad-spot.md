@@ -6,7 +6,7 @@ Die Vorlagen «Werbespot» (`ad-spot`, 16:9) und «Werbespot (Hochformat)» (`ad
 
 1. **Werbespot planen** (`ad.plan`): schreibt das Skript mit Hook (höchstens 2.5 s), Einstellungen, Sprechertext, Musik und Schlussbild. Die Zeiten rechnet der Code, die Summe stimmt immer mit der gewählten Länge überein. 15 Sekunden ergeben 4 Einstellungen und 3 Sekunden Schlussbild, 30 Sekunden 9 Einstellungen und 4 Sekunden Schlussbild.
 2. **Bilder der Einstellungen** (`image.generate`): ein Bild pro Einstellung, die Produktfotos gehen als Referenz mit.
-3. **Clips der Einstellungen** (`video.seedance`): ein Clip von 5 Sekunden pro Bild.
+3. **Clips der Einstellungen** (`magnific.video`, Seedance Pro 2.5 über Magnific): ein Clip von 5 Sekunden pro Bild. Über Magnific, weil Seedance über OpenRouter Bilder ablehnt, auf denen eine echte Person zu sehen sein könnte (auch erzeugte Bilder mit Menschen); abgerechnet in Magnific-Credits.
 4. **Sprecher** (`audio.tts`), **Musik oder Jingle** (`ad.music`), **Ton des Spots** (`ad.soundtrack`): eine Tonspur in exakt der Länge des Spots, die Musik wird unter der Stimme leiser.
 5. **Schlussbild** (`ad.endcard`): Logo, Claim, Handlungsaufruf und Webadresse in den Farben und Schriften der Marke. Der Text kommt unverändert aus dem Skript, kein Modell schreibt ihn.
 6. **Spot schneiden** (`music_video.edit`): harte Schnitte auf die geplanten Zeiten, das Schlussbild am Ende.

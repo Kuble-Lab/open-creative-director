@@ -11,7 +11,7 @@ any spend instead of sending a wrong request.
 | `creations_request_upload` | `mimeType` (required; jpeg, png, svg, webp, mp4, quicktime, webm, wav, mpeg, mp4 audio, ogg, flac — no GIF) | JSON: `proxyUploadUrl`, `path`, `mimeType`, `expiresAt` |
 | PUT `proxyUploadUrl` | raw bytes, `Content-Type` = the MIME type | 2xx; a second PUT to the same URL is rate limited |
 | `creations_finalize_upload` | `fileName` (required), `path`, `visible` (false keeps it out of the library) | the new creation (`identifier`) |
-| `creations_wait` | `identifiers` (1–8), `timeoutSeconds` (0–55) | JSON: `results[] { identifier, status, results { url, thumbnailUrl } }`, `allTerminal` |
+| `creations_wait` | `creationIdentifiers` (1–8; bis 2026-11 `identifiers`, der Aufruf nimmt den Namen aus dem Live-Schema), `timeoutSeconds` (0–55) | JSON: `results[] { identifier, status, results { url, thumbnailUrl } }`, `allTerminal` |
 | `creation_status` | `creationIdentifier` | JSON: `{ creationIdentifier, status, tool, results { url } }` |
 | `creations_get` | `creationIdentifier` or `identifiers` | indented `key: value` listing, not JSON (`url`, `previewUrl`, `status`) |
 | `simulate_cost` | `tool`, `arguments` | JSON: `{ credits, isUnlimited, certainty }` |

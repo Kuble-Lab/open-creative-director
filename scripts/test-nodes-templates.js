@@ -67,9 +67,11 @@ const EXPECTED = [
   'video-to-post',
   'video-with-music'
 ];
-// Without an admin credit rate, participants (and all guests) get templates without Higgsfield.
+// Without an admin credit rate, participants (and all guests) get templates without Higgsfield and without Magnific
+// (the advertising spot films its clips with Seedance through Magnific).
 const HIGGSFIELD_TEMPLATES = ['dub-clip', 'genjutsu-people-in-video'];
-const FOR_PARTICIPANTS = EXPECTED.filter((id) => !HIGGSFIELD_TEMPLATES.includes(id));
+const MAGNIFIC_TEMPLATES = ['ad-spot', 'ad-spot-portrait'];
+const FOR_PARTICIPANTS = EXPECTED.filter((id) => !HIGGSFIELD_TEMPLATES.includes(id) && !MAGNIFIC_TEMPLATES.includes(id));
 const FREE = ['image-formats', 'photo-slideshow', 'text-on-video'];
 
 // requirement keys that a node type needs (mirrors the availability predicates of the node modules)
@@ -94,6 +96,7 @@ function requirementsOf(type) {
   else if (type === 'ad.music') keys.push('elevenlabs');
   else if (type === 'ad.endcard') keys.push('rendernode');
   else if (type === 'video.motion_graphics') keys.push('rendernode');
+  else if (type.startsWith('magnific.')) keys.push('magnific');
   else if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) keys.push('higgsfield');
   const def = nodeRegistry.get(type);
   if (def && ['edit-image', 'edit-video', 'edit-audio'].includes(def.category)) keys.push('ffmpeg');

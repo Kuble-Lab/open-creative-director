@@ -45,7 +45,8 @@ async function main() {
       images_relight: obj({ creationIdentifier: id, resolution: { type: 'string', enum: ['1k', '2k'] }, lights: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'object',
         properties: { azimuth: { type: 'integer', enum: [-135, -90, -45, 0, 45, 90, 135, 180] }, elevation: { type: 'integer', enum: [-90, -45, 0, 45, 90] },
           intensity: { type: 'integer', minimum: 1, maximum: 10 }, type: { type: 'string', enum: ['neutral', 'gel'] }, color: { type: 'string' } }, required: ['azimuth', 'elevation'], additionalProperties: false } } }, ['creationIdentifier', 'lights']),
-      creations_wait: obj({ identifiers: { type: 'array', items: id }, timeoutSeconds: { type: 'integer', minimum: 0, maximum: 55 } }, ['identifiers']),
+      // the live name since 2026-11-18 (before: identifiers); the call takes the name the schema knows
+      creations_wait: obj({ creationIdentifiers: { type: 'array', items: id }, timeoutSeconds: { type: 'integer', minimum: 0, maximum: 55 } }, ['creationIdentifiers']),
       creation_status: obj({ creationIdentifier: id }, ['creationIdentifier']), creations_get: obj({ creationIdentifier: id, identifiers: { type: 'array', items: id } }),
       video_speak: obj({ videoUrl: id, audioUrl: id, imageUrl: id, mode: { type: 'string', enum: ['lipsync-2.0', 'veed-sync-2-v2v', 'latentsync', 'omnihuman'] } }, ['audioUrl']),
       video_generate: obj({ prompt: { type: 'string' }, slug: { type: 'string' }, duration: { type: 'number' }, resolution: { type: 'string' }, aspectRatio: { type: 'string' },
@@ -102,7 +103,7 @@ async function main() {
         if (name === 'creations_request_upload') { assert.ok(args.mimeType); result = { proxyUploadUrl: 'https://storage.test/private?signature=SECRET', path: 'temp-files/in.png', mimeType: args.mimeType }; }
         if (name === 'creations_finalize_upload') { assert.equal(args.path, 'temp-files/in.png'); assert.equal(args.visible, false); listing = 'identifier: input-1\ntool: upload\nstatus: completed\nurl: "https://storage.test/in.png"'; }
         if (['images_upscale', 'images_remove_background', 'images_relight', 'video_generate', 'video_speak'].includes(name)) result = { creationIdentifier: 'output-1', status: 'queued', source: { creationIdentifier: args.creationIdentifier } };
-        if (name === 'creations_wait') result = { results: args.identifiers.map((i) => ({ identifier: i, status: 'completed', results: { url: 'https://storage.test/result.png' } })), allTerminal: true };
+        if (name === 'creations_wait') result = { results: args.creationIdentifiers.map((i) => ({ identifier: i, status: 'completed', results: { url: 'https://storage.test/result.png' } })), allTerminal: true };
         if (name === 'creation_status') result = { creationIdentifier: args.creationIdentifier, status: 'completed', results: { url: 'https://storage.test/result.png' } };
         // The live library answers as an indented listing.
         if (name === 'library_list') listing = 'references[2]:\n  - id: 2421251\n    name: gu\n    type: character\n  - id: 77\n    name: gustav\n    type: character\npagination:\n  page: 1';

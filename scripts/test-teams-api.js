@@ -921,8 +921,9 @@ async function testRulesTable(ctx) {
   for (const email of [P1, GUEST]) {
     const listed = await call(email, 'GET', '/api/workflow-templates');
     assert.equal(listed.status, 200);
-    assert.equal(listed.body.templates.length, staffTemplates.length - 2, `${email}: only the two Higgsfield templates are missing`);
-    assert.ok(!listed.body.templates.some((template) => ['dub-clip', 'genjutsu-people-in-video'].includes(template.id)));
+    // the advertising spot films its clips through Magnific: restricted like Higgsfield while no credit rate is set
+    assert.equal(listed.body.templates.length, staffTemplates.length - 4, `${email}: only the two Higgsfield and the two Magnific templates are missing`);
+    assert.ok(!listed.body.templates.some((template) => ['dub-clip', 'genjutsu-people-in-video', 'ad-spot', 'ad-spot-portrait'].includes(template.id)));
     assert.ok(listed.body.templates.every((template) => !template.nodeTypes.some((type) => type.startsWith('hf.'))));
     const single = await call(email, 'GET', '/api/workflow-templates/dub-clip');
     assert.equal(single.status, 403, `${email}: single template with Higgsfield nodes`);

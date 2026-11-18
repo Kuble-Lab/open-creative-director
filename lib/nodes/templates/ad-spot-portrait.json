@@ -3,9 +3,10 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Advertising spot (vertical)",
-  "description": "Turn a brief into a finished advertising spot in portrait (9:16): Fable plans it shot by shot with a hook in the first two seconds, an image model draws each shot (your product photos go along as reference, so the product looks like yours), Seedance films them, ElevenLabs speaks the voice-over, and an animated end card shows logo, claim and call to action in your brand. Music is your choice: instrumental music of exactly the length (ElevenLabs) or a sung jingle (Suno, with your own Suno account; then the voice only speaks the closing line). About 3 to 5 US dollars for 15 seconds and 6 to 10 for 30 (the clips are most of it). The run asks for confirmation first. In the app view it stops twice: after the storyboard and after the pictures, before the expensive clips are made. To change the plan, edit the script in the field Script (edited) of Plan advertising spot and run that node again (no model call, no cost).",
+  "description": "Turn a brief into a finished advertising spot in portrait (9:16): Fable plans it shot by shot with a hook in the first two seconds, an image model draws each shot (your product photos go along as reference, so the product looks like yours), Seedance films them through Magnific (it also takes pictures with people in them), ElevenLabs speaks the voice-over, and an animated end card shows logo, claim and call to action in your brand. Music is your choice: instrumental music of exactly the length (ElevenLabs) or a sung jingle (Suno, with your own Suno account; then the voice only speaks the closing line). The clips are billed in Magnific credits: about 2200 a clip, 4 clips for 15 seconds and 9 for 30. Everything else is under 1 US dollar for 15 seconds. The run asks for confirmation first. In the app view it stops twice: after the storyboard and after the pictures, before the expensive clips are made. To change the plan, edit the script in the field Script (edited) of Plan advertising spot and run that node again (no model call, no cost).",
   "requires": [
     "openrouter",
+    "magnific",
     "elevenlabs",
     "rendernode",
     "ffmpeg"
@@ -80,16 +81,19 @@
       },
       {
         "id": "n6",
-        "type": "video.seedance",
+        "type": "magnific.video",
         "typeVersion": 1,
         "x": 1360,
         "y": 60,
         "title": "Clips of the shots",
         "params": {
           "prompt": "",
+          "model": "bytedance-seedance-pro-2.5",
           "duration": 5,
+          "resolution": "720p",
           "aspect_ratio": "9:16",
-          "resolution": "720p"
+          "sound": false,
+          "character": ""
         }
       },
       {
@@ -555,7 +559,7 @@
   "i18n": {
     "de": {
       "name": "Werbespot (Hochformat)",
-      "description": "Aus einem Briefing wird ein fertiger Werbespot im Hochformat (9:16): Fable plant ihn Einstellung für Einstellung mit einem Hook in den ersten zwei Sekunden, ein Bildmodell zeichnet jede Einstellung (deine Produktfotos gehen als Referenz mit, damit das Produkt aussieht wie deines), Seedance filmt sie, ElevenLabs spricht den Sprechertext, und ein animiertes Schlussbild zeigt Logo, Claim und Handlungsaufruf in deiner Marke. Die Musik wählst du: Instrumentalmusik in exakt der Länge (ElevenLabs) oder ein gesungener Jingle (Suno, mit deinem eigenen Suno-Konto; dann spricht die Stimme nur den Schlusssatz). Etwa 3 bis 5 US-Dollar für 15 Sekunden und 6 bis 10 für 30 (die Clips machen den grössten Teil aus). Der Lauf fragt zuerst nach einer Bestätigung. In der App-Ansicht hält er zweimal an: nach dem Storyboard und nach den Bildern, bevor die teuren Clips entstehen. Um den Plan zu ändern, bearbeite das Skript im Feld Skript (bearbeitet) von Werbespot planen und starte diesen Node erneut (kein Modellaufruf, keine Kosten).",
+      "description": "Aus einem Briefing wird ein fertiger Werbespot im Hochformat (9:16): Fable plant ihn Einstellung für Einstellung mit einem Hook in den ersten zwei Sekunden, ein Bildmodell zeichnet jede Einstellung (deine Produktfotos gehen als Referenz mit, damit das Produkt aussieht wie deines), Seedance filmt sie über Magnific (dort gehen auch Bilder mit Menschen durch), ElevenLabs spricht den Sprechertext, und ein animiertes Schlussbild zeigt Logo, Claim und Handlungsaufruf in deiner Marke. Die Musik wählst du: Instrumentalmusik in exakt der Länge (ElevenLabs) oder ein gesungener Jingle (Suno, mit deinem eigenen Suno-Konto; dann spricht die Stimme nur den Schlusssatz). Die Clips werden in Magnific-Credits abgerechnet: etwa 2200 pro Clip, 4 Clips für 15 Sekunden und 9 für 30. Alles andere kostet unter 1 US-Dollar für 15 Sekunden. Der Lauf fragt zuerst nach einer Bestätigung. In der App-Ansicht hält er zweimal an: nach dem Storyboard und nach den Bildern, bevor die teuren Clips entstehen. Um den Plan zu ändern, bearbeite das Skript im Feld Skript (bearbeitet) von Werbespot planen und starte diesen Node erneut (kein Modellaufruf, keine Kosten).",
       "node.n1": "Briefing",
       "node.n2": "Produktfotos (optional)",
       "node.n3": "Branding",
@@ -590,7 +594,7 @@
     },
     "es": {
       "name": "Anuncio (vertical)",
-      "description": "Convierte un briefing en un anuncio terminado en vertical (9:16): Fable lo planifica plano a plano con un gancho en los dos primeros segundos, un modelo de imagen dibuja cada plano (tus fotos del producto van como referencia, para que el producto se vea como el tuyo), Seedance los filma, ElevenLabs dice la locución y una tarjeta final animada muestra logotipo, lema y llamada a la acción con tu marca. La música la eliges tú: música instrumental de la duración exacta (ElevenLabs) o un jingle cantado (Suno, con tu propia cuenta de Suno; entonces la voz solo dice la frase final). Unos 3 a 5 dólares estadounidenses por 15 segundos y 6 a 10 por 30 (los clips son la mayor parte). La ejecución pide confirmación primero. En la vista de app se detiene dos veces: después del storyboard y después de las imágenes, antes de hacer los clips caros. Para cambiar el plan, edita el guion en el campo Guion (editado) de Planificar anuncio y ejecuta ese nodo otra vez (sin llamada al modelo, sin coste).",
+      "description": "Convierte un briefing en un anuncio terminado en vertical (9:16): Fable lo planifica plano a plano con un gancho en los dos primeros segundos, un modelo de imagen dibuja cada plano (tus fotos del producto van como referencia, para que el producto se vea como el tuyo), Seedance los filma a través de Magnific (allí también pasan las imágenes con personas), ElevenLabs dice la locución y una tarjeta final animada muestra logotipo, lema y llamada a la acción con tu marca. La música la eliges tú: música instrumental de la duración exacta (ElevenLabs) o un jingle cantado (Suno, con tu propia cuenta de Suno; entonces la voz solo dice la frase final). Los clips se facturan en créditos de Magnific: unos 2200 por clip, 4 clips para 15 segundos y 9 para 30. Todo lo demás cuesta menos de 1 dólar estadounidense por 15 segundos. La ejecución pide confirmación primero. En la vista de app se detiene dos veces: después del storyboard y después de las imágenes, antes de hacer los clips caros. Para cambiar el plan, edita el guion en el campo Guion (editado) de Planificar anuncio y ejecuta ese nodo otra vez (sin llamada al modelo, sin coste).",
       "node.n1": "Briefing",
       "node.n2": "Fotos del producto (opcional)",
       "node.n3": "Branding",
