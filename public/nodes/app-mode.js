@@ -18,6 +18,7 @@
 
   const enc = encodeURIComponent;
   const LS_PREFIX = 'ocd-nodes-app-';
+  const LS_RESULTS_VIEW = 'ocd-nodes-app-results-view';
   const PLAN_DELAY = 900;
   const MAX_LIST_ITEMS = 50;
 
@@ -343,6 +344,24 @@
       if (typeof notes[id] === 'string' && notes[id].trim()) out[id] = notes[id].trim();
     }
     return out;
+  }
+
+  // The gallery of the results: every viewable leaf of every output in one flat row, in the order of the outputs. A leaf of an output with
+  // several leaves carries its number in the label, so a tile and the large view name the same thing.
+  function galleryItems(groups) {
+    const out = [];
+    for (const group of groups || []) {
+      const leaves = (group && group.leaves) || [];
+      leaves.forEach((leaf, index) => {
+        out.push({ node: group.node, value: leaf, index, count: leaves.length, label: leaves.length > 1 ? `${group.label} ${index + 1}` : group.label });
+      });
+    }
+    return out;
+  }
+
+  const RESULTS_VIEWS = ['list', 'gallery'];
+  function resultsViewOf(stored) {
+    return RESULTS_VIEWS.includes(stored) ? stored : 'list';
   }
 
   function createAppView({ host, callbacks }) {
@@ -1904,13 +1923,85 @@
       return cell;
     }
 
+    // One tile of the gallery: the media small, the label under it. A click on an image or a video opens the large view.
+    function galleryTile(item, position, onOpen) {
+      const leaf = item.value;
+      const tile = el('figure', { class: `nv-appgal-tile is-${leaf.type}`, dataset: { node: item.node } });
+      const frame = el('div', { class: 'nv-appgal-frame' });
+      if (OCD.preview.isMedia(leaf)) {
+        const media = OCD.preview.mediaNode(leaf, { scrolling: true });
+        if (leaf.type === 'video') {
+          // no controls in the tile: they would take the click that opens the large view; the film plays silently under the pointer
+          media.removeAttribute('controls');
+          media.controls = false;
+          frame.addEventListener('mouseenter', () => { const playing = media.play(); if (playing && playing.catch) playing.catch(() => {}); });
+          frame.addEventListener('mouseleave', () => media.pause());
+          frame.append(media, el('span', { class: 'nv-appgal-play' }, icon('play', 12)));
+        } else {
+          frame.append(media);
+        }
+      } else {
+        frame.append(el('div', { class: 'nv-appgal-text', text: String(leaf.value) }));
+      }
+      if (leaf.type === 'image' || leaf.type === 'video' || leaf.type === 'text') {
+        frame.classList.add('is-clickable');
+        frame.setAttribute('role', 'button');
+        frame.setAttribute('tabindex', '0');
+        frame.setAttribute('aria-label', `${T('nodes.preview.open')}: ${item.label}`);
+        frame.addEventListener('click', () => onOpen(position));
+        frame.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onOpen(position);
+        });
+      }
+      tile.append(frame);
+      const tools = el('div', { class: 'nv-appleaf-tools' });
+      const expand = el('button', { type: 'button', class: 'nv-pv-tool', title: T('nodes.preview.open'), 'aria-label': T('nodes.preview.open') }, icon('fullscreen', 13));
+      expand.addEventListener('click', () => onOpen(position));
+      tools.append(expand);
+      if (OCD.preview.isMedia(leaf)) tools.append(OCD.preview.downloadLink(leaf));
+      else if (leaf.type === 'text') tools.append(OCD.preview.copyButton(() => leaf.value));
+      tile.append(tools, el('figcaption', { class: 'nv-appgal-label', text: item.label, title: item.label }));
+      return tile;
+    }
+
+    function resultsView() {
+      return resultsViewOf(lsGet(LS_RESULTS_VIEW));
+    }
+
+    // List (one card per output, with its switches and notes) or gallery (everything side by side); the choice holds for all apps of this browser.
+    function viewToggle(view) {
+      const box = el('div', { class: 'nv-appviewsw', role: 'group', 'aria-label': T('nodes.app.view') });
+      for (const [key, iconName] of [['list', 'list'], ['gallery', 'app']]) {
+        const label = T(`nodes.app.view.${key}`);
+        const button = el('button', { type: 'button', class: 'nv-appviewsw-btn', title: label, 'aria-label': label, 'aria-pressed': String(key === view), dataset: { view: key } }, icon(iconName, 14));
+        button.addEventListener('click', () => {
+          if (resultsView() === key) return;
+          lsSet(LS_RESULTS_VIEW, key);
+          renderResults();
+        });
+        box.append(button);
+      }
+      return box;
+    }
+
     function renderResults() {
       if (!s || !s.refs) return;
       const { outputsBox, resultsHead } = s.refs;
       const app = appDef();
+      const view = resultsView();
+      const gallery = view === 'gallery';
+      const groups = [];
+      const waiting = [];
+      let extras = false;
       outputsBox.textContent = '';
+      outputsBox.classList.toggle('is-gallery', gallery);
       resultsHead.textContent = '';
       resultsHead.append(el('h2', { class: 'nv-appresults-title', text: T('nodes.app.results') }));
+      const headTools = el('div', { class: 'nv-appresults-tools' });
+      headTools.append(viewToggle(view));
+      resultsHead.append(headTools);
       let any = false;
       let projected = false;
       // with outputs marked for approval, the step each output comes in: its stage, the last step for an output without a mark
@@ -1933,6 +2024,10 @@
           // an output of a later step is made after an approval: the run of an earlier step does not include it
           const step = stages.length ? stepOf.get(entry.node) || stages.length + 1 : 0;
           const later = step > 1 && !(s.run.nodes && s.run.nodes[entry.node]);
+          if (gallery) {
+            waiting.push({ node: entry.node, label: entry.label || titleOf(entry.node), text: later ? T('nodes.app.comesInStep', { step }) : s.run.active ? T('nodes.app.waitingResult') : T('nodes.app.noResultYet') });
+            continue;
+          }
           card.append(head, el('div', { class: 'nv-appout-empty' }, icon('image', 22), el('span', { text: later ? T('nodes.app.comesInStep', { step }) : s.run.active ? T('nodes.app.waitingResult') : T('nodes.app.noResultYet') })));
           outputsBox.append(card);
           continue;
@@ -1940,6 +2035,11 @@
         any = true;
         projected = projected || Boolean(found.projected);
         const leaves = leafList(found.value).filter((leaf) => OCD.preview.isViewable(leaf));
+        if (gallery) {
+          groups.push({ node: entry.node, label: entry.label || titleOf(entry.node), leaves });
+          extras = extras || switchesOf.has(entry.node) || textTargets.some((item) => item.output === entry.node);
+          continue;
+        }
         const meta = [formatDate(found.entry.createdAt), found.entry.user].filter(Boolean).join(' · ');
         const tools = el('div', { class: 'nv-appout-tools' });
         if (leaves.length > 1) tools.append(el('span', { class: 'nv-badge is-batch', text: T('nodes.app.batchCount', { count: leaves.length }) }));
@@ -1969,13 +2069,32 @@
         }
         outputsBox.append(card);
       }
-      for (const group of feedbackGroups()) {
-        const panel = feedbackPanel(group);
-        if (panel) { outputsBox.append(panel.el); s.switchPanels.push(panel); }
+      if (gallery) {
+        const items = galleryItems(groups);
+        const open = (index) => OCD.preview.openViewer(items.map((item) => ({ value: item.value, label: item.label })), index, { title: T('nodes.app.results') });
+        const grid = el('div', { class: 'nv-appgal' });
+        items.forEach((item, index) => grid.append(galleryTile(item, index, open)));
+        for (const item of waiting) {
+          grid.append(el('figure', { class: 'nv-appgal-tile is-empty', dataset: { node: item.node } },
+            el('div', { class: 'nv-appgal-frame' }, el('div', { class: 'nv-appgal-wait' }, icon('image', 20), el('span', { text: item.text }))),
+            el('figcaption', { class: 'nv-appgal-label', text: item.label, title: item.label })));
+        }
+        outputsBox.append(grid);
+        // switches, texts and notes per scene live on the cards of the list
+        if (extras || feedbackGroups().length) {
+          const back = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', text: T('nodes.app.view.toList') });
+          back.addEventListener('click', () => { lsSet(LS_RESULTS_VIEW, 'list'); renderResults(); });
+          outputsBox.append(el('div', { class: 'nv-appgal-note' }, el('span', { class: 'nv-hint', text: T('nodes.app.view.extras') }), back));
+        }
+      } else {
+        for (const group of feedbackGroups()) {
+          const panel = feedbackPanel(group);
+          if (panel) { outputsBox.append(panel.el); s.switchPanels.push(panel); }
+        }
       }
       if (any && !projected) {
         const zip = el('a', { class: 'nv-btn nv-btn-sm', href: api.outputsZipUrl(s.id), download: '' }, icon('zip', 13), el('span', { text: T('nodes.run.menu.zip') }));
-        resultsHead.append(zip);
+        headTools.append(zip);
       }
     }
 
@@ -2015,6 +2134,9 @@
     // WP56: feedback per scene
     feedbackTargets,
     feedbackScenes,
-    notesOfScenes
+    notesOfScenes,
+    // gallery of the results
+    galleryItems,
+    resultsViewOf
   };
 })(window);
