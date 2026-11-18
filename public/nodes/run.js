@@ -1368,9 +1368,15 @@
       });
       if (!table) return null;
       const planNode = plan && plan.nodes ? plan.nodes[nodeId] : null;
+      // the text of each scene as a field, where the planner of these scenes takes typed texts (see scene-table.js)
+      const target = OCD.sceneTable.editTarget({ nodeId, def, port: table.port, inputPorts: ports.inputs, edges: st.graph.edges, typeOf: (id) => defOf(id) });
+      const targetNode = target ? nodeOf(target.nodeId) : null;
+      const edits = targetNode ? OCD.sceneTable.sceneEdits({ target, variant: selectedVariant(st.results, target.nodeId), params: targetNode.params, count: table.count }) : null;
       return {
         ...table,
-        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index) })),
+        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index), edit: edits ? edits[row.index] || null : null })),
+        // the typed texts as the planner holds them now (the value the fields change)
+        edits: edits && targetNode.params && typeof targetNode.params[target.param.id] === 'object' ? targetNode.params[target.param.id] : {},
         entryId: entry ? entry.id : null,
         cost: OCD.sceneTable.itemCost(planNode, def),
         busy: runState.active || starting,

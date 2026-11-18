@@ -4815,6 +4815,38 @@ button.nv-scene-preview:focus-visible {
   overflow: hidden;
 }
 
+.nv-scene-edit {
+  width: 100%;
+  min-height: 54px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.nv-scene-edited {
+  color: var(--text-dim);
+}
+
+.nv-scene-edited.is-redo {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.nv-scene-reset {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-dim);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.nv-scene-reset:hover,
+.nv-scene-reset:focus-visible {
+  color: var(--text);
+}
+
 .nv-scene-text.is-empty {
   color: var(--text-faint);
   font-style: italic;

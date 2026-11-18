@@ -509,8 +509,37 @@
           preview = el('div', { class: 'nv-scene-preview' }, OCD.preview.thumb(row.value));
         }
         const main = el('div', { class: 'nv-scene-main' });
-        main.append(el('div', { class: `nv-scene-text ${row.text ? '' : 'is-empty'}`.trim(), text: row.text ? OCD.preview.shortText(row.text, 160) : ui.T('nodes.scenes.noText'), title: row.text || '' }));
         const meta = el('div', { class: 'nv-scene-meta' });
+        if (row.edit && cb.onParam) {
+          // the text of the scene as a field (the planner takes it word for word: only this scene is made again)
+          const edit = row.edit;
+          const area = el('textarea', { class: 'nv-input nv-textarea nv-scene-edit', rows: 3, spellcheck: 'true', maxlength: 1500, 'aria-label': ui.T('nodes.scenes.editText', { n: row.number }), title: ui.T('nodes.scenes.editHint') });
+          area.value = edit.value;
+          const save = (value) => {
+            const next = OCD.sceneTable.withEdit(data.edits, edit, value);
+            if (JSON.stringify(next) === JSON.stringify(data.edits || {})) {
+              area.value = edit.value;
+              return;
+            }
+            cb.onParam(edit.nodeId, edit.param, next, { commit: true });
+            renderScenes(container, nodeId);
+          };
+          area.addEventListener('change', () => save(area.value));
+          area.addEventListener('wheel', (event) => {
+            if (area.scrollHeight > area.clientHeight && !event.ctrlKey && !event.metaKey) event.stopPropagation();
+          });
+          main.append(area);
+          if (edit.changed || edit.pending) {
+            meta.append(el('span', { class: `nv-badge nv-scene-edited ${edit.pending ? 'is-redo' : ''}`.trim(), text: ui.T(edit.pending ? 'nodes.scenes.editPending' : 'nodes.scenes.edited'), title: edit.pending ? ui.T('nodes.scenes.editPendingHint') : '' }));
+          }
+          if (edit.changed) {
+            const reset = el('button', { type: 'button', class: 'nv-scene-reset', title: edit.original, text: ui.T('nodes.scenes.editReset') });
+            reset.addEventListener('click', () => save(''));
+            meta.append(reset);
+          }
+        } else {
+          main.append(el('div', { class: `nv-scene-text ${row.text ? '' : 'is-empty'}`.trim(), text: row.text ? OCD.preview.shortText(row.text, 160) : ui.T('nodes.scenes.noText'), title: row.text || '' }));
+        }
         if (row.duration !== null) meta.append(el('span', { class: 'nv-scene-duration', text: OCD.sceneTable.clock(row.duration), title: ui.T('nodes.scenes.duration') }));
         meta.append(el('span', { class: 'nv-scene-cost', text: hintFor(row.cost || data.cost) }));
         main.append(meta);

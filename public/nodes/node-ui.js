@@ -1365,6 +1365,28 @@
 
     // Notes per item of a list (WP56: the feedback per scene of the explainer video): the app view writes them scene by scene; here one line
     // per note, "s3: shorter" ("all: ..." for the whole where the param has it). A line that does not start with an id goes on the note before.
+    // The texts a person typed for single items (a `notes` param with `edits`: the narration of the scenes of the explainer planner).
+    // They are typed in the scene list of the inspector; here the summary and a button that takes them all away.
+    if (kind === 'notes' && param.edits) {
+      const wrap = el('div', { class: 'nv-marks nv-nodrag' });
+      const text = el('span', { class: 'nv-hint' });
+      const clear = el('button', { type: 'button', class: 'nv-btn nv-btn-sm' }, el('span', { text: T('nodes.edits.clear') }));
+      let current = {};
+      const show = (edits) => {
+        current = edits && typeof edits === 'object' && !Array.isArray(edits) ? edits : {};
+        const ids = Object.keys(current);
+        text.textContent = ids.length ? T('nodes.edits.count', { count: ids.length, ids: ids.join(', ') }) : T('nodes.edits.none');
+        clear.hidden = !ids.length;
+      };
+      clear.addEventListener('click', () => {
+        show({});
+        ctx.onChange({}, { commit: true });
+      });
+      show(value);
+      wrap.append(text, clear);
+      return { el: wrap, set: show, get: () => current };
+    }
+
     if (kind === 'notes') {
       const area = el('textarea', { class: 'nv-input nv-textarea nv-nodrag', rows: 3, spellcheck: 'true', 'aria-label': paramLabel(param.id), placeholder: T(param.whole ? 'nodes.notes.placeholderWhole' : 'nodes.notes.placeholder') });
       const format = (notes) =>
