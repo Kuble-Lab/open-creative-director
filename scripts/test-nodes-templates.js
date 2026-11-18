@@ -52,6 +52,7 @@ const EXPECTED = [
   'photo-to-3d',
   'replace-people-in-video',
   'series-shots',
+  'sketch-illustration',
   'song-from-idea',
   'storyboard-clips',
   'suno-song',
@@ -191,6 +192,23 @@ async function main() {
     }
     assert.deepEqual(types('hero-variants'), ['input.text', 'llm.prompt_enhancer', 'image.generate', 'image.resize', 'output.result']);
     assert.equal(byId['hero-variants'].graph.nodes.find((node) => node.type === 'image.generate').params.count, 4);
+    // sketch-illustration: situation and style -> one request -> the LLM writes the image prompt (the style word for word) -> one
+    // illustration; the style reference and the image model are optional and feed the image node directly
+    assert.deepEqual(types('sketch-illustration'), ['input.prompt', 'input.text', 'text.template', 'llm.chat', 'input.media_list', 'input.image_model', 'image.generate', 'output.result', 'output.result']);
+    assert.deepEqual(byId['sketch-illustration'].requires, ['openrouter']);
+    {
+      const doc = byId['sketch-illustration'];
+      const node = (id) => doc.graph.nodes.find((item) => item.id === id);
+      assert.deepEqual(doc.graph.edges.map((edge) => `${edge.from.node}.${edge.from.port}>${edge.to.node}.${edge.to.port}`), ['n1.prompt>n3.a', 'n2.text>n3.b', 'n3.text>n4.prompt', 'n4.text>n7.prompt', 'n5.items>n7.images', 'n6.model>n7.model', 'n7.image>n8.inputs', 'n4.text>n9.inputs']);
+      assert.match(node('n2').params.text, /cobalt blue/);
+      assert.match(node('n2').params.text, /No text/);
+      assert.match(node('n4').params.system, /STYLE word for word/);
+      assert.match(node('n4').params.system, /Do not copy its people, objects, composition or lettering/);
+      assert.deepEqual(node('n5').params, { kind: 'image', assets: [] }, 'no style reference is built in');
+      assert.deepEqual(node('n7').params, { model: '', prompt: '', aspect_ratio: '4:3', count: 1 });
+      assert.deepEqual(doc.app.inputs.map((entry) => `${entry.node}.${entry.param}`), ['n1.prompt', 'n7.aspect_ratio', 'n5.assets', 'n2.text', 'n6.model']);
+      assert.equal(templates.resolveTemplate('sketch-illustration', { lang: 'de' }).name, 'Illustration im Skizzenstil (eine Akzentfarbe)');
+    }
     assert.ok(types('image-to-ad').includes('llm.image_describer') && types('image-to-ad').includes('audio.tts') && types('image-to-ad').includes('video.merge_audio'));
     // a new workflow starts with the default speech model (Eleven v4), like a new node
     const speechNodes = all.flatMap((template) => template.graph.nodes.filter((item) => item.type === 'audio.tts').map((item) => ({ id: template.id, params: item.params })));
@@ -1161,6 +1179,36 @@ async function main() {
       assert.deepEqual(seen.edit, ['solo']);
       void textValue;
       void listValue;
+    }
+
+    /* ----- sketch-illustration: runs without a style reference (the empty list is no batch) and hands the prompt of the LLM to the image node ----- */
+    {
+      const registry = createRegistry();
+      nodesBasic.registerAll(registry);
+      const seen = [];
+      const fake = (type, execute) => {
+        const def = nodeRegistry.get(type);
+        registry.register({ ...def, available: () => true, validate: undefined, cost: undefined, execute });
+      };
+      fake('llm.chat', async (_ctx, inputs) => ({ variants: [{ text: textValue(`PROMPT FOR: ${inputs.prompt.value}`) }] }));
+      fake('image.generate', async (_ctx, inputs) => {
+        const images = !inputs.images ? [] : inputs.images.type === 'list' ? inputs.images.items : [inputs.images];
+        seen.push({ prompt: inputs.prompt.value, images: images.length, model: inputs.model?.value });
+        return { variants: [{ image: { type: 'image', sessionId: 'fake-session', assetId: 'img-sketch', file: 'sketch.png', url: '/assets/fake-session/sketch.png' } }] };
+      });
+      const bus = createEventBus();
+      const localStore = createWorkflowsStore({ dir: tmpDir, registry, events: bus });
+      const engine = createEngine({ store: localStore, registry, events: bus, getConfig: () => ({ imageModel: 'x' }), limits: { jobPollMs: 20 } });
+      const created = await localStore.createWorkflow({ document: templates.resolveTemplate('sketch-illustration', { lang: 'en' }) });
+      createdWorkflows.push(created.workflow.id);
+      createdSessions.push(created.workflow.sessionId);
+      const runId = await engine.start(created.workflow.id, { mode: 'all', user: 'tester', overrides: { n1: { prompt: 'Two children build a snowman' } } });
+      const record = await engine.whenFinished(created.workflow.id, runId);
+      assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
+      assert.equal(seen.length, 1, 'one illustration without a style reference');
+      assert.equal(seen[0].images, 0);
+      assert.equal(seen[0].model, 'x', 'a blank image model is the configured one');
+      assert.match(seen[0].prompt, /^PROMPT FOR: SITUATION\nTwo children build a snowman\n\nSTYLE\nHand-drawn editorial illustration/);
     }
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
