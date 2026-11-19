@@ -16,7 +16,7 @@
   const usd = (value) =>
     value === null || value === undefined
       ? T('unknown')
-      : new Intl.NumberFormat(lang(), { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
+      : new Intl.NumberFormat(lang(), { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   const stamp = (value) => {
     const time = new Date(value);
     if (Number.isNaN(time.getTime())) return '';
@@ -124,7 +124,8 @@
       known: number(totals.count - totals.unknownCost),
       total: number(totals.count),
       unknown: number(totals.unknownCost),
-      abo: number(totals.subscriptionCount)
+      abo: number(totals.subscriptionCount),
+      credits: number(totals.creditPricedCount || 0)
     });
 
     // Teams and budget: per team and person what the budget is, what is spent and what is left (the whole training).
@@ -171,7 +172,7 @@
           row.provider,
           row.model,
           row.sessionId,
-          row.billing === 'Abo' ? T('subscription') : row.billing || '—',
+          row.billing === 'Abo' ? T('subscription') : [row.billing || '—', row.credits !== null && row.credits !== undefined ? `${number(row.credits)} ${T('credits')}` : ''].filter(Boolean).join(' · '),
           row.billing === 'Abo' ? T('subscription') : usd(row.costUsd),
           tokenCount(row.tokens.input),
           tokenCount(row.tokens.output),

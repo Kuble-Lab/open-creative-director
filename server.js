@@ -1542,7 +1542,8 @@ adminMonitoring.registerRoutes(app, {
       }
       teamRows.push({ id: team.id, name: team.name, archived: team.archived, budgetUsd: team.budgetUsd, members });
     }
-    return { costRows, runRows, jobRows, errorRows, teamRows };
+    const creditRates = { magnific: settings.getPreference('magnificUsdPerCredit'), higgsfield: settings.getPreference('higgsfieldUsdPerCredit') };
+    return { costRows, runRows, jobRows, errorRows, teamRows, creditRates };
   },
   getRuntime: () => ({ imageModel: runtime.imageModel, videoModel: runtime.videoModel, brainModel: runtime.defaultBrain })
 });
