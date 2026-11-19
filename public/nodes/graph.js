@@ -170,6 +170,7 @@
       else if (param.kind === 'number' || param.kind === 'integer' || param.kind === 'slider') out[param.id] = param.optional ? null : 0;
       else if (param.kind === 'tags' || param.kind === 'assets') out[param.id] = [];
       else if (param.kind === 'asset') out[param.id] = null;
+      else if (param.kind === 'composition') out[param.id] = { layers: [] };
       else out[param.id] = '';
     }
     return out;

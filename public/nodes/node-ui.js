@@ -225,7 +225,28 @@
     arrowDown: 'M12 5v14m0 0l-5-5m5 5l5-5',
     external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
     extract: 'M9 6H5v12h4M9 12h11m0 0l-4-4m4 4l-4 4',
-    users: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 6.6M18 14a6 6 0 013.5 6'
+    users: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 6.6M18 14a6 6 0 013.5 6',
+    // the editor of the Composer (composer-ui.js)
+    layers: 'M12 4l8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4',
+    shape: 'M4 4h9v9H4zM17 11a4 4 0 110 8 4 4 0 010-8z',
+    eye: 'M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z',
+    'eye-off': 'M4 4l16 16M10 6a9 9 0 012-.5c6 0 9.5 6.5 9.5 6.5a16 16 0 01-2.8 3.6M6.6 7.7A16 16 0 002.5 12s3.5 6.5 9.5 6.5a9 9 0 004.4-1.1M10.2 10.2a2.5 2.5 0 003.6 3.6',
+    lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 017 0v3',
+    unlock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 016.8-1.2',
+    'align-left': 'M4 4v16M8 8h10v3H8zM8 14h6v3H8z',
+    'align-hcenter': 'M12 4v16M6 8h12v3H6zM8 14h8v3H8z',
+    'align-right': 'M20 4v16M6 8h10v3H6zM10 14h6v3h-6z',
+    'align-top': 'M4 4h16M8 8h3v10H8zM14 8h3v6h-3z',
+    'align-vcenter': 'M4 12h16M8 6h3v12H8zM14 8h3v8h-3z',
+    'align-bottom': 'M4 20h16M8 6h3v10H8zM14 10h3v6h-3z',
+    'flip-h': 'M12 3v18M9 7L4 12l5 5zM15 7l5 5-5 5',
+    'flip-v': 'M3 12h18M7 9l5-5 5 5zM7 15l5 5 5-5',
+    'to-front': 'M8 8h12v12H8zM4 4h10v3M4 4v10h3',
+    'to-back': 'M4 4h12v12H4zM20 8v12H8',
+    'text-left': 'M4 6h16M4 10h10M4 14h16M4 18h10',
+    'text-center': 'M4 6h16M7 10h10M4 14h16M7 18h10',
+    'text-right': 'M4 6h16M10 10h10M4 14h16M10 18h10',
+    expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'
   };
 
   function icon(name, size = 16, className = '') {
@@ -1339,6 +1360,29 @@
       });
       wrap.append(picker, hex);
       return { el: wrap, set: show, get: () => hex.value };
+    }
+
+    // The layers of the Composer (image.composer): they are laid out on the stage of its editor (composer-ui.js); here how many there are
+    // and the button that opens it (card and inspector).
+    if (kind === 'composition') {
+      const wrap = el('div', { class: 'nv-composition nv-nodrag' });
+      const summary = el('span', { class: 'nv-composition-summary' });
+      const open = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-composition-open' }, icon('layers', 14), el('span', { text: T('nodes.composer.open') }));
+      let current = value;
+      const show = (next) => {
+        current = next;
+        const count = next && Array.isArray(next.layers) ? next.layers.length : 0;
+        summary.textContent = count ? T(count === 1 ? 'nodes.composer.layerCountOne' : 'nodes.composer.layerCount', { count }) : T('nodes.composer.noLayers');
+        wrap.classList.toggle('is-empty', !count);
+      };
+      open.addEventListener('pointerdown', (event) => event.stopPropagation());
+      open.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (ctx.node && typeof cardActions.composer === 'function') cardActions.composer(ctx.node.id);
+      });
+      show(value);
+      wrap.append(open, summary);
+      return { el: wrap, set: show, get: () => current };
     }
 
     // Marks per item of a list (WP55: the photos of the event video): the app view sets them on the files themselves; here the summary, how many

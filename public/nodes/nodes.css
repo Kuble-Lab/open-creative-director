@@ -8378,3 +8378,819 @@ button.nv-scene-preview:focus-visible {
 .nv-cost-models summary {
   cursor: pointer;
 }
+
+/* ---------- Composer (image.composer): button on the node, full editor (composer-ui.js) ---------- */
+
+.nv-composition {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nv-composition-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nv-composition-summary {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.nv-composition.is-empty .nv-composition-open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.nv-cmp {
+  --cmp-sel: #3d8bff;
+  --cmp-guide: #ff4fa3;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.nv-cmp-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-panel);
+  flex: none;
+  min-width: 0;
+}
+
+.nv-cmp-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.nv-cmp-title strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.nv-cmp-formats {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.nv-cmp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nv-cmp-chip:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.nv-cmp-chip.is-active {
+  background: var(--accent-soft);
+  border-color: rgba(216, 162, 95, 0.45);
+  color: var(--accent);
+}
+
+.nv-cmp-ratio {
+  display: inline-block;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.nv-cmp-size {
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-cmp-spacer {
+  flex: 1;
+}
+
+.nv-cmp-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--bg-raised);
+}
+
+.nv-cmp-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.nv-cmp-tool:hover:not(:disabled) {
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.nv-cmp-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.nv-cmp-tool.is-on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.nv-cmp-zoom {
+  min-width: 52px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.nv-cmp-zoom:hover {
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.nv-cmp-done {
+  height: 32px;
+  padding: 0 16px;
+}
+
+.nv-cmp-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr) 288px;
+  min-height: 0;
+}
+
+.nv-cmp-panel {
+  background: var(--bg-panel);
+  overflow-y: auto;
+  min-height: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nv-cmp-left {
+  border-right: 1px solid var(--line);
+}
+
+.nv-cmp-right {
+  border-left: 1px solid var(--line);
+}
+
+.nv-cmp-panel-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-cmp-right > .nv-cmp-panel-head {
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+.nv-cmp-add {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nv-cmp-add .nv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nv-cmp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nv-cmp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 4px 0 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.nv-cmp-row:hover {
+  background: var(--bg-raised);
+}
+
+.nv-cmp-row.is-selected {
+  background: rgba(61, 139, 255, 0.14);
+  border-color: rgba(61, 139, 255, 0.45);
+}
+
+.nv-cmp-row.is-hidden .nv-cmp-name,
+.nv-cmp-row.is-hidden .nv-cmp-thumb {
+  opacity: 0.4;
+}
+
+.nv-cmp-row.is-dragging {
+  opacity: 0.4;
+}
+
+.nv-cmp-row.is-drop-above {
+  box-shadow: inset 0 2px 0 var(--cmp-sel);
+}
+
+.nv-cmp-row.is-drop-below {
+  box-shadow: inset 0 -2px 0 var(--cmp-sel);
+}
+
+.nv-cmp-thumb {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-dim);
+}
+
+.nv-cmp-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nv-cmp-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.nv-cmp-swatch.is-round {
+  border-radius: 50%;
+}
+
+.nv-cmp-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-cmp-rename {
+  flex: 1;
+  height: 26px;
+  padding: 2px 6px;
+}
+
+.nv-cmp-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.nv-cmp-row:hover .nv-cmp-icon,
+.nv-cmp-row.is-hidden .nv-cmp-icon:first-of-type,
+.nv-cmp-icon.is-on,
+.nv-cmp-icon:focus-visible {
+  opacity: 1;
+}
+
+.nv-cmp-icon:hover {
+  color: var(--text);
+  background: var(--bg-input);
+}
+
+.nv-cmp-icon.is-on {
+  color: var(--accent);
+}
+
+.nv-cmp-empty {
+  font-size: 12px;
+  color: var(--text-faint);
+  padding: 10px 4px;
+  line-height: 1.45;
+}
+
+.nv-cmp-inputs {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.nv-cmp-input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.nv-cmp-input {
+  position: relative;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nv-cmp-input:hover {
+  border-color: var(--accent);
+}
+
+.nv-cmp-input img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nv-cmp-input.is-text {
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+
+.nv-cmp-input-text {
+  font-size: 10px;
+  line-height: 1.25;
+  max-height: 3.75em;
+  overflow: hidden;
+  text-align: center;
+  word-break: break-word;
+}
+
+.nv-cmp-input-n {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.nv-cmp-centre {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background-color: #07080a;
+  background-image: radial-gradient(circle, #1a1d22 1px, transparent 1.4px);
+  background-size: 22px 22px;
+}
+
+.nv-cmp-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+.nv-cmp-sizer {
+  position: relative;
+}
+
+.nv-cmp-stage {
+  position: absolute;
+  transform-origin: 0 0;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 80px rgba(0, 0, 0, 0.6);
+  background: #ffffff;
+}
+
+.nv-cmp-stage.is-transparent {
+  background-color: #ffffff;
+  background-image: linear-gradient(45deg, #d9dce1 25%, transparent 25%), linear-gradient(-45deg, #d9dce1 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d9dce1 75%), linear-gradient(-45deg, transparent 75%, #d9dce1 75%);
+  background-size: 32px 32px;
+  background-position: 0 0, 0 16px, 16px -16px, -16px 0;
+}
+
+.nv-cmp-layer {
+  position: absolute;
+  box-sizing: border-box;
+  transform-origin: 50% 50%;
+  user-select: none;
+  cursor: move;
+}
+
+.nv-cmp-layer.is-locked {
+  cursor: default;
+  pointer-events: none;
+}
+
+.nv-cmp-layer.is-hidden {
+  display: none;
+}
+
+.nv-cmp-layer.is-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.nv-cmp-layer.is-text {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  font-kerning: normal;
+  font-optical-sizing: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+.nv-cmp-layer.is-text.is-editing {
+  cursor: text;
+  user-select: text;
+  outline: none;
+  caret-color: var(--cmp-sel);
+}
+
+.nv-cmp-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: repeating-linear-gradient(45deg, #c9ccd2, #c9ccd2 12px, #d3d6db 12px, #d3d6db 24px);
+  color: #4b5058;
+  font: 600 14px/1.3 var(--font);
+  text-align: center;
+  overflow: hidden;
+}
+
+.nv-cmp-guides {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.nv-cmp-guides line {
+  stroke: var(--cmp-guide);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.nv-cmp-guides line.is-stage {
+  stroke-dasharray: 4 3;
+}
+
+.nv-cmp-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+.nv-cmp-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid var(--cmp-sel);
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+.nv-cmp-frame.is-locked {
+  border-style: dashed;
+  border-color: var(--text-faint);
+}
+
+.nv-cmp-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1.5px solid var(--cmp-sel);
+  border-radius: 2px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.nv-cmp-handle:not(.is-corner) {
+  border-radius: 5px;
+}
+
+.nv-cmp-rotate {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid var(--cmp-sel);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.nv-cmp-rotate:active {
+  cursor: grabbing;
+}
+
+.nv-cmp-rotate-line {
+  position: absolute;
+  width: 0;
+  border-left: 1.5px solid var(--cmp-sel);
+  pointer-events: none;
+}
+
+.nv-cmp-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgba(16, 18, 22, 0.92);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.nv-cmp-hint.is-on {
+  opacity: 1;
+}
+
+.nv-cmp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.nv-cmp-section:last-child {
+  border-bottom: 0;
+}
+
+.nv-cmp-section h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.nv-cmp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.nv-cmp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.nv-cmp-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.nv-cmp-field > span {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.nv-cmp-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-cmp-text {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.nv-cmp-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.nv-cmp-seg {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 9px;
+  background: var(--bg-input);
+}
+
+.nv-cmp-seg button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nv-cmp-seg button:hover {
+  color: var(--text);
+}
+
+.nv-cmp-seg button.is-active {
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.nv-cmp-colorrow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.nv-cmp-color {
+  flex: none;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.nv-cmp-hex {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.nv-cmp-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.nv-cmp-swatchbtn {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0;
+  cursor: pointer;
+}
+
+.nv-cmp-swatchbtn:hover {
+  transform: scale(1.12);
+}
+
+.nv-cmp-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nv-cmp-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.nv-cmp-tips {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+@media (max-width: 1100px) {
+  .nv-cmp-body {
+    grid-template-columns: 210px minmax(0, 1fr) 250px;
+  }
+
+  .nv-cmp-size {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .nv-cmp-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+
+  .nv-cmp-centre {
+    order: -1;
+    min-height: 50vh;
+  }
+
+  .nv-cmp-panel {
+    max-height: 40vh;
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .nv-cmp-title strong {
+    display: none;
+  }
+}
