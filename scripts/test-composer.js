@@ -284,13 +284,13 @@ async function testExecute() {
   }
   try {
     const ff = (args) => execFileAsync(binaries.ffmpeg, ['-nostdin', '-v', 'error', '-y', ...args]);
-    await ff(['-f', 'lavfi', '-i', 'color=c=0xff0000:s=64x32,format=rgb24', '-frames:v', '1', path.join(tmp, 'red.webp')]);
+    await ff(['-f', 'lavfi', '-i', 'color=c=0xff0000:s=64x32,format=rgb24', '-frames:v', '1', path.join(tmp, 'red.gif')]);
     await ff(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=4000x4000,format=rgb24', '-frames:v', '1', path.join(tmp, 'big.png')]);
     const upload = async (file, ext) => {
       const asset = await store.saveAsset(sessionId, { kind: 'upload', buffer: await fsp.readFile(path.join(tmp, file)), ext, prompt: file, cost: null });
       return assets.valueFromAsset(sessionId, asset.id);
     };
-    const webp = await upload('red.webp', '.webp');
+    const gif = await upload('red.gif', '.gif'); // a GIF: resvg cannot read it, every ffmpeg can write it
     const big = await upload('big.png', '.png');
     const def = registry.get('image.composer');
     const logs = [];
@@ -318,19 +318,19 @@ async function testExecute() {
         ]
       }
     });
-    const result = await def.execute(ctx, { images: { type: 'list', items: [webp, big] }, texts: { type: 'text', value: 'Titel' } }, params);
+    const result = await def.execute(ctx, { images: { type: 'list', items: [gif, big] }, texts: { type: 'text', value: 'Titel' } }, params);
     const out = result.variants[0].image;
     assert.equal(out.type, 'image');
     const png = await fsp.readFile(assets.assetFilePath(out));
     assert.equal(png.readUInt32BE(16), 200);
     assert.equal(png.readUInt32BE(20), 100);
-    near(await pixelOf(png, 10, 90), [255, 0, 0, 255]); // the WebP went through ffmpeg
+    near(await pixelOf(png, 10, 90), [255, 0, 0, 255]); // the GIF went through ffmpeg
     near(await pixelOf(png, 190, 90), [0, 0, 255, 255]); // the large PNG was made smaller and is drawn
     assert.ok(logs.some((line) => /takes text 6/.test(line)), 'a text layer with a missing input is said in the log');
     assert.ok(logs.some((line) => /4 layers on 200 x 100 px/.test(line)));
 
     // images no visible layer uses are not read
-    const prepared = await nodesComposer.prepareImages(ctx, [webp, big], [{ type: 'image', input: 1, hidden: false }], { width: 200, height: 100 });
+    const prepared = await nodesComposer.prepareImages(ctx, [gif, big], [{ type: 'image', input: 1, hidden: false }], { width: 200, height: 100 });
     assert.equal(prepared[0].unused, true);
     assert.ok(prepared[1].href.startsWith('data:image/png;base64,'));
 
