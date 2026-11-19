@@ -924,7 +924,8 @@
           if (extractPort) {
             fieldOptions.action = { icon: 'extract', label: ui.T('nodes.prompt.extractShort'), title: ui.T('nodes.prompt.extract'), onClick: () => cb.onExtractPrompt(node.id, extractPort.id) };
           }
-          if (cb.app) {
+          // the layers of the Composer are laid out in its editor, not typed into an app form
+          if (cb.app && param.kind !== 'composition') {
             const active = cb.app.isExposed(node.id, param.id);
             fieldOptions.expose = {
               active,

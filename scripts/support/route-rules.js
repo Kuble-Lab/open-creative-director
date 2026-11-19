@@ -151,6 +151,7 @@ const ROUTE_RULES = {
   'POST /api/sessions/:id/workflow-runs/:requestId': 'session', // the click on "Start" of that card
   'POST /api/sessions/:id/workflow-runs/:requestId/cancel': 'session',
   'DELETE /api/sessions/:id/video-model-preference': 'session',
+  'GET /api/nodes/composer/fonts/:dir/:file': 'open', // the bundled fonts of the Composer (open licence, whitelist)
   'GET /api/nodes/registry': 'public',
   'GET /api/nodes/options/:source': 'open',
   'GET /api/nodes/higgsfield-models/:modelId': 'open',
@@ -333,6 +334,7 @@ const PARTICIPANT_RULES = {
   'POST /api/sessions/:id/workflow-runs/:requestId': 'same', // plus the budget (402) and the rules for Higgsfield: the run service decides
   'POST /api/sessions/:id/workflow-runs/:requestId/cancel': 'same',
   'DELETE /api/sessions/:id/video-model-preference': 'same',
+  'GET /api/nodes/composer/fonts/:dir/:file': 'same', // the bundled fonts of the Composer, the same for everybody
   'GET /api/nodes/registry': 'filtered', // Higgsfield nodes marked as not available
   'GET /api/nodes/options/:source': 'filtered', // Higgsfield sources 403, models without ChatGPT, library voices only
   'GET /api/nodes/higgsfield-models/:modelId': 'forbidden',

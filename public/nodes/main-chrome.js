@@ -144,7 +144,7 @@
   }
 
   function dialogOpen() {
-    return Boolean(runtime.dom.overlays.querySelector('.nv-dialog-backdrop, .nv-viewer'));
+    return Boolean(runtime.dom.overlays.querySelector('.nv-dialog-backdrop, .nv-viewer, .nv-cmp'));
   }
 
   // Text the person selected outside the canvas, for example in an answer of the assistant, in the inspector or in a

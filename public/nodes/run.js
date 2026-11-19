@@ -1613,6 +1613,49 @@
       ui.toast(ok ? T('nodes.preview.copied') : T('nodes.preview.copyFailed'), { kind: ok ? undefined : 'warn' });
     }
 
+    /* ----- what the Composer shows (composer-ui.js) ----- */
+
+    // The values at the inputs of a Composer node as the editor shows them: the selected result of each connected node, in the order
+    // the run takes them (the order of the connections, a list giving all its items); where a node has not run yet, the file or text
+    // of an input node, else nothing (the stage shows a placeholder). { images: [{ value, label }], texts: [{ text, label }], brand }
+    function composerSources(nodeId) {
+      const st = S();
+      const edgesTo = (port) => st.graph.edges.filter((edge) => edge.to.node === nodeId && edge.to.port === port);
+      const ownValue = (from, kind) => {
+        if (!from) return undefined;
+        if (kind === 'image' && from.type === 'input.image' && from.params && from.params.asset && from.params.asset.url) return { ...from.params.asset, type: 'image' };
+        if (kind === 'image' && from.type === 'input.media_list' && Array.isArray(from.params && from.params.assets)) {
+          return { type: 'list', items: from.params.assets.filter((item) => item && item.type === 'image' && item.url) };
+        }
+        if (kind === 'text' && ['input.text', 'input.prompt'].includes(from.type)) return { type: 'text', value: String((from.params && (from.params.text ?? from.params.prompt)) || '') };
+        return undefined;
+      };
+      const collect = (port, kind) => {
+        const out = [];
+        for (const edge of edgesTo(port)) {
+          const from = nodeOf(edge.from.node);
+          const variant = selectedVariant(st.results, edge.from.node);
+          let value = variant ? variant[edge.from.port] : undefined;
+          if (value === undefined) value = ownValue(from, kind);
+          const label = titleOf(edge.from.node);
+          const items = value && value.type === 'list' && Array.isArray(value.items) ? value.items : [value];
+          for (const item of items) {
+            if (kind === 'image') out.push({ value: item && item.type === 'image' && item.url ? item : null, label });
+            else out.push({ text: item && item.type === 'text' && typeof item.value === 'string' ? item.value : null, label });
+          }
+        }
+        return out;
+      };
+      const brandEdge = edgesTo('brand')[0];
+      let brand = null;
+      if (brandEdge) {
+        const variant = selectedVariant(st.results, brandEdge.from.node);
+        const value = variant ? variant[brandEdge.from.port] : null;
+        brand = value && value.type === 'text' && OCD.composerModel ? OCD.composerModel.parseProfile(value.value) : null;
+      }
+      return { images: collect('images', 'image'), texts: collect('texts', 'text'), brand };
+    }
+
     /* ----- inspector data ----- */
 
     const inspectorApi = {
@@ -1666,6 +1709,7 @@
       runFrom,
       runItems,
       scenes: scenesOf,
+      composerSources,
       selectVariant,
       deleteResult,
       openResult,

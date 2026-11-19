@@ -832,6 +832,10 @@ async function testRulesTable(ctx) {
   const staffRegistry = (await api('/api/nodes/registry', { as: STAFF })).body;
   assert.ok(staffRegistry.nodeTypes.filter((type) => type.category === 'higgsfield').every((type) => !type.restricted));
   assert.equal(registry.nodeTypes.length, staffRegistry.nodeTypes.length);
+  // the fonts of the Composer: the same bundled files for everybody, nothing outside the list
+  const font = await call(P1, 'GET', '/api/nodes/composer/fonts/anton/Anton-Regular.ttf');
+  assert.equal(font.status, 200);
+  assert.equal((await call(GUEST, 'GET', '/api/nodes/composer/fonts/anton/OFL.txt')).status, 404, 'only the font files of the list');
   const models = await call(P1, 'GET', '/api/nodes/options/brain-models');
   assert.equal(models.status, 200);
   assert.ok(!models.body.options?.some((option) => chatgpt.BRAIN_MODELS.includes(option.value)));

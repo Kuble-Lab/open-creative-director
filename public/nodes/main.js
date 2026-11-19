@@ -32,6 +32,21 @@
 
   let booted = false;
 
+  /* ---------- the Composer ---------- */
+
+  function openComposer(nodeId) {
+    const node = graphLib.getNode(state.graph, nodeId);
+    if (!node || !OCD.composer || !state.reg) return;
+    const def = state.reg.types.get(node.type);
+    OCD.composer.open({
+      nodeId,
+      label: node.title || (def ? ui.typeLabel(def) : ''),
+      getNode: () => graphLib.getNode(state.graph, nodeId),
+      sources: () => runtime.runController.inspectorApi.composerSources(nodeId),
+      commit: (patch) => applyParams(nodeId, patch, { commit: true }, `p:${nodeId}:composer`)
+    });
+  }
+
   /* ---------- boot ---------- */
 
   function installHashGuard() {
@@ -129,6 +144,18 @@
     });
     OCD.inspector.installApprovalGuard(OCD.api, () => state);
     runtime.runController = OCD.run.createController({ OCD });
+    // The editor of the Composer (composer-ui.js): opened from the button of the node (card and inspector)
+    ui.setCardActions({ composer: openComposer });
+    const refreshComposer = () => {
+      const open = OCD.composer && OCD.composer.current();
+      if (!open) return;
+      if (!graphLib.getNode(state.graph, open.nodeId)) open.close();
+      else open.refreshSources();
+    };
+    bus.on('graph', refreshComposer);
+    bus.on('sse', refreshComposer);
+    bus.on('reconcile', refreshComposer);
+    bus.on('workflow:close', () => OCD.composer && OCD.composer.current() && OCD.composer.current().close());
     runtime.inspector = OCD.inspector.createInspector({
       host: runtime.dom.inspectorScroll,
       getReg: () => state.reg,

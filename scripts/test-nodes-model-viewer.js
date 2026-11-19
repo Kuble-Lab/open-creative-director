@@ -208,7 +208,7 @@ function testVendor() {
 
   // not a dependency, not loaded with the page
   const pkg = JSON.parse(read('package.json'));
-  assert.deepEqual(Object.keys(pkg.dependencies).sort(), ['@resvg/resvg-js', 'archiver', 'compression', 'express', 'yauzl'], 'no new dependency');
+  assert.deepEqual(Object.keys(pkg.dependencies).sort(), ['@resvg/resvg-js', 'archiver', 'compression', 'express', 'fontkit', 'yauzl'], 'no new dependency (fontkit: text layout of the Composer)');
   assert.ok(!/model-viewer/.test(JSON.stringify(pkg)));
   assert.ok(!/model-viewer/.test(read('public/index.html')), 'index.html does not load the viewer');
   for (const file of fs.readdirSync(path.join(root, 'public/nodes')).filter((name) => name.endsWith('.js'))) {
