@@ -318,6 +318,30 @@ function testMonitoringAggregation() {
     assert.throws(() => monitoring.summarise({ costRows }, query, now), (error) => error.code === 'INVALID_FILTER', JSON.stringify(query));
   }
 
+  // Magnific/Higgsfield of internal runs: booked in credits with 0 USD, priced with the current rate; participant rows
+  // (field usd) keep their amount; Higgsfield submission markers (no bookingId) stay at 0; no rate or no credits: unknown.
+  const creditRows = [
+    cost('2026-09-30T11:00:00.000Z', 'gustavo@example.com', 'magnific', 'video_generate', 0, { credits: 2200, bookingId: 'magnific:a' }),
+    cost('2026-09-30T11:01:00.000Z', 'gustavo@example.com', 'magnific', 'images_expand', 0, { bookingId: 'magnific:b' }),
+    cost('2026-09-30T11:02:00.000Z', 'gustavo@example.com', 'higgsfield', 'kling', 0),
+    cost('2026-09-30T11:03:00.000Z', 'gustavo@example.com', 'higgsfield', 'kling', 0, { credits: 40, bookingId: 'job:x' }),
+    cost('2026-09-30T11:04:00.000Z', 'alice@example.com', 'magnific', 'video_generate', 2.2, { credits: 2200, usd: 2.2, bookingId: 'magnific:c' })
+  ];
+  const creditRates = { magnific: 0.001, higgsfield: 0.05 };
+  const priced = monitoring.summarise({ costRows: creditRows, creditRates }, { days: 'all' }, now);
+  const byModel = Object.fromEntries(priced.rows.map((row) => [`${row.user}:${row.model}:${row.costUsd}`, row]));
+  assert.ok(byModel['gustavo@example.com:video_generate:2.2'].priced);
+  assert.equal(byModel['gustavo@example.com:video_generate:2.2'].credits, 2200);
+  assert.ok(byModel['gustavo@example.com:images_expand:null'], 'unknown credits are an unknown cost, not 0');
+  assert.ok(byModel['gustavo@example.com:kling:0'], 'the submission marker stays at 0');
+  assert.ok(byModel['gustavo@example.com:kling:2'].priced);
+  assert.equal(byModel['alice@example.com:video_generate:2.2'].priced, false);
+  assert.ok(Math.abs(priced.totals.costUsd - 6.4) < 1e-9);
+  assert.equal(priced.totals.unknownCost, 1);
+  assert.equal(priced.totals.creditPricedCount, 2);
+  const unrated = monitoring.summarise({ costRows: creditRows, creditRates: { magnific: null } }, { days: 'all' }, now);
+  assert.equal(unrated.totals.unknownCost, 3, 'without a rate the credits have no USD price');
+
   // providers
   assert.equal(monitoring.providerOf({ type: 'brain', model: 'anthropic/claude' }), 'anthropic');
   assert.equal(monitoring.providerOf({ type: 'higgsfield', model: 'x/y' }), 'higgsfield');

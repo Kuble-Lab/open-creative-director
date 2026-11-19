@@ -206,6 +206,10 @@ async function main() {
     await poller.handleHiggsfieldCompleted(session.id, internal.job, { urls: ['https://result.invalid/internal.png'], credits: 8 });
     assert.equal((await costs.readCosts()).at(-1).cost, 0);
     assert.equal((await costs.readCosts()).at(-1).usd, undefined);
+    // the internal completion books its credits (0 USD) so the monitoring can price them
+    assert.equal((await costs.readCosts()).at(-1).credits, 8);
+    assert.match((await costs.readCosts()).at(-1).bookingId, /^job:/);
+    assert.equal(internal.job.estimateCredits, undefined, 'a cold catalogue cache adds no Higgsfield call and no estimate');
     assert.equal((await budget.status(viewer(P))).spentUsd, beforeInternal);
     assert.equal(access.modelAllowed(viewer(P), 'chatgpt/test'), false);
     await assert.rejects(tools.executeTool(ctx(), 'import_gts_asset', { query: 'test' }), { code: 'FORBIDDEN_FOR_ROLE' });
