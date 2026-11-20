@@ -782,6 +782,31 @@ async function testChatToolsAdminOnly({ api, iso }) {
   }
   assert.equal((await api(`/api/brandings/${bobs.id}`, { method: 'PATCH', as: ALICE, json: { speaker: null } })).status, 404);
   assert.equal((await api(`/api/brandings/${bobs.id}`, { method: 'DELETE', as: ALICE })).status, 404);
+  // fonts: everybody uploads into their own branding (type, size and content checked), nobody into somebody else's or a shared one
+  const ttf = fs.readFileSync(path.join(__dirname, '..', 'lib', 'fonts', 'dm-sans', 'DMSans-Variable.ttf'));
+  const upload = (id, email, body, name = 'Brand Sans.ttf', query = '') =>
+    api(`/api/brandings/${id}/fonts${query}`, { method: 'POST', as: email, body, headers: { 'content-type': 'application/octet-stream', 'x-file-name': encodeURIComponent(name) } });
+  const added = await upload(bobs.id, BOB, ttf);
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  assert.equal(added.body.font.family, 'DM Sans', 'the family comes from the file');
+  assert.equal(added.body.font.weights, '100 1000', 'a variable font names its range');
+  assert.equal(added.body.font.source, 'upload');
+  assert.match(added.body.font.file, /^assets\/Brand-Sans\.ttf$/);
+  const named = await upload(bobs.id, BOB, ttf, 'x.ttf', '?family=Hausschrift&role=headline');
+  assert.equal(named.body.font.family, 'Hausschrift');
+  assert.equal(named.body.font.role, 'headline');
+  const served = await api(`/api/brandings/${bobs.id}/assets/Brand-Sans.ttf`, { as: BOB, raw: true });
+  assert.equal(served.status, 200);
+  assert.equal((await upload(bobs.id, BOB, Buffer.from('not a font at all, just text'), 'fake.ttf')).status, 400, 'the content must be a font');
+  assert.equal((await upload(bobs.id, BOB, ttf, 'font.exe')).status, 400, 'only font types');
+  assert.equal((await upload(shared.id, BOB, ttf)).status, 403, 'not into the shared branding');
+  assert.equal((await upload(bobs.id, ALICE, ttf)).status, 404, 'not into the branding of another person');
+  assert.equal((await upload(shared.id, ADMIN, ttf)).status, 201, 'an admin into the shared one');
+  assert.equal((await api(`/api/brandings/${bobs.id}/fonts/x.ttf`, { method: 'DELETE', as: ALICE })).status, 404);
+  assert.equal((await api(`/api/brandings/${bobs.id}/fonts/x.ttf`, { method: 'DELETE', as: BOB })).status, 200);
+  assert.equal((await api(`/api/brandings/${bobs.id}/fonts/x.ttf`, { method: 'DELETE', as: BOB })).status, 404, 'gone');
+  assert.deepEqual((await api(`/api/brandings/${bobs.id}`, { as: BOB })).body.typography.map((font) => font.family), ['DM Sans']);
+  assert.equal((await api(`/api/brandings/${bobs.id}/assets/x.ttf`, { as: BOB, raw: true })).status, 404, 'the file is removed too');
   // attaching to a chat: one's own and the shared one, never somebody else's
   assert.equal((await api(`/api/sessions/${chat.id}`, { method: 'PATCH', as: BOB, json: { brandings: [bobs.id, shared.id] } })).status, 200);
   const aliceChat = (await api('/api/sessions', { method: 'POST', as: ALICE, json: {} })).body.session;

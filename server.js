@@ -1801,6 +1801,55 @@ app.delete('/api/brandings/:id', async (req, res) => {
   }
 });
 
+// Font upload into a branding (the raw file as body, the name in X-File-Name): admins every branding, everybody else their own.
+// Family and weights come from the file unless ?family= / ?weights= say otherwise.
+const parseBrandingFontBody = express.raw({ type: () => true, limit: brandings.MAX_FONT_BYTES });
+function brandingFontBody(req, res, next) {
+  parseBrandingFontBody(req, res, (err) => {
+    if (!err) return next();
+    if (err.type === 'entity.too.large') return fail(res, 413, `Eine Schriftdatei darf höchstens ${brandings.MAX_FONT_BYTES / 1024 / 1024} MB gross sein.`);
+    return fail(res, 400, `Die Schrift konnte nicht empfangen werden: ${err.message}`);
+  });
+}
+const brandingFontStatus = (err) =>
+  err.code === 'BRANDING_NOT_FOUND' ? 404 : err.code === 'BRANDING_FORBIDDEN' ? 403 : err.code === 'BRANDING_INVALID' ? 400 : 500;
+
+app.post('/api/brandings/:id/fonts', brandingFontBody, async (req, res) => {
+  const id = requireBrandingId(req, res);
+  if (!id) return;
+  let filename = String(req.get('x-file-name') || '').trim();
+  try {
+    filename = decodeURIComponent(filename);
+  } catch (_) {
+    /* the header as it is */
+  }
+  try {
+    await brandings.readEditableBranding(id, access.viewerOf(req)); // admins and the owner
+    const result = await brandings.addBrandingFont(id, {
+      buffer: Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0),
+      filename,
+      family: typeof req.query.family === 'string' ? req.query.family : '',
+      weights: typeof req.query.weights === 'string' ? req.query.weights : '',
+      role: typeof req.query.role === 'string' ? req.query.role : ''
+    });
+    res.status(201).json({ font: result.font });
+  } catch (err) {
+    fail(res, brandingFontStatus(err), err.message);
+  }
+});
+
+app.delete('/api/brandings/:id/fonts/:filename', async (req, res) => {
+  const id = requireBrandingId(req, res);
+  if (!id) return;
+  try {
+    await brandings.readEditableBranding(id, access.viewerOf(req)); // admins and the owner
+    await brandings.removeBrandingFont(id, req.params.filename);
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, /Ungueltiger Branding-Dateiname|Dateityp nicht erlaubt/.test(err.message) ? 400 : brandingFontStatus(err), err.message);
+  }
+});
+
 app.get('/api/folders', async (req, res) => {
   try {
     const viewer = access.viewerOf(req);

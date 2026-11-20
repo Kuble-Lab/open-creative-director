@@ -1791,6 +1791,59 @@ code {
   margin-top: 12px;
 }
 
+.branding-fonts {
+  margin-top: 12px;
+}
+
+.branding-font-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.branding-font-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.branding-font-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branding-font-meta {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.branding-font-remove {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.branding-font-remove:hover {
+  color: var(--danger, #e0685f);
+}
+
 .branding-speaker-label {
   display: block;
   margin-bottom: 5px;

@@ -507,6 +507,7 @@ function renderBrandingsManager() {
     // The server says who may change a branding: admins everything, everybody else their own.
     const editable = typeof branding.editable === 'boolean' ? branding.editable : OCAccess.canAdminister();
     if (editable) card.appendChild(brandingSpeakerBlock(branding));
+    card.appendChild(brandingFontsBlock(branding, editable));
 
     const confirming = state.pendingBrandingDeleteId === branding.id;
     if (editable) {
@@ -524,6 +525,116 @@ function renderBrandingsManager() {
     card.appendChild(actions);
     el.brandingsList.appendChild(card);
   }
+}
+
+// The fonts of a branding: the list, and for who may change the branding (admins every one, everybody else their own) an upload
+// (TTF, OTF, WOFF, WOFF2, up to 15 MB each; family and weights come from the file) and a remove button for uploaded fonts.
+const BRANDING_FONT_TYPES = /\.(ttf|otf|woff2?)$/i;
+const BRANDING_FONT_MAX_BYTES = 15 * 1024 * 1024;
+
+function brandingFontsBlock(branding, editable) {
+  const block = document.createElement('div');
+  block.className = 'branding-fonts';
+  const label = document.createElement('span');
+  label.className = 'branding-speaker-label';
+  label.textContent = t('branding.fonts.label');
+  block.appendChild(label);
+  const fonts = Array.isArray(branding.fonts) ? branding.fonts : [];
+  if (!fonts.length) {
+    const none = document.createElement('p');
+    none.className = 'branding-speaker-hint';
+    none.textContent = t(editable ? 'branding.fonts.noneEditable' : 'branding.fonts.none');
+    block.appendChild(none);
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'branding-font-list';
+    for (const font of fonts) {
+      const item = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'branding-font-name';
+      name.textContent = font.family || font.file.replace(/^assets\//, '');
+      item.appendChild(name);
+      if (font.weights) {
+        const weights = document.createElement('span');
+        weights.className = 'branding-font-meta';
+        weights.textContent = font.weights;
+        item.appendChild(weights);
+      }
+      if (editable && font.upload) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'branding-font-remove';
+        remove.textContent = '×';
+        remove.title = t('branding.fonts.remove', { name: name.textContent });
+        remove.setAttribute('aria-label', remove.title);
+        remove.addEventListener('click', () => removeBrandingFont(branding, font).catch((err) => setStatus(err.message)));
+        item.appendChild(remove);
+      }
+      list.appendChild(item);
+    }
+    block.appendChild(list);
+  }
+  if (editable) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2';
+    input.multiple = true;
+    input.hidden = true;
+    input.addEventListener('change', () => {
+      const files = [...input.files];
+      input.value = '';
+      uploadBrandingFonts(branding, files).catch((err) => setStatus(err.message));
+    });
+    const add = managerAction(t('branding.fonts.add'), () => input.click());
+    add.classList.add('branding-font-add');
+    block.append(input, add);
+    const hint = document.createElement('p');
+    hint.className = 'branding-speaker-hint';
+    hint.textContent = t('branding.fonts.hint');
+    block.appendChild(hint);
+  }
+  return block;
+}
+
+async function uploadBrandingFonts(branding, files) {
+  let added = 0;
+  for (const file of files) {
+    if (!BRANDING_FONT_TYPES.test(file.name || '')) {
+      setStatus(t('branding.fonts.wrongType', { name: file.name }));
+      continue;
+    }
+    if (file.size > BRANDING_FONT_MAX_BYTES) {
+      setStatus(t('branding.fonts.tooLarge', { name: file.name }));
+      continue;
+    }
+    const response = await fetch(rel(`api/brandings/${encodeURIComponent(branding.id)}/fonts`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+      body: file
+    });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (_) {
+      /* the status below */
+    }
+    if (!response.ok) {
+      setStatus(data?.error || `HTTP ${response.status}`);
+      continue;
+    }
+    added += 1;
+  }
+  if (added) {
+    await loadBrandings();
+    setStatus(t('branding.fonts.added', { n: added }));
+  }
+}
+
+async function removeBrandingFont(branding, font) {
+  const file = font.file.replace(/^assets\//, '');
+  await api(`/api/brandings/${encodeURIComponent(branding.id)}/fonts/${encodeURIComponent(file)}`, { method: 'DELETE' });
+  await loadBrandings();
+  setStatus(t('branding.fonts.removed', { name: font.family || file }));
 }
 
 // The speaker voice of a branding (WP38f): the list of the ElevenLabs voices with a play button, "no voice" and a short note on own voices.

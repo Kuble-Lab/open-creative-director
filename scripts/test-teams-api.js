@@ -890,6 +890,18 @@ async function testRulesTable(ctx) {
     assert.doesNotMatch(await brain.brandingsSection([mineId, brandingId], access.viewerOf({ kubleUser: P1 })), /Hausbranding/);
     assert.equal(await brain.brandingsSection([mineId], access.viewerOf({ kubleUser: P2 })), '');
     assert.equal((await call(P2, 'DELETE', `/api/brandings/${mineId}`)).status, 404);
+    // fonts: a participant uploads into their own branding, not into the shared one or into another participant's
+    const font = fs.readFileSync(path.join(__dirname, '..', 'lib', 'fonts', 'anton', 'Anton-Regular.ttf'));
+    const fontUpload = (who, id) => call(who, 'POST', `/api/brandings/${id}/fonts`, undefined, { body: font, headers: { 'content-type': 'font/ttf', 'x-file-name': 'Anton.ttf' } });
+    const uploaded = await fontUpload(P1, mineId);
+    assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body));
+    assert.equal(uploaded.body.font.family, 'Anton');
+    assert.equal((await fontUpload(P2, mineId)).status, 404);
+    assert.equal((await fontUpload(GUEST, mineId)).status, 404);
+    assert.equal((await fontUpload(P1, brandingId)).status, 404, 'the shared branding is not visible to a participant');
+    assert.deepEqual((await call(P1, 'GET', '/api/brandings')).body.brandings.find((item) => item.id === mineId).fonts.map((item) => item.family), ['Anton']);
+    assert.equal((await call(GUEST, 'DELETE', `/api/brandings/${mineId}/fonts/Anton.ttf`)).status, 404);
+    assert.equal((await call(P1, 'DELETE', `/api/brandings/${mineId}/fonts/Anton.ttf`)).status, 200);
     // the ZIP import: a participant's import is their own branding
     const zip = await new Promise((resolve, reject) => {
       const output = new (require('stream').PassThrough)();
