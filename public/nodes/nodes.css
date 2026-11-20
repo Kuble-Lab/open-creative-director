@@ -9194,3 +9194,54 @@ button.nv-scene-preview:focus-visible {
     display: none;
   }
 }
+
+/* Composer: gradient fill (Verlauf) */
+.nv-cmp-gradbar {
+  position: relative;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: repeating-conic-gradient(#8a8a8a 0 25%, #c8c8c8 0 50%) 0 0 / 10px 10px;
+}
+
+.nv-cmp-gradbar i {
+  position: absolute;
+  inset: 0;
+}
+
+.nv-cmp-gradtools {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nv-cmp-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nv-cmp-stop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.nv-cmp-stop .nv-cmp-hex {
+  flex: 1;
+  min-width: 0;
+}
+
+.nv-cmp-layer.is-text.is-gradient {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

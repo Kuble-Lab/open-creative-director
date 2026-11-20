@@ -130,7 +130,50 @@ function testModel() {
   );
   assert.deepEqual(model.brandFonts(profile), [{ family: 'Brand Sans', weight: 700, branding: 'b1', file: 'fonts/brand.ttf', role: '' }]);
   assert.equal(model.parseProfile('not a profile'), null);
+  testGradientModel();
   console.log('ok testModel');
+}
+
+function testGradientModel() {
+  // normalize: a gradient with good and bad stops; the angle defaults to 180, the stops are sorted
+  const problems = [];
+  const gradient = model.normalizeGradient(
+    { type: 'radial', stops: [{ at: 100, color: '#0000ff00' }, { at: 'x', color: 'red' }, { at: 0, color: '#f00' }] },
+    (line) => problems.push(line),
+    'test'
+  );
+  assert.equal(gradient.type, 'radial');
+  assert.equal(gradient.angle, 180);
+  assert.deepEqual(gradient.stops.map((stop) => [stop.at, stop.color]), [[0, '#ff0000'], [100, '#0000ff00']]);
+  assert.ok(problems.some((line) => /stop 2/.test(line)), 'the bad stop is said');
+  assert.equal(model.normalizeGradient(null, undefined, 'x'), null);
+  const few = [];
+  assert.equal(model.normalizeGradient({ type: 'linear', stops: [{ at: 0, color: '#000000' }] }, (line) => few.push(line), 'x'), null);
+  assert.ok(few.some((line) => /at least 2 stops/.test(line)));
+  // the problem texts of a gradient are notes, never refusals in the edit service
+  [...problems, ...few].forEach((line) => assert.ok(!/not an object|unknown type|not JSON|must be a list/.test(line), line));
+  const many = model.normalizeGradient({ stops: Array.from({ length: 10 }, (_, i) => ({ at: i * 10, color: '#000000' })) }, undefined, 'x');
+  assert.equal(many.stops.length, model.LIMITS.gradientStops);
+  // the layer keeps it; image layers do not have one
+  const shape = model.normalizeLayer({ type: 'shape', gradient: { type: 'linear', angle: 90, stops: [{ at: 0, color: '#ffffff' }, { at: 100, color: '#000000' }] } });
+  assert.equal(shape.gradient.angle, 90);
+  assert.equal(model.normalizeLayer({ type: 'text' }).gradient, null);
+  assert.equal(model.normalizeLayer({ type: 'image', gradient: shape.gradient }).gradient, undefined);
+  // color to transparent from one color
+  const fade = model.gradientFrom('#336699');
+  assert.deepEqual(fade.stops.map((stop) => stop.color), ['#336699', '#33669900']);
+  // CSS and the gradient line
+  assert.match(model.gradientCss(shape.gradient), /^linear-gradient\(90deg, /);
+  assert.match(model.gradientCss(gradient), /^radial-gradient\(ellipse farthest-corner at 50% 50%, /);
+  const across = model.gradientLine({ angle: 90 }, { x: 0, y: 0, w: 200, h: 100 });
+  [['x1', 0], ['y1', 50], ['x2', 200], ['y2', 50]].forEach(([key, value]) => assert.ok(Math.abs(across[key] - value) < 1e-9, `${key} ${across[key]}`));
+  const down = model.gradientLine({ angle: 180 }, { x: 10, y: 20, w: 200, h: 100 });
+  assert.ok(Math.abs(down.x1 - 110) < 1e-9 && Math.abs(down.y1 - 20) < 1e-9 && Math.abs(down.y2 - 120) < 1e-9);
+  // premultiplied look: between stops of different opacity there are stops in between, a fade keeps the color
+  const expanded = model.expandStops(fade.stops);
+  assert.ok(expanded.length > 2);
+  assert.ok(expanded.every((stop) => stop.rgb === '#336699'), 'a fade to transparent keeps the color all the way');
+  assert.equal(model.expandStops(shape.gradient.stops).length, 2, 'two opaque stops need nothing in between');
 }
 
 // RGBA of the pixel x, y in a PNG (through ffmpeg) or from a resvg render
@@ -221,6 +264,40 @@ async function testRender() {
   const greek = composer.layoutText({ ...base, text: 'αβγ', font: 'Anton' }, textCanvas, [], fonts);
   assert.ok(greek.lines[0].glyphs.every((glyph) => glyph.glyph.id !== 0) || greek.lines[0].glyphs.length > 0);
 
+  // gradients: a shape from red to blue (left to right), a fade to transparent, gradient text, a radial gradient
+  const gradientLayers = model.normalizeComposition({
+    layers: [
+      { type: 'shape', x: 0, y: 0, w: 50, h: 50, id: 'lin', gradient: { type: 'linear', angle: 90, stops: [{ at: 0, color: '#ff0000' }, { at: 100, color: '#0000ff' }] } },
+      { type: 'shape', x: 50, y: 0, w: 50, h: 50, id: 'fade', gradient: { type: 'linear', angle: 180, stops: [{ at: 0, color: '#00ff00' }, { at: 100, color: '#00ff0000' }] } },
+      { type: 'shape', x: 50, y: 50, w: 50, h: 50, id: 'rad', gradient: { type: 'radial', stops: [{ at: 0, color: '#ffffff' }, { at: 100, color: '#000000' }] } },
+      { type: 'text', text: 'MMMMMMMM', x: 0, y: 50, w: 50, size: 25, weight: 900, align: 'left', id: 'gt', gradient: { type: 'linear', angle: 90, stops: [{ at: 0, color: '#ff0000' }, { at: 100, color: '#0000ff' }] } }
+    ]
+  }).layers;
+  const graded = composer.render({ canvas, background: '#ffffff', transparent: false, layers: gradientLayers, fonts });
+  assert.ok(/<linearGradient /.test(graded.svg) && /<radialGradient /.test(graded.svg) && /<mask /.test(graded.svg));
+  near(await pixelOf(graded.png, 2, 50), [252, 0, 3, 255], 8); // left end of the linear gradient: red
+  near(await pixelOf(graded.png, 197, 50), [3, 0, 252, 255], 8); // right end: blue
+  near(await pixelOf(graded.png, 100, 50), [128, 0, 128, 255], 10); // the middle
+  near(await pixelOf(graded.png, 300, 2), [3, 255, 3, 255], 8); // the fade starts green
+  near(await pixelOf(graded.png, 300, 50), [128, 255, 128, 255], 10); // half way: half green over white, not grey
+  near(await pixelOf(graded.png, 300, 98), [255, 255, 255, 255], 8); // and ends transparent
+  near(await pixelOf(graded.png, 300, 150), [255, 255, 255, 255], 10); // the radial gradient: white in the middle
+  near(await pixelOf(graded.png, 202, 102), [0, 0, 0, 255], 20); // dark in the corner
+  // the gradient text: red pixels on the left, blue ones on the right, white between the letters
+  let reddish = 0;
+  let bluish = 0;
+  for (let y = 105; y < 145; y += 2) {
+    for (let x = 4; x < 60; x += 2) {
+      const [r, g, b] = await pixelOf(graded.png, x, y);
+      if (r > 150 && b < 100 && g < 100) reddish += 1;
+    }
+    for (let x = 140; x < 196; x += 2) {
+      const [r, g, b] = await pixelOf(graded.png, x, y);
+      if (b > 150 && r < 100 && g < 100) bluish += 1;
+    }
+  }
+  assert.ok(reddish > 10 && bluish > 10, `the text runs from red to blue (${reddish} red, ${bluish} blue)`);
+
   assert.equal(composer.escapeXml('<a & "b">'), '&lt;a &amp; &quot;b&quot;&gt;');
   console.log('ok testRender');
 }
@@ -267,6 +344,19 @@ async function testEditService() {
     service.edit(viewer, workflow, { operations: [{ op: 'add_node', type: 'image.composer', params: { layers: 'nope' } }], agent: true }),
     /not JSON/
   );
+  // a gradient goes along over MCP; a broken stop is a note, not a refusal
+  const graded = await service.edit(viewer, workflow, {
+    operations: [
+      {
+        op: 'add_node',
+        type: 'image.composer',
+        params: { layers: { layers: [{ type: 'shape', gradient: { type: 'radial', stops: [{ at: 0, color: '#ff0000' }, { at: 50, color: 'nope' }, { at: 100, color: '#ff000000' }] } }] } }
+      }
+    ],
+    agent: true
+  });
+  assert.equal(graded.changed, true);
+  assert.deepEqual(saved[saved.length - 1].nodes[0].params.layers.layers[0].gradient.stops.map((stop) => stop.color), ['#ff0000', '#ff000000']);
   console.log('ok testEditService');
 }
 

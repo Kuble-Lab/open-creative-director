@@ -353,7 +353,7 @@
       } else if (layer.type === 'shape') {
         node.style.height = `${box.h}px`;
         const fill = model.splitColor(layer.fill, '#111111');
-        node.style.background = colorCss(fill);
+        node.style.background = layer.gradient ? model.gradientCss(layer.gradient) : colorCss(fill);
         node.style.borderRadius = layer.shape === 'ellipse' ? '50%' : `${(layer.radius / 100) * Math.min(box.w, box.h)}px`;
       } else {
         node.style.height = '';
@@ -365,10 +365,15 @@
         node.style.lineHeight = String(layer.line_height);
         node.style.letterSpacing = `${layer.letter_spacing}em`;
         node.style.textAlign = layer.align;
-        node.style.color = colorCss(color);
+        // gradient text: the gradient as background of the text box, cut to the letters (like the mask in the render); the shadow
+        // then has to be a filter, a text-shadow would show through the transparent letters
+        node.classList.toggle('is-gradient', Boolean(layer.gradient));
+        node.style.backgroundImage = layer.gradient ? model.gradientCss(layer.gradient) : '';
+        node.style.color = layer.gradient ? 'transparent' : colorCss(color);
         node.style.fontVariationSettings = `"opsz" ${Math.round(px)}`;
         node.style.fontFeatureSettings = layer.letter_spacing ? '"liga" 0, "clig" 0, "dlig" 0, "calt" 0' : '';
-        node.style.textShadow = layer.shadow ? `0 ${0.04 * px}px ${0.12 * px}px rgba(0, 0, 0, 0.45)` : '';
+        node.style.textShadow = layer.shadow && !layer.gradient ? `0 ${0.04 * px}px ${0.12 * px}px rgba(0, 0, 0, 0.45)` : '';
+        node.style.filter = layer.shadow && layer.gradient ? `drop-shadow(0 ${0.04 * px}px ${0.06 * px}px rgba(0, 0, 0, 0.45))` : '';
         if (editingText !== layer.id) node.textContent = model.layerText({ ...layer, uppercase: false }, textsOf());
         node.style.textTransform = layer.uppercase ? 'uppercase' : '';
         node.classList.toggle('is-bound', Number.isInteger(layer.text_input));
@@ -1019,7 +1024,7 @@
       } else if (layer.type === 'text') thumb.append(icon('text', 14));
       else {
         const swatch = el('i', { class: `nv-cmp-swatch${layer.shape === 'ellipse' ? ' is-round' : ''}` });
-        swatch.style.background = colorCss(model.splitColor(layer.fill));
+        swatch.style.background = layer.gradient ? model.gradientCss(layer.gradient) : colorCss(model.splitColor(layer.fill));
         thumb.append(swatch);
       }
       const name = el('span', { class: 'nv-cmp-name', text: rowName(layer) });
@@ -1138,7 +1143,7 @@
     // rebuild: the form is built anew (another layer chosen); otherwise only the values are set (while dragging)
     function paintProps(rebuild = false) {
       const layer = selected ? layerById(selected) : null;
-      const key = layer ? `${layer.id}:${layer.type}:${layer.type === 'text' ? layer.text_input : ''}:${layer.type === 'shape' ? layer.shape : ''}` : 'stage';
+      const key = layer ? `${layer.id}:${layer.type}:${layer.type === 'text' ? layer.text_input : ''}:${layer.type === 'shape' ? layer.shape : ''}:${layer.gradient ? JSON.stringify(layer.gradient) : ''}` : 'stage';
       if (!rebuild && propsFor === key) {
         for (const [, field] of propFields) field.sync && field.sync();
         return;
@@ -1279,6 +1284,106 @@
       return el('label', { class: 'nv-cmp-toggle' }, input, el('span', { text: labelText }));
     }
 
+    // Fill of a shape or colour of a text: «Farbe» (one colour, key `key`) or «Verlauf» (layer.gradient). Switching to the gradient
+    // starts from the current colour fading to transparent; switching back keeps the colour that was there.
+    function paintSection(titleText, layer, key) {
+      const mode = segmented(
+        [
+          { value: 'solid', label: T('nodes.composer.paint.solid') },
+          { value: 'gradient', label: T('nodes.composer.paint.gradient') }
+        ],
+        layer.gradient ? 'gradient' : 'solid',
+        (value) => {
+          const now = layerById(layer.id);
+          if (!now) return;
+          if (value === 'gradient' && !now.gradient) updateLayer(now.id, { gradient: model.gradientFrom(now[key]) });
+          if (value === 'solid' && now.gradient) updateLayer(now.id, { gradient: null });
+        }
+      );
+      if (!layer.gradient) return section(titleText, mode, colorField(titleText, layer[key], (value) => updateLayer(layer.id, { [key]: value })));
+      return section(titleText, mode, ...gradientFields(layer));
+    }
+
+    function hexWithAlpha(rgb, alpha) {
+      const a = Math.round(model.clamp(alpha, 0, 1) * 255);
+      return a >= 255 ? rgb : rgb + a.toString(16).padStart(2, '0');
+    }
+
+    function gradientFields(layer) {
+      const gradient = layer.gradient;
+      // the panel is built again whenever the gradient changes (it is part of the panel key), so `gradient` is current here
+      const setGradient = (mutate) => {
+        const next = { ...gradient, stops: gradient.stops.map((stop) => ({ ...stop })) };
+        mutate(next);
+        updateLayer(layer.id, { gradient: next });
+      };
+      const out = [];
+      const bar = el('div', { class: 'nv-cmp-gradbar', role: 'img', 'aria-label': T('nodes.composer.gradient.preview') });
+      bar.append(el('i'));
+      bar.firstChild.style.background = model.gradientCss({ ...gradient, type: 'linear', angle: 90 });
+      out.push(bar);
+      out.push(
+        segmented(
+          model.GRADIENTS.map((type) => ({ value: type, label: T(`nodes.composer.gradient.${type}`) })),
+          gradient.type,
+          (value) => setGradient((next) => (next.type = value))
+        )
+      );
+      const tools = el('div', { class: 'nv-cmp-gradtools' });
+      if (gradient.type === 'linear') {
+        tools.append(numberField(T('nodes.composer.gradient.angle'), gradient.angle, (value) => setGradient((next) => (next.angle = ((Math.round(value) % 360) + 360) % 360)), { min: 0, max: 360, step: 15, suffix: '°' }));
+      }
+      const buttons = el('div', { class: 'nv-cmp-buttons' });
+      buttons.append(
+        toolButton('flip-h', T('nodes.composer.gradient.reverse'), () =>
+          setGradient((next) => {
+            next.stops = next.stops.map((stop) => ({ ...stop, at: model.round(100 - stop.at) })).reverse();
+          })
+        )
+      );
+      if (gradient.stops.length < model.LIMITS.gradientStops) {
+        buttons.append(
+          toolButton('plus', T('nodes.composer.gradient.addStop'), () =>
+            setGradient((next) => {
+              // the new stop goes into the widest gap, with the colour of the stop before it
+              let gap = 0;
+              for (let i = 1; i < next.stops.length; i += 1) if (next.stops[i].at - next.stops[i - 1].at > next.stops[gap + 1].at - next.stops[gap].at) gap = i - 1;
+              const before = next.stops[gap];
+              const after = next.stops[gap + 1];
+              next.stops.splice(gap + 1, 0, { at: model.round((before.at + after.at) / 2), color: before.color });
+            })
+          )
+        );
+      }
+      tools.append(buttons);
+      out.push(tools);
+      const list = el('ol', { class: 'nv-cmp-stops' });
+      gradient.stops.forEach((stop, index) => {
+        const color = model.splitColor(stop.color);
+        const setStop = (patch) => setGradient((next) => Object.assign(next.stops[index], patch));
+        const label = T('nodes.composer.gradient.stop', { n: index + 1 });
+        const picker = el('input', { type: 'color', class: 'nv-cmp-color', value: color.rgb, 'aria-label': label });
+        picker.addEventListener('change', () => setStop({ color: hexWithAlpha(picker.value, color.alpha) }));
+        const hex = el('input', { class: 'nv-input nv-cmp-hex', type: 'text', value: stop.color, maxlength: '9', spellcheck: 'false', 'aria-label': `${label} (hex)` });
+        hex.addEventListener('change', () => {
+          const next = model.hexColor(hex.value);
+          if (next) setStop({ color: next });
+          else hex.value = stop.color;
+        });
+        hex.addEventListener('keydown', (event) => event.stopPropagation());
+        const alpha = numberField(T('nodes.composer.gradient.opacity'), Math.round(color.alpha * 100), (value) => setStop({ color: hexWithAlpha(color.rgb, model.clamp(value, 0, 100) / 100) }), { min: 0, max: 100, step: 5, suffix: '%' });
+        const at = numberField(T('nodes.composer.gradient.position'), stop.at, (value) => setStop({ at: model.clamp(value, 0, 100) }), { min: 0, max: 100, step: 5, suffix: '%' });
+        const row = el('li', { class: 'nv-cmp-stop' }, el('div', { class: 'nv-cmp-colorrow' }, picker, hex), el('div', { class: 'nv-cmp-grid' }, alpha, at));
+        if (gradient.stops.length > 2) {
+          const remove = toolButton('trash', T('nodes.composer.gradient.removeStop'), () => setGradient((next) => next.stops.splice(index, 1)));
+          row.querySelector('.nv-cmp-colorrow').append(remove);
+        }
+        list.append(row);
+      });
+      out.push(list);
+      return out;
+    }
+
     function imageProps(layer) {
       const out = [];
       const options = sources.images.map((entry, index) => ({ value: String(index), label: `${index + 1} · ${entry.label || T('nodes.composer.image')}` }));
@@ -1393,7 +1498,7 @@
           )
         )
       );
-      out.push(section(T('nodes.composer.color'), colorField(T('nodes.composer.color'), layer.color, (value) => updateLayer(layer.id, { color: value }))));
+      out.push(paintSection(T('nodes.composer.color'), layer, 'color'));
       const toggles = el('div', { class: 'nv-cmp-toggles' });
       toggles.append(
         toggleField(T('nodes.composer.uppercase'), layer.uppercase, (value) => updateLayer(layer.id, { uppercase: value })),
@@ -1415,7 +1520,7 @@
           )
         )
       );
-      out.push(section(T('nodes.composer.fill'), colorField(T('nodes.composer.fill'), layer.fill, (value) => updateLayer(layer.id, { fill: value }))));
+      out.push(paintSection(T('nodes.composer.fill'), layer, 'fill'));
       if (layer.shape === 'rect') {
         const look = el('div', { class: 'nv-cmp-grid' });
         look.append(numberField(T('nodes.composer.radius'), layer.radius, (value) => updateLayer(layer.id, { radius: value }), { min: 0, max: 50, suffix: '%' }));
