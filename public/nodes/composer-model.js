@@ -49,13 +49,15 @@
     texts: 8,
     minEdge: 64,
     maxEdge: 8192,
-    maxPixels: 40 * 1000 * 1000
+    maxPixels: 40 * 1000 * 1000,
+    gradientStops: 6
   });
 
   const TYPES = Object.freeze(['image', 'text', 'shape']);
   const FITS = Object.freeze(['cover', 'contain', 'fill']);
   const ALIGNS = Object.freeze(['left', 'center', 'right']);
   const SHAPES = Object.freeze(['rect', 'ellipse']);
+  const GRADIENTS = Object.freeze(['linear', 'radial']);
 
   // The fonts that come with the app (lib/fonts/, SIL Open Font License 1.1). `weights` is the range a variable font covers or the list
   // of the files of a static one; the editor offers these weights, the server draws them (lib/composer-render.js).
@@ -103,6 +105,102 @@
     const hex = hexColor(value) || fallback;
     const alpha = hex.length === 9 ? parseInt(hex.slice(7), 16) / 255 : 1;
     return { rgb: hex.slice(0, 7), alpha: round(alpha, 4) };
+  }
+
+
+  /* ---------- gradients ---------- */
+  // The fill of a shape or the colour of a text can be a gradient: { type: 'linear' | 'radial', angle, stops: [{ at, color }] }.
+  // angle in degrees like CSS (0 = to the top, 90 = from left to right, 180 = from top to bottom), only for linear. A stop sits at
+  // `at` percent of the way; its colour is #rrggbb or #rrggbbaa (aa = opacity, 00 = transparent). Linear runs along a line through
+  // the middle of the box that reaches its corners (CSS linear-gradient), radial is an ellipse from the middle to the corners
+  // (CSS radial-gradient, farthest-corner). null = no gradient.
+  function normalizeGradient(raw, problem = () => {}, label = 'gradient') {
+    if (raw === null || raw === undefined || raw === false || raw === '') return null;
+    if (!isObject(raw)) {
+      problem(`${label}: expected {"type","angle","stops"} or null, left out`);
+      return null;
+    }
+    const type = GRADIENTS.includes(raw.type) ? raw.type : 'linear';
+    if (raw.type !== undefined && !GRADIENTS.includes(raw.type)) problem(`${label}: type must be linear or radial, linear is used`);
+    const list = Array.isArray(raw.stops) ? raw.stops : [];
+    const stops = [];
+    list.slice(0, LIMITS.gradientStops).forEach((stop, index) => {
+      const color = isObject(stop) ? hexColor(stop.color) : null;
+      if (!color) {
+        problem(`${label}: stop ${index + 1} needs a color like #rrggbb or #rrggbbaa, left out`);
+        return;
+      }
+      const fallback = list.length > 1 ? (index / (Math.min(list.length, LIMITS.gradientStops) - 1)) * 100 : 0;
+      stops.push({ at: numberIn(stop.at, 0, 100, round(fallback, 2), 2), color });
+    });
+    if (list.length > LIMITS.gradientStops) problem(`${label}: at most ${LIMITS.gradientStops} stops, the rest is left out`);
+    if (stops.length < 2) {
+      problem(`${label}: needs at least 2 stops with a color, the plain color is used`);
+      return null;
+    }
+    stops.sort((a, b) => a.at - b.at);
+    let angleValue = Number(raw.angle);
+    if (!Number.isFinite(angleValue)) angleValue = 180;
+    angleValue = ((angleValue % 360) + 360) % 360;
+    return { type, angle: round(angleValue, 2), stops };
+  }
+
+  // A new gradient from a plain colour: the colour fading to transparent
+  function gradientFrom(color) {
+    const hex = (hexColor(color) || '#111111').slice(0, 7);
+    return { type: 'linear', angle: 180, stops: [{ at: 0, color: hex }, { at: 100, color: `${hex}00` }] };
+  }
+
+  const rgbaCss = (hex) => {
+    const color = splitColor(hex);
+    const r = parseInt(color.rgb.slice(1, 3), 16);
+    const g = parseInt(color.rgb.slice(3, 5), 16);
+    const b = parseInt(color.rgb.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${color.alpha})`;
+  };
+
+  // The CSS of a gradient (for the editor): the same geometry the renderer draws
+  function gradientCss(gradient) {
+    const stops = gradient.stops.map((stop) => `${rgbaCss(stop.color)} ${stop.at}%`).join(', ');
+    return gradient.type === 'radial' ? `radial-gradient(ellipse farthest-corner at 50% 50%, ${stops})` : `linear-gradient(${gradient.angle}deg, ${stops})`;
+  }
+
+  // The line of a linear gradient in a box (pixels), like CSS: through the middle, long enough that the corners get the end colours
+  function gradientLine(gradient, box) {
+    const radians = (gradient.angle * Math.PI) / 180;
+    const sin = Math.sin(radians);
+    const cos = Math.cos(radians);
+    const half = (Math.abs(box.w * sin) + Math.abs(box.h * cos)) / 2;
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    return { x1: cx - sin * half, y1: cy + cos * half, x2: cx + sin * half, y2: cy - cos * half };
+  }
+
+  // The stops for a renderer that blends colours as they are (SVG): browsers blend with the opacity applied first (premultiplied),
+  // so a colour that fades to transparent does not turn grey on the way. Between two stops of different opacity a few stops are
+  // added that follow the browser. [{ at (0..1), rgb, alpha }]
+  function expandStops(stops) {
+    const parts = stops.map((stop) => {
+      const color = splitColor(stop.color);
+      return { at: stop.at / 100, rgb: [1, 3, 5].map((start) => parseInt(color.rgb.slice(start, start + 2), 16)), alpha: color.alpha };
+    });
+    const hex = (rgb) => `#${rgb.map((value) => Math.round(clamp(value, 0, 255)).toString(16).padStart(2, '0')).join('')}`;
+    const out = [];
+    parts.forEach((part, index) => {
+      out.push({ at: part.at, rgb: hex(part.rgb), alpha: part.alpha });
+      const next = parts[index + 1];
+      if (!next || next.alpha === part.alpha || next.at <= part.at) return;
+      const steps = 8;
+      for (let step = 1; step < steps; step += 1) {
+        const t = step / steps;
+        const alpha = part.alpha + (next.alpha - part.alpha) * t;
+        const rgb = part.rgb.map((value, channel) =>
+          alpha > 0 ? (value * part.alpha * (1 - t) + next.rgb[channel] * next.alpha * t) / alpha : (part.alpha > 0 ? value : next.rgb[channel])
+        );
+        out.push({ at: part.at + (next.at - part.at) * t, rgb: hex(rgb), alpha: round(alpha, 4) });
+      }
+    });
+    return out;
   }
 
   /* ---------- the stage ---------- */
@@ -181,9 +279,10 @@
       line_height: 1.15,
       letter_spacing: 0,
       uppercase: false,
-      shadow: false
+      shadow: false,
+      gradient: null
     },
-    shape: { x: 25, y: 25, w: 50, h: 50, shape: 'rect', fill: '#111111', radius: 0 }
+    shape: { x: 25, y: 25, w: 50, h: 50, shape: 'rect', fill: '#111111', radius: 0, gradient: null }
   });
 
   // One layer as it counts, or null where it cannot be one (no known type). `problem(text)` is told what was changed or left out.
@@ -233,12 +332,14 @@
       layer.letter_spacing = numberIn(raw.letter_spacing, -0.2, 1, 0);
       layer.uppercase = raw.uppercase === true;
       layer.shadow = raw.shadow === true;
+      layer.gradient = normalizeGradient(raw.gradient, problem, `layer ${index + 1}: gradient`);
     } else {
       layer.shape = SHAPES.includes(raw.shape) ? raw.shape : base.shape;
       const fill = hexColor(raw.fill);
       if (raw.fill !== undefined && !fill) problem(`layer ${index + 1}: fill must be #rrggbb or #rrggbbaa`);
       layer.fill = fill || base.fill;
       layer.radius = numberIn(raw.radius, 0, 50, 0, 2);
+      layer.gradient = normalizeGradient(raw.gradient, problem, `layer ${index + 1}: gradient`);
     }
     return layer;
   }
@@ -585,8 +686,10 @@
     'Object {"layers":[...]}, bottom layer first, at most 40. Units are percent of the stage: x, y = top left of the box (percent of width, height), ' +
     'w = percent of width, h = percent of height, rotation in degrees, opacity 0..1. Image layer: {"type":"image","input":0 (0-based number at the input images),"fit":"cover|contain|fill","radius":0..50}. ' +
     'Text layer: {"type":"text","text":"...","text_input":null or 0-based number at the input texts,"font":"Inter Tight|DM Sans|Montserrat|Space Grotesk|Anton|Playfair Display|Instrument Serif|JetBrains Mono or a brand font","weight":100..900,' +
-    '"size":percent of the stage width,"color":"#rrggbb","align":"left|center|right","line_height":1.15,"letter_spacing":0,"uppercase":false,"shadow":false} (a text box is as high as its lines). ' +
-    'Shape layer: {"type":"shape","shape":"rect|ellipse","fill":"#rrggbb or #rrggbbaa","radius":0..50}.';
+    '"size":percent of the stage width,"color":"#rrggbb","align":"left|center|right","line_height":1.15,"letter_spacing":0,"uppercase":false,"shadow":false,"gradient":null} (a text box is as high as its lines). ' +
+    'Shape layer: {"type":"shape","shape":"rect|ellipse","fill":"#rrggbb or #rrggbbaa","radius":0..50,"gradient":null}. ' +
+    '"gradient" (shapes and texts) replaces fill or color when set: {"type":"linear|radial","angle":degrees like CSS (90 = left to right, 180 = top to bottom; linear only),' +
+    '"stops":[{"at":0..100,"color":"#rrggbb or #rrggbbaa (aa = opacity, 00 = transparent)"}, ...] (2 to 6 stops)}; null = the plain fill or color.';
 
   return {
     FORMATS,
@@ -599,6 +702,7 @@
     FITS,
     ALIGNS,
     SHAPES,
+    GRADIENTS,
     FONTS,
     FONT_FILES,
     DEFAULT_FONT,
@@ -606,6 +710,11 @@
     AGENT_FORMAT,
     hexColor,
     splitColor,
+    normalizeGradient,
+    gradientFrom,
+    gradientCss,
+    gradientLine,
+    expandStops,
     canvasSize,
     normalizeLayer,
     normalizeComposition,
