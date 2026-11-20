@@ -120,6 +120,8 @@ const ROUTE_RULES = {
   'GET /api/brandings/:id': 'open',
   'PATCH /api/brandings/:id': 'open', // the speaker voice (WP38f): admins and the owner of the branding
   'DELETE /api/brandings/:id': 'open', // admins and the owner of the branding
+  'POST /api/brandings/:id/fonts': 'open', // font upload: admins and the owner of the branding
+  'DELETE /api/brandings/:id/fonts/:filename': 'open', // admins and the owner of the branding
   'GET /api/folders': 'folder',
   'POST /api/folders': 'open', // an empty project holds nothing private
   'PATCH /api/folders/:name': 'folder',
@@ -303,6 +305,8 @@ const PARTICIPANT_RULES = {
   'GET /api/brandings/:id': 'own',
   'PATCH /api/brandings/:id': 'own',
   'DELETE /api/brandings/:id': 'own',
+  'POST /api/brandings/:id/fonts': 'own',
+  'DELETE /api/brandings/:id/fonts/:filename': 'own',
   'GET /api/folders': 'own', // projects they created or that hold something shared with them
   'POST /api/folders': 'own',
   'PATCH /api/folders/:name': 'own',
