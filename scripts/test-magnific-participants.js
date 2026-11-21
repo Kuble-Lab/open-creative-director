@@ -147,6 +147,12 @@ async function main() {
       nodes: [{ id: 'mag', type: 'test.magnific', params: {}, x: 0, y: 0 }], edges: [] } });
     assert.ok(Math.abs((await engine.plan(workflow.id, { user: P })).totals.usd - 1.4) < 1e-6);
     assert.equal((await engine.plan(workflow.id, { user: I })).totals.usd, 0);
+    // the automatic cost approval: an internal plan gives its credits in USD at the rate (7 x 0.2), a participant's are already in usd
+    assert.ok(Math.abs((await engine.plan(workflow.id, { user: I })).totals.creditsUsd - 1.4) < 1e-6);
+    assert.equal((await engine.plan(workflow.id, { user: P })).totals.creditsUsd, 0);
+    settings.setPreference('magnificUsdPerCredit', null);
+    assert.equal((await engine.plan(workflow.id, { user: I })).totals.creditsUsd, null, 'no rate: unknown, the page asks');
+    settings.setPreference('magnificUsdPerCredit', 0.2);
     const handlers = new Map();
     const app = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete'].map((method) => [method, (path, handler) => handlers.set(`${method} ${path}`, handler)]));
     iso.load('lib/nodes/routes').registerNodeRoutes(app, { engine, store: workflows, registry: registryLib.registry });

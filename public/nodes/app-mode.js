@@ -1497,7 +1497,10 @@
       body.append(el('p', { class: 'nv-confirm-note', text: T('nodes.run.confirm.noRefund') }));
       const budgetText = runLib.budgetLine(info, T, money);
       if (budgetText) body.append(el('p', { class: 'nv-confirm-budget', text: budgetText }));
-      return ui.dialog({
+      // the automatic approval (the same setting as in the node view): switched on here, later runs up to the amount start without this question
+      const auto = runLib.autoApproveField(el, T, runLib.readAutoLimit(autoStorage()));
+      body.append(auto.node);
+      const accepted = await ui.dialog({
         title: T('nodes.run.confirm.title', { count: info.paid.length }),
         body,
         width: 480,
@@ -1507,6 +1510,18 @@
           { label: T('nodes.run.confirm.start'), value: true, primary: true, enter: false }
         ]
       });
+      if (!accepted) return false;
+      const limit = auto.read();
+      if (limit === undefined) { ui.toast(T('nodes.run.auto.invalid'), { kind: 'error' }); return false; }
+      const before = runLib.readAutoLimit(autoStorage());
+      const after = runLib.writeAutoLimit(autoStorage(), limit);
+      if (after !== before) ui.toast(after === null ? T('nodes.run.auto.off') : T('nodes.run.auto.on', { limit: money(after) }));
+      return true;
+    }
+
+    // the browser storage of the automatic cost approval (null where there is none)
+    function autoStorage() {
+      try { return global.localStorage || null; } catch (_) { return null; }
     }
 
     // `redo`: "make step n again" of an app with outputs marked for approval (see stageFlow).
@@ -1595,7 +1610,12 @@
           await showGate(gate);
           return;
         }
-        if (info.needsConfirm) {
+        const autoLimit = runLib.readAutoLimit(autoStorage());
+        if (info.needsConfirm && runLib.autoApproves(info, autoLimit)) {
+          // started without the question; a step above the person's amount stops the run and asks for a new limit
+          request = { ...request, maxUsd: autoLimit, requireKnownPrices: true };
+          ui.toast(T('nodes.run.auto.started', { amount: money(runLib.autoApprovalUsd(info)), limit: money(autoLimit) }), { timeout: 5000 });
+        } else if (info.needsConfirm) {
           s.asking = true;
           renderRunButton();
           const confirmed = await confirmPaid(replan ? { ...info, followup: [] } : info);
