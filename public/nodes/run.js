@@ -434,6 +434,86 @@
       : T('nodes.run.confirm.budgetUnknown', { remaining });
   }
 
+  /* ---------- automatic cost approval ---------- */
+
+  // The person can let paid runs start without the question, up to an amount per run they set (stored in this browser,
+  // the same for the node view and the app view). Off = no amount (null).
+  const AUTO_APPROVE_KEY = 'ocd.nodes.autoApproveUsd';
+  const AUTO_APPROVE_MAX = 10000;
+
+  // A limit as it may be stored: a number above 0 and at most AUTO_APPROVE_MAX, else null (off).
+  function cleanAutoLimit(value) {
+    const number = typeof value === 'string' ? Number(value.trim().replace(',', '.')) : value;
+    return isNumber(number) && number > 0 && number <= AUTO_APPROVE_MAX ? Math.round(number * 100) / 100 : null;
+  }
+
+  function readAutoLimit(storage) {
+    try {
+      const raw = storage && storage.getItem(AUTO_APPROVE_KEY);
+      return raw === null || raw === undefined ? null : cleanAutoLimit(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Stores a limit (null or anything that is not a valid limit switches it off); returns what is stored now.
+  function writeAutoLimit(storage, value) {
+    const limit = cleanAutoLimit(value);
+    try {
+      if (!storage) return null;
+      if (limit === null) storage.removeItem(AUTO_APPROVE_KEY);
+      else storage.setItem(AUTO_APPROVE_KEY, String(limit));
+    } catch (_) {
+      return null;
+    }
+    return limit;
+  }
+
+  // What a plan costs in USD for the automatic approval: the USD estimate plus its credits at the rates of the server
+  // (totals.creditsUsd). null when that is not known: a step without a price, credits without a rate.
+  function autoApprovalUsd(info) {
+    if (!info || !info.totals) return null;
+    const totals = info.totals;
+    if (totals.unknownNodes || (info.paid || []).some((row) => row.unknown)) return null;
+    const usd = isNumber(totals.usd) ? totals.usd : 0;
+    const credits = isNumber(totals.credits) ? totals.credits : 0;
+    if (credits > 0 && !isNumber(totals.creditsUsd)) return null;
+    return usd + (credits > 0 ? totals.creditsUsd : 0);
+  }
+
+  // Whether a plan may start without the question: a limit is set, every price is known and the total is not above it.
+  function autoApproves(info, limit) {
+    const cost = autoApprovalUsd(info);
+    return cleanAutoLimit(limit) !== null && cost !== null && cost <= limit + 1e-9;
+  }
+
+  // The field of the confirmation dialogs that switches the automatic approval on, changes its limit or switches it off.
+  // el: the element helper of the page. read() gives the limit to store (null = off) or undefined when the amount is invalid.
+  function autoApproveField(el, T, limit) {
+    const current = cleanAutoLimit(limit);
+    const box = el('div', { class: 'nv-auto-approve' });
+    const toggleLabel = el('label', { class: 'nv-field is-inline', text: T('nodes.run.auto.toggle') });
+    const toggle = el('input', { type: 'checkbox' });
+    toggle.checked = current !== null;
+    toggleLabel.append(toggle);
+    const amountLabel = el('label', { class: 'nv-field', text: T('nodes.run.auto.limit') });
+    const amount = el('input', { type: 'number', class: 'nv-input', min: '0.01', step: '0.5', value: String(current ?? 5) });
+    amount.value = String(current ?? 5);
+    amountLabel.append(amount);
+    const sync = () => amountLabel.classList.toggle('hidden', !toggle.checked);
+    toggle.addEventListener('change', sync);
+    sync();
+    box.append(toggleLabel, amountLabel, el('p', { class: 'nv-field-hint', text: T('nodes.run.auto.hint') }));
+    return {
+      node: box,
+      read() {
+        if (!toggle.checked) return null;
+        const value = cleanAutoLimit(amount.value);
+        return value === null ? undefined : value;
+      }
+    };
+  }
+
   // The status a card shows, combining the live run state with the (stale-marking) plan.
   // Returns { status, message? } where status may be a run status or one of
   // stale | notrun | invalid | unavailable | null (no badge).
@@ -537,6 +617,13 @@
   }
 
   const pure = {
+    AUTO_APPROVE_KEY,
+    cleanAutoLimit,
+    readAutoLimit,
+    writeAutoLimit,
+    autoApprovalUsd,
+    autoApproves,
+    autoApproveField,
     ACTIVE_STATUSES,
     FINAL_STATUSES,
     MAX_HISTORY,
@@ -856,10 +943,13 @@
       // the total of all runs so far; a click shows what it is made of (the inspector of the workflow)
       parts.total = el('button', { type: 'button', class: 'nv-run-total hidden' });
       parts.total.addEventListener('click', () => canvas().setSelection({ nodes: [], notes: [], groups: [], edge: null }));
+      // the automatic cost approval while it is on; a click changes the limit or switches it off
+      parts.auto = el('button', { type: 'button', class: 'nv-run-auto hidden' });
+      parts.auto.addEventListener('click', () => editAutoLimit());
       parts.runAll.addEventListener('click', () => startRun({ mode: 'all', force: false }));
       parts.runSel.addEventListener('click', () => runSelection());
       parts.cancel.addEventListener('click', () => cancelRun());
-      host.append(parts.total, parts.summary, parts.resume, parts.cancel, parts.runSel, parts.runAll);
+      host.append(parts.auto, parts.total, parts.summary, parts.resume, parts.cancel, parts.runSel, parts.runAll);
       relabelTopbar();
     }
 
@@ -945,6 +1035,12 @@
       parts.summary.title = title;
       parts.summary.dataset.state = state;
       parts.summary.classList.toggle('hidden', !has || !text);
+      const autoLimit = readAutoLimit(autoStorage());
+      parts.auto.classList.toggle('hidden', !has || autoLimit === null);
+      if (autoLimit !== null) {
+        parts.auto.textContent = T('nodes.run.auto.chip', { limit: money(autoLimit) });
+        parts.auto.title = T('nodes.run.auto.chipHint');
+      }
       const spent = has && costTotals && costTotals.count > 0;
       parts.total.classList.toggle('hidden', !spent);
       if (spent) {
@@ -1168,6 +1264,10 @@
 
     // Dollar amounts of the budget (participants) as the account menu shows them.
     const money = (value) => (window.OCAccess && window.OCAccess.formatUsd ? window.OCAccess.formatUsd(value) : `$${Number(value || 0).toFixed(2)}`);
+    // the browser storage of the automatic cost approval (null where there is none)
+    const autoStorage = () => {
+      try { return typeof window !== 'undefined' ? window.localStorage : null; } catch (_) { return null; }
+    };
     const accountRuleText = (error) => (window.OCAccess && window.OCAccess.accountRuleMessage ? window.OCAccess.accountRuleMessage(error) : null);
     const refreshBudget = () => {
       if (window.OCAccess && window.OCAccess.me().restricted) window.OCAccess.refreshMe().catch(() => {});
@@ -1256,6 +1356,8 @@
       if (info.warnings.length) {
         body.append(el('h3', { class: 'nv-confirm-sub', text: T('nodes.run.confirm.warnings') }), issueList(info.warnings));
       }
+      const auto = autoApproveField(el, T, readAutoLimit(autoStorage()));
+      body.append(auto.node);
       const accepted = await ui.dialog({
         title: T(resume ? 'nodes.run.resume' : all ? 'nodes.run.confirmAll.title' : 'nodes.run.previewTitle'),
         body,
@@ -1269,8 +1371,29 @@
       if (!accepted) return false;
       const maxUsd = Number(limit.value);
       if (!limit.value.trim() || !Number.isFinite(maxUsd) || maxUsd < 0) { ui.toast(T('nodes.run.invalidLimit'), { kind: 'error' }); return false; }
+      const autoLimit = auto.read();
+      if (autoLimit === undefined) { ui.toast(T('nodes.run.auto.invalid'), { kind: 'error' }); return false; }
+      saveAutoLimit(autoLimit);
       info.approved = { maxUsd, requireKnownPrices: known.checked };
       return true;
+    }
+
+    // Stores the limit of the automatic approval (null = off) and says so when it changed.
+    function saveAutoLimit(limit) {
+      const before = readAutoLimit(autoStorage());
+      const after = writeAutoLimit(autoStorage(), limit);
+      if (after !== before) ui.toast(after === null ? T('nodes.run.auto.off') : T('nodes.run.auto.on', { limit: money(after) }));
+      updateTopbar();
+    }
+
+    // The chip of the top bar: change the limit or switch the automatic approval off (empty or 0).
+    async function editAutoLimit() {
+      const current = readAutoLimit(autoStorage());
+      const answer = await ui.promptDialog({ title: T('nodes.run.auto.title'), label: T('nodes.run.auto.prompt'), value: current === null ? '' : String(current), confirmLabel: T('nodes.common.save'), maxLength: 12 });
+      if (answer === null) return;
+      const trimmed = String(answer).trim();
+      if (trimmed && Number(trimmed.replace(',', '.')) !== 0 && cleanAutoLimit(trimmed) === null) { ui.toast(T('nodes.run.auto.invalid'), { kind: 'error' }); return; }
+      saveAutoLimit(trimmed ? cleanAutoLimit(trimmed) : null);
     }
 
     async function approveRun() {
@@ -1335,7 +1458,12 @@
           await showGate(gate);
           return;
         }
-        if (info.needsConfirm) {
+        const autoLimit = readAutoLimit(autoStorage());
+        if (info.needsConfirm && autoApproves(info, autoLimit)) {
+          // started without the question: the limit of the run is the person's amount, a step above it stops the run and asks
+          info.approved = { maxUsd: autoLimit, requireKnownPrices: true };
+          ui.toast(T('nodes.run.auto.started', { amount: money(autoApprovalUsd(info)), limit: money(autoLimit) }), { timeout: 5000 });
+        } else if (info.needsConfirm) {
           const confirmed = await confirmPaid(info, { all: again, items: mode === 'items' });
           if (!confirmed) return;
         } else if (again && !(await confirmAllFree())) return;

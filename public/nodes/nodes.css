@@ -9245,3 +9245,30 @@ button.nv-scene-preview:focus-visible {
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* ---------- automatic cost approval (chip of the top bar, field of the confirmation) ---------- */
+
+.nv-run-auto {
+  flex: none;
+  margin-right: 8px;
+  padding: 3px 9px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nv-run-auto:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.nv-auto-approve {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}

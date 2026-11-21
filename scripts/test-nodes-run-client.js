@@ -25,6 +25,41 @@ function apply(state, events, start = T0) {
   return state;
 }
 
+/* ---------- automatic cost approval ---------- */
+
+function testAutoApproval() {
+  const memory = () => {
+    const data = new Map();
+    return { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)), removeItem: (k) => data.delete(k) };
+  };
+  const storage = memory();
+  assert.equal(run.readAutoLimit(storage), null);
+  assert.equal(run.writeAutoLimit(storage, '7,5'), 7.5);
+  assert.equal(run.readAutoLimit(storage), 7.5);
+  assert.equal(run.writeAutoLimit(storage, 0), null, '0 switches it off');
+  assert.equal(run.readAutoLimit(storage), null);
+  assert.equal(run.cleanAutoLimit(-1), null);
+  assert.equal(run.cleanAutoLimit(20000), null);
+  assert.equal(run.readAutoLimit(null), null);
+  assert.equal(run.readAutoLimit({ getItem() { throw new Error('blocked'); } }), null);
+
+  const info = (totals, paid = [{ unknown: false }]) => ({ totals: { paidNodes: paid.length, usd: 0, credits: 0, unknownNodes: 0, ...totals }, paid });
+  assert.equal(run.autoApprovalUsd(info({ usd: 1.2 })), 1.2);
+  assert.equal(run.autoApproves(info({ usd: 1.2 }), 5), true);
+  assert.equal(run.autoApproves(info({ usd: 5 }), 5), true, 'exactly the limit');
+  assert.equal(run.autoApproves(info({ usd: 5.01 }), 5), false);
+  assert.equal(run.autoApproves(info({ usd: 1 }), null), false, 'off');
+  assert.equal(run.autoApproves(info({ usd: 1, unknownNodes: 1 }), 5), false, 'a step without a price asks');
+  assert.equal(run.autoApproves(info({ usd: 1 }, [{ unknown: true }]), 5), false);
+  // credits count at the server's rate; without a rate the question stays
+  assert.equal(run.autoApprovalUsd(info({ usd: 1, credits: 2200, creditsUsd: 2.2 })), 3.2);
+  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: 2.2 }), 3), false);
+  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: null }), 100), false);
+  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200 }), 100), false);
+  // credits that are 0 need no rate
+  assert.equal(run.autoApproves(info({ usd: 1, credits: 0 }), 5), true);
+}
+
 /* ---------- reducer ---------- */
 
 function testSnapshot() {
@@ -552,7 +587,8 @@ const tests = [
   testTextResultOf,
   testRunRequest,
   testWiring,
-  testPortTip
+  testPortTip,
+  testAutoApproval
 ];
 for (const test of tests) {
   test();
