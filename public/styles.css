@@ -6027,6 +6027,16 @@ html.nv-active .mobile-menu-button {
   vertical-align: 1px;
 }
 
+.influencer-badge.shared {
+  background: var(--line-soft);
+  color: var(--text-faint);
+}
+
+.influencer-open .influencer-field-hint {
+  display: block;
+  margin-top: 2px;
+}
+
 .influencer-copy-confirm {
   margin-top: 12px;
   padding-top: 12px;

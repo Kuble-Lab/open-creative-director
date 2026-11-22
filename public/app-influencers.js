@@ -5,6 +5,10 @@
 // app as a read-only example; "Make a copy" turns her (or one's own) into a new one. Making one needs the confirmation that the figure
 // shows no real person without their consent; the server asks for it too.
 //
+// "Open": the owner may release an influencer to everybody who is signed in ("Für andere im KCD freigeben"). The others see it in their
+// list with a mark, may look at it, use it in their workflows and copy it; only the owner (and admins) change it. An influencer without
+// an owner (made before every influencer had one) shows admins the button "Take over", which makes them its owner.
+//
 // "Character sheet" (edit view, for whoever may edit the influencer): four proposal images of the figure made from the saved description
 // (lib/influencer-sheet.js, /api/influencers/:id/sheet). It costs money: the button only opens the estimate, the images are made after the
 // explicit click on "Generate for about X USD". The results are proposals; each one is accepted as a reference image or discarded.
@@ -41,7 +45,7 @@
   const REQUIRED = new Set(['name', 'full']);
 
   // view: 'list', 'new' or 'edit' (with `current`, the influencer as the server gave it)
-  const ui = { view: 'list', list: [], maxOwned: 10, owned: 0, current: null, loading: false, error: '', pendingDelete: null, pendingCopy: null, busy: false };
+  const ui = { view: 'list', list: [], maxOwned: 10, owned: 0, current: null, loading: false, error: '', pendingDelete: null, pendingCopy: null, pendingClaim: null, busy: false };
   // the character sheet of the influencer in the edit view: `data` is what GET .../sheet gave ({ estimate, proposals, job }); `watched` says
   // that this window saw the run, so its end (or its error) is reported here
   const SHEET_POLL_MS = 2000;
@@ -50,8 +54,8 @@
 
   const isOpen = () => !modal.classList.contains('hidden');
   const assetUrl = (id, file) => rel(`api/influencers/${encodeURIComponent(id)}/assets/${encodeURIComponent(file)}`);
-  // admins and the local mode make shared influencers, which the limit does not count
-  const limited = () => !OCAccess.canAdminister();
+  // only the local mode makes influencers without an owner, which the limit does not count
+  const limited = () => OCAccess.isActive();
   const atLimit = () => limited() && ui.owned >= ui.maxOwned;
 
   function element(tag, className, text) {
@@ -127,6 +131,11 @@
     const copy = element('div', 'branding-card-copy');
     const name = element('h3', '', influencer.name);
     if (influencer.builtin) name.appendChild(element('span', 'influencer-badge', t('influencers.example')));
+    // open: one's own (or one an admin may change) is "Open", somebody else's says so
+    else if (influencer.open === true) {
+      const editableOpen = influencer.editable === true;
+      name.appendChild(element('span', `influencer-badge${editableOpen ? '' : ' shared'}`, t(editableOpen ? 'influencers.open.badge' : 'influencers.open.badgeOther')));
+    }
     copy.appendChild(name);
     if (influencer.tagline) copy.appendChild(element('p', '', influencer.tagline));
     const facts = [t('influencers.imageCount', { n: influencer.imageCount || 0 }), influencer.hasVoice ? t('influencers.hasVoice') : t('influencers.noVoice')];
@@ -141,14 +150,33 @@
     actions.appendChild(managerAction(t('influencers.copy'), () => {
       ui.pendingCopy = ui.pendingCopy === influencer.id ? null : influencer.id;
       ui.pendingDelete = null;
+      ui.pendingClaim = null;
       render();
     }, { disabled: atLimit() }));
+    if (influencer.claimable === true) {
+      // "Take over" asks once more: it cannot be undone here
+      const claiming = ui.pendingClaim === influencer.id;
+      const claim = managerAction(claiming ? t('influencers.claim.confirm') : t('influencers.claim'), () => {
+        if (!claiming) {
+          ui.pendingClaim = influencer.id;
+          ui.pendingDelete = null;
+          ui.pendingCopy = null;
+          render();
+          return;
+        }
+        claim.disabled = true;
+        claimInfluencer(influencer).catch(fail);
+      }, { disabled: atLimit() });
+      claim.title = atLimit() ? t('influencers.limit', { max: ui.maxOwned }) : t('influencers.claim.hint');
+      actions.appendChild(claim);
+    }
     if (editable) {
       const confirming = ui.pendingDelete === influencer.id;
       actions.appendChild(managerAction(confirming ? t('common.reallyDelete') : t('common.delete'), () => {
         if (!confirming) {
           ui.pendingDelete = influencer.id;
           ui.pendingCopy = null;
+          ui.pendingClaim = null;
           render();
           return;
         }
@@ -213,6 +241,8 @@
       if (name.startsWith('voice.')) values.voice[name.slice(6)] = input.value.trim();
       else values[name] = input.value.trim();
     }
+    const open = form.querySelector('[data-open]');
+    if (open) values.open = open.checked;
     return values;
   }
 
@@ -226,7 +256,8 @@
     top.appendChild(managerAction(`← ${t('influencers.back')}`, () => show('list')));
     top.appendChild(element('h3', 'influencer-form-title', creating ? t('influencers.newTitle') : influencer.name));
     body.appendChild(top);
-    if (!editable) body.appendChild(element('p', 'influencer-note', t(influencer.builtin ? 'influencers.readonlyExample' : 'influencers.readonlyShared')));
+    if (!editable) body.appendChild(element('p', 'influencer-note', t(influencer.builtin ? 'influencers.readonlyExample'
+      : influencer.open === true ? 'influencers.readonlyOpen' : 'influencers.readonlyShared')));
     if (ui.error) body.appendChild(element('div', 'branding-import-feedback error', ui.error));
 
     const form = element('form', 'influencer-form');
@@ -248,6 +279,19 @@
     } else {
       mediaNode = null;
       form.appendChild(element('p', 'influencer-note', t('influencers.imagesAfterCreate')));
+    }
+
+    // Releasing it to the others is a choice of the saved influencer, so a new one is made closed.
+    if (editable && !creating) {
+      const share = element('label', 'influencer-consent influencer-open');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = influencer.open === true;
+      box.dataset.open = '';
+      const text = element('span', '', t('influencers.open.label'));
+      text.appendChild(element('span', 'influencer-field-hint', t('influencers.open.hint')));
+      share.append(box, text);
+      form.appendChild(share);
     }
 
     if (editable) {
@@ -595,6 +639,7 @@
     ui.error = '';
     ui.pendingDelete = null;
     ui.pendingCopy = null;
+    ui.pendingClaim = null;
     if (view !== 'edit') ui.current = null;
     resetSheet();
     if (window.OCInfluencerSite) OCInfluencerSite.reset();
@@ -644,6 +689,13 @@
     ui.current = { ...made, editable: true };
     show('edit');
     setStatusI18n('influencers.copied');
+  }
+
+  async function claimInfluencer(influencer) {
+    await api(`/api/influencers/${encodeURIComponent(influencer.id)}`, { method: 'PATCH', body: JSON.stringify({ claim: true }) });
+    ui.pendingClaim = null;
+    setStatusI18n('influencers.claimed');
+    await refresh();
   }
 
   async function removeInfluencer(influencer) {
