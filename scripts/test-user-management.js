@@ -826,6 +826,11 @@ async function testChatToolsAdminOnly({ api, iso }) {
 /* ---------- admin-only routes ---------- */
 
 const ADMIN_ONLY_ROUTES = [
+  ['POST', '/api/storage/archive', { files: [{ sessionId: 'x', file: 'a.mp4' }] }],
+  ['POST', '/api/storage/restore', { files: [{ sessionId: 'x', file: 'a.mp4' }] }],
+  ['POST', '/api/storage/archive/connect', { appKey: 'abcdefgh12345678' }],
+  ['POST', '/api/storage/archive/connect/finish', { code: 'x' }],
+  ['DELETE', '/api/storage/archive/connect'],
   ['GET', '/api/mcp/policy'],
   ['PUT', '/api/mcp/policy', { participant: { enabled: true, defaultRunUsd: 1, defaultMonthUsd: 5, maxRunUsd: 5, maxMonthUsd: 25, defaultExpiresInDays: 30, maxExpiresInDays: 90, keysPerOwner: 3 } }],
   ['GET', '/api/settings'],

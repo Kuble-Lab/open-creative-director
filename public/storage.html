@@ -46,6 +46,13 @@
           <option value="other" data-i18n="storage.typeOther">Übriges</option>
         </select>
       </label>
+      <label class="mon-field" id="placeField" hidden><span data-i18n="storage.place">Ort</span>
+        <select id="place">
+          <option value="" data-i18n="storage.placeAll">Überall</option>
+          <option value="server" data-i18n="storage.placeServer">Auf dem Server</option>
+          <option value="archive" data-i18n="storage.placeArchive">Im Archiv</option>
+        </select>
+      </label>
       <label class="mon-field" id="ownerField" hidden><span data-i18n="storage.owner">Person</span>
         <select id="owner"></select>
       </label>
@@ -69,6 +76,7 @@
 
     <div id="report" hidden>
       <section id="disk" class="st-disk" hidden></section>
+      <section id="archive" class="st-disk" hidden></section>
       <dl id="metrics" class="mon-metrics"></dl>
       <section id="owners"></section>
       <section>
@@ -76,6 +84,7 @@
           <h2 id="listTitle" data-i18n="storage.files">Dateien</h2>
           <div class="st-bulk">
             <span id="selection" class="mon-muted" aria-live="polite"></span>
+            <button id="archiveSelected" type="button" hidden disabled data-i18n="storage.archiveSelected">Auswahl ins Archiv</button>
             <button id="deleteSelected" type="button" class="st-danger" disabled data-i18n="storage.deleteSelected">Auswahl löschen</button>
           </div>
         </div>
@@ -94,6 +103,22 @@
         <div class="st-dialog-actions">
           <button value="cancel" type="submit" data-i18n="storage.cancel" autofocus>Abbrechen</button>
           <button id="confirmOk" value="ok" type="submit" class="st-danger" data-i18n="storage.confirmOk">Endgültig löschen</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="connect" class="st-dialog">
+      <form method="dialog">
+        <h2 data-i18n="storage.connectTitle">Dropbox verbinden</h2>
+        <ol class="st-steps">
+          <li><span data-i18n="storage.connectStep1"></span> <a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">dropbox.com/developers/apps</a></li>
+          <li><label><span data-i18n="storage.connectStep2"></span><input id="appKey" type="text" autocomplete="off" spellcheck="false"></label>
+            <button id="connectOpen" type="button" data-i18n="storage.connectOpen">Dropbox öffnen</button></li>
+          <li><label><span data-i18n="storage.connectStep3"></span><input id="connectCode" type="text" autocomplete="off" spellcheck="false"></label></li>
+        </ol>
+        <p id="connectStatus" class="st-warn" role="status" aria-live="polite"></p>
+        <div class="st-dialog-actions">
+          <button value="cancel" type="submit" data-i18n="storage.cancel">Abbrechen</button>
+          <button id="connectFinish" type="button" data-i18n="storage.connectFinish">Verbinden</button>
         </div>
       </form>
     </dialog>

@@ -20,10 +20,11 @@
   }
 
   // The files the filters leave, in the chosen order. `sessions` (Map id -> session) gives owner and title.
-  function visibleFiles(files, sessions, { type = '', owner = null, sort = 'size', search = '' } = {}) {
+  function visibleFiles(files, sessions, { type = '', owner = null, sort = 'size', search = '', place = '' } = {}) {
     const needle = String(search || '').trim().toLowerCase();
     const list = files.filter((file) => {
       if (type && file.type !== type) return false;
+      if (place && (place === 'archive') !== (file.archived === true)) return false;
       const session = sessions.get(file.sessionId) || {};
       if (owner !== null && (session.owner || '') !== owner) return false;
       if (!needle) return true;
@@ -61,6 +62,7 @@
   let request = null;
   let shown = PAGE;
   let pendingDelete = [];
+  let poll = null;
   const selected = new Map();
 
   function node(tag, content, className) {
@@ -118,6 +120,39 @@
     if (disk.free / disk.total < 0.1) box.append(node('p', T('diskLow'), 'st-warn'));
   }
 
+  const archiveOn = () => Boolean(report && report.archive && report.archive.canUse && report.archive.connected);
+
+  function renderArchive() {
+    const box = el('archive');
+    box.replaceChildren();
+    const info = report.archive || {};
+    box.hidden = !(info.available && info.canUse);
+    el('placeField').hidden = !(info.available && (info.connected || report.totals.archivedFiles > 0));
+    el('archiveSelected').hidden = !archiveOn();
+    if (box.hidden) return;
+    box.append(node('h2', T('archiveTitle')));
+    if (!info.connected) {
+      box.append(node('p', T('archiveOff'), 'mon-muted'));
+      const connect = node('button', T('connect'));
+      connect.type = 'button';
+      connect.addEventListener('click', openConnect);
+      box.append(connect);
+      return;
+    }
+    const line = node('p', '', 'mon-muted st-legend');
+    line.append(node('span', T('archiveAccount', { account: info.account || 'Dropbox' }), 'st-free'));
+    line.append(node('span', T('archiveUsed', { size: bytes(report.totals.archivedBytes), count: number(report.totals.archivedFiles) })));
+    if (info.space) line.append(node('span', T('archiveFree', { free: bytes(info.space.free), total: bytes(info.space.total) })));
+    box.append(line, node('p', T('archiveHint'), 'mon-muted'));
+    const disconnect = node('button', T('disconnect'));
+    disconnect.type = 'button';
+    disconnect.addEventListener('click', async () => {
+      await send('api/storage/archive/connect', 'DELETE');
+      load();
+    });
+    box.append(disconnect);
+  }
+
   function renderMetrics() {
     const totals = report.totals;
     const list = el('metrics');
@@ -163,7 +198,7 @@
 
   function filters() {
     const owner = el('ownerField').hidden || el('owner').value === '*' ? null : el('owner').value;
-    return { type: el('type').value, owner, sort: el('sort').value, search: el('search').value };
+    return { type: el('type').value, owner, sort: el('sort').value, search: el('search').value, place: el('placeField').hidden ? '' : el('place').value };
   }
 
   function updateSelection() {
@@ -172,6 +207,7 @@
     for (const file of selected.values()) total += file.size;
     el('selection').textContent = count ? T('selected', { count: number(count), size: bytes(total) }) : '';
     el('deleteSelected').disabled = !count;
+    el('archiveSelected').disabled = ![...selected.values()].some((file) => !file.archived && file.assetId);
   }
 
   function preview(file) {
@@ -211,10 +247,11 @@
     for (const file of list.slice(0, shown)) {
       const session = sessions.get(file.sessionId);
       const row = node('tr');
+      const working = Boolean(file.job) && file.job !== 'error';
       const check = node('input');
       check.type = 'checkbox';
       check.checked = selected.has(keyOf(file));
-      check.disabled = file.pending === true;
+      check.disabled = file.pending === true || working;
       check.setAttribute('aria-label', T('select', { name: file.name }));
       check.addEventListener('change', () => {
         if (check.checked) selected.set(keyOf(file), file);
@@ -226,11 +263,21 @@
       const thumb = node('td');
       thumb.append(preview(file));
       const name = node('td', '', 'st-name');
-      const link = node('a', file.name);
-      link.href = file.url.replace(/^\//, '');
-      link.target = '_blank';
-      link.rel = 'noopener';
-      name.append(link);
+      if (file.archived) {
+        name.append(node('span', file.name));
+      } else {
+        const link = node('a', file.name);
+        link.href = file.url.replace(/^\//, '');
+        link.target = '_blank';
+        link.rel = 'noopener';
+        name.append(link);
+      }
+      if (file.job) {
+        const share = file.jobProgress ? ` ${file.jobProgress} %` : '';
+        name.append(node('small', file.job === 'error' ? T('jobError', { reason: file.jobError || '' }) : `${T(`job.${file.job}`)}${share}`, file.job === 'error' ? 'st-warn st-state' : 'st-state'));
+      } else if (file.archived) {
+        name.append(node('small', T('inArchive'), 'st-state'));
+      }
       if (file.prompt) name.append(node('small', file.prompt, 'mon-muted st-prompt'));
       const where = node('td', '', 'st-where');
       if (session && session.kind === 'chat') {
@@ -244,14 +291,32 @@
       if (showOwner) row.append(node('td', (session && session.owner) || T('noOwner')));
       row.append(node('td', stamp(file.modifiedAt)), node('td', bytes(file.size), 'number'));
       const actions = node('td', '', 'st-actions');
-      const download = node('a', T('download'), 'st-button');
-      download.href = file.url.replace(/^\//, '');
-      download.setAttribute('download', file.name);
+      if (file.archived) {
+        if (archiveOn()) {
+          const restore = node('button', T('restore'));
+          restore.type = 'button';
+          restore.disabled = working;
+          restore.addEventListener('click', () => move('restore', [file]));
+          actions.append(restore);
+        }
+      } else {
+        const download = node('a', T('download'), 'st-button');
+        download.href = file.url.replace(/^\//, '');
+        download.setAttribute('download', file.name);
+        actions.append(download);
+        if (archiveOn() && file.assetId && !file.pending) {
+          const toArchive = node('button', T('toArchive'));
+          toArchive.type = 'button';
+          toArchive.disabled = working;
+          toArchive.addEventListener('click', () => move('archive', [file]));
+          actions.append(toArchive);
+        }
+      }
       const remove = node('button', T('delete'), 'st-danger');
       remove.type = 'button';
-      remove.disabled = file.pending === true;
+      remove.disabled = file.pending === true || working || (file.archived && !archiveOn());
       remove.addEventListener('click', () => askDelete([file]));
-      actions.append(download, remove);
+      actions.append(remove);
       row.append(actions);
       table.append(row);
     }
@@ -262,6 +327,7 @@
 
   function render() {
     renderDisk();
+    renderArchive();
     renderMetrics();
     renderOwners();
     renderFiles();
@@ -281,6 +347,38 @@
     for (const file of files.slice(0, 8)) list.append(node('li', `${file.name} (${bytes(file.size)}) · ${sessionLabel(sessions.get(file.sessionId))}`));
     if (files.length > 8) list.append(node('li', T('confirmMore', { count: number(files.length - 8) })));
     el('confirm').showModal();
+  }
+
+  async function send(url, method, body) {
+    const response = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || T('loadError'));
+    return data;
+  }
+
+  // Starts the way into the archive ('archive') or back ('restore'); the work runs on the server, the list shows the state.
+  async function move(kind, files) {
+    try {
+      const body = await send(`api/storage/${kind}`, 'POST', { files: files.map((file) => ({ sessionId: file.sessionId, file: file.file })) });
+      for (const item of body.queued) selected.delete(`${item.sessionId}/${item.file}`);
+      await load({ quiet: true });
+      const started = T(kind === 'archive' ? 'archiveStarted' : 'restoreStarted', { count: number(body.queued.length) });
+      if (body.failed.length) setStatus(`${started} ${T('failed', { count: number(body.failed.length), reason: body.failed[0].error })}`, true);
+      else setStatus(started);
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  }
+
+  function openConnect() {
+    el('appKey').value = '';
+    el('connectCode').value = '';
+    el('connectStatus').textContent = '';
+    el('connect').showModal();
   }
 
   async function runDelete(files) {
@@ -320,6 +418,9 @@
       el('scopeField').hidden = !(body.canSeeAll && body.accounts);
       if (!quiet) setStatus('');
       render();
+      // While the archive works the list is read again every few seconds.
+      clearTimeout(poll);
+      if (body.files.some((file) => file.job && file.job !== 'error')) poll = setTimeout(() => load({ quiet: true }), 3000);
     } catch (err) {
       if (err.name === 'AbortError') return;
       setStatus(err.message || T('loadError'), true);
@@ -337,7 +438,26 @@
     shown = PAGE;
     load();
   });
-  for (const id of ['type', 'owner', 'sort']) {
+  el('archiveSelected').addEventListener('click', () => move('archive', [...selected.values()].filter((file) => !file.archived && file.assetId)));
+  el('connectOpen').addEventListener('click', async () => {
+    try {
+      const { url } = await send('api/storage/archive/connect', 'POST', { appKey: el('appKey').value });
+      el('connectStatus').textContent = '';
+      window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      el('connectStatus').textContent = err.message;
+    }
+  });
+  el('connectFinish').addEventListener('click', async () => {
+    try {
+      await send('api/storage/archive/connect/finish', 'POST', { code: el('connectCode').value });
+      el('connect').close('done');
+      load();
+    } catch (err) {
+      el('connectStatus').textContent = err.message;
+    }
+  });
+  for (const id of ['type', 'owner', 'sort', 'place']) {
     el(id).addEventListener('change', () => {
       shown = PAGE;
       if (report) renderFiles();

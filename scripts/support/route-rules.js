@@ -106,6 +106,11 @@ const ROUTE_RULES = {
   'GET /api/costs/summary': 'open', // admins: everything; everybody else: only their own costs
   'GET /api/storage': 'identified', // admins may ask for everything; everybody else: the files of their own chats and workflows
   'POST /api/storage/delete': 'identified', // admins: every file; everybody else: only their own
+  'POST /api/storage/archive': 'admin', // the archive is one Dropbox for the installation
+  'POST /api/storage/restore': 'admin',
+  'POST /api/storage/archive/connect': 'admin',
+  'POST /api/storage/archive/connect/finish': 'admin',
+  'DELETE /api/storage/archive/connect': 'admin',
   'GET /api/admin/monitoring': 'superadmin',
   'GET /api/admin/monitoring/export': 'superadmin',
   'GET /api/gts/search': 'open',
@@ -293,6 +298,11 @@ const PARTICIPANT_RULES = {
   'GET /api/costs/summary': 'own',
   'GET /api/storage': 'own',
   'POST /api/storage/delete': 'own',
+  'POST /api/storage/archive': 'admin',
+  'POST /api/storage/restore': 'admin',
+  'POST /api/storage/archive/connect': 'admin',
+  'POST /api/storage/archive/connect/finish': 'admin',
+  'DELETE /api/storage/archive/connect': 'admin',
   'GET /api/admin/monitoring': 'superadmin',
   'GET /api/admin/monitoring/export': 'superadmin',
   'GET /api/gts/search': 'forbidden',

@@ -248,6 +248,7 @@ async function main() {
   for (const match of script.matchAll(/\bT\('([\w.]+)'/g)) keys.add(`storage.${match[1]}`);
   for (const type of ['video', 'image', 'audio', 'document', 'other']) keys.add(`storage.badge.${type}`);
   keys.add('menu.storage');
+  for (const state of ['queued', 'archiving', 'restoring']) keys.add(`storage.job.${state}`);
   for (const key of keys) {
     const count = i18n.split(`'${key}':`).length - 1;
     assert.equal(count, 3, `${key} exists in de, en and es`);
