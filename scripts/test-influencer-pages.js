@@ -24,7 +24,8 @@ function fakeHost() {
       if (name === 'claim_subdomain') {
         const site = { slug: args.slug, full_domain: 'host.example' };
         this.sites.push(site);
-        return site;
+        // Like the real host: the claim answer does not carry the address at the top; the listing does.
+        return { claimed: true, slug: args.slug };
       }
       return { ok: true };
     }
