@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Storage</title>
+  <!-- Storage overview: the files of the own chats and workflows with their sizes, for admins all files, and the room left
+       on the disk. Data: GET api/storage, delete: POST api/storage/delete (lib/storage-overview.js). storage.js renders it,
+       the texts (storage.*) live in i18n.js, the base look comes from monitoring.css. Relative URLs keep it working when
+       the app runs under a sub-path. -->
+  <link rel="stylesheet" href="monitoring.css">
+  <link rel="stylesheet" href="storage.css">
+</head>
+<body>
+  <main id="storage-root" class="monitoring-shell">
+    <header class="mon-head">
+      <div class="mon-head-copy">
+        <a class="mon-back" href="./" data-i18n="monitor.back">Zur App</a>
+        <h1 data-i18n="storage.title">Speicher</h1>
+        <p class="mon-muted" data-i18n="storage.intro"></p>
+      </div>
+      <div id="langSwitch" class="lang-switch" role="group" data-i18n-aria-label="lang.selector" aria-label="Sprache">
+        <button type="button" data-lang="de" aria-label="Deutsch">DE</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="en" aria-label="English">EN</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="es" aria-label="Español">ES</button>
+      </div>
+    </header>
+
+    <form id="filters" class="mon-filters">
+      <label class="mon-field" id="scopeField" hidden><span data-i18n="storage.scope">Anzeigen</span>
+        <select id="scope">
+          <option value="mine" data-i18n="storage.scopeMine">Meine Dateien</option>
+          <option value="all" data-i18n="storage.scopeAll">Alle auf dem Server</option>
+        </select>
+      </label>
+      <label class="mon-field"><span data-i18n="storage.type">Art</span>
+        <select id="type">
+          <option value="" data-i18n="storage.typeAll">Alle</option>
+          <option value="video" data-i18n="storage.typeVideo">Videos</option>
+          <option value="image" data-i18n="storage.typeImage">Bilder</option>
+          <option value="audio" data-i18n="storage.typeAudio">Audio</option>
+          <option value="document" data-i18n="storage.typeDocument">Dokumente</option>
+          <option value="other" data-i18n="storage.typeOther">Übriges</option>
+        </select>
+      </label>
+      <label class="mon-field" id="ownerField" hidden><span data-i18n="storage.owner">Person</span>
+        <select id="owner"></select>
+      </label>
+      <label class="mon-field"><span data-i18n="storage.sort">Sortieren</span>
+        <select id="sort">
+          <option value="size" data-i18n="storage.sortSize">Grösste zuerst</option>
+          <option value="new" data-i18n="storage.sortNew">Neueste zuerst</option>
+          <option value="old" data-i18n="storage.sortOld">Älteste zuerst</option>
+          <option value="name" data-i18n="storage.sortName">Name</option>
+        </select>
+      </label>
+      <label class="mon-field"><span data-i18n="storage.search">Suchen</span>
+        <input id="search" type="search" autocomplete="off">
+      </label>
+      <div class="mon-actions">
+        <button id="refresh" type="submit" data-i18n="monitor.refresh">Aktualisieren</button>
+      </div>
+    </form>
+
+    <div id="status" class="mon-status" role="status" aria-live="polite"></div>
+
+    <div id="report" hidden>
+      <section id="disk" class="st-disk" hidden></section>
+      <dl id="metrics" class="mon-metrics"></dl>
+      <section id="owners"></section>
+      <section>
+        <div class="st-listhead">
+          <h2 id="listTitle" data-i18n="storage.files">Dateien</h2>
+          <div class="st-bulk">
+            <span id="selection" class="mon-muted" aria-live="polite"></span>
+            <button id="deleteSelected" type="button" class="st-danger" disabled data-i18n="storage.deleteSelected">Auswahl löschen</button>
+          </div>
+        </div>
+        <div id="files"></div>
+        <div class="st-more"><button id="more" type="button" hidden data-i18n="storage.more">Mehr anzeigen</button></div>
+      </section>
+      <p class="mon-muted" data-i18n="storage.note"></p>
+    </div>
+
+    <dialog id="confirm" class="st-dialog">
+      <form method="dialog">
+        <h2 id="confirmTitle"></h2>
+        <p id="confirmText"></p>
+        <ul id="confirmList" class="st-confirmlist"></ul>
+        <p class="st-warn" data-i18n="storage.confirmWarn"></p>
+        <div class="st-dialog-actions">
+          <button value="cancel" type="submit" data-i18n="storage.cancel" autofocus>Abbrechen</button>
+          <button id="confirmOk" value="ok" type="submit" class="st-danger" data-i18n="storage.confirmOk">Endgültig löschen</button>
+        </div>
+      </form>
+    </dialog>
+    <noscript>This page needs JavaScript.</noscript>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="storage.js"></script>
+</body>
+</html>

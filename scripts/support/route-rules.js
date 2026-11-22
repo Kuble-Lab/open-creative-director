@@ -104,6 +104,8 @@ const ROUTE_RULES = {
   'POST /api/chatgpt/import': 'admin',
   'POST /api/chatgpt/disconnect': 'admin',
   'GET /api/costs/summary': 'open', // admins: everything; everybody else: only their own costs
+  'GET /api/storage': 'identified', // admins may ask for everything; everybody else: the files of their own chats and workflows
+  'POST /api/storage/delete': 'identified', // admins: every file; everybody else: only their own
   'GET /api/admin/monitoring': 'superadmin',
   'GET /api/admin/monitoring/export': 'superadmin',
   'GET /api/gts/search': 'open',
@@ -289,6 +291,8 @@ const PARTICIPANT_RULES = {
   'POST /api/chatgpt/import': 'admin',
   'POST /api/chatgpt/disconnect': 'admin',
   'GET /api/costs/summary': 'own',
+  'GET /api/storage': 'own',
+  'POST /api/storage/delete': 'own',
   'GET /api/admin/monitoring': 'superadmin',
   'GET /api/admin/monitoring/export': 'superadmin',
   'GET /api/gts/search': 'forbidden',

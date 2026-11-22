@@ -1,0 +1,228 @@
+/* Storage overview (public/storage.html). The base look comes from monitoring.css. */
+input[type="search"] {
+  min-width: 190px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.st-disk {
+  margin: 18px 0 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--bg-panel);
+}
+
+.st-disk h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.st-bar {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+}
+
+.st-bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.st-bar-used {
+  background: #4a5361;
+}
+
+.st-bar-app {
+  background: var(--accent);
+}
+
+.st-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 8px;
+}
+
+.st-free {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.st-key-app::before,
+.st-key-used::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.st-key-used::before {
+  background: #4a5361;
+}
+
+.st-warn {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+.st-listhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.st-bulk {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.st-table td {
+  vertical-align: middle;
+}
+
+.st-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.st-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.st-badge {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.st-name {
+  max-width: 340px;
+  overflow-wrap: anywhere;
+}
+
+.st-name a,
+.st-where a {
+  color: var(--text);
+}
+
+.st-prompt {
+  display: block;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-where {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+}
+
+.st-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.st-button {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.st-button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+button.st-danger {
+  color: var(--danger);
+}
+
+button.st-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.st-more {
+  margin: 12px 0;
+  text-align: center;
+}
+
+.st-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.st-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.st-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.st-confirmlist {
+  max-height: 180px;
+  margin: 8px 0;
+  padding-left: 18px;
+  overflow: auto;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.st-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .st-table th:nth-child(4),
+  .st-table td:nth-child(4) {
+    display: none;
+  }
+}

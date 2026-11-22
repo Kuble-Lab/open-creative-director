@@ -135,6 +135,8 @@
       system.push({ id: 'settings', label: tr('menu.settings'), onSelect: actions.openSettings });
     }
     system.push({ id: 'help', label: tr('menu.help'), title: tr('menu.helpTitle'), href: 'help.html', external: true });
+    // Storage overview (storage.html): everybody with an account sees their own files, admins all of them.
+    if (!info.active || info.identified) system.push({ id: 'storage', label: tr('menu.storage'), href: 'storage.html' });
     if (info.isSuperAdmin) system.push({ id: 'monitoring', label: tr('account.monitoring'), href: 'monitoring.html' });
     return { account, system };
   }
