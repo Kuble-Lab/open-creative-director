@@ -342,6 +342,26 @@
     }
   }
 
+  // A cell of the grid is square and its picture fills it, so a portrait film (a 9:16 clip) looked like a square one. Such a cell takes
+  // the shape of its film (not narrower than 9:16) once the browser knows the size; anything else stays square.
+  function portraitRatio(width, height) {
+    const w = Number(width);
+    const h = Number(height);
+    if (!(w > 0) || !(h > 0) || h < w * 1.1) return null;
+    return Math.round(Math.max(9 / 16, w / h) * 10000) / 10000;
+  }
+
+  function shapeCellToFilm(cell) {
+    const film = cell.querySelector && cell.querySelector('video');
+    if (!film) return;
+    const apply = () => {
+      const ratio = portraitRatio(film.videoWidth, film.videoHeight);
+      if (ratio) cell.style.aspectRatio = String(ratio);
+    };
+    if (film.readyState >= 1) apply();
+    else film.addEventListener('loadedmetadata', apply, { once: true });
+  }
+
   function renderGrid(body, list, firstIndex, open) {
     const grid = el('div', { class: 'nv-pv-grid' });
     const shown = list.slice(0, GRID_LIMIT);
@@ -352,6 +372,7 @@
         const at = index;
         index += 1;
         cell.append(thumb(item, { cover: true }));
+        shapeCellToFilm(cell);
         cell.addEventListener('click', (event) => {
           event.stopPropagation();
           open(at);

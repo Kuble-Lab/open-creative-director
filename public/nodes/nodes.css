@@ -1794,6 +1794,8 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 5px;
+  /* a cell of a portrait film is taller than a square one (preview.js): the others in its row keep their own height */
+  align-items: start;
 }
 
 .nv-pv-cell {
