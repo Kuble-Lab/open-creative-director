@@ -477,6 +477,7 @@ async function run(iso) {
   assert.deepEqual(hudFilm.inputs.map((input) => [input.id, input.type, input.required]), [
     ['n1.asset', 'audio', true],
     ['n4.brief', 'text', false],
+    ['n33.influencer', 'select', false],
     ['n4.figure', 'text', false],
     ['n4.theme', 'select', false],
     ['n3.lyrics', 'text', false],
@@ -499,6 +500,7 @@ async function run(iso) {
     ['n25.prompt', 'text', true],
     ['n28.length', 'number', false],
     ['n26.text', 'text', false],
+    ['n33.influencer', 'select', false],
     ['n4.figure', 'text', false],
     ['n4.theme', 'select', false],
     ['n17.karaoke', 'boolean', false],
@@ -516,6 +518,7 @@ async function run(iso) {
     ['n25.prompt', 'text', true],
     ['n26.text', 'text', false],
     ['n1.asset', 'audio', true],
+    ['n33.influencer', 'select', false],
     ['n4.figure', 'text', false],
     ['n4.theme', 'select', false],
     ['n3.lyrics', 'text', false],
