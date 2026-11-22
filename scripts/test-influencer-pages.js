@@ -9,7 +9,6 @@ const OWNER = 'ada@staff.example.com';
 const OTHER = 'bea@staff.example.com';
 const viewer = { active: true, identified: true, admin: false, email: OWNER, kind: 'internal' };
 const other = { ...viewer, email: OTHER };
-const admin = { ...viewer, admin: true, kind: 'admin' };
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 const hasCode = (code) => (err) => err.code === code;
 function fakeHost() {
@@ -66,7 +65,7 @@ async function run(iso) {
   assert.equal((await pages.readSite(figure.id, { viewer, host: off })).host.enabled, false);
   await assert.rejects(pages.updateSite(figure.id, {}, { viewer, host: off }), hasCode('SITE_DISABLED'));
   await assert.rejects(pages.readSite(figure.id, { viewer: other, host }), hasCode('INFLUENCER_NOT_FOUND'));
-  const shared = await make(admin);
+  const shared = await make(null);
   await assert.rejects(pages.readSite(shared.id, options), hasCode('INFLUENCER_FORBIDDEN'));
   await assert.rejects(pages.readSite('claudia', options), hasCode('INFLUENCER_READONLY'));
   const copy = await inf.duplicateInfluencer('claudia', { viewer, consent: true });
@@ -309,6 +308,20 @@ async function httpChecks(iso, id, host, png) {
   }
   Object.assign(off, host);
   assert.equal((await iso.request(route, { as: OTHER })).status, 404);
+  const inf = iso.load('lib/influencers');
+  const hostCalls = host.calls.length;
+  for (const open of [true, false]) {
+    await inf.updateInfluencer(id, { open });
+    for (const [suffix, method, json] of [
+      ['', 'GET'], ['', 'PATCH', {}], ['/slug?slug=test', 'GET'], ['/items', 'POST', {}],
+      ['/items/nope', 'DELETE'], ['/preview', 'GET'], ['/preview/assets/styles.css', 'GET'], ['/publish', 'POST', {}]
+    ]) {
+      const denied = await iso.request(route + suffix, { as: OTHER, method, json });
+      assert.equal(denied.status, open ? 403 : 404);
+      assert.equal(denied.body.code, open ? 'INFLUENCER_FORBIDDEN' : 'INFLUENCER_NOT_FOUND');
+    }
+  }
+  assert.equal(host.calls.length, hostCalls, 'denied requests never contact the website host');
   assert.equal((await iso.request('/api/influencers/claudia/site', { as: OWNER })).status, 403);
   result = await iso.request(route + '/preview/', { as: OWNER });
   assert.equal(result.status, 200);

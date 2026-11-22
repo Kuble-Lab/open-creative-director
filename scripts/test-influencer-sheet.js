@@ -55,7 +55,6 @@ async function run(iso) {
   const teams = iso.load('lib/teams');
   const access = iso.load('lib/access');
   const viewer = { active: true, identified: true, admin: false, email: STAFF, kind: 'internal' };
-  const admin = { ...viewer, admin: true, email: ADMIN, kind: 'admin' };
   const calls = [];
   const fake = async (payload) => { calls.push(payload); return result(); };
   sheet.setImageCallForTests(fake);
@@ -141,7 +140,7 @@ async function run(iso) {
   // Existing ownership and shared-object rules are checked before any generation.
   await assert.rejects(begin(item.id, { viewer: { ...viewer, email: 'other@staff.example.com' } }), code('INFLUENCER_NOT_FOUND'));
   await assert.rejects(begin('claudia'), code('INFLUENCER_READONLY'));
-  const shared = await create(admin);
+  const shared = await create(null);
   await assert.rejects(begin(shared.id), code('INFLUENCER_FORBIDDEN'));
   const team = teams.createTeam({ name: 'Sheet testers', budgetUsd: 0.01 });
   const participant = { ...viewer, email: 'participant@example.com', kind: 'participant' };
@@ -265,6 +264,14 @@ async function run(iso) {
     for (const [id, as, expected] of [['claudia', STAFF, 403], [httpItem.id, 'other@staff.example.com', 404], [shared.id, STAFF, 403]]) {
       const response = await iso.request(`/api/influencers/${id}/sheet${suffix}`, { method, as, ...(method === 'POST' ? { json: {} } : {}) });
       assert.equal(response.status, expected, `${method} ${suffix} ${id}`);
+    }
+  }
+  await inf.updateInfluencer(httpItem.id, { open: true });
+  for (const as of ['other@staff.example.com', guest.email]) {
+    for (const [method, suffix] of [['GET', ''], ['POST', ''], ['GET', '/proposals/x.png'], ['POST', '/proposals/x.png/accept'], ['DELETE', '/proposals/x.png']]) {
+      const response = await iso.request(url + suffix, { method, as, ...(method === 'POST' ? { json: {} } : {}) });
+      assert.equal(response.status, 403);
+      assert.equal(response.body.code, 'INFLUENCER_FORBIDDEN');
     }
   }
   const refused = await iso.request(`/api/influencers/${guestItem.id}/sheet`, { method: 'POST', as: guest.email, json: { confirmed: true, confirmedUsd: base.usd } });

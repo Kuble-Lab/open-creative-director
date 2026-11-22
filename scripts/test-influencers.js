@@ -16,6 +16,9 @@ const bob = { ...alice, email: 'bob@example.test' };
 const admin = { ...alice, email: 'admin@example.test', admin: true, kind: 'admin' };
 const guest = { ...alice, email: 'guest@example.test', kind: 'guest' };
 const participant = { ...alice, email: 'participant@example.test', kind: 'participant' };
+const anonymous = { active: true, identified: false, admin: false, email: null };
+const unconfirmed = { ...anonymous };
+const viewers = { alice, bob, admin, guest, participant, anonymous, unconfirmed };
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 const jpeg = Buffer.from([255, 216, 255, 224]);
 const webp = Buffer.from('RIFF0000WEBP');
@@ -46,7 +49,12 @@ async function moduleTests() {
   assert.equal(new Date(item.consent.confirmedAt).toISOString(), item.consent.confirmedAt);
   assert.deepEqual(item.voice, { voiceId: 'abc_DEF-12', name: 'Clear Voice', description: 'soft' });
   assert.equal(influencers.ownerForNew(guest), guest.email);
-  assert.equal(influencers.ownerForNew(admin), null);
+  assert.equal(influencers.ownerForNew(admin), admin.email);
+  assert.equal(influencers.ownerForNew(null), null);
+  assert.equal(influencers.ownerForNew({ active: false, email: alice.email }), null);
+  assert.throws(() => influencers.ownerForNew({ active: true, admin: true }), code('INFLUENCER_FORBIDDEN'));
+  assert.equal(item.open, false);
+  assert.equal((await create({ open: true })).open, false, 'creation ignores open like other unknown fields');
   assert.equal(influencers.ownerOf({ owner: ' ALICE@EXAMPLE.TEST ' }), alice.email);
   assert.throws(() => influencers.ownerForNew({ active: true }), code('INFLUENCER_FORBIDDEN'));
   assert.equal((await influencers.readEditableInfluencer(item.id, alice)).id, item.id);
@@ -67,7 +75,9 @@ async function moduleTests() {
   const explicit = await create({}, { viewer: undefined, owner: ' BY@EXAMPLE.TEST ', by: ' AUTHOR@EXAMPLE.TEST ' });
   assert.equal(explicit.owner, 'by@example.test');
   assert.equal(explicit.consent.by, 'author@example.test');
-  const shared = await create({}, { viewer: admin });
+  const adminOwned = await create({}, { viewer: admin });
+  assert.equal(adminOwned.owner, admin.email);
+  const shared = await create({}, { viewer: undefined, owner: null, by: admin.email });
   assert.equal(shared.owner, null);
   assert.equal(shared.consent.by, admin.email);
   assert.equal(influencers.visibleTo(shared, alice), true);
@@ -85,6 +95,8 @@ async function moduleTests() {
   assert.equal(summary.hasVoice, true);
   assert.equal(summary.editable, true);
   assert.equal('owner' in influencers.influencerSummary(item, { viewer: alice }), false);
+  await sharingTests(item, shared);
+  await claimTests();
 
   const limits = { name: 60, tagline: 300, full: 1500, short: 400, looks: 1000, face: 400, never: 400, credit: 200, style: 1000 };
   for (const [field, max] of Object.entries(limits)) {
@@ -181,7 +193,7 @@ async function moduleTests() {
   await assert.rejects(influencers.duplicateInfluencer(item.id, { viewer: bob, consent: true }), code('INFLUENCER_NOT_FOUND'));
   const adminCopy = await influencers.duplicateInfluencer(item.id, { viewer: admin, consent: true });
   ids.add(adminCopy.id);
-  assert.equal(adminCopy.owner, null);
+  assert.equal(adminCopy.owner, admin.email);
   assert.equal(adminCopy.consent.by, admin.email);
 
   const limitViewer = { ...alice, email: 'limit@example.test' };
@@ -192,14 +204,113 @@ async function moduleTests() {
   assert.equal(results.find((result) => result.status === 'rejected').reason.code, 'INFLUENCER_LIMIT');
   assert.equal(await influencers.countOwnedBy(' LIMIT@EXAMPLE.TEST '), 10);
   await assert.rejects(influencers.duplicateInfluencer('claudia', { viewer: limitViewer, consent: true }), code('INFLUENCER_LIMIT'));
-  for (let i = 0; i < 11; i++) await create({}, { viewer: admin });
-  assert.equal(await influencers.countOwnedBy(admin.email), 0);
+  while (await influencers.countOwnedBy(admin.email) < 10) await create({}, { viewer: admin });
+  await assert.rejects(create({}, { viewer: admin }), code('INFLUENCER_LIMIT'));
+  await assert.rejects(influencers.duplicateInfluencer('claudia', { viewer: admin, consent: true }), code('INFLUENCER_LIMIT'));
+}
+
+async function sharingTests(item, legacy) {
+  const legacyRaw = { ...legacy };
+  delete legacyRaw.owner;
+  delete legacyRaw.open;
+  await influencers.writeInfluencer(legacyRaw);
+  assert.equal((await influencers.readInfluencer(legacy.id)).open, false);
+  // Old and hand-edited records only opt into sharing with the literal boolean true.
+  for (const open of [undefined, 'true', 1, null, {}, false, true]) {
+    const raw = { ...item, open };
+    if (open === undefined) delete raw.open;
+    await influencers.writeInfluencer(raw);
+    assert.equal((await influencers.readInfluencer(item.id)).open, open === true);
+  }
+  for (const value of ['true', 1, null, {}, [], undefined]) {
+    await assert.rejects(influencers.updateInfluencer(item.id, { open: value }), code('INFLUENCER_INVALID'));
+  }
+  const isUnconfirmed = access.isUnconfirmed;
+  // access.isUnconfirmed recognises an active caller without email while restrictions are enabled.
+  const restrictionActive = { AUTH_WHOAMI_URL: 'http://127.0.0.1/unused', INTERNAL_EMAIL_DOMAINS: 'example.test' };
+  assert.equal(isUnconfirmed(unconfirmed, restrictionActive), true);
+  access.isUnconfirmed = (viewer) => isUnconfirmed(viewer, restrictionActive);
+  try {
+    for (const record of [item, legacy]) {
+      for (const open of [false, true]) {
+        await influencers.updateInfluencer(record.id, { open });
+        for (const [role, viewer] of Object.entries(viewers)) {
+          const visible = record === legacy
+            ? !access.isRestricted(viewer) || (open && Boolean(viewer.email))
+            : ['alice', 'admin'].includes(role) || (open && Boolean(viewer.email));
+          if (visible) assert.equal((await influencers.readVisibleInfluencer(record.id, viewer)).id, record.id, `${role} open=${open}`);
+          else await assert.rejects(influencers.readVisibleInfluencer(record.id, viewer), code('INFLUENCER_NOT_FOUND'));
+          assert.equal((await influencers.listInfluencers({ viewer })).some((entry) => entry.id === record.id), visible);
+          if (visible) assert.equal(await influencers.resolveInfluencerId(record.id, { viewer }), record.id);
+          else await assert.rejects(influencers.resolveInfluencerId(record.id, { viewer }), code('INFLUENCER_NOT_FOUND'));
+        }
+      }
+    }
+    await assert.rejects(influencers.readEditableInfluencer(item.id, bob), /gehoert jemand anderem.*Lege eine Kopie an/);
+    await assert.rejects(influencers.duplicateInfluencer(item.id, { viewer: bob }), code('INFLUENCER_CONSENT_REQUIRED'));
+    const copy = await influencers.duplicateInfluencer(item.id, { viewer: bob, consent: true });
+    ids.add(copy.id);
+    assert.equal(copy.open, false);
+    assert.equal(copy.owner, bob.email);
+  } finally {
+    access.isUnconfirmed = isUnconfirmed;
+    await influencers.updateInfluencer(item.id, { open: false });
+    await influencers.updateInfluencer(legacy.id, { open: false });
+  }
+}
+
+async function claimTests() {
+  const claimant = { ...admin, email: 'claimant@example.test' };
+  const legacy = await create({}, { viewer: null });
+  const summary = (viewer, record = legacy) => influencers.influencerSummary(record, { viewer });
+  for (const viewer of [alice, guest, anonymous, { ...admin, active: false }, { ...admin, email: null }]) {
+    assert.equal(summary(viewer).claimable, false);
+    await assert.rejects(influencers.updateInfluencer(legacy.id, { claim: true }, { viewer }), code('INFLUENCER_FORBIDDEN'));
+  }
+  await assert.rejects(influencers.updateInfluencer(legacy.id, { claim: true }), code('INFLUENCER_FORBIDDEN'));
+  for (const claim of [false, 'yes', 1, null, {}, undefined]) {
+    await assert.rejects(influencers.updateInfluencer(legacy.id, { claim }, { viewer: claimant }), code('INFLUENCER_INVALID'));
+  }
+  assert.equal(summary(claimant).claimable, true);
+  assert.equal(summary(claimant, await influencers.readInfluencer('claudia')).claimable, false);
+  assert.equal(summary(claimant, { ...legacy, id: undefined }).claimable, false);
+  const patched = await influencers.updateInfluencer(legacy.id, { open: true, name: 'Unclaimed' }, { viewer: claimant });
+  assert.equal(patched.owner, null, 'normal admin edits never claim a legacy record');
+  const claimed = await influencers.updateInfluencer(legacy.id, { claim: true, open: false, name: 'Claimed' }, { viewer: claimant });
+  assert.equal(claimed.owner, claimant.email);
+  assert.equal(claimed.name, 'Claimed');
+  assert.equal(claimed.open, false);
+  assert.equal('claim' in claimed, false);
+  assert.equal(summary(claimant, claimed).claimable, false);
+  await assert.rejects(influencers.updateInfluencer(legacy.id, { claim: true, name: 'Overwrite' }, { viewer: admin }), code('INFLUENCER_OWNED'));
+  assert.equal((await influencers.readInfluencer(legacy.id)).name, 'Claimed');
+  for (let i = 0; i < 8; i++) await create({}, { viewer: claimant });
+  const candidates = await Promise.all([create({}, { viewer: null }), create({}, { viewer: null })]);
+  // New records, copies and different claims all compete for the same final slot.
+  const results = await Promise.allSettled([
+    create({}, { viewer: claimant }),
+    influencers.duplicateInfluencer('claudia', { viewer: claimant, consent: true }).then((copy) => { ids.add(copy.id); return copy; }),
+    ...candidates.map((candidate) => influencers.updateInfluencer(candidate.id, { claim: true }, { viewer: claimant }))
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.ok(results.filter((result) => result.status === 'rejected').every((result) => result.reason.code === 'INFLUENCER_LIMIT'));
+  assert.equal(await influencers.countOwnedBy(claimant.email), 10);
+  const unclaimed = await create({}, { viewer: null });
+  await assert.rejects(influencers.updateInfluencer(unclaimed.id, { claim: true, open: true }, { viewer: claimant }), code('INFLUENCER_LIMIT'));
+  assert.equal((await influencers.readInfluencer(unclaimed.id)).owner, null);
+  assert.equal((await influencers.readInfluencer(unclaimed.id)).open, false);
+  const contested = await create({}, { viewer: null });
+  const contenders = [admin, claimant].map((viewer, index) => ({ ...viewer, email: `contender-${index}@example.test` }));
+  const claims = await Promise.allSettled(contenders.map((viewer) => influencers.updateInfluencer(contested.id, { claim: true }, { viewer })));
+  assert.equal(claims.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(claims.find((result) => result.status === 'rejected').reason.code, 'INFLUENCER_OWNED');
 }
 
 async function apiTests() {
   const originalViewerOf = access.viewerOf;
+  const apiAdmin = { ...admin, email: 'api-admin@example.test' };
   // Exercise the real HTTP parsers and routes with fixed local test identities.
-  access.viewerOf = (req) => ({ alice, bob, admin, guest, participant }[req.headers?.['x-test-viewer']] || alice);
+  access.viewerOf = (req) => ({ ...viewers, apiAdmin }[req.headers?.['x-test-viewer']] || alice);
   const server = http.createServer(app);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -271,6 +382,7 @@ async function apiTests() {
     upload = await request(`/${id}/images?filename=Query.png`, { method: 'POST', raw: png, contentType: 'image/png' });
     assert.equal(upload.status, 201);
     assert.deepEqual(upload.body.images, ['Query.png']);
+    await apiSharingTests(request, id, apiAdmin);
     assert.equal((await request(`/${id}/images`, { method: 'POST', raw: png, filename: 'bad.jpg' })).status, 400);
     assert.equal((await request(`/${id}/images`, { method: 'POST', raw: Buffer.alloc(influencers.MAX_IMAGE_BYTES + 1), filename: 'large.png' })).status, 413);
     assert.equal((await request('/claudia/images', { method: 'POST', raw: png, filename: 'face.png' })).status, 403);
@@ -280,7 +392,7 @@ async function apiTests() {
     assert.equal(builtinAsset.headers.get('content-type'), 'image/jpeg');
     assert.ok(builtinAsset.buffer.length > 1000);
     assert.equal((await request(`/claudia/images/${claudia.images[0]}`, { method: 'DELETE' })).status, 403);
-    const shared = await create({}, { viewer: admin });
+    const shared = await create({}, { viewer: null });
     assert.equal((await request(`/${shared.id}`, { method: 'PATCH', body: { name: 'Other' } })).status, 403);
     assert.equal((await request(`/${shared.id}`, { viewer: 'guest' })).status, 404);
     assert.equal((await request(`/${id}`, { method: 'DELETE' })).status, 200);
@@ -293,6 +405,105 @@ async function apiTests() {
     access.viewerOf = originalViewerOf;
     await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
   }
+}
+
+async function apiSharingTests(request, id, apiAdmin) {
+  const legacy = await create({ name: 'Legacy HTTP' }, { viewer: null });
+  await influencers.saveInfluencerImage(legacy.id, { filename: 'Query.png', buffer: png });
+  const raw = await influencers.readInfluencer(legacy.id);
+  delete raw.open;
+  delete raw.owner;
+  await influencers.writeInfluencer(raw);
+  for (const recordId of [id, legacy.id]) {
+    for (const open of [false, true]) {
+      const changed = await request(`/${recordId}`, { method: 'PATCH', viewer: 'admin', body: { open } });
+      assert.equal(changed.status, 200);
+      assert.equal(changed.body.open, open);
+      for (const [role, viewer] of Object.entries(viewers)) {
+        const visible = recordId === legacy.id
+          ? !access.isRestricted(viewer) || (open && Boolean(viewer.email))
+          : ['alice', 'admin'].includes(role) || (open && Boolean(viewer.email));
+        const detail = await request(`/${recordId}`, { viewer: role });
+        const asset = await request(`/${recordId}/assets/Query.png`, { viewer: role });
+        const listed = (await request('', { viewer: role })).body.influencers.find((entry) => entry.id === recordId);
+        assert.equal(detail.status, visible ? 200 : 404, `${role} open=${open} detail`);
+        assert.equal(asset.status, visible ? 200 : 404, `${role} open=${open} asset`);
+        assert.equal(Boolean(listed), visible, `${role} open=${open} list`);
+        if (visible) {
+          const editable = role === 'admin' || (recordId === id && role === 'alice');
+          const claimable = role === 'admin' && recordId === legacy.id;
+          assert.equal(detail.body.open, open);
+          assert.equal(detail.body.editable, editable);
+          assert.equal(detail.body.own, recordId === id && role === 'alice');
+          assert.equal(detail.body.claimable, claimable);
+          assert.equal(listed.open, open);
+          assert.equal(listed.editable, editable);
+          assert.equal(listed.claimable, claimable);
+          if (!editable) {
+            assert.equal(detail.body.owner, null);
+            assert.equal('by' in detail.body.consent, false);
+            assert.equal('owner' in listed, false);
+          }
+        }
+      }
+      // These paths must stop at the access check, before parsing missing proposals or contacting the host.
+      for (const role of ['bob', 'participant', 'guest']) {
+        for (const [method, suffix, body] of [
+          ['PATCH', '', { open: false }], ['DELETE', ''],
+          ['POST', '/images'], ['DELETE', '/images/Query.png'],
+          ['GET', '/sheet'], ['POST', '/sheet', {}], ['GET', '/sheet/proposals/x.png'],
+          ['POST', '/sheet/proposals/x.png/accept', {}], ['DELETE', '/sheet/proposals/x.png'],
+          ['GET', '/site'], ['PATCH', '/site', {}], ['GET', '/site/slug?slug=ada'],
+          ['POST', '/site/items', {}], ['DELETE', '/site/items/missing'],
+          ['GET', '/site/preview'], ['GET', '/site/preview/assets/styles.css'], ['POST', '/site/publish', {}]
+        ]) {
+          const result = await request(`/${recordId}${suffix}`, { method, viewer: role, body,
+            ...(suffix === '/images' ? { raw: png, filename: 'new.png' } : {}) });
+          const visible = recordId === legacy.id ? role === 'bob' || open : open;
+          assert.equal(result.status, visible ? 403 : 404, `${method} ${suffix}, ${role}, open=${open}`);
+          assert.equal(result.body.code, visible ? 'INFLUENCER_FORBIDDEN' : 'INFLUENCER_NOT_FOUND');
+        }
+      }
+    }
+  }
+  for (const open of ['true', 1, null, {}]) {
+    const result = await request(`/${id}`, { method: 'PATCH', body: { open } });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, 'INFLUENCER_INVALID');
+  }
+  const deniedCopy = await request(`/${id}/duplicate`, { method: 'POST', viewer: 'bob', body: {} });
+  assert.equal(deniedCopy.body.code, 'INFLUENCER_CONSENT_REQUIRED');
+  const copy = await request(`/${id}/duplicate`, { method: 'POST', viewer: 'bob', body: { consent: true } });
+  assert.equal(copy.status, 201);
+  ids.add(copy.body.id);
+  assert.equal(copy.body.owner, bob.email);
+  assert.equal(copy.body.open, false);
+  const made = await request('', { method: 'POST', viewer: 'apiAdmin', body: { ...data, consent: true, open: true } });
+  assert.equal(made.status, 201);
+  ids.add(made.body.id);
+  assert.equal(made.body.owner, apiAdmin.email);
+  assert.equal(made.body.open, false);
+  assert.equal(influencers.ownerOf(await influencers.readInfluencer(legacy.id)), null);
+  for (const claim of [false, 'yes']) {
+    const result = await request(`/${legacy.id}`, { method: 'PATCH', viewer: 'apiAdmin', body: { claim } });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, 'INFLUENCER_INVALID');
+  }
+  const deniedClaim = await request(`/${legacy.id}`, { method: 'PATCH', body: { claim: true } });
+  assert.equal(deniedClaim.status, 403);
+  assert.equal(deniedClaim.body.code, 'INFLUENCER_FORBIDDEN');
+  const limited = await request(`/${legacy.id}`, { method: 'PATCH', viewer: 'admin', body: { claim: true } });
+  assert.equal(limited.status, 409);
+  assert.equal(limited.body.code, 'INFLUENCER_LIMIT');
+  const claimed = await request(`/${legacy.id}`, { method: 'PATCH', viewer: 'apiAdmin', body: { claim: true, name: 'Taken', open: true } });
+  assert.equal(claimed.status, 200);
+  assert.equal(claimed.body.owner, apiAdmin.email);
+  assert.equal(claimed.body.open, true);
+  assert.equal((await request(`/${legacy.id}`, { viewer: 'apiAdmin' })).body.claimable, false);
+  const owned = await request(`/${legacy.id}`, { method: 'PATCH', viewer: 'apiAdmin', body: { claim: true } });
+  assert.equal(owned.status, 409);
+  assert.equal(owned.body.code, 'INFLUENCER_OWNED');
+  await influencers.updateInfluencer(id, { open: false });
 }
 
 async function main() {

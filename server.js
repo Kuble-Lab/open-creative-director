@@ -1860,7 +1860,7 @@ function influencerError(res, err) {
   if (failAccountRule(res, err)) return;
   const status = err.code === 'INFLUENCER_NOT_FOUND' ? 404
     : ['INFLUENCER_FORBIDDEN', 'INFLUENCER_READONLY'].includes(err.code) ? 403
-      : ['INFLUENCER_LIMIT', 'INFLUENCER_SHEET_BUSY', 'INFLUENCER_SHEET_ESTIMATE_CHANGED', 'INFLUENCER_SHEET_UNAVAILABLE'].includes(err.code) ? 409
+      : ['INFLUENCER_LIMIT', 'INFLUENCER_OWNED', 'INFLUENCER_SHEET_BUSY', 'INFLUENCER_SHEET_ESTIMATE_CHANGED', 'INFLUENCER_SHEET_UNAVAILABLE'].includes(err.code) ? 409
         : err.code === 'INFLUENCER_IMAGE_TOO_LARGE' ? 413
           : String(err.code || '').startsWith('INFLUENCER_') ? 400 : 500;
   res.status(status).json({ error: err.message, code: err.code || 'INFLUENCER_ERROR',
@@ -1907,7 +1907,8 @@ app.get('/api/influencers/:id', async (req, res) => {
     const editable = influencers.editableBy(influencer, viewer);
     // who confirmed and who owns it is for the people who may change it, not for everybody who may use a shared one
     const shown = editable ? influencer : { ...influencer, owner: null, consent: influencer.consent ? { confirmedAt: influencer.consent.confirmedAt } : null };
-    res.json({ ...shown, editable });
+    const { own, claimable } = influencers.influencerSummary(influencer, { viewer });
+    res.json({ ...shown, editable, own, claimable });
   } catch (err) { influencerError(res, err); }
 });
 
@@ -1915,8 +1916,9 @@ app.patch('/api/influencers/:id', async (req, res) => {
   const id = requireInfluencerId(req, res);
   if (!id) return;
   try {
-    await influencers.readEditableInfluencer(id, access.viewerOf(req));
-    res.json(await influencers.updateInfluencer(id, req.body));
+    const viewer = access.viewerOf(req);
+    await influencers.readEditableInfluencer(id, viewer);
+    res.json(await influencers.updateInfluencer(id, req.body, { viewer }));
   } catch (err) { influencerError(res, err); }
 });
 

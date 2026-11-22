@@ -952,6 +952,22 @@ async function testRulesTable(ctx) {
     assert.equal((await image(P1)).status, 201);
     assert.equal((await call(P1, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, 200);
     assert.equal((await call(P2, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, 404);
+    for (const open of [true, false]) {
+      assert.equal((await call(P1, 'PATCH', base, { open })).status, 200);
+      for (const who of [P2, GUEST, STAFF]) {
+        assert.equal((await call(who, 'GET', base)).status, open ? 200 : 404);
+        assert.equal((await call(who, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, open ? 200 : 404);
+        const summaries = (await call(who, 'GET', '/api/influencers')).body.influencers;
+        assert.equal(summaries.some((item) => item.id === figureId), open);
+        assert.equal((await call(who, 'PATCH', base, { open: false })).status, open ? 403 : 404);
+      }
+      // The installation-wide unconfirmed-login guard still runs before influencer visibility checks.
+      for (const url of ['/api/influencers', base, `${base}/assets/bild.png`]) {
+        const denied = await call(null, 'GET', url);
+        assert.equal(denied.status, 401);
+        assert.equal(denied.body.code, 'LOGIN_UNCONFIRMED');
+      }
+    }
     // The page editor follows the influencer's edit rights, including its preview and publishing routes.
     const pageHost = iso.load('lib/rtk-host').defaultHost;
     const originalHost = { ...pageHost };
