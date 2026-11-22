@@ -926,6 +926,48 @@ async function testRulesTable(ctx) {
     assert.equal((await call(P1, 'DELETE', `/api/brandings/${mineId}`)).status, 200);
     assert.deepEqual((await call(P1, 'GET', '/api/brandings')).body.brandings, []);
   }
+  // influencers: participants and guests have their own; the character sheet (paid) and its proposals follow the same edit rights
+  {
+    const influencers = iso.load('lib/influencers');
+    const listed = (await call(P1, 'GET', '/api/influencers')).body.influencers;
+    assert.ok(listed.every((item) => item.builtin || item.own), 'a participant sees the built-in figure and their own');
+    const made = await call(P1, 'POST', '/api/influencers', { name: 'Testfigur', full: 'A calm person in a blue coat', consent: true });
+    assert.equal(made.status, 201, made.text);
+    const figureId = made.body.id;
+    const base = `/api/influencers/${figureId}`;
+    assert.equal((await call(P1, 'GET', base)).status, 200);
+    assert.equal((await call(P2, 'GET', base)).status, 404, 'not the influencer of another participant');
+    assert.equal((await call(GUEST, 'PATCH', base, { name: 'x' })).status, 404);
+    assert.equal((await call(P1, 'PATCH', base, { tagline: 'ruhig' })).status, 200);
+    const image = (who) => call(who, 'POST', `${base}/images`, undefined, { body: PNG, headers: { 'content-type': 'image/png', 'x-file-name': 'bild.png' } });
+    assert.equal((await image(P2)).status, 404);
+    assert.equal((await image(P1)).status, 201);
+    assert.equal((await call(P1, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, 200);
+    assert.equal((await call(P2, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, 404);
+    // character sheet: nothing is generated without the confirmed estimate, and never for somebody else's figure
+    assert.equal((await call(P1, 'GET', `${base}/sheet`)).body.estimate.count, 4);
+    assert.equal((await call(P2, 'GET', `${base}/sheet`)).status, 404);
+    assert.equal((await call(P1, 'POST', `${base}/sheet`, {})).status, 400, 'no confirmation, no generation');
+    assert.equal((await call(P2, 'POST', `${base}/sheet`, { confirmed: true, confirmedUsd: null })).status, 404);
+    assert.equal((await call(GUEST, 'POST', '/api/influencers/claudia/sheet', { confirmed: true, confirmedUsd: null })).status, 403, 'the built-in figure is read-only');
+    const proposals = path.join(influencers.influencerDir(figureId), 'assets', 'proposals');
+    await fsp.mkdir(proposals, { recursive: true });
+    for (const name of ['sheet-front-0a0a0a0a.png', 'sheet-profile-0b0b0b0b.png']) await fsp.writeFile(path.join(proposals, name), PNG);
+    assert.equal((await call(P1, 'GET', `${base}/sheet/proposals/sheet-front-0a0a0a0a.png`, undefined, { raw: true })).status, 200);
+    assert.equal((await call(P2, 'GET', `${base}/sheet/proposals/sheet-front-0a0a0a0a.png`, undefined, { raw: true })).status, 404);
+    assert.equal((await call(P2, 'POST', `${base}/sheet/proposals/sheet-front-0a0a0a0a.png/accept`, {})).status, 404);
+    assert.equal((await call(GUEST, 'DELETE', `${base}/sheet/proposals/sheet-profile-0b0b0b0b.png`)).status, 404);
+    const accepted = await call(P1, 'POST', `${base}/sheet/proposals/sheet-front-0a0a0a0a.png/accept`, {});
+    assert.equal(accepted.status, 200, accepted.text);
+    assert.equal(accepted.body.influencer.images.length, 2);
+    assert.deepEqual((await call(P1, 'DELETE', `${base}/sheet/proposals/sheet-profile-0b0b0b0b.png`)).body.proposals, []);
+    assert.equal((await call(P1, 'DELETE', `${base}/images/bild.png`)).status, 200);
+    const copy = await call(P1, 'POST', `${base}/duplicate`, { consent: true });
+    assert.equal(copy.status, 201, copy.text);
+    assert.equal((await call(P2, 'DELETE', base)).status, 404);
+    assert.equal((await call(P1, 'DELETE', `/api/influencers/${copy.body.id}`)).status, 200);
+    assert.equal((await call(P1, 'DELETE', base)).status, 200);
+  }
   assert.deepEqual((await call(P1, 'GET', '/api/roles')).body.roles, []);
   assert.equal((await call(P1, 'GET', '/api/roles/default')).status, 200);
   assert.equal((await call(P1, 'GET', '/api/workflow-templates')).status, 200);

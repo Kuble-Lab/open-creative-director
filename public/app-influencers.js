@@ -5,6 +5,10 @@
 // app as a read-only example; "Make a copy" turns her (or one's own) into a new one. Making one needs the confirmation that the figure
 // shows no real person without their consent; the server asks for it too.
 //
+// "Character sheet" (edit view, for whoever may edit the influencer): four proposal images of the figure made from the saved description
+// (lib/influencer-sheet.js, /api/influencers/:id/sheet). It costs money: the button only opens the estimate, the images are made after the
+// explicit click on "Generate for about X USD". The results are proposals; each one is accepted as a reference image or discarded.
+//
 // Loaded after the chat scripts; it uses their helpers (api, rel, t, setStatus, textNode, managerAction, formatDate) only when it is used.
 
 (function initInfluencers() {
@@ -38,6 +42,11 @@
 
   // view: 'list', 'new' or 'edit' (with `current`, the influencer as the server gave it)
   const ui = { view: 'list', list: [], maxOwned: 10, owned: 0, current: null, loading: false, error: '', pendingDelete: null, pendingCopy: null, busy: false };
+  // the character sheet of the influencer in the edit view: `data` is what GET .../sheet gave ({ estimate, proposals, job }); `watched` says
+  // that this window saw the run, so its end (or its error) is reported here
+  const SHEET_POLL_MS = 2000;
+  const sheet = { data: null, loading: false, failed: false, error: '', note: '', confirm: false, busy: false, watched: false, timer: null };
+  let mediaNode = null; // the part of the form with the images and the sheet; re-rendered alone, so typed text stays
 
   const isOpen = () => !modal.classList.contains('hidden');
   const assetUrl = (id, file) => rel(`api/influencers/${encodeURIComponent(id)}/assets/${encodeURIComponent(file)}`);
@@ -227,8 +236,15 @@
     }
     form.appendChild(voice);
 
-    if (!creating) form.appendChild(imagesBlock(influencer, editable));
-    else form.appendChild(element('p', 'influencer-note', t('influencers.imagesAfterCreate')));
+    if (!creating) {
+      mediaNode = element('div', 'influencer-media');
+      form.appendChild(mediaNode);
+      renderMedia();
+      if (editable && !sheet.data && !sheet.loading && !sheet.failed) loadSheet(influencer.id);
+    } else {
+      mediaNode = null;
+      form.appendChild(element('p', 'influencer-note', t('influencers.imagesAfterCreate')));
+    }
 
     if (editable) {
       const save = managerAction(creating ? t('influencers.create') : t('common.save'), () => {});
@@ -321,6 +337,237 @@
     return block;
   }
 
+  /* ---------- the character sheet ---------- */
+
+  const sheetPath = (id, tail = '') => `/api/influencers/${encodeURIComponent(id)}/sheet${tail}`;
+  const proposalPath = (id, file, tail = '') => sheetPath(id, `/proposals/${encodeURIComponent(file)}${tail}`);
+  const showing = (id) => isOpen() && ui.view === 'edit' && ui.current?.id === id;
+  const usdText = (usd) => Math.max(0.01, Number(usd) || 0).toFixed(2);
+
+  function stopSheetPoll() {
+    clearTimeout(sheet.timer);
+    sheet.timer = null;
+  }
+
+  function resetSheet() {
+    stopSheetPoll();
+    Object.assign(sheet, { data: null, loading: false, failed: false, error: '', note: '', confirm: false, busy: false, watched: false });
+  }
+
+  // The images and the sheet of the open influencer, without touching the fields of the form.
+  function renderMedia() {
+    if (!mediaNode || ui.view !== 'edit' || !ui.current) return;
+    const editable = ui.current.editable === true && !ui.current.builtin;
+    mediaNode.replaceChildren(imagesBlock(ui.current, editable));
+    if (editable) mediaNode.appendChild(sheetBlock(ui.current));
+  }
+
+  function sheetBlock(influencer) {
+    const block = element('div', 'influencer-group influencer-sheet');
+    block.appendChild(element('div', 'influencer-field-label', t('influencers.sheet.title')));
+    if (sheet.error) block.appendChild(element('div', 'branding-import-feedback error', sheet.error));
+    const data = sheet.data;
+    if (!data) {
+      if (sheet.loading) block.appendChild(element('p', 'influencer-field-hint', t('influencers.sheet.loading')));
+      return block;
+    }
+    const estimate = data.estimate || {};
+    const job = data.job;
+    const running = job?.state === 'running';
+    if (sheet.note) block.appendChild(element('p', 'influencer-sheet-note', sheet.note));
+
+    if (running) {
+      const total = Number(job.total) || 4;
+      const progress = element('p', 'influencer-sheet-progress', t('influencers.sheet.progress', { n: Math.min((Number(job.done) || 0) + 1, total), total }));
+      progress.setAttribute('role', 'status');
+      block.appendChild(progress);
+    } else if (sheet.confirm && estimate.available) {
+      block.appendChild(sheetConfirm(influencer, estimate));
+    } else {
+      const start = managerAction(t('influencers.sheet.button'), () => {
+        sheet.confirm = true;
+        sheet.error = '';
+        sheet.note = '';
+        renderMedia();
+      }, { disabled: !estimate.available });
+      block.appendChild(start);
+      const reason = estimate.available ? '' : t(`influencers.sheet.unavailable.${['no_model', 'no_key', 'budget'].includes(estimate.reason) ? estimate.reason : 'no_model'}`);
+      block.appendChild(element('p', 'influencer-field-hint', reason ? `${reason} ${t('influencers.sheet.explain')}` : t('influencers.sheet.explain')));
+    }
+
+    const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+    if (proposals.length) block.appendChild(proposalGrid(influencer, proposals, running));
+    return block;
+  }
+
+  // The estimate and the explicit paid click. Nothing is generated before "Generate for about X USD".
+  function sheetConfirm(influencer, estimate) {
+    const box = element('div', 'influencer-sheet-confirm');
+    const model = estimate.modelLabel || estimate.model || '';
+    const count = Number(estimate.count) || 4;
+    box.appendChild(element('p', 'influencer-sheet-price', estimate.usd === null || estimate.usd === undefined
+      ? t('influencers.sheet.confirm.priceUnknown', { n: count, model })
+      : t('influencers.sheet.confirm.price', { n: count, model, usd: usdText(estimate.usd) })));
+    const lines = element('ul', 'influencer-sheet-facts');
+    if (estimate.references > 0) lines.appendChild(element('li', '', t('influencers.sheet.confirm.references', { n: estimate.references })));
+    lines.appendChild(element('li', '', t('influencers.sheet.confirm.saved')));
+    lines.appendChild(element('li', '', t('influencers.sheet.confirm.replace')));
+    box.appendChild(lines);
+    const go = managerAction(estimate.usd === null || estimate.usd === undefined
+      ? t('influencers.sheet.goUnknown')
+      : t('influencers.sheet.go', { usd: usdText(estimate.usd) }), () => {
+      go.disabled = true;
+      generateSheet(influencer.id);
+    }, { disabled: sheet.busy });
+    go.classList.add('primary');
+    const row = element('div', 'branding-card-actions');
+    row.append(go, managerAction(t('common.cancel'), () => {
+      sheet.confirm = false;
+      sheet.note = '';
+      renderMedia();
+    }, { disabled: sheet.busy }));
+    box.appendChild(row);
+    return box;
+  }
+
+  function proposalGrid(influencer, proposals, running) {
+    const wrap = element('div', 'influencer-proposals');
+    wrap.appendChild(element('div', 'influencer-field-label', t('influencers.sheet.proposals')));
+    const grid = element('div', 'influencer-proposal-grid');
+    const full = (Array.isArray(influencer.images) ? influencer.images.length : 0) >= MAX_IMAGES;
+    for (const proposal of proposals) {
+      const tile = element('figure', 'influencer-proposal');
+      const shot = ['front', 'threequarter', 'profile', 'fullbody'].includes(proposal.shot) ? t(`influencers.sheet.shot.${proposal.shot}`) : '';
+      const image = document.createElement('img');
+      image.src = rel(proposalPath(influencer.id, proposal.file));
+      image.alt = shot;
+      image.loading = 'lazy';
+      tile.appendChild(image);
+      tile.appendChild(element('figcaption', '', shot));
+      if (!running) {
+        const actions = element('div', 'influencer-proposal-actions');
+        const accept = managerAction(t('influencers.sheet.accept'), () => {
+          accept.disabled = true;
+          decideProposal(influencer.id, proposal.file, true);
+        }, { disabled: full });
+        if (full) accept.title = t('influencers.sheet.full', { max: MAX_IMAGES });
+        const discard = managerAction(t('influencers.sheet.discard'), () => {
+          discard.disabled = true;
+          decideProposal(influencer.id, proposal.file, false);
+        });
+        actions.append(accept, discard);
+        tile.appendChild(actions);
+      }
+      grid.appendChild(tile);
+    }
+    wrap.appendChild(grid);
+    wrap.appendChild(element('p', 'influencer-field-hint', full
+      ? `${t('influencers.sheet.full', { max: MAX_IMAGES })} ${t('influencers.sheet.proposalsHint')}`
+      : t('influencers.sheet.proposalsHint')));
+    return wrap;
+  }
+
+  async function loadSheet(id) {
+    sheet.loading = true;
+    try {
+      const data = await api(sheetPath(id));
+      if (!showing(id)) return;
+      sheet.data = data;
+      sheet.error = '';
+    } catch (err) {
+      if (!showing(id)) return;
+      sheet.failed = true;
+      sheet.error = err.message;
+    } finally {
+      sheet.loading = false;
+    }
+    renderMedia();
+    if (sheet.data?.job?.state === 'running') {
+      sheet.watched = true;
+      pollSheet(id);
+    }
+  }
+
+  // Looks again every two seconds while the images are made; stops when the window or the view changes.
+  function pollSheet(id) {
+    stopSheetPoll();
+    sheet.timer = setTimeout(async () => {
+      sheet.timer = null;
+      if (!showing(id)) return;
+      let gone = false;
+      try {
+        sheet.data = await api(sheetPath(id));
+      } catch (err) {
+        gone = err.status === 403 || err.status === 404;
+        if (gone) sheet.error = err.message;
+      }
+      if (!showing(id)) return;
+      const job = sheet.data?.job;
+      if (!gone && job?.state === 'running') {
+        renderMedia();
+        pollSheet(id);
+        return;
+      }
+      if (!gone && job && sheet.watched) {
+        sheet.watched = false;
+        const facts = { n: Number(job.done) || 0, total: Number(job.total) || 4 };
+        if (job.error) sheet.error = t('influencers.sheet.partial', { ...facts, error: job.error });
+        else setStatusI18n('influencers.sheet.done', facts);
+      }
+      renderMedia();
+    }, SHEET_POLL_MS);
+  }
+
+  async function generateSheet(id) {
+    if (sheet.busy || !sheet.data) return;
+    sheet.busy = true;
+    sheet.error = '';
+    sheet.note = '';
+    try {
+      const started = await api(sheetPath(id), { method: 'POST', body: JSON.stringify({ confirmed: true, confirmedUsd: sheet.data.estimate?.usd ?? null }) });
+      if (!showing(id)) return;
+      sheet.data = { ...sheet.data, estimate: started.estimate || sheet.data.estimate, job: started.job, proposals: [] };
+      sheet.confirm = false;
+      sheet.watched = true;
+      pollSheet(id);
+    } catch (err) {
+      if (!showing(id)) return;
+      if (err.code === 'INFLUENCER_SHEET_ESTIMATE_CHANGED' && err.body?.estimate) {
+        // the confirmation stays open with the new price
+        sheet.data = { ...sheet.data, estimate: err.body.estimate };
+        sheet.note = t('influencers.sheet.priceChanged');
+      } else if (err.code === 'INFLUENCER_SHEET_BUSY') {
+        sheet.confirm = false;
+        sheet.note = t('influencers.sheet.busy');
+        sheet.watched = true;
+        loadSheet(id);
+      } else {
+        sheet.confirm = false;
+        sheet.error = err.message;
+      }
+    } finally {
+      sheet.busy = false;
+    }
+    if (showing(id)) renderMedia();
+  }
+
+  // "Accept" makes the proposal a reference image, "Discard" removes it.
+  async function decideProposal(id, file, accept) {
+    sheet.error = '';
+    sheet.note = '';
+    try {
+      const answer = await api(proposalPath(id, file, accept ? '/accept' : ''), { method: accept ? 'POST' : 'DELETE' });
+      if (!showing(id)) return;
+      if (accept && Array.isArray(answer.influencer?.images)) ui.current = { ...ui.current, images: answer.influencer.images };
+      sheet.data = { ...sheet.data, proposals: Array.isArray(answer.proposals) ? answer.proposals : [] };
+      setStatusI18n(accept ? 'influencers.sheet.accepted' : 'influencers.sheet.discarded');
+    } catch (err) {
+      if (!showing(id)) return;
+      sheet.error = err.message;
+    }
+    renderMedia();
+  }
+
   /* ---------- what the buttons do ---------- */
 
   function fail(err) {
@@ -339,6 +586,7 @@
     ui.pendingDelete = null;
     ui.pendingCopy = null;
     if (view !== 'edit') ui.current = null;
+    resetSheet();
     render();
     body.scrollTop = 0;
     if (view === 'list') refresh().catch(fail);
@@ -437,6 +685,7 @@
   function close() {
     modal.classList.add('hidden');
     ui.current = null;
+    resetSheet();
   }
 
   openButton.addEventListener('click', () => {
