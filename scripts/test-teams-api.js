@@ -362,6 +362,12 @@ async function testTeamAdminApi(ctx) {
 async function testIdentities({ api, teamA, teamB }) {
   // Personal Suno access is available to participants and guests, independently of admin settings.
   for (const email of [P1, GUEST]) {
+    assert.deepEqual((await api('/api/website-host/status', { as: email })).body, { enabled: false, connected: false, canManage: false });
+    for (const [method, endpoint] of [['POST', 'connect'], ['GET', 'oauth/callback'], ['DELETE', 'auth']]) {
+      const result = await api('/api/website-host/' + endpoint, { method, as: email, ...(method === 'GET' ? {} : { json: {} }) });
+      assert.equal(result.status, 404);
+      assert.equal(result.body.code, 'HOST_DISABLED');
+    }
     assert.deepEqual((await api('/api/suno/status', { as: email })).body, { connected: false });
     for (const endpoint of ['account', 'usage', 'library']) {
       assert.equal((await api('/api/suno/' + endpoint, { as: email })).status, 409);
@@ -699,7 +705,9 @@ async function testRulesTable(ctx) {
     const [method, url] = concrete(route);
     for (const email of [P1, GUEST]) {
       const response = await call(email, method, url, method === 'GET' ? undefined : {});
-      assert.equal(response.status, rule === 'admin' ? 403 : 404, `${route} as ${email}`);
+      // An unconfigured website host is disabled for every role.
+      const expected = url.startsWith('/api/website-host/') ? 404 : rule === 'admin' ? 403 : 404;
+      assert.equal(response.status, expected, `${route} as ${email}`);
     }
   }
   assert.equal((await call(P1, 'GET', '/monitoring.html', undefined, { raw: true })).status, 404);
@@ -944,6 +952,23 @@ async function testRulesTable(ctx) {
     assert.equal((await image(P1)).status, 201);
     assert.equal((await call(P1, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, 200);
     assert.equal((await call(P2, 'GET', `${base}/assets/bild.png`, undefined, { raw: true })).status, 404);
+    // The page editor follows the influencer's edit rights, including its preview and publishing routes.
+    const pageHost = iso.load('lib/rtk-host').defaultHost;
+    const originalHost = { ...pageHost };
+    Object.assign(pageHost, { enabled: () => true, status: () => ({ connected: false }), call: async () => ({}) });
+    try {
+      const siteBase = `${base}/site`;
+      assert.equal((await call(P1, 'GET', siteBase)).status, 200);
+      for (const [method, suffix, body] of [
+        ['GET', '', undefined], ['PATCH', '', { about: 'Eigene Seite' }], ['GET', '/slug?slug=testfigur', undefined],
+        ['POST', '/items', {}], ['DELETE', '/items/unknown', undefined], ['GET', '/preview', undefined],
+        ['GET', '/preview/*', undefined], ['POST', '/publish', {}]
+      ]) assert.equal((await call(P2, method, siteBase + suffix, body)).status, 404, `${method} ${suffix}: another participant`);
+      assert.equal((await call(P1, 'PATCH', siteBase, { about: 'Eigene Seite' })).status, 200);
+      assert.equal((await call(P1, 'GET', `${siteBase}/preview/`)).status, 200);
+      assert.equal((await call(P1, 'POST', `${siteBase}/publish`, {})).body.code, 'HOST_NOT_CONNECTED');
+      assert.equal((await call(P1, 'GET', '/api/influencers/claudia/site')).status, 403);
+    } finally { Object.assign(pageHost, originalHost); }
     // character sheet: nothing is generated without the confirmed estimate, and never for somebody else's figure
     assert.equal((await call(P1, 'GET', `${base}/sheet`)).body.estimate.count, 4);
     assert.equal((await call(P2, 'GET', `${base}/sheet`)).status, 404);

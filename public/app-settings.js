@@ -831,6 +831,7 @@ async function openSettingsModal(tab) {
   resetHiggsfieldDisconnect();
   resetChatGPTDisconnect();
   showSettingsFeedback('');
+  if (typeof OCInfluencerSite !== 'undefined') OCInfluencerSite.refreshHost();
   renderSettings();
   renderAdmins();
   renderRenderNodes();

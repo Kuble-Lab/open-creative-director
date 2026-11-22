@@ -110,6 +110,13 @@
     return el('a', { class: className || 'nv-pv-tool', href: ui.mediaUrl(value), download: fileNameOf(value), title: label, 'aria-label': label, rel: 'noopener' }, icon('download', 13));
   }
 
+  // "Auf die Seite von ...": puts an image or video result on the page of one's own AI influencer (public/influencer-site-ui.js).
+  function siteButton(value, className) {
+    if (!global.OCInfluencerSite || !value || !value.sessionId || !value.assetId) return null;
+    return global.OCInfluencerSite.addButton({ sessionId: value.sessionId, assetId: value.assetId, kind: value.type,
+      className: className || 'nv-pv-tool', icon: icon('external', className ? 16 : 13) });
+  }
+
   function copyButton(getText, className) {
     const label = T('nodes.preview.copy');
     const button = el('button', { type: 'button', class: className || 'nv-pv-tool', title: label, 'aria-label': label }, icon('copy', 13));
@@ -497,7 +504,11 @@
       } else {
         stage.append(el('div', { class: 'nv-viewer-number', text: String(value.value) }));
       }
-      if (isMedia(value)) actions.append(downloadLink(value, 'nv-viewer-btn'));
+      if (isMedia(value)) {
+        actions.append(downloadLink(value, 'nv-viewer-btn'));
+        const toSite = siteButton(value, 'nv-viewer-btn');
+        if (toSite) actions.append(toSite);
+      }
       else {
         actions.append(copyButton(() => String(value.value), 'nv-viewer-btn'));
         const save = el('button', { type: 'button', class: 'nv-viewer-btn', title: T('nodes.preview.download'), 'aria-label': T('nodes.preview.download') }, icon('download', 16));
@@ -657,6 +668,7 @@
     copyText,
     download,
     downloadLink,
+    siteButton,
     copyButton,
     mediaNode,
     modelNode,

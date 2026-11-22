@@ -83,6 +83,10 @@ Open [OpenCreator.xcodeproj](ios/OpenCreator.xcodeproj) in Xcode 16 or newer and
 
 Keys can also be entered at runtime in **Menu → Settings** (stored server-side in `data/settings.json`, chmod 600, never in the repo) — they override `.env` without a restart.
 
+### Website host (optional)
+
+An external website host publishes the pages of AI influencers through MCP over HTTP and OAuth. Set `WEBSITE_HOST_MCP_URL` or `websiteHost.mcpUrl` in `config.json`; there is no default address, and the connection is disabled without a valid setting. Only admins connect or disconnect this installation-wide account. Enter a voucher only on the host's own authorization page: it never reaches this app. OAuth credentials are encrypted in `data/website-host/`. Set `PUBLIC_BASE_URL` to the app's HTTPS base for the callback `/api/website-host/oauth/callback`; local mode also accepts a loopback request address.
+
 ## How it works
 
 ```
