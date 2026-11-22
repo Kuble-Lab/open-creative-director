@@ -22,7 +22,7 @@ const { createDropboxArchive, createContentHasher, ArchiveError, HASH_BLOCK, UPL
 const page = require('../public/storage.js');
 
 const ADMIN = { active: true, email: 'admin@example.com', identified: true, admin: true, superadmin: false, kind: 'admin', teamIds: [] };
-const ALICE = { active: true, email: 'carol@example.com', identified: true, admin: false, superadmin: false, kind: 'internal', teamIds: [] };
+const ALICE = { active: true, email: `carol-${crypto.randomBytes(4).toString('hex')}@example.com`, identified: true, admin: false, superadmin: false, kind: 'internal', teamIds: [] };
 
 function hashOf(buffer) {
   const hasher = createContentHasher();
@@ -182,7 +182,7 @@ async function main() {
   assert.deepEqual(started.failed.map((item) => item.code), ['NOT_ARCHIVABLE', 'NOT_FOUND', 'NOT_FOUND']);
   // while it works: the state is in the overview, a second start and a delete are refused
   const during = await storage.overview({ viewer: ADMIN, scope: 'all' });
-  assert.ok(['queued', 'archiving'].includes(during.files.find((file) => file.file === big.file).job));
+  assert.ok(['queued', 'archiving'].includes(during.files.find((file) => file.sessionId === chat.id && file.file === big.file).job));
   assert.equal((await storage.archive({ viewer: ADMIN, items: [{ sessionId: chat.id, file: big.file }] })).failed[0].code, 'BUSY');
   assert.equal((await storage.remove({ viewer: ADMIN, items: [{ sessionId: chat.id, file: small.file }] })).failed[0].code, 'BUSY');
   await storage.whenIdle();
@@ -197,7 +197,7 @@ async function main() {
   assert.deepEqual({ provider: mark.provider, path: mark.path, size: mark.size, contentHash: mark.contentHash }, { provider: 'dropbox', path: remoteBig, size: bigBytes.length, contentHash: hashOf(bigBytes) });
 
   const after = await storage.overview({ viewer: ALICE });
-  const row = after.files.find((file) => file.file === big.file);
+  const row = after.files.find((file) => file.sessionId === chat.id && file.file === big.file);
   assert.equal(row.archived, true);
   assert.equal(row.size, bigBytes.length);
   assert.equal(row.url, undefined, 'nothing to download from the server');
@@ -218,7 +218,7 @@ async function main() {
   dropbox.state.corruptDownloads = true;
   await storage.restore({ viewer: ADMIN, items: [{ sessionId: chat.id, file: big.file }] });
   await storage.whenIdle();
-  const damaged = (await storage.overview({ viewer: ADMIN, scope: 'all' })).files.find((file) => file.file === big.file);
+  const damaged = (await storage.overview({ viewer: ADMIN, scope: 'all' })).files.find((file) => file.sessionId === chat.id && file.file === big.file);
   assert.equal(damaged.job, 'error');
   assert.match(damaged.jobError, /bleibt im Archiv/);
   assert.ok(!fs.existsSync(fileOf(big)));
@@ -242,7 +242,7 @@ async function main() {
   const third = await store.saveAsset(chat.id, { kind: 'video', buffer: Buffer.alloc(3000, 3), ext: '.mp4', prompt: '' });
   await storage.archive({ viewer: ADMIN, items: [{ sessionId: chat.id, file: third.file }] });
   await storage.whenIdle();
-  const full = (await storage.overview({ viewer: ADMIN, scope: 'all' })).files.find((file) => file.file === third.file);
+  const full = (await storage.overview({ viewer: ADMIN, scope: 'all' })).files.find((file) => file.sessionId === chat.id && file.file === third.file);
   assert.equal(full.job, 'error');
   assert.match(full.jobError, /nicht genug Platz/);
   assert.ok(fs.existsSync(fileOf(third)));
