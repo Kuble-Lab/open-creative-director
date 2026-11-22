@@ -1,0 +1,309 @@
+{
+  "id": "social-clips",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Social clips from a film",
+  "description": "Upload a film with speech (interview, talk, podcast, webinar): the strongest passages come out as short portrait clips for Reels, Shorts, TikTok and LinkedIn, with captions burnt in, a text for each post and an overview of what was chosen and why. ElevenLabs hears the words, a language model picks the passages, ffmpeg cuts locally. Films up to 120 minutes.",
+  "requires": [
+    "elevenlabs",
+    "openrouter",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.video",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 120,
+        "title": "Film",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Instructions",
+        "params": {
+          "text": ""
+        }
+      },
+      {
+        "id": "n3",
+        "type": "video.social_clips",
+        "typeVersion": 1,
+        "x": 500,
+        "y": 160,
+        "title": "Social clips",
+        "params": {
+          "model": "",
+          "instructions": "",
+          "clip_count": 3,
+          "format": "9:16",
+          "framing": "face",
+          "min_seconds": 20,
+          "max_seconds": 60,
+          "max_chars": 22,
+          "language": "auto"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "video.captions",
+        "typeVersion": 1,
+        "x": 940,
+        "y": 60,
+        "title": "Burn in captions",
+        "params": {
+          "style": "karaoke",
+          "position": "bottom",
+          "uppercase": false
+        }
+      },
+      {
+        "id": "n5",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 20,
+        "params": {
+          "label": "Clips with captions"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 220,
+        "params": {
+          "label": "Clips without captions"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 420,
+        "params": {
+          "label": "Post texts"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 620,
+        "params": {
+          "label": "Overview of the clips"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "video"
+        },
+        "to": {
+          "node": "n3",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "text"
+        },
+        "to": {
+          "node": "n3",
+          "port": "instructions"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "clips"
+        },
+        "to": {
+          "node": "n4",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n3",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n4",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n4",
+          "port": "video"
+        },
+        "to": {
+          "node": "n5",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n3",
+          "port": "clips"
+        },
+        "to": {
+          "node": "n6",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n3",
+          "port": "posts"
+        },
+        "to": {
+          "node": "n7",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n3",
+          "port": "info"
+        },
+        "to": {
+          "node": "n8",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 500,
+        "y": 620,
+        "w": 360,
+        "h": 190,
+        "text": "Instructions are optional, for example \"only passages about pricing\" or \"clips for LinkedIn, factual\". The overview shows which passages were chosen and why. For a film in landscape the crop follows the face; set \"Framing\" to \"Whole frame on blur\" when slides or two people must stay visible. For a cleaner sound put \"Rough cut from recording\" before this node and connect its timing."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Social clips from a film",
+    "description": "Upload a film with speech. You get its strongest passages as short clips with captions, a text for each post and an overview.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "asset",
+        "label": "Film"
+      },
+      {
+        "node": "n3",
+        "param": "clip_count",
+        "label": "Number of clips"
+      },
+      {
+        "node": "n3",
+        "param": "format",
+        "label": "Format"
+      },
+      {
+        "node": "n2",
+        "param": "text",
+        "label": "Instructions (optional)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n5",
+        "label": "Clips with captions"
+      },
+      {
+        "node": "n6",
+        "label": "Clips without captions"
+      },
+      {
+        "node": "n7",
+        "label": "Post texts"
+      },
+      {
+        "node": "n8",
+        "label": "Overview of the clips"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Social Clips aus Film",
+      "description": "Lade einen Film mit Sprache hoch (Interview, Vortrag, Podcast, Webinar): Die stärksten Stellen kommen als kurze Hochformat-Clips für Reels, Shorts, TikTok und LinkedIn heraus, mit eingebrannten Untertiteln, einem Text für jeden Post und einer Übersicht, was gewählt wurde und warum. ElevenLabs hört die Wörter, ein Sprachmodell wählt die Stellen, ffmpeg schneidet lokal. Filme bis 120 Minuten.",
+      "node.n1": "Film",
+      "node.n2": "Anweisungen",
+      "node.n3": "Social Clips",
+      "node.n4": "Untertitel einbrennen",
+      "note.t1": "Die Anweisungen sind freiwillig, zum Beispiel «nur Stellen zum Thema Preise» oder «Clips für LinkedIn, sachlich». Die Übersicht zeigt, welche Stellen gewählt wurden und warum. Bei einem Film im Querformat folgt der Ausschnitt dem Gesicht; stelle «Bildausschnitt» auf «Ganzes Bild auf Unschärfe», wenn Folien oder zwei Personen sichtbar bleiben sollen. Für einen saubereren Ton setzt du «Rohschnitt aus Aufnahme» davor und verbindest dessen Zeiten.",
+      "param.n5.label": "Clips mit Untertiteln",
+      "param.n6.label": "Clips ohne Untertitel",
+      "param.n7.label": "Texte für die Posts",
+      "param.n8.label": "Übersicht der Clips",
+      "app.title": "Social Clips aus Film",
+      "app.description": "Lade einen Film mit Sprache hoch. Du erhältst seine stärksten Stellen als kurze Clips mit Untertiteln, einen Text für jeden Post und eine Übersicht.",
+      "app.input.n1.asset": "Film",
+      "app.input.n3.clip_count": "Anzahl Clips",
+      "app.input.n3.format": "Format",
+      "app.input.n2.text": "Anweisungen (freiwillig)",
+      "app.output.n5": "Clips mit Untertiteln",
+      "app.output.n6": "Clips ohne Untertitel",
+      "app.output.n7": "Texte für die Posts",
+      "app.output.n8": "Übersicht der Clips"
+    },
+    "es": {
+      "name": "Clips sociales de una película",
+      "description": "Sube una película con voz (entrevista, charla, podcast, webinar): los mejores pasajes salen como clips verticales cortos para Reels, Shorts, TikTok y LinkedIn, con subtítulos incrustados, un texto para cada publicación y un resumen de lo elegido y por qué. ElevenLabs oye las palabras, un modelo de lenguaje elige los pasajes y ffmpeg corta en local. Películas de hasta 120 minutos.",
+      "node.n1": "Película",
+      "node.n2": "Instrucciones",
+      "node.n3": "Clips sociales",
+      "node.n4": "Incrustar subtítulos",
+      "note.t1": "Las instrucciones son opcionales, por ejemplo «solo pasajes sobre precios» o «clips para LinkedIn, sobrios». El resumen muestra qué pasajes se eligieron y por qué. En una película horizontal el encuadre sigue la cara; pon «Encuadre» en «Imagen completa sobre desenfoque» si deben verse diapositivas o dos personas. Para un sonido más limpio, pon antes «Corte en bruto de una grabación» y conecta sus tiempos.",
+      "param.n5.label": "Clips con subtítulos",
+      "param.n6.label": "Clips sin subtítulos",
+      "param.n7.label": "Textos para las publicaciones",
+      "param.n8.label": "Resumen de los clips",
+      "app.title": "Clips sociales de una película",
+      "app.description": "Sube una película con voz. Obtienes sus mejores pasajes como clips cortos con subtítulos, un texto para cada publicación y un resumen.",
+      "app.input.n1.asset": "Película",
+      "app.input.n3.clip_count": "Número de clips",
+      "app.input.n3.format": "Formato",
+      "app.input.n2.text": "Instrucciones (opcional)",
+      "app.output.n5": "Clips con subtítulos",
+      "app.output.n6": "Clips sin subtítulos",
+      "app.output.n7": "Textos para las publicaciones",
+      "app.output.n8": "Resumen de los clips"
+    }
+  }
+}
