@@ -1311,3 +1311,16 @@ The Director exposes balance, estimate, search, upscale and a general JSON call.
 `nodeRegistry.isRestricted` still recognises all credit-priced nodes. `blockedFor(def, viewer)` decides access per provider: Higgsfield retains its team-rate rule, Magnific remains internal/admin only. Registry, options, plans, execution, templates, runnable-workflow service and assistant use that rule; Magnific credits are never converted using the Higgsfield rate.
 
 Offline test: `node scripts/run-tests.js magnific`. Live-only acceptance: real OAuth consent and public callback, account-specific input/output schemas (particularly nested upload records, creation IDs and download URLs), available upscale modes/scales and actual credit charges. No live paid calls are part of this change.
+
+
+### Influencer input and HUD references
+
+`input.influencer` adds one local input type (137 registered types, 132 port IDs). It reads the caller-visible influencer from `lib/influencers.js`, including the built-in Claudia. Its five outputs are figure text, an ordered image list, voice ID, voice description and style; absent fields produce no value. No selection returns one empty variant, with no cache stamp. The options endpoint and assistant expose the same caller-filtered list.
+
+A selected influencer stamps its output texts and the SHA-256 hashes of the images in order. Prediction and execution reuse the image assets earlier results of this node saved with the same bytes. Text-only edits therefore leave downstream image keys unchanged. A missing or inaccessible selection fails with `INFLUENCER_NOT_FOUND` before any paid work.
+
+The engine, assistant and edit service share `input-fallback.js`: where an input port sets `emptyFallback: true` (so far only `figure` of `music_video.hud_plan`), an empty upstream output falls back to the non-blank scalar text/number parameter of that input, exactly as an unwired input does. Every other port behaves as before: required inputs still fail, optional ones stay without a value; lists and implicit mapping retain their existing rules. Plan prediction and cost input resolution recognise declared empty outputs, without treating unknown outputs as empty. Cache key construction itself is unchanged.
+
+All four HUD templates add `n33` and its figure/image connections. Their existing parameters stay unchanged; the planner's Figure app field remains editable as the fallback for the influencer selector. Node counts are 27 (own song), 31 (ElevenLabs), 31 (Suno upload) and 32 (Suno direct). The planner accepts up to six references, uses the first three and logs the truncation. Up to three references keep their former output and keys.
+
+`test-influencer-node.js` covers the local node, access, option list, asset reuse, stamps, empty variants, scalar fallback, assistant/edit connections, six-reference preflight and the original parameter-key digests of every existing node in the four templates. The pre-existing event-template and figure-template historical digest failures are not recalibrated by this change.

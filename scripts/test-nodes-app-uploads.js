@@ -24,13 +24,17 @@ async function testUploads() {
       { id: 'plan', type: 'event_video.plan', params: { photo_motion: 'ai', ai_marks: {} } },
       { id: 'out', type: 'output.result', params: {} },
       { id: 'brief', type: 'input.prompt', params: { prompt: '' } },
+      { id: 'influencer', type: 'input.influencer', params: { influencer: '' } },
+      { id: 'hud', type: 'music_video.hud_plan', params: { figure: 'Fallback figure' } },
       { id: 'empty', type: 'input.media_list', params: { assets: [{ assetId: 'gone', missing: true }] } }
-    ], edges: [], groups: [], notes: [] },
+    ], edges: [{ id: 'figure', from: { node: 'influencer', port: 'figure' }, to: { node: 'hud', port: 'figure' } }], groups: [], notes: [] },
     app: { enabled: true, inputs: [
       { node: 'photos', param: 'assets', marks: { node: 'plan', param: 'ai_marks' } },
       { node: 'music', param: 'asset' },
       { node: 'empty', param: 'assets', optional: true },
-      { node: 'brief', param: 'prompt', label: 'What is the film about?' }
+      { node: 'brief', param: 'prompt', label: 'What is the film about?' },
+      { node: 'influencer', param: 'influencer', label: 'Influencer' },
+      { node: 'hud', param: 'figure', label: 'Fallback figure' }
     ], outputs: [{ node: 'out' }] }
   };
   const results = { nodes: {
@@ -81,6 +85,8 @@ async function testUploads() {
   assert.equal(requests.at(-1).overrides.photos.assets[0].assetId, photo.assetId);
   assert.deepEqual(requests.at(-1).overrides.photos.assets[0], photo, 'a restored file has the fields of a value only, so the nodes after it stay cached');
   assert.equal(requests.at(-1).overrides.music.asset.assetId, audio.assetId);
+  assert.equal(requests.at(-1).overrides.hud.figure, 'Fallback figure', 'the connected influencer keeps the fallback form field available');
+  assert.ok(host.find((node) => node.tagName === 'LABEL' && node.textContent === 'Influencer').length, 'the dynamic selector is shown');
   assert.equal(requests.at(-1).overrides.empty, undefined, 'untouched empty fields do not overwrite saved values');
   assert.deepEqual(requests.at(-1).overrides.plan.ai_marks, { [photo.assetId]: 'never' });
   assert.equal(requests.at(-1).overrides.brief.prompt, 'An evening of ideas', 'a text field restores what the last run used');

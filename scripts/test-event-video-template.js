@@ -319,6 +319,8 @@ function testOtherCacheKeys() {
     if (other.id === 'event-video' || other.id === 'genjutsu-people-in-video' || other.id === 'suno-song' || other.id === 'music-video-hud-suno-direct' || other.id === 'ad-spot' || other.id === 'ad-spot-portrait' || other.id === 'rough-cut-subtitles' || other.id === 'social-clips') continue;
     for (const lang of LANGS) {
       for (const node of templates.resolveTemplate(other.id, { lang }).graph.nodes) {
+        // The new influencer has no historical key; its addition and all retained HUD keys are pinned in test-influencer-node.
+        if (node.type === 'input.influencer') continue;
         const def = registry.get(node.type);
         lines.push(`${other.id}/${lang}/${node.id}: ${engine.computeCacheKey(def, registry.normalizeParams(def, node.params || {}), {})}`);
         const previous = { ...node.params };

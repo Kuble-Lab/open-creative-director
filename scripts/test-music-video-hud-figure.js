@@ -174,8 +174,8 @@ function keysOf(doc) {
 // The graph of a template as main had it before WP50: without the edge of the reference images and without the switch of the planner.
 function asOnMain(doc) {
   const copy = JSON.parse(JSON.stringify(doc));
-  copy.graph.nodes = copy.graph.nodes.filter((node) => node.type !== 'input.image_model');
-  copy.graph.edges = copy.graph.edges.filter((edge) => edge.from.node !== 'n31' && edge.from.port !== 'sheet_refs');
+  copy.graph.nodes = copy.graph.nodes.filter((node) => !['input.image_model', 'input.influencer'].includes(node.type));
+  copy.graph.edges = copy.graph.edges.filter((edge) => !['n31', 'n33'].includes(edge.from.node) && edge.from.port !== 'sheet_refs');
   for (const node of copy.graph.nodes) {
     if (node.type === 'music_video.hud_plan') delete node.params.official_images;
     if (node.type === 'llm.chat' && node.params.model === 'anthropic/claude-fable-5.2') node.params.model = 'anthropic/claude-opus-5.5';
@@ -226,7 +226,7 @@ function testKeys() {
     selector.params.model = 'openai/gpt-image-2.6-sunburst';
     assert.equal(keysOf(doc).n4, now.n4, 'changing the image model preserves the approved plan key');
     const changed = Object.keys(now).filter((nodeId) => now[nodeId] !== MAIN_KEYS[id][nodeId]);
-    assert.deepEqual(changed, id === 'music-video-hud-suno' ? ['n28', 'n4', 'n5', 'n9', 'n10', 'n11', 'n31'] : ['n4', 'n5', 'n9', 'n10', 'n11', 'n31'], `${id}: the planner switch, picture model inputs, selector and Fable song pack differ`);
+    assert.deepEqual(changed, id === 'music-video-hud-suno' ? ['n28', 'n4', 'n5', 'n9', 'n10', 'n11', 'n31', 'n33'] : ['n4', 'n5', 'n9', 'n10', 'n11', 'n31', 'n33'], `${id}: the planner switch, picture model inputs, selector and Fable song pack differ`);
     if (id === 'music-video-hud-suno') assert.notEqual(now.n28, MAIN_KEYS_WP52[id].n28, 'the Fable song pack has a new key');
   }
   // the switch at its default is no part of the key; on, it is
@@ -238,8 +238,8 @@ function testKeys() {
   // WP52a: every key of the templates as on main before WP52a, and the two new settings at their defaults are no part of a key; changed, they are
   for (const id of HUD_TEMPLATES) {
     const doc = JSON.parse(JSON.stringify(templateDoc(id)));
-    doc.graph.nodes = doc.graph.nodes.filter((node) => node.type !== 'input.image_model');
-    doc.graph.edges = doc.graph.edges.filter((edge) => edge.from.node !== 'n31');
+    doc.graph.nodes = doc.graph.nodes.filter((node) => !['input.image_model', 'input.influencer'].includes(node.type));
+    doc.graph.edges = doc.graph.edges.filter((edge) => !['n31', 'n33'].includes(edge.from.node));
     for (const node of doc.graph.nodes) if (node.type === 'llm.chat' && node.params.model === 'anthropic/claude-fable-5.2') node.params.model = 'anthropic/claude-opus-5.5';
     assert.deepEqual(keysOf(doc), MAIN_KEYS_WP52[id], `${id}: saved workflows without the selector keep their keys since WP52a`);
   }
