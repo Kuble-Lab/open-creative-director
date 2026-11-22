@@ -12,12 +12,16 @@ const root = path.resolve(__dirname, '..');
 const files = appScriptFiles();
 assert.deepEqual(files, [
   'public/app-core.js', 'public/app-cards.js', 'public/app-messages.js', 'public/app-settings.js',
-  'public/app-sessions.js', 'public/app-brandings.js', 'public/app-context.js', 'public/app-transport.js', 'public/app.js'
+  'public/app-sessions.js', 'public/app-brandings.js', 'public/app-context.js', 'public/app-transport.js', 'public/app.js',
+  'public/app-influencers.js'
 ]);
 const index = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
-const tags = files.map((file) => `<script src="${file.slice(7)}"></script>`);
+// The influencer window is a standalone script after the node view; everything before it is the chat chain.
+const tags = files.slice(0, -1).map((file) => `<script src="${file.slice(7)}"></script>`);
 assert.ok(index.includes(['<script src="shell.js"></script>', ...tags, '<script src="nodes/i18n-nodes.js"></script>'].join('\n    ')),
   'chat scripts load synchronously after the shell and before the node view');
+assert.ok(index.includes('<script src="nodes/main.js"></script>\n    <script src="app-influencers.js"></script>'),
+  'the influencer window loads after the node view');
 assert.equal((readAppSource().match(/^init\(\);$/gm) || []).length, 1, 'initialization runs exactly once');
 assert.match(fs.readFileSync(path.join(root, 'public/app.js'), 'utf8'), /init\(\);\s*$/, 'entry point initializes last');
 
@@ -67,11 +71,14 @@ function load({ mobile, storageFails, mediaAvailable }) {
   context.window = context;
   if (mediaAvailable) context.matchMedia = () => ({ matches: mobile, addEventListener(type, fn) { listeners.set(type, fn); } });
   vm.runInContext(fs.readFileSync(path.join(root, 'public/team-groups.js'), 'utf8'), context);
+  const started = ['mcp', 'agents', 'teams', ['api/prompt-presets', 'GET'], ['api/config', 'GET']];
+  let initialized = false;
   for (const file of files) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     assert.ok(source.startsWith("'use strict';"), `${file} is strict`);
     vm.runInContext(source, context, { filename: file });
-    if (file !== 'public/app.js') assert.deepEqual(calls, [], `${file} does not initialize the app`);
+    if (file === 'public/app.js') initialized = true;
+    else assert.deepEqual(calls, initialized ? started : [], `${file} does not initialize the app`);
   }
   assert.deepEqual(calls, ['mcp', 'agents', 'teams', ['api/prompt-presets', 'GET'], ['api/config', 'GET']]);
   assert.equal(vm.runInContext('state.collapsedFolders.size', context), storageFails ? 0 : 1);
@@ -83,7 +90,8 @@ function load({ mobile, storageFails, mediaAvailable }) {
   if (mediaAvailable) assert.equal(typeof listeners.get('change'), 'function');
   assert.equal(elements.get('sendBtn').listeners.click.length, 1);
   assert.equal(elements.get('lightbox').listeners.click.length, 1);
-  assert.equal(document.listeners.keydown.length, 2);
+  // two from the chat, one from the influencer window (Escape closes it)
+  assert.equal(document.listeners.keydown.length, 3);
   return context;
 }
 
