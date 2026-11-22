@@ -46,6 +46,20 @@ function testReadCuts() {
   assert.deepEqual(merged.map((cut) => [cut.from, cut.to]), [[2, 5], [9, 9]]);
 }
 
+// A long transcript is read in parts that end at a long pause.
+function testWordParts() {
+  const words = [];
+  for (let i = 0; i < 250; i += 1) words.push(W(`w${i}`, i + (i > 95 ? 3 : 0), i + 0.5 + (i > 95 ? 3 : 0)));
+  assert.deepEqual(roughCut.wordParts(words.slice(0, 80), 100), [{ from: 0, to: 79 }]);
+  const parts = roughCut.wordParts(words, 100);
+  assert.deepEqual(parts[0], { from: 0, to: 95 }, 'the first part ends at the pause of 3.5 s');
+  assert.equal(parts[parts.length - 1].to, 249);
+  parts.forEach((part, index) => {
+    assert.ok(part.to - part.from + 1 <= 100);
+    if (index) assert.equal(part.from, parts[index - 1].to + 1);
+  });
+}
+
 function testPlan() {
   const words = [W('Also', 0.5, 0.8), W('ähm', 1.0, 1.3), W('wir', 1.5, 1.7), W('wollten,', 1.7, 2.0), W('wir', 2.4, 2.6), W('haben', 2.6, 2.9), W('entschieden.', 2.9, 3.5), W('Das', 6.0, 6.2), W('ist', 6.2, 6.4), W('gut.', 6.4, 6.8)];
   const cuts = roughCut.mergeCuts(roughCut.fillerCuts(words), [{ from: 2, to: 3, kind: 'false_start', reason: 'Fehlstart' }]);
@@ -292,7 +306,13 @@ function testDefinitions(h) {
   assert.equal(cut.cost.estimate({ remove_retakes: true }, { inputs: { video: { type: 'video', duration: 600 } } }), null);
   const subs = h.registry.get('video.subtitles');
   assert.equal(subs.cost.estimate({}, { connected: new Set(['timing']) }), 0);
-  assert.equal(subs.cost.estimate({}, { connected: new Set(['video']), inputs: { video: { type: 'video', duration: 3600 } } }), tools.lyricsTimingUsd(3600));
+  // a recording longer than one transcript takes is heard in parts that overlap by 4 s, and each part is priced
+  const windows = nodesRoughCut.hearingWindows(3600);
+  assert.deepEqual(windows.map((window) => [window.start, window.seconds]), [[0, 1200], [1196, 1200], [2392, 1200], [3588, 12]]);
+  assert.deepEqual(nodesRoughCut.hearingWindows(600), [null]);
+  const priced = windows.reduce((sum, window) => sum + tools.lyricsTimingUsd(window.seconds), 0);
+  assert.ok(Math.abs(subs.cost.estimate({}, { connected: new Set(['video']), inputs: { video: { type: 'video', duration: 3600 } } }) - priced) < 1e-5);
+  assert.equal(nodesRoughCut.MAX_RECORDING_SECONDS, 7200);
   assert.deepEqual(subs.validate({}, {}).map((issue) => issue.code), ['SUBTITLES_NO_INPUT']);
   assert.deepEqual(subs.validate({}, { timing: { connected: true } }), []);
 }
@@ -300,6 +320,7 @@ function testDefinitions(h) {
 async function main() {
   testFillers();
   testReadCuts();
+  testWordParts();
   testPlan();
   testModelText();
   testRenderArgs();

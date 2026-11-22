@@ -228,7 +228,7 @@
         "y": 620,
         "w": 360,
         "h": 170,
-        "text": "Instructions are optional, for example \"keep the laughs\" or \"cut the questions, keep only the answers\". Check the list of cuts after the run; whatever went too far you bring back with an instruction and run again. Recordings up to 20 minutes."
+        "text": "Instructions are optional, for example \"keep the laughs\" or \"cut the questions, keep only the answers\". Check the list of cuts after the run; whatever went too far you bring back with an instruction and run again. Recordings up to 120 minutes."
       }
     ],
     "viewport": {
@@ -281,7 +281,7 @@
       "node.n3": "Rohschnitt",
       "node.n4": "Untertitel einbrennen",
       "node.n5": "SRT/VTT-Datei",
-      "note.t1": "Die Anweisungen sind freiwillig, zum Beispiel «Lacher stehen lassen» oder «Fragen raus, nur die Antworten». Prüfe nach dem Lauf die Liste der Schnitte; was zu viel war, holst du mit einer Anweisung zurück und startest nochmals. Aufnahmen bis 20 Minuten.",
+      "note.t1": "Die Anweisungen sind freiwillig, zum Beispiel «Lacher stehen lassen» oder «Fragen raus, nur die Antworten». Prüfe nach dem Lauf die Liste der Schnitte; was zu viel war, holst du mit einer Anweisung zurück und startest nochmals. Aufnahmen bis 120 Minuten.",
       "param.n6.label": "Rohschnitt",
       "param.n7.label": "Rohschnitt mit Untertiteln",
       "param.n8.label": "Untertitel (SRT)",
@@ -303,7 +303,7 @@
       "node.n3": "Corte en bruto",
       "node.n4": "Incrustar subtítulos",
       "node.n5": "Archivo SRT/VTT",
-      "note.t1": "Las instrucciones son opcionales, por ejemplo «deja las risas» o «quita las preguntas, solo las respuestas». Revisa la lista de cortes tras la ejecución; lo que sobró lo recuperas con una instrucción y vuelves a ejecutar. Grabaciones de hasta 20 minutos.",
+      "note.t1": "Las instrucciones son opcionales, por ejemplo «deja las risas» o «quita las preguntas, solo las respuestas». Revisa la lista de cortes tras la ejecución; lo que sobró lo recuperas con una instrucción y vuelves a ejecutar. Grabaciones de hasta 120 minutos.",
       "param.n6.label": "Corte en bruto",
       "param.n7.label": "Corte en bruto con subtítulos",
       "param.n8.label": "Subtítulos (SRT)",
