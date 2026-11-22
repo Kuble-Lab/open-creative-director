@@ -1,0 +1,35 @@
+name: iOS
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for iPhone and iPad simulator
+        run: |
+          xcodebuild -project ios/OpenCreator.xcodeproj -scheme OpenCreator \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/OpenCreatorBuild" CODE_SIGNING_ALLOWED=NO build
+      - name: Launch on an iPhone simulator
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for runtime, items in devices.items() if ".iOS-" in runtime for d in items if d["name"].startswith("iPhone")))
+          ')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          product="$RUNNER_TEMP/OpenCreatorBuild/Build/Products/Debug-iphonesimulator/OpenCreator.app"
+          xcrun simctl install "$device" "$product"
+          xcrun simctl launch "$device" com.kuble.opencreativedirector
+          ditto -c -k --keepParent "$product" "$RUNNER_TEMP/OpenCreator-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenCreator-Simulator
+          path: ${{ runner.temp }}/OpenCreator-Simulator.zip
