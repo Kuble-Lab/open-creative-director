@@ -108,6 +108,21 @@ async function run(iso) {
   assert.equal((await store.readLedger(wf.sessionId)).filter((item) => assets.typeFromLedgerEntry(item) === 'image').length, 3);
   const denied = { user: 'other@staff.example.com' };
   await assert.rejects(def.execute(denied, {}, { influencer: own.id }), (error) => error.code === 'INFLUENCER_NOT_FOUND' && /does not exist for your account/.test(error.message));
+  await influencers.updateInfluencer(own.id, { open: true });
+  const sharedOptions = await iso.request('/api/nodes/options/influencers', { as: denied.user });
+  assert.ok(sharedOptions.body.options.some((option) => option.value === own.id && option.label === 'Ada'));
+  const sharedWorkflow = await create({ influencer: own.id });
+  const sharedRun = await engine.whenFinished(sharedWorkflow.id, await engine.start(sharedWorkflow.id, { mode: 'all', user: denied.user }));
+  assert.equal(sharedRun.status, 'completed', JSON.stringify(sharedRun));
+  assert.equal((await entry(sharedWorkflow)).variants[0].figure.value, influencers.figureText(await influencers.readInfluencer(own.id)));
+  assert.equal((await entry(sharedWorkflow)).variants[0].images.items.length, 2);
+  assert.ok(!(await def.cacheStamp({ influencer: own.id }, denied)).missing);
+  await influencers.updateInfluencer(own.id, { open: false });
+  assert.deepEqual(await def.cacheStamp({ influencer: own.id }, denied), { missing: own.id });
+  await assert.rejects(def.execute(denied, {}, { influencer: own.id }), (error) => error.code === 'INFLUENCER_NOT_FOUND' && /is no longer shared/.test(error.message));
+  assert.ok(!(await iso.request('/api/nodes/options/influencers', { as: denied.user })).body.options.some((option) => option.value === own.id));
+  const closedRun = await engine.whenFinished(sharedWorkflow.id, await engine.start(sharedWorkflow.id, { mode: 'all', user: denied.user }));
+  assert.equal(closedRun.status, 'failed', 'a previous successful run cannot reuse a now-private influencer');
   await influencers.deleteInfluencer(own.id);
   await assert.rejects(def.execute({ user: STAFF }, {}, { influencer: own.id }), (error) => error.code === 'INFLUENCER_NOT_FOUND');
 
