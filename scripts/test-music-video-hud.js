@@ -1412,7 +1412,7 @@ async function testNode(binaries, group) {
   assert.equal(def.params.find((param) => param.id === 'variation').cacheOmitDefault, true);
   assert.equal(def.cacheStampAdopts, undefined, 'an entry from before the stamp is not taken');
   assert.deepEqual(def.params.find((param) => param.id === 'quality').options, ['draft', 'standard', 'high']);
-  assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['auto', 'hud', 'kuble', 'camcorder'], 'the styles: the one of the plan (auto) is the default, the three named styles force one');
+  assert.deepEqual(def.params.find((param) => param.id === 'theme').options, ['auto', 'hud', 'kuble', 'camcorder', 'zine'], 'the styles: the one of the plan (auto) is the default, the three named styles force one');
   assert.equal(def.params.find((param) => param.id === 'theme').default, 'auto');
   assert.equal(real.normalizeParams(def, { theme: 'kuble' }).theme, 'kuble');
   assert.equal(real.normalizeParams(def, { theme: 'hud' }).theme, 'hud');
@@ -1939,7 +1939,7 @@ const kubleOf = (input, options) => graphicsLib.prepareGraphics(input, { theme: 
 const kubleDemo = kubleOf(demoInput);
 
 function testKubleTable() {
-  assert.deepEqual(themes.NAMES, ['hud', 'kuble', 'camcorder']);
+  assert.deepEqual(themes.NAMES, ['hud', 'kuble', 'camcorder', 'zine']);
   assert.equal(themes.DEFAULT, 'hud');
   // the colours of Kuble v2 (dark first): Night Ink, Ink and its two greys, Kuble Blue (and its light form for writing and glow), the one amber
   const expected = { night: '#05070C', ink: '#F2F4F8', ink2: '#B4BCCC', ink3: '#8892A6', blue: '#2E5CFF', blueText: '#4E7BFF', amber: '#F7901F' };

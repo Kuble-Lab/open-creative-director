@@ -84,7 +84,7 @@ assert.deepEqual(words.frameState({ ...base, t: 3.5 }, { events, parts }, []).de
 assert.ok(words.frameState({ ...base, t: 6.8 }, { events, parts }, []).karaoke, 'karaoke returns during a gap');
 assert.ok(words.frameState(base, { events, parts }, [{ x0: 0, y0: 0, x1: 1920, y1: 1080 }]).karaoke, 'skipped words do not hide karaoke');
 
-for (const theme of ['hud', 'kuble', 'camcorder']) {
+for (const theme of ['hud', 'kuble', 'camcorder', 'zine']) {
   const graphics = graphicsLib.prepareGraphics(graphicsLib.demoGraphics({ duration: 64 }), { theme }).graphics;
   const chorus = composition.chorusPlan(graphics);
   assert.ok(chorus.events.length && chorus.parts.every((p) => p.k === 'chorus'));

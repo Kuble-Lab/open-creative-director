@@ -14,7 +14,7 @@ const plan = require('../lib/music-video-hud/plan');
 const pageSandbox = require('./support/hud-page-sandbox');
 const hash = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
-assert.deepEqual(themes.NAMES, ['hud', 'kuble', 'camcorder']);
+assert.deepEqual(themes.NAMES, ['hud', 'kuble', 'camcorder', 'zine']);
 const theme = themes.get('camcorder');
 assert.equal(theme.frame, 'camcorder');
 assert.equal(theme.post.glitch, 'vhs');
