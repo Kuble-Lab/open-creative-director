@@ -226,3 +226,49 @@ button:disabled {
     display: none;
   }
 }
+
+.st-state {
+  display: block;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.st-state.st-warn {
+  margin: 0;
+  color: var(--danger);
+}
+
+.st-actions button {
+  margin-right: 6px;
+}
+
+.st-actions button:last-child {
+  margin-right: 0;
+}
+
+.st-steps {
+  margin: 10px 0;
+  padding-left: 20px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.st-steps li {
+  margin-bottom: 12px;
+}
+
+.st-steps label {
+  display: block;
+}
+
+.st-steps input {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}

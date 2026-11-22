@@ -58,6 +58,7 @@ const { createRenderAgentRoutes } = require('./lib/render-agent-routes');
 const nodeHiggsfieldCatalog = require('./lib/nodes/higgsfield-catalog');
 const { createStorageOverview } = require('./lib/storage-overview');
 const { registerStorageRoutes } = require('./lib/storage-routes');
+const { createDropboxArchive } = require('./lib/dropbox-archive');
 
 loadEnv();
 settings.loadSettings();
@@ -2738,11 +2739,14 @@ registerNodeRoutes(app, {
 installRunService(createRunService({ engine: nodeEngine }));
 
 // Storage overview (lib/storage-overview.js): own files, for admins all files, sizes, room left, delete.
+const dropboxArchive = createDropboxArchive();
 registerStorageRoutes(app, {
   access,
+  archive: dropboxArchive,
   storage: createStorageOverview({
     store,
     access,
+    archive: dropboxArchive,
     assetsDir: PATHS.assetsDir,
     // A workflow keeps its files in a hidden session: while one of its runs is active nothing of it is deleted.
     isSessionBusy: async (sessionId) => {
