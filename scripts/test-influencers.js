@@ -413,6 +413,7 @@ async function apiSharingTests(request, id, apiAdmin) {
   const raw = await influencers.readInfluencer(legacy.id);
   delete raw.open;
   delete raw.owner;
+  raw.site = { slug: 'legacy-http', visibility: 'protected', allowedEmails: ['reader@example.test'] };
   await influencers.writeInfluencer(raw);
   for (const recordId of [id, legacy.id]) {
     for (const open of [false, true]) {
@@ -442,6 +443,7 @@ async function apiSharingTests(request, id, apiAdmin) {
           if (!editable) {
             assert.equal(detail.body.owner, null);
             assert.equal('by' in detail.body.consent, false);
+            assert.equal('site' in detail.body, false, 'page settings (allowed e-mails) stay with the editors');
             assert.equal('owner' in listed, false);
           }
         }
