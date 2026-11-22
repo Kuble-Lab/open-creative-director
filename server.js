@@ -29,6 +29,7 @@ const renderNodesStore = require('./lib/rendernodes-store');
 const costs = require('./lib/costs');
 const brandings = require('./lib/brandings');
 const influencers = require('./lib/influencers');
+const influencerSheet = require('./lib/influencer-sheet');
 const brandingImport = require('./lib/branding-import');
 const roles = require('./lib/roles');
 const publicrefs = require('./lib/publicrefs');
@@ -1855,12 +1856,14 @@ app.delete('/api/brandings/:id/fonts/:filename', async (req, res) => {
 });
 
 function influencerError(res, err) {
+  if (failAccountRule(res, err)) return;
   const status = err.code === 'INFLUENCER_NOT_FOUND' ? 404
     : ['INFLUENCER_FORBIDDEN', 'INFLUENCER_READONLY'].includes(err.code) ? 403
-      : err.code === 'INFLUENCER_LIMIT' ? 409
+      : ['INFLUENCER_LIMIT', 'INFLUENCER_SHEET_BUSY', 'INFLUENCER_SHEET_ESTIMATE_CHANGED', 'INFLUENCER_SHEET_UNAVAILABLE'].includes(err.code) ? 409
         : err.code === 'INFLUENCER_IMAGE_TOO_LARGE' ? 413
           : String(err.code || '').startsWith('INFLUENCER_') ? 400 : 500;
-  failWithCode(res, status, err.code || 'INFLUENCER_ERROR', err.message);
+  res.status(status).json({ error: err.message, code: err.code || 'INFLUENCER_ERROR',
+    ...(err.estimate ? { estimate: err.estimate } : {}), ...(err.reason ? { reason: err.reason } : {}) });
 }
 
 function requireInfluencerId(req, res) {
@@ -1965,6 +1968,63 @@ app.get('/api/influencers/:id/assets/:filename', async (req, res) => {
     const mime = BRANDING_ASSET_MIME[path.extname(req.params.filename).toLowerCase()] || 'application/octet-stream';
     res.set('X-Content-Type-Options', 'nosniff');
     res.type(mime).send(buffer);
+  } catch (err) { influencerError(res, err); }
+});
+
+// Character sheet proposals are editable influencer data, including their image downloads.
+function sheetConfig() { return { imageModel: runtime.imageModel, imageModels: runtime.imageModels }; }
+
+app.get('/api/influencers/:id/sheet', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    const viewer = access.viewerOf(req);
+    await influencers.readEditableInfluencer(id, viewer);
+    res.json(await influencerSheet.status(id, { viewer, config: sheetConfig() }));
+  } catch (err) { influencerError(res, err); }
+});
+
+app.post('/api/influencers/:id/sheet', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    const viewer = access.viewerOf(req);
+    await influencers.readEditableInfluencer(id, viewer);
+    const { job, estimate } = await influencerSheet.start(id, {
+      viewer, user: req.kubleUser || 'lokal', config: sheetConfig(),
+      confirmed: req.body?.confirmed, confirmedUsd: req.body?.confirmedUsd
+    });
+    res.status(202).json({ job, estimate });
+  } catch (err) { influencerError(res, err); }
+});
+
+app.get('/api/influencers/:id/sheet/proposals/:file', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    const buffer = await influencerSheet.readProposal(id, req.params.file);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.type(BRANDING_ASSET_MIME[path.extname(req.params.file)]).send(buffer);
+  } catch (err) { influencerError(res, err); }
+});
+
+app.post('/api/influencers/:id/sheet/proposals/:file/accept', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    const result = await influencerSheet.acceptProposal(id, req.params.file);
+    res.json({ ...result, influencer: { ...result.influencer, editable: true } });
+  } catch (err) { influencerError(res, err); }
+});
+
+app.delete('/api/influencers/:id/sheet/proposals/:file', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    res.json(await influencerSheet.discardProposal(id, req.params.file));
   } catch (err) { influencerError(res, err); }
 });
 
