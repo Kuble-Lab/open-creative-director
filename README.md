@@ -61,6 +61,10 @@ That's it. Everything else is optional and degrades gracefully.
 
 > Prefer to let an AI agent do the setup? Copy the prompt from [INSTALL-PROMPT.md](INSTALL-PROMPT.md) into Claude Code, Codex or any coding agent.
 
+## iPhone and iPad
+
+Open [OpenCreator.xcodeproj](ios/OpenCreator.xcodeproj) in Xcode 16 or newer and run the OpenCreator target on a simulator or device running iOS 16 or later. For a physical device, select your development team under Signing & Capabilities. Enter the HTTPS address of your running instance, reachable from the device, and tap “Web-App öffnen”. Sign-in, chat and projects use the embedded Safari view. The app remembers the address. The Node server runs separately.
+
 ## Which keys do I need?
 
 | Key / setting | Required? | What it enables | Where to get it |

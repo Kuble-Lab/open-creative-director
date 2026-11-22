@@ -61,6 +61,10 @@ Das ist alles. Der Rest ist optional und degradiert sauber.
 
 > Lieber von einem KI-Agenten installieren lassen? Kopiere den Prompt aus [INSTALL-PROMPT.md](INSTALL-PROMPT.md) in Claude Code, Codex oder einen anderen Coding-Agenten.
 
+## iPhone und iPad
+
+Öffne [OpenCreator.xcodeproj](ios/OpenCreator.xcodeproj) in Xcode 16 oder neuer und starte das Target OpenCreator auf einem Simulator oder Gerät ab iOS 16. Für ein eigenes Gerät wählst du unter Signing & Capabilities dein Entwicklungsteam. Gib in der App die vom Gerät erreichbare HTTPS-Adresse deiner laufenden Instanz ein und tippe auf «Web-App öffnen». Anmeldung, Chat und Projekte laufen in der integrierten Safari-Ansicht. Die App merkt sich die Adresse. Der Node-Server läuft separat.
+
 ## Welche Keys brauche ich?
 
 | Key / Einstellung | Nötig? | Was es freischaltet | Wo bekommen |
