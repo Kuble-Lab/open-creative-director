@@ -343,6 +343,17 @@
         "params": {
           "model": "google/gemini-nano-banana-2.1"
         }
+      },
+      {
+        "id": "n33",
+        "type": "input.influencer",
+        "typeVersion": 1,
+        "x": 520,
+        "y": -400,
+        "params": {
+          "influencer": ""
+        },
+        "title": "Influencer"
       }
     ],
     "edges": [
@@ -818,6 +829,28 @@
           "node": "n11",
           "port": "model"
         }
+      },
+      {
+        "id": "e-influencer-figure",
+        "from": {
+          "node": "n33",
+          "port": "figure"
+        },
+        "to": {
+          "node": "n4",
+          "port": "figure"
+        }
+      },
+      {
+        "id": "e-influencer-images",
+        "from": {
+          "node": "n33",
+          "port": "images"
+        },
+        "to": {
+          "node": "n4",
+          "port": "figure_image"
+        }
       }
     ],
     "groups": [],
@@ -859,6 +892,11 @@
         "node": "n4",
         "param": "brief",
         "label": "Idea for the video (a few words are enough; empty: from the song)"
+      },
+      {
+        "node": "n33",
+        "param": "influencer",
+        "label": "Influencer (no selection: use Figure, default Claudia)"
       },
       {
         "node": "n4",
@@ -984,7 +1022,9 @@
       "param.n24.label": "Standbilder",
       "param.n4.brief_language": "de",
       "node.n31": "Bildmodell",
-      "app.input.n31.model": "Bildmodell"
+      "app.input.n31.model": "Bildmodell",
+      "node.n33": "Influencer",
+      "app.input.n33.influencer": "Influencer (ohne Auswahl: Feld Figur, Standard Claudia)"
     },
     "es": {
       "name": "Videoclip en estilo HUD (tu propia canción)",
@@ -1032,7 +1072,9 @@
       "param.n24.label": "Imágenes fijas",
       "param.n4.brief_language": "es",
       "node.n31": "Modelo de imagen",
-      "app.input.n31.model": "Modelo de imagen"
+      "app.input.n31.model": "Modelo de imagen",
+      "node.n33": "Influencer",
+      "app.input.n33.influencer": "Influencer (sin selección: campo Figura, por defecto Claudia)"
     }
   }
 }
