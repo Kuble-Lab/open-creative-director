@@ -360,6 +360,15 @@
   }
 
   const RESULTS_VIEWS = ['list', 'gallery'];
+  // The shape of the tile of a portrait film: width / height of the film, not narrower than 9:16; null for a landscape or square film
+  // (or an unknown size), which keeps the tile of the view.
+  function portraitRatio(width, height) {
+    const w = Number(width);
+    const h = Number(height);
+    if (!(w > 0) || !(h > 0) || h < w * 1.1) return null;
+    return Math.round(Math.max(9 / 16, w / h) * 10000) / 10000;
+  }
+
   function resultsViewOf(stored) {
     return RESULTS_VIEWS.includes(stored) ? stored : 'list';
   }
@@ -1917,11 +1926,25 @@
       return out;
     }
 
+    // A portrait film gets a tile of its own shape (not the 4:3 or square one with bars at the sides, where a 9:16 clip looks like
+    // another format): `target` takes the ratio of the film once the browser knows its size.
+    function shapeToFilm(media, target) {
+      if (!media || media.tagName !== 'VIDEO') return;
+      const apply = () => {
+        const ratio = portraitRatio(media.videoWidth, media.videoHeight);
+        if (ratio) target.style.aspectRatio = String(ratio);
+      };
+      if (media.readyState >= 1) apply();
+      else media.addEventListener('loadedmetadata', apply, { once: true });
+    }
+
     function leafCell(leaf, index, onOpen) {
       const cell = el('div', { class: `nv-appleaf is-${leaf.type}` });
       if (OCD.preview.isMedia(leaf)) {
         const frame = el('div', { class: 'nv-appleaf-frame' });
-        frame.append(OCD.preview.mediaNode(leaf, { scrolling: true }));
+        const media = OCD.preview.mediaNode(leaf, { scrolling: true });
+        frame.append(media);
+        shapeToFilm(media, media);
         if (leaf.type === 'image') {
           frame.classList.add('is-clickable');
           frame.addEventListener('click', () => onOpen(index));
@@ -1957,6 +1980,7 @@
           frame.addEventListener('mouseenter', () => { const playing = media.play(); if (playing && playing.catch) playing.catch(() => {}); });
           frame.addEventListener('mouseleave', () => media.pause());
           frame.append(media, el('span', { class: 'nv-appgal-play' }, icon('play', 12)));
+          shapeToFilm(media, frame);
         } else {
           frame.append(media);
         }
@@ -2157,6 +2181,7 @@
     notesOfScenes,
     // gallery of the results
     galleryItems,
+    portraitRatio,
     resultsViewOf
   };
 })(window);

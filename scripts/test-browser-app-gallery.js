@@ -9,7 +9,7 @@ const { runBrowserTest, ready, status } = require('./support/browser');
 (function pureFunctions() {
   const window = { OCDNodes: { graph: {}, ui: { el: () => ({}), icon: () => ({}), T: (key) => key }, api: {}, run: {} } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'nodes', 'app-mode.js'), 'utf8'), { window, localStorage: undefined, console });
-  const { galleryItems, resultsViewOf } = window.OCDNodes.appMode;
+  const { galleryItems, resultsViewOf, portraitRatio } = window.OCDNodes.appMode;
   const plain = (value) => JSON.parse(JSON.stringify(value));
   const image = (id) => ({ type: 'image', id });
   assert.deepEqual(plain(galleryItems([
@@ -26,6 +26,13 @@ const { runBrowserTest, ready, status } = require('./support/browser');
   assert.equal(resultsViewOf('list'), 'list');
   assert.equal(resultsViewOf(null), 'list', 'the list stays the default');
   assert.equal(resultsViewOf('tiles'), 'list', 'an unknown stored value falls back to the list');
+  // a portrait film shapes its tile, any other keeps the tile of the view
+  assert.equal(portraitRatio(1080, 1920), 0.5625, 'a 9:16 clip gets a 9:16 tile');
+  assert.equal(portraitRatio(1080, 1350), 0.8);
+  assert.equal(portraitRatio(600, 1920), 0.5625, 'not narrower than 9:16');
+  assert.equal(portraitRatio(1080, 1080), null);
+  assert.equal(portraitRatio(1920, 1080), null);
+  assert.equal(portraitRatio(0, 0), null, 'a film whose size is not known yet');
 })();
 
 runBrowserTest('test-browser-app-gallery.js', async ({ page, workflow, open }) => {
