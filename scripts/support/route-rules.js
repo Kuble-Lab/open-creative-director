@@ -43,6 +43,11 @@ const ROUTE_RULES = {
   'GET /api/suno/account': 'identified',
   'GET /api/suno/usage': 'identified',
   'GET /api/suno/library': 'identified',
+  // Installation-wide website host; only admins change the connection.
+  'GET /api/website-host/status': 'open',
+  'POST /api/website-host/connect': 'admin',
+  'GET /api/website-host/oauth/callback': 'admin',
+  'DELETE /api/website-host/auth': 'admin',
 
   'GET /refs/:file': 'public', // Seedance needs a public URL; the file name is an unguessable token
   'GET /api/prompt-presets': 'open',
@@ -126,6 +131,14 @@ const ROUTE_RULES = {
   'POST /api/influencers/:id/images': 'open',
   'DELETE /api/influencers/:id/images/:filename': 'open',
   'GET /api/influencers/:id/assets/:filename': 'open',
+  'GET /api/influencers/:id/site': 'open',
+  'PATCH /api/influencers/:id/site': 'open',
+  'GET /api/influencers/:id/site/slug': 'open',
+  'POST /api/influencers/:id/site/items': 'open',
+  'DELETE /api/influencers/:id/site/items/:itemId': 'open',
+  'GET /api/influencers/:id/site/preview': 'open',
+  'GET /api/influencers/:id/site/preview/*': 'open',
+  'POST /api/influencers/:id/site/publish': 'open',
   'GET /api/influencers/:id/sheet': 'open',
   'POST /api/influencers/:id/sheet': 'open',
   'GET /api/influencers/:id/sheet/proposals/:file': 'open',
@@ -253,6 +266,11 @@ const PARTICIPANT_RULES = {
   'GET /api/suno/account': 'own',
   'GET /api/suno/usage': 'own',
   'GET /api/suno/library': 'own',
+  // Installation-wide website host; only admins change the connection.
+  'GET /api/website-host/status': 'filtered',
+  'POST /api/website-host/connect': 'admin',
+  'GET /api/website-host/oauth/callback': 'admin',
+  'DELETE /api/website-host/auth': 'admin',
 
   'GET /refs/:file': 'public',
   'GET /api/prompt-presets': 'filtered', // no custom (team) templates
@@ -335,6 +353,14 @@ const PARTICIPANT_RULES = {
   'POST /api/influencers/:id/images': 'own',
   'DELETE /api/influencers/:id/images/:filename': 'own',
   'GET /api/influencers/:id/assets/:filename': 'own',
+  'GET /api/influencers/:id/site': 'own',
+  'PATCH /api/influencers/:id/site': 'own',
+  'GET /api/influencers/:id/site/slug': 'own',
+  'POST /api/influencers/:id/site/items': 'own',
+  'DELETE /api/influencers/:id/site/items/:itemId': 'own',
+  'GET /api/influencers/:id/site/preview': 'own',
+  'GET /api/influencers/:id/site/preview/*': 'own',
+  'POST /api/influencers/:id/site/publish': 'own',
   'GET /api/influencers/:id/sheet': 'own',
   'POST /api/influencers/:id/sheet': 'own',
   'GET /api/influencers/:id/sheet/proposals/:file': 'own',

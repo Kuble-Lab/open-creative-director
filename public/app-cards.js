@@ -13,7 +13,7 @@ function imageCard(asset) {
   img.loading = 'lazy';
   img.addEventListener('click', () => openLightbox(rel(asset.url)));
   card.appendChild(img);
-  card.appendChild(assetMeta(asset));
+  card.appendChild(assetMeta(asset, 'image'));
   return card;
 }
 
@@ -27,7 +27,7 @@ function videoCard(asset) {
   video.playsInline = true;
   video.preload = 'metadata';
   card.appendChild(video);
-  card.appendChild(assetMeta(asset));
+  card.appendChild(assetMeta(asset, 'video'));
   return card;
 }
 
@@ -75,7 +75,7 @@ function assetModelNode(asset, className) {
 }
 
 // One calm line under a result: "vid-002 · $0.84 · Kling v3.0". The same for images, video and audio.
-function assetMeta(asset) {
+function assetMeta(asset, kind) {
   const meta = document.createElement('div');
   meta.className = 'asset-meta';
   const id = document.createElement('span');
@@ -91,6 +91,11 @@ function assetMeta(asset) {
   }
   const modelEl = assetModelNode(asset, 'asset-model');
   if (modelEl) meta.appendChild(modelEl);
+  // "Auf die Seite von ...": only for a real result of this chat (it has a file), and only shown when a website host is set up.
+  if (kind && asset.file && typeof OCInfluencerSite !== 'undefined' && state.currentId) {
+    const add = OCInfluencerSite.addButton({ sessionId: state.currentId, assetId: asset.id, kind });
+    if (add) meta.appendChild(add);
+  }
   return meta;
 }
 

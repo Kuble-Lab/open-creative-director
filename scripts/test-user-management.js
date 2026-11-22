@@ -826,6 +826,9 @@ async function testChatToolsAdminOnly({ api, iso }) {
 /* ---------- admin-only routes ---------- */
 
 const ADMIN_ONLY_ROUTES = [
+  ['POST', '/api/website-host/connect', {}],
+  ['GET', '/api/website-host/oauth/callback'],
+  ['DELETE', '/api/website-host/auth'],
   ['POST', '/api/storage/archive', { files: [{ sessionId: 'x', file: 'a.mp4' }] }],
   ['POST', '/api/storage/archive/auto', { enabled: true }],
   ['POST', '/api/storage/archive/connect', { appKey: 'abcdefgh12345678' }],
@@ -889,7 +892,9 @@ async function testAdminOnly({ api }) {
   for (const [method, url, json] of ADMIN_ONLY_ROUTES) {
     for (const email of [ALICE, null]) {
       const response = await api(url, { method, as: email, json });
-      assert.equal(response.status, 403, `${method} ${url} as ${email || 'anonymous'} -> ${response.status}`);
+      // Website host routes fail closed before reaching an unconfigured provider.
+      const expected = url.startsWith('/api/website-host/') ? (email ? 404 : 401) : 403;
+      assert.equal(response.status, expected, `${method} ${url} as ${email || 'anonymous'} -> ${response.status}`);
     }
   }
   // Admins (and superadmins) pass the gate; the read-only ones can be called safely

@@ -254,6 +254,18 @@
               </div>
             </div>
           </section>
+          <!-- Shown only when the server has a website host address and the viewer is an admin (public/influencer-site-ui.js). -->
+          <section id="websiteHostSection" class="settings-website-host hidden" aria-labelledby="websiteHostTitle">
+            <h3 id="websiteHostTitle" class="settings-section-title" data-i18n="influencers.site.hostTitle">Website-Host</h3>
+            <p class="settings-hint" data-i18n="influencers.site.hostHint">Eine Verbindung für die ganze Installation: Darüber publizieren Personen die Seiten ihrer KI-Influencer. Den Gutschein gibst du nur auf der Anmeldeseite des Hosts ein; der Director sieht ihn nie.</p>
+            <div class="higgsfield-connection-row">
+              <span id="websiteHostStatusDot" class="higgsfield-status-dot" aria-hidden="true"></span>
+              <div class="higgsfield-connection-copy">
+                <div id="websiteHostStatusText" class="higgsfield-status-text"></div>
+              </div>
+              <div id="websiteHostActions" class="settings-actions"></div>
+            </div>
+          </section>
           <section class="settings-video-ask" aria-labelledby="videoAskTitle">
             <h3 id="videoAskTitle" class="settings-section-title" data-i18n="settings.videoTitle">Videos im Chat</h3>
             <label class="settings-switch" for="videoAskToggle">
@@ -634,5 +646,6 @@
     <script src="nodes/main-chrome.js"></script>
     <script src="nodes/main.js"></script>
     <script src="app-influencers.js"></script>
+    <script src="influencer-site-ui.js"></script>
   </body>
 </html>

@@ -1962,6 +1962,8 @@
         const expand = el('button', { type: 'button', class: 'nv-pv-tool', title: T('nodes.preview.open'), 'aria-label': T('nodes.preview.open') }, icon('fullscreen', 13));
         expand.addEventListener('click', () => onOpen(index));
         tools.append(expand, OCD.preview.downloadLink(leaf));
+        const toSite = OCD.preview.siteButton(leaf);
+        if (toSite) tools.append(toSite);
         cell.append(tools);
       } else if (leaf.type === 'text') {
         const text = el('div', { class: 'nv-appleaf-text nv-scroll', text: leaf.value });

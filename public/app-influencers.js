@@ -156,6 +156,10 @@
       }, { danger: true }));
     }
     item.appendChild(actions);
+    // Deleting removes the influencer here only: its published page stays on the website host.
+    if (editable && ui.pendingDelete === influencer.id && influencer.siteUrl) {
+      item.appendChild(element('p', 'influencer-note influencer-site-delete-note', t('influencers.site.deleteNote', { url: influencer.siteUrl })));
+    }
     if (ui.pendingCopy === influencer.id) item.appendChild(copyConfirm(influencer));
     return item;
   }
@@ -276,6 +280,12 @@
       });
     }
     body.appendChild(form);
+    // The page on the website host: outside the form, so its fields are not part of the influencer's own save.
+    if (!creating && editable && window.OCInfluencerSite) {
+      const siteNode = element('div', 'influencer-group influencer-site hidden');
+      body.appendChild(siteNode);
+      OCInfluencerSite.mount(siteNode, influencer);
+    }
     body.appendChild(element('p', 'influencer-note', t('influencers.nodeHint')));
   }
 
@@ -587,6 +597,7 @@
     ui.pendingCopy = null;
     if (view !== 'edit') ui.current = null;
     resetSheet();
+    if (window.OCInfluencerSite) OCInfluencerSite.reset();
     render();
     body.scrollTop = 0;
     if (view === 'list') refresh().catch(fail);

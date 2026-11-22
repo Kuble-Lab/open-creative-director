@@ -79,6 +79,10 @@ Das ist alles. Der Rest ist optional und degradiert sauber.
 
 Keys lassen sich auch zur Laufzeit in den **Menü → Einstellungen** eintragen (serverseitig in `data/settings.json`, chmod 600, nie im Repo) — sie übersteuern die `.env` ohne Neustart.
 
+### Website-Host (optional)
+
+Ein externer Website-Host veröffentlicht die Seiten der KI-Influencer über MCP per HTTP und OAuth. Setze `WEBSITE_HOST_MCP_URL` oder `websiteHost.mcpUrl` in `config.json`; es gibt keine Standardadresse. Ohne gültige Einstellung bleibt die Verbindung deaktiviert. Nur Admins verbinden oder trennen das gemeinsame Konto dieser Installation. Einen Gutschein gibst du ausschliesslich auf der Anmeldeseite des Hosts ein: Er erreicht diese App nie. Die OAuth-Zugangsdaten liegen verschlüsselt unter `data/website-host/`. Setze `PUBLIC_BASE_URL` auf die HTTPS-Basis der App für den Callback `/api/website-host/oauth/callback`; im lokalen Modus ist auch eine Loopback-Adresse der Anfrage erlaubt.
+
 ## Wie es funktioniert
 
 ```
