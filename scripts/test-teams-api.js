@@ -1025,6 +1025,33 @@ async function testRulesTable(ctx) {
   assert.equal((await call(P2, 'GET', '/api/costs/summary')).body.total, 0.25);
   assert.equal((await call(GUEST, 'GET', '/api/costs/summary')).body.total, 0);
   assert.ok((await api('/api/costs/summary', { as: ADMIN })).body.total >= 0.75, 'admins see everything');
+
+  // own: storage overview. Participants and guests see and delete the files of their own chats, never those of somebody else.
+  const p1Film = (await call(P1, 'POST', '/api/sessions', {})).body.session;
+  const p2Film = (await call(P2, 'POST', '/api/sessions', {})).body.session;
+  const p1File = await ctx.store.saveAsset(p1Film.id, { kind: 'video', buffer: Buffer.alloc(4000, 1), ext: '.mp4', prompt: 'p1' });
+  const p2File = await ctx.store.saveAsset(p2Film.id, { kind: 'video', buffer: Buffer.alloc(6000, 1), ext: '.mp4', prompt: 'p2' });
+  const p1Storage = await call(P1, 'GET', '/api/storage');
+  assert.equal(p1Storage.status, 200);
+  assert.equal(p1Storage.body.canSeeAll, false);
+  assert.ok(p1Storage.body.files.some((file) => file.sessionId === p1Film.id && file.file === p1File.file && file.size === 4000));
+  assert.ok(p1Storage.body.files.every((file) => file.sessionId !== p2Film.id), 'nothing of another participant');
+  assert.ok(p1Storage.body.sessions.every((session) => session.owner === P1));
+  assert.equal((await call(P1, 'GET', '/api/storage?scope=all')).status, 403, 'everything is for admins');
+  assert.equal((await call(GUEST, 'GET', '/api/storage?scope=all')).status, 403);
+  assert.ok((await call(GUEST, 'GET', '/api/storage')).body.files.every((file) => ![p1Film.id, p2Film.id].includes(file.sessionId)));
+  const foreign = (await call(P1, 'POST', '/api/storage/delete', { files: [{ sessionId: p2Film.id, file: p2File.file }] })).body;
+  assert.equal(foreign.deleted.length, 0);
+  assert.equal(foreign.failed[0].code, 'NOT_FOUND', 'a foreign file looks like a missing one');
+  assert.equal((await call(GUEST, 'POST', '/api/storage/delete', { files: [{ sessionId: p2Film.id, file: p2File.file }] })).body.deleted.length, 0);
+  assert.ok((await ctx.store.readLedger(p2Film.id)).some((entry) => entry.id === p2File.id), 'the foreign file is still there');
+  const own = (await call(P1, 'POST', '/api/storage/delete', { files: [{ sessionId: p1Film.id, file: p1File.file }] })).body;
+  assert.deepEqual(own.deleted, [{ sessionId: p1Film.id, file: p1File.file, size: 4000 }]);
+  assert.ok(!(await ctx.store.readLedger(p1Film.id)).some((entry) => entry.id === p1File.id), 'the file is gone from the ledger');
+  const everything = (await api('/api/storage?scope=all', { as: ADMIN })).body;
+  assert.equal(everything.scope, 'all');
+  assert.ok(everything.files.some((file) => file.sessionId === p2Film.id), 'admins see everything');
+  assert.ok(everything.owners.some((entry) => entry.owner === P2 && entry.bytes >= 6000));
 }
 
 /* ---------- budget: chat ---------- */

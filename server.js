@@ -56,6 +56,8 @@ const { createMcp } = require('./lib/mcp');
 const { registerKeyRoutes } = require('./lib/mcp/key-routes');
 const { createRenderAgentRoutes } = require('./lib/render-agent-routes');
 const nodeHiggsfieldCatalog = require('./lib/nodes/higgsfield-catalog');
+const { createStorageOverview } = require('./lib/storage-overview');
+const { registerStorageRoutes } = require('./lib/storage-routes');
 
 loadEnv();
 settings.loadSettings();
@@ -2734,6 +2736,35 @@ registerNodeRoutes(app, {
 // The run service (lib/nodes/run-service.js) shares the engine of the node routes: one list of active runs for the
 // node view, the Director and any other access.
 installRunService(createRunService({ engine: nodeEngine }));
+
+// Storage overview (lib/storage-overview.js): own files, for admins all files, sizes, room left, delete.
+registerStorageRoutes(app, {
+  access,
+  storage: createStorageOverview({
+    store,
+    access,
+    assetsDir: PATHS.assetsDir,
+    // A workflow keeps its files in a hidden session: while one of its runs is active nothing of it is deleted.
+    isSessionBusy: async (sessionId) => {
+      const workflows = nodeWorkflows.defaultStore;
+      let names = [];
+      try {
+        names = await require('fs').promises.readdir(workflows.dir);
+      } catch (_) {
+        return false;
+      }
+      for (const name of names) {
+        if (!store.isValidId(name) || !nodeEngine.isBusy(name)) continue;
+        try {
+          if ((await workflows.readWorkflow(name)).sessionId === sessionId) return true;
+        } catch (_) {
+          /* unreadable workflow folder */
+        }
+      }
+      return false;
+    }
+  })
+});
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(PATHS.publicDir, 'index.html'));
