@@ -1048,6 +1048,15 @@ async function testRulesTable(ctx) {
   const own = (await call(P1, 'POST', '/api/storage/delete', { files: [{ sessionId: p1Film.id, file: p1File.file }] })).body;
   assert.deepEqual(own.deleted, [{ sessionId: p1Film.id, file: p1File.file, size: 4000 }]);
   assert.ok(!(await ctx.store.readLedger(p1Film.id)).some((entry) => entry.id === p1File.id), 'the file is gone from the ledger');
+  // the note where an archived file is missing, and the way back: own chats only (no Dropbox is connected here)
+  const p2Note = await call(P2, 'GET', `/api/storage/archived?sessionId=${p2Film.id}&file=${encodeURIComponent(p2File.file)}`);
+  assert.equal(p2Note.status, 200);
+  assert.deepEqual(p2Note.body, { archived: false, canRestore: false, others: { files: 0, bytes: 0 } });
+  assert.equal((await call(P1, 'GET', `/api/storage/archived?sessionId=${p2Film.id}&file=${encodeURIComponent(p2File.file)}`)).status, 404, 'a foreign chat looks like a missing one');
+  assert.equal((await call(GUEST, 'GET', `/api/storage/archived?sessionId=${p2Film.id}&file=${encodeURIComponent(p2File.file)}`)).status, 404);
+  assert.equal((await call(P2, 'POST', '/api/storage/restore', { files: [{ sessionId: p2Film.id, file: p2File.file }] })).status, 409, 'not an admin route: it stops at the missing connection');
+  assert.equal((await call(P2, 'POST', '/api/storage/archive', { sessions: [p2Film.id] })).status, 403);
+  assert.equal((await call(P2, 'POST', '/api/storage/archive/auto', { enabled: true })).status, 403);
   const everything = (await api('/api/storage?scope=all', { as: ADMIN })).body;
   assert.equal(everything.scope, 'all');
   assert.ok(everything.files.some((file) => file.sessionId === p2Film.id), 'admins see everything');

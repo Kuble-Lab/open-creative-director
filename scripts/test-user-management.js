@@ -827,7 +827,7 @@ async function testChatToolsAdminOnly({ api, iso }) {
 
 const ADMIN_ONLY_ROUTES = [
   ['POST', '/api/storage/archive', { files: [{ sessionId: 'x', file: 'a.mp4' }] }],
-  ['POST', '/api/storage/restore', { files: [{ sessionId: 'x', file: 'a.mp4' }] }],
+  ['POST', '/api/storage/archive/auto', { enabled: true }],
   ['POST', '/api/storage/archive/connect', { appKey: 'abcdefgh12345678' }],
   ['POST', '/api/storage/archive/connect/finish', { code: 'x' }],
   ['DELETE', '/api/storage/archive/connect'],

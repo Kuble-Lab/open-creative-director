@@ -5883,3 +5883,54 @@ html.nv-active .mobile-menu-button {
 .agents-toggle {
   cursor: pointer;
 }
+
+/* The note in place of a picture, video or sound whose file is in the archive (archived-media.js). */
+.is-archived-media {
+  display: none !important;
+}
+
+.archived-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.archived-note-text {
+  color: var(--text);
+}
+
+.archived-note button {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.archived-note button:hover,
+.archived-note button:focus-visible {
+  border-color: var(--accent);
+}
+
+.archived-note.is-compact {
+  gap: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.archived-note.is-compact button {
+  padding: 2px 6px;
+  font-size: 11px;
+}

@@ -2740,13 +2740,11 @@ installRunService(createRunService({ engine: nodeEngine }));
 
 // Storage overview (lib/storage-overview.js): own files, for admins all files, sizes, room left, delete.
 const dropboxArchive = createDropboxArchive();
-registerStorageRoutes(app, {
-  access,
-  archive: dropboxArchive,
-  storage: createStorageOverview({
+const storageOverview = createStorageOverview({
     store,
     access,
     archive: dropboxArchive,
+    autoFile: path.join(PATHS.root, 'data', 'storage-auto-archive.json'),
     assetsDir: PATHS.assetsDir,
     // A workflow keeps its files in a hidden session: while one of its runs is active nothing of it is deleted.
     isSessionBusy: async (sessionId) => {
@@ -2767,8 +2765,15 @@ registerStorageRoutes(app, {
       }
       return false;
     }
-  })
 });
+registerStorageRoutes(app, { access, archive: dropboxArchive, storage: storageOverview });
+// The automatic archive (large old videos, switched on by an admin on the storage page): a first pass some minutes after
+// the start, then every six hours. A pass that finds nothing costs one look at the ledgers.
+function startAutoArchive() {
+  const pass = () => storageOverview.runAuto().catch((err) => console.warn('[storage] Automatik:', err.message));
+  setTimeout(pass, 5 * 60 * 1000).unref();
+  setInterval(pass, 6 * 60 * 60 * 1000).unref();
+}
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(PATHS.publicDir, 'index.html'));
@@ -2832,6 +2837,7 @@ async function startServer() {
     })
     .catch((err) => console.warn('[discovery]', err.message));
   poller.start();
+  startAutoArchive();
   // the queue of the own computers (WP46): leases, render nodes that took a job, old jobs
   rendernode.queue().start();
   // the render servers in the cloud (WP54): start, delete, reconcile (nothing happens while they are switched off)

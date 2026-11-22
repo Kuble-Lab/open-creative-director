@@ -20,8 +20,10 @@ const access = require('../lib/access');
 const { createStorageOverview, StorageError } = require('../lib/storage-overview');
 const { createDropboxArchive, createContentHasher, ArchiveError, HASH_BLOCK, UPLOAD_CHUNK } = require('../lib/dropbox-archive');
 const page = require('../public/storage.js');
+const noteUi = require('../public/archived-media.js');
 
 const ADMIN = { active: true, email: 'admin@example.com', identified: true, admin: true, superadmin: false, kind: 'admin', teamIds: [] };
+const BOB = { active: true, email: `dave-${crypto.randomBytes(4).toString('hex')}@example.com`, identified: true, admin: false, superadmin: false, kind: 'internal', teamIds: [] };
 const ALICE = { active: true, email: `carol-${crypto.randomBytes(4).toString('hex')}@example.com`, identified: true, admin: false, superadmin: false, kind: 'internal', teamIds: [] };
 
 function hashOf(buffer) {
@@ -104,6 +106,22 @@ function fakeDropbox() {
 
 async function main() {
   store.ensureDirs();
+
+  /* ---------- the note in the app (public/archived-media.js) and the rows of whole chats ---------- */
+  assert.deepEqual(noteUi.assetRef('/sub/assets/abc-1/a/b%20c.mp4?r=1'), { sessionId: 'abc-1', file: 'a/b c.mp4' });
+  assert.deepEqual(noteUi.assetRef('assets/abc/vid-1.mp4', 'https://example.com/app/'), { sessionId: 'abc', file: 'vid-1.mp4' });
+  assert.equal(noteUi.assetRef('/api/storage'), null);
+  assert.equal(noteUi.assetRef('/assets/abc/%E0%A4%A'), null, 'a path that cannot be decoded');
+  assert.equal(noteUi.noteModel({ archived: false }), null);
+  assert.deepEqual(noteUi.noteModel({ archived: true, canRestore: true, others: { files: 2, bytes: 5 } }), { text: 'archived.note', vars: {}, restore: true, all: true, working: false });
+  assert.equal(noteUi.noteModel({ archived: true, canRestore: false }).restore, false);
+  assert.deepEqual(noteUi.noteModel({ archived: true, job: 'restoring', jobProgress: 40, canRestore: true }), { text: 'archived.workingShare', vars: { share: 40 }, restore: false, all: false, working: true });
+  assert.equal(noteUi.noteModel({ archived: true, job: 'error', jobError: 'x', canRestore: true }).restore, true);
+  assert.deepEqual(
+    page.sessionRows([{ id: 'a', bytes: 5, files: 1, archivedBytes: 0, archivedFiles: 0 }, { id: 'b', bytes: 1, files: 0, archivedBytes: 90, archivedFiles: 2 }, { id: 'c', bytes: 700, files: 0, archivedBytes: 0, archivedFiles: 0 }]).map((row) => row.id),
+    ['b', 'a'],
+    'largest first, nothing without files'
+  );
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'ocd-archive-'));
   const tokenFile = path.join(tmp, 'dropbox-archive.json');
   const dropbox = fakeDropbox();
@@ -166,7 +184,8 @@ async function main() {
 
   // admins only
   await assert.rejects(storage.archive({ viewer: ALICE, items: [{ sessionId: chat.id, file: big.file }] }), (err) => err instanceof StorageError && err.status === 403);
-  await assert.rejects(storage.restore({ viewer: ALICE, items: [{ sessionId: chat.id, file: big.file }] }), (err) => err.status === 403);
+  // the way back is open to the owner, but this file is not in the archive
+  assert.equal((await storage.restore({ viewer: ALICE, items: [{ sessionId: chat.id, file: big.file }] })).failed[0].code, 'NOT_ARCHIVED');
 
   const started = await storage.archive({
     viewer: ADMIN,
@@ -265,6 +284,79 @@ async function main() {
   assert.equal(gone.deleted.length, 1);
   assert.equal(dropbox.files.size, 0);
   assert.ok(!(await store.readLedger(chat.id)).some((entry) => entry.id === small.id));
+
+  /* ---------- whole chats, the way back for everybody who may use the chat, the note in the app ---------- */
+  const whole = await storage.archive({ viewer: ADMIN, sessions: [chat.id, 'no-such-chat'] });
+  assert.deepEqual(whole.queued.map((item) => item.file).sort(), [big.file, third.file].sort(), 'every finished file of the chat, nothing loose');
+  assert.deepEqual(whole.failed, []);
+  await storage.whenIdle();
+  assert.ok(!fs.existsSync(fileOf(big)) && !fs.existsSync(fileOf(third)));
+  assert.ok(fs.existsSync(path.join(PATHS.assetsDir, chat.id, 'scratch', 'loose.wav')));
+  const chatRow = (await storage.overview({ viewer: ADMIN, scope: 'all' })).sessions.find((session) => session.id === chat.id);
+  assert.deepEqual({ archivable: chatRow.archivable, archivedFiles: chatRow.archivedFiles, archivedBytes: chatRow.archivedBytes }, { archivable: 0, archivedFiles: 2, archivedBytes: bigBytes.length + 3000 });
+  await assert.rejects(storage.archive({ viewer: ADMIN, sessions: [chat.id] }), (err) => err.code === 'INVALID', 'nothing left to archive');
+
+  const note = await storage.archivedState({ viewer: ALICE, sessionId: chat.id, file: big.file });
+  assert.deepEqual(note, { archived: true, size: bigBytes.length, canRestore: true, others: { files: 1, bytes: 3000 } });
+  assert.equal((await storage.archivedState({ viewer: ALICE, sessionId: chat.id, file: 'scratch/loose.wav' })).archived, false);
+  await assert.rejects(storage.archivedState({ viewer: BOB, sessionId: chat.id, file: big.file }), (err) => err.status === 404, 'a stranger learns nothing');
+  await assert.rejects(storage.archivedState({ viewer: ALICE, sessionId: chat.id, file: '../x' }), (err) => err.status === 404);
+
+  // a stranger fetches nothing back; the owner does, one file or the whole chat
+  await assert.rejects(storage.restore({ viewer: BOB, sessions: [chat.id] }), (err) => err.code === 'INVALID');
+  assert.equal((await storage.restore({ viewer: BOB, items: [{ sessionId: chat.id, file: big.file }] })).failed[0].code, 'NOT_FOUND');
+  await assert.rejects(storage.archive({ viewer: ALICE, sessions: [chat.id] }), (err) => err.status === 403, 'into the archive: admins only');
+  const one = await storage.restore({ viewer: ALICE, items: [{ sessionId: chat.id, file: big.file }] });
+  assert.equal(one.queued.length, 1);
+  assert.deepEqual((await storage.restore({ viewer: ALICE, items: [{ sessionId: chat.id, file: big.file }] })).failed, [], 'asked twice: already on its way');
+  assert.ok(['queued', 'restoring'].includes((await storage.archivedState({ viewer: ALICE, sessionId: chat.id, file: big.file })).job));
+  await storage.whenIdle();
+  assert.ok((await fsp.readFile(fileOf(big))).equals(bigBytes));
+  assert.equal((await storage.archivedState({ viewer: ALICE, sessionId: chat.id, file: big.file })).archived, false);
+  const rest = await storage.restore({ viewer: ALICE, sessions: [chat.id] });
+  assert.deepEqual(rest.queued, [{ sessionId: chat.id, file: third.file }]);
+  await storage.whenIdle();
+  assert.ok(fs.existsSync(fileOf(third)));
+  assert.equal(dropbox.files.size, 0);
+
+  /* ---------- automatic: large old videos ---------- */
+  const autoFile = path.join(tmp, 'auto.json');
+  const auto = createStorageOverview({ store, access, assetsDir: PATHS.assetsDir, archive: again, autoFile });
+  assert.deepEqual((await auto.overview({ viewer: ADMIN, scope: 'all' })).archive.auto, { enabled: false, minMb: 200, minDays: 30, lastRunAt: null, lastQueued: 0 });
+  assert.deepEqual(await auto.runAuto({ sessions: [chat.id] }), { queued: 0, skipped: 'off' });
+  await assert.rejects(auto.setAuto({ viewer: ALICE, settings: { enabled: true } }), (err) => err.status === 403);
+  await assert.rejects(auto.setAuto({ viewer: ADMIN, settings: { minMb: 0 } }), (err) => err.code === 'INVALID');
+  await assert.rejects(storage.setAuto({ viewer: ADMIN, settings: { enabled: true } }), (err) => err.code === 'NO_ARCHIVE');
+  const set = await auto.setAuto({ viewer: ADMIN, settings: { enabled: true, minMb: 1 } });
+  assert.deepEqual({ enabled: set.enabled, minMb: set.minMb, minDays: set.minDays }, { enabled: true, minMb: 1, minDays: 30 });
+  const twoMb = Buffer.alloc(2 * 1024 * 1024, 7);
+  const oldVideo = await store.saveAsset(chat.id, { kind: 'video', buffer: twoMb, ext: '.mp4', prompt: 'alt und gross' });
+  const youngVideo = await store.saveAsset(chat.id, { kind: 'video', buffer: twoMb, ext: '.mp4', prompt: 'neu und gross' });
+  const oldSmall = await store.saveAsset(chat.id, { kind: 'video', buffer: Buffer.alloc(4000, 1), ext: '.mp4', prompt: 'alt und klein' });
+  const oldImage = await store.saveAsset(chat.id, { kind: 'image', buffer: twoMb, ext: '.png', prompt: 'altes Bild' });
+  const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+  for (const asset of [oldVideo, oldSmall, oldImage]) await fsp.utimes(fileOf(asset), longAgo, longAgo);
+  assert.deepEqual(await auto.runAuto({ sessions: [chat.id] }), { queued: 1 });
+  await auto.whenIdle();
+  assert.ok(!fs.existsSync(fileOf(oldVideo)), 'the large old video went into the archive');
+  assert.ok(fs.existsSync(fileOf(youngVideo)) && fs.existsSync(fileOf(oldSmall)) && fs.existsSync(fileOf(oldImage)) && fs.existsSync(fileOf(big)));
+  assert.equal(dropbox.files.size, 1);
+  assert.deepEqual(await auto.runAuto({ sessions: [chat.id] }), { queued: 0 });
+  assert.equal((await auto.overview({ viewer: ADMIN, scope: 'all' })).archive.auto.lastQueued, 0);
+  // a chat with an open job waits
+  await fsp.utimes(fileOf(youngVideo), longAgo, longAgo);
+  await store.mutateSession(chat.id, (session) => {
+    session.jobs.push({ id: 'job-2', status: 'running' });
+  });
+  assert.deepEqual(await auto.runAuto({ sessions: [chat.id] }), { queued: 0 });
+  await store.mutateSession(chat.id, (session) => {
+    session.jobs = [];
+  });
+  await auto.setAuto({ viewer: ADMIN, settings: { enabled: false } });
+  assert.deepEqual(await auto.runAuto({ sessions: [chat.id] }), { queued: 0, skipped: 'off' });
+  await auto.restore({ viewer: ALICE, sessions: [chat.id] });
+  await auto.whenIdle();
+  assert.ok(fs.existsSync(fileOf(oldVideo)));
 
   // without a connection nothing is queued, and an installation without an archive says so
   again.disconnect();

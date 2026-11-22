@@ -272,3 +272,43 @@ button:disabled {
   color: var(--text);
   font: inherit;
 }
+
+/* The automatic archive inside the archive box. */
+.st-auto {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.st-auto h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.st-auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.st-auto-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin: 10px 0 4px;
+}
+
+.st-auto-row input[type="number"] {
+  width: 110px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+#sessions {
+  margin: 18px 0 6px;
+}
