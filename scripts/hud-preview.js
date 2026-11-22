@@ -5,13 +5,13 @@
 // video, and renders it when HYPERFRAMES_CLI names the cli of HyperFrames. For looking at the HUD on footage without a render node, free of charge.
 //
 //   node scripts/hud-preview.js <graphics.json | demo> <footage.mp4> [--out <dir>] [--from <s>] [--to <s>] [--duration <s>] [--quality draft|standard|high]
-//                               [--theme hud|kuble|camcorder] [--accent <#rrggbb>] [--karaoke on|off] [--chorus-words on|off] [--effects off|subtle|strong|wild] [--faces on|off]
+//                               [--theme hud|kuble|camcorder|zine] [--accent <#rrggbb>] [--karaoke on|off] [--chorus-words on|off] [--effects off|subtle|strong|wild] [--faces on|off]
 //
 //   graphics.json   the "graphics" text of music_video.hud_plan; "demo" takes the example of lib/music-video-hud/graphics.js (--duration its length)
 //   footage.mp4     the video of the whole film (the base cut of the song) that the HUD is drawn on; any video works for a look (it is cut to 24 fps, 1920x1080)
 //   --from/--to     the part of the song to build (default: the first chunk); a chunk begins and ends at a cut
 //   --out           the folder for the projects and the results (default ./hud-preview)
-//   --theme         the style, as the parameter of the node: hud (HUD Blue, the default) kuble or camcorder (it wins over the field `theme` of the plan)
+//   --theme         the style, as the parameter of the node: hud (HUD Blue, the default) kuble, camcorder or zine (it wins over the field `theme` of the plan)
 //   --accent        the accent colour, as the parameter of the node (default #3B82F6; Kuble takes its own blue for that default)
 //   --karaoke       the karaoke line with the sung words, as the parameter of the node (default off: the node draws no burnt-in lyrics unless asked to)
 //   --chorus-words  large sung words during detected choruses (default off), with face-safe placement
@@ -68,7 +68,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--')) throw new Error(`unknown option ${arg}`);
     else options.positional.push(arg);
   }
-  if (options.theme !== undefined && !require('../lib/music-video-hud/themes').NAMES.includes(options.theme)) throw new Error('--theme takes hud, kuble or camcorder');
+  if (options.theme !== undefined && !require('../lib/music-video-hud/themes').NAMES.includes(options.theme)) throw new Error('--theme takes hud, kuble, camcorder or zine');
   return options;
 }
 
@@ -82,7 +82,7 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const [source, footage] = options.positional;
   if (!source || !footage) {
-    console.error('Usage: node scripts/hud-preview.js <graphics.json | demo> <footage.mp4> [--out dir] [--from s] [--to s] [--duration s] [--quality draft|standard|high] [--theme hud|kuble|camcorder] [--accent #rrggbb] [--karaoke on|off] [--chorus-words on|off] [--effects off|subtle|strong|wild] [--faces on|off]');
+    console.error('Usage: node scripts/hud-preview.js <graphics.json | demo> <footage.mp4> [--out dir] [--from s] [--to s] [--duration s] [--quality draft|standard|high] [--theme hud|kuble|camcorder|zine] [--accent #rrggbb] [--karaoke on|off] [--chorus-words on|off] [--effects off|subtle|strong|wild] [--faces on|off]');
     process.exit(2);
   }
   const input = source === 'demo' ? graphicsLib.demoGraphics({ duration: options.duration }) : fs.readFileSync(source, 'utf8');

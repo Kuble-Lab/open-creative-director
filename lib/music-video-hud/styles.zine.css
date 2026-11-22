@@ -1,0 +1,68 @@
+/* Zine: a two-colour riso print on paper. Pink (--acc) is the loud colour, riso blue (--riso) the second plate that sits a few pixels off register.
+   The geometry of the devices stays the one of HUD Blue (same faces, same sizes); only ink, boxes and the frame change. */
+#stage{--hi:26,26,26;--hs:rgba(242,237,224,.7)}
+#scrim,#vig{display:none}
+/* the film as a photocopy: nearly grey and hard, so that the two print colours carry the picture */
+#cam video{filter:grayscale(.88) contrast(1.22) brightness(1.04)}
+/* the second plate over the film: a halftone screen in blue and the warm tone of the paper */
+#l-zine{font-family:'JetBrains Mono',monospace;color:var(--zink)}
+.zine-tone{position:absolute;inset:0;background-image:radial-gradient(circle at 50% 50%,rgba(var(--riso-rgb),.5) 0 1.6px,transparent 2.1px);background-size:9px 9px;mix-blend-mode:multiply;opacity:.75}
+.zine-paper{position:absolute;inset:0;background:var(--paper);mix-blend-mode:multiply;opacity:.5}
+/* the number of the cut on a slip of paper under a strip of tape */
+.zine-no{position:absolute;left:54px;top:50px;min-width:150px;padding:10px 22px 6px;background:var(--paper);transform:rotate(-3deg);box-shadow:3px 4px 0 rgba(26,26,26,.35);font:400 76px/1 'Anton',Impact,sans-serif;letter-spacing:.01em;text-align:center;white-space:nowrap}
+.zine-no i{position:absolute;left:34px;top:-17px;width:92px;height:30px;background:rgba(255,72,176,.72);transform:rotate(-5deg)}
+#zine-no{position:relative;text-shadow:4px 3px 0 var(--acc)}
+/* the song time in a round rubber stamp */
+.zine-stamp{position:absolute;right:58px;top:44px;width:150px;height:150px;border:6px solid var(--riso);border-radius:50%;box-shadow:inset 0 0 0 5px transparent,inset 0 0 0 8px var(--riso);display:flex;align-items:center;justify-content:center;transform:rotate(9deg);color:var(--riso);font:700 34px/1 'JetBrains Mono',monospace;background:rgba(var(--paper-rgb),.78)}
+/* the film as a row of printed dots */
+.zine-dots{position:absolute;left:54px;bottom:40px;width:1812px;height:14px;background-image:radial-gradient(circle at 7px 7px,var(--paper) 0 3.6px,var(--zink) 4.2px 6.2px,transparent 6.8px);background-size:24px 14px}
+#zine-fill{display:block;height:14px;width:0;background-image:radial-gradient(circle at 7px 7px,var(--acc) 0 4.6px,var(--zink) 5.2px 6.4px,transparent 7px);background-size:24px 14px}
+.zine-tape{position:absolute;width:150px;height:36px;background:rgba(244,226,120,.6)}
+.zine-tape.a{right:-34px;bottom:118px;transform:rotate(-38deg)}
+.zine-tape.b{left:-40px;bottom:150px;transform:rotate(41deg)}
+/* the devices: black ink on paper, the accent in pink, the blue plate as a shadow that is off register */
+#l-dev .dv{--ink:var(--paper);--dim:rgba(var(--paper-rgb),.8);--hair:rgba(var(--paper-rgb),.55);--shade:transparent;--inv:var(--zink);--ac:var(--zink)}
+#l-dev .dv.acc{--ac:var(--acc)}
+/* paper letters are cut out: a black edge keeps them readable on a bright picture */
+#l-dev .num,#l-dev .big,#l-dev .strk,#l-dev .tstate,#l-dev .pnum,#l-dev .display .drow{-webkit-text-stroke:5px var(--zink);paint-order:stroke fill;text-shadow:6px 5px 0 var(--riso)}
+#l-dev .dv.acc .num,#l-dev .display.acc .drow.acc{text-shadow:6px 5px 0 var(--zink)}
+#l-dev .dbox{color:var(--zink);text-shadow:none;-webkit-text-stroke:0}
+#l-dev .dv.acc .dbox{color:var(--zink)}
+#l-dev .boxback{background:var(--paper);transform:rotate(-1.2deg);box-shadow:4px 5px 0 var(--riso)}
+#l-dev .dv.acc .boxback{background:var(--acc);box-shadow:4px 5px 0 var(--zink)}
+#l-dev .lab,#l-dev .stitle,#l-dev .srow,#l-dev .vrow,#l-dev .lrow{text-shadow:-1.5px -1.5px 0 var(--zink),1.5px -1.5px 0 var(--zink),-1.5px 1.5px 0 var(--zink),1.5px 1.5px 0 var(--zink),0 2px 0 var(--zink),2px 0 0 var(--zink),0 -2px 0 var(--zink),-2px 0 0 var(--zink),3px 3px 0 var(--zink)}
+#l-dev .mult{background:var(--acc);color:var(--zink);transform:rotate(-2deg);box-shadow:4px 5px 0 var(--zink)}
+#l-dev .dv:not(.acc) .mult{background:var(--paper);color:var(--zink)}
+#l-dev .tagbox{background:var(--paper);color:var(--zink);box-shadow:3px 3px 0 var(--riso)}
+#l-dev .tag.acc .tagbox{background:var(--acc)}
+#l-dev .stampbox{color:var(--riso);border-color:var(--riso);background:rgba(var(--paper-rgb),.8);border-radius:6px}
+#l-dev .strikeline{background:var(--acc)}
+#l-dev .redact{background:var(--zink)}
+#l-dev .terminal{background:var(--paper);border:3px solid var(--zink);box-shadow:6px 7px 0 var(--riso)}
+#l-dev .tbar,#l-dev .tbody{color:var(--zink)}
+#l-dev .tbar{border-bottom-color:var(--zink)}
+#l-dev .tline.out{color:rgba(26,26,26,.7)}
+#l-dev .terminal:not(.acc) .tline b{color:var(--zink)}
+#l-dev .cursor{background:var(--zink)}
+#l-dev .bub{border-radius:4px;box-shadow:4px 5px 0 var(--zink)}
+#l-dev .bub.them{background:var(--paper);color:var(--zink)}
+#l-dev .bub.her,#l-dev .chat:not(.acc) .bub.her{background:var(--acc);color:var(--zink)}
+#l-dev .ncard{border-radius:4px;background:var(--paper);box-shadow:6px 7px 0 var(--riso)}
+#l-dev .ncard .ico{border-radius:50%;color:var(--zink)}
+#l-dev .track{border-radius:4px;background:rgba(var(--paper-rgb),.5)}
+#l-dev .track.on{background:var(--acc)}
+#l-dev .track i{border-radius:2px;background:var(--zink);box-shadow:none}
+#l-dev .tstate.off{color:var(--paper)}
+#l-dev .pbar{background:rgba(var(--paper-rgb),.45)}
+/* the karaoke line: a strip of paper above the row of dots */
+.kar{bottom:78px}
+.band{background:var(--paper);color:var(--zink);transform:rotate(-.6deg);box-shadow:4px 5px 0 var(--riso)}
+.band .sung{color:var(--zink)}
+.band .next{color:rgba(26,26,26,.5)}
+.band .cur{color:var(--zink);background:var(--acc);text-decoration:none}
+/* over everything */
+.flash{background:var(--paper)}
+.end{background:var(--paper)}
+.etitle{color:var(--zink)}
+.ecur{background:var(--acc)}
+.eline{color:rgba(26,26,26,.7)}
