@@ -1,0 +1,321 @@
+{
+  "id": "rough-cut-subtitles",
+  "format": "ocd.workflow",
+  "version": 1,
+  "name": "Rough cut with subtitles",
+  "description": "Upload an interview, a talking head or a presentation: filler words, false starts, retakes and long pauses are cut out, and you get the cut video, the same with subtitles burnt in, an SRT file and the list of cuts. ElevenLabs hears the words, a language model decides the cuts, ffmpeg cuts locally.",
+  "requires": [
+    "elevenlabs",
+    "openrouter",
+    "ffmpeg"
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "input.video",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 120,
+        "title": "Recording",
+        "params": {
+          "asset": null
+        }
+      },
+      {
+        "id": "n2",
+        "type": "input.text",
+        "typeVersion": 1,
+        "x": 80,
+        "y": 420,
+        "title": "Instructions",
+        "params": {
+          "text": ""
+        }
+      },
+      {
+        "id": "n3",
+        "type": "video.rough_cut",
+        "typeVersion": 1,
+        "x": 500,
+        "y": 160,
+        "title": "Rough cut",
+        "params": {
+          "model": "",
+          "instructions": "",
+          "remove_retakes": true,
+          "remove_fillers": true,
+          "shorten_pauses": true,
+          "max_pause": 0.7,
+          "padding": 0.08,
+          "trim_ends": true,
+          "language": "auto"
+        }
+      },
+      {
+        "id": "n4",
+        "type": "video.captions",
+        "typeVersion": 1,
+        "x": 940,
+        "y": 60,
+        "title": "Burn in subtitles",
+        "params": {
+          "style": "lines",
+          "position": "bottom"
+        }
+      },
+      {
+        "id": "n5",
+        "type": "video.subtitles",
+        "typeVersion": 1,
+        "x": 940,
+        "y": 420,
+        "title": "Subtitles",
+        "params": {
+          "max_chars": 42,
+          "max_lines": 2,
+          "max_seconds": 6,
+          "language": "auto"
+        }
+      },
+      {
+        "id": "n6",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 20,
+        "params": {
+          "label": "Rough cut"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 220,
+        "params": {
+          "label": "Rough cut with subtitles"
+        }
+      },
+      {
+        "id": "n8",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 420,
+        "params": {
+          "label": "Subtitles (SRT)"
+        }
+      },
+      {
+        "id": "n9",
+        "type": "output.result",
+        "typeVersion": 1,
+        "x": 1380,
+        "y": 620,
+        "params": {
+          "label": "List of cuts"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": {
+          "node": "n1",
+          "port": "video"
+        },
+        "to": {
+          "node": "n3",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e2",
+        "from": {
+          "node": "n2",
+          "port": "text"
+        },
+        "to": {
+          "node": "n3",
+          "port": "instructions"
+        }
+      },
+      {
+        "id": "e3",
+        "from": {
+          "node": "n3",
+          "port": "video"
+        },
+        "to": {
+          "node": "n4",
+          "port": "video"
+        }
+      },
+      {
+        "id": "e4",
+        "from": {
+          "node": "n3",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n4",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e5",
+        "from": {
+          "node": "n3",
+          "port": "timing"
+        },
+        "to": {
+          "node": "n5",
+          "port": "timing"
+        }
+      },
+      {
+        "id": "e6",
+        "from": {
+          "node": "n3",
+          "port": "video"
+        },
+        "to": {
+          "node": "n6",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e7",
+        "from": {
+          "node": "n4",
+          "port": "video"
+        },
+        "to": {
+          "node": "n7",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e8",
+        "from": {
+          "node": "n5",
+          "port": "srt"
+        },
+        "to": {
+          "node": "n8",
+          "port": "inputs"
+        }
+      },
+      {
+        "id": "e9",
+        "from": {
+          "node": "n3",
+          "port": "cuts"
+        },
+        "to": {
+          "node": "n9",
+          "port": "inputs"
+        }
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "id": "t1",
+        "x": 500,
+        "y": 620,
+        "w": 360,
+        "h": 170,
+        "text": "Instructions are optional, for example \"keep the laughs\" or \"cut the questions, keep only the answers\". Check the list of cuts after the run; whatever went too far you bring back with an instruction and run again. Recordings up to 20 minutes."
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    }
+  },
+  "app": {
+    "enabled": true,
+    "title": "Rough cut with subtitles",
+    "description": "Upload a recording with speech. You get a clean first cut, the same with subtitles, an SRT file and the list of cuts.",
+    "inputs": [
+      {
+        "node": "n1",
+        "param": "asset",
+        "label": "Recording"
+      },
+      {
+        "node": "n2",
+        "param": "text",
+        "label": "Instructions (optional)"
+      }
+    ],
+    "outputs": [
+      {
+        "node": "n6",
+        "label": "Rough cut"
+      },
+      {
+        "node": "n7",
+        "label": "Rough cut with subtitles"
+      },
+      {
+        "node": "n8",
+        "label": "Subtitles (SRT)"
+      },
+      {
+        "node": "n9",
+        "label": "List of cuts"
+      }
+    ]
+  },
+  "i18n": {
+    "de": {
+      "name": "Rohschnitt mit Untertiteln",
+      "description": "Lade ein Interview, einen Talking Head oder eine Präsentation hoch: Füllwörter, Versprecher, doppelte Anläufe und lange Pausen fliegen raus. Du erhältst das geschnittene Video, dasselbe mit eingebrannten Untertiteln, eine SRT-Datei und die Liste der Schnitte. ElevenLabs hört die Wörter, ein Sprachmodell entscheidet die Schnitte, ffmpeg schneidet lokal.",
+      "node.n1": "Aufnahme",
+      "node.n2": "Anweisungen",
+      "node.n3": "Rohschnitt",
+      "node.n4": "Untertitel einbrennen",
+      "node.n5": "Untertitel",
+      "note.t1": "Die Anweisungen sind freiwillig, zum Beispiel «Lacher stehen lassen» oder «Fragen raus, nur die Antworten». Prüfe nach dem Lauf die Liste der Schnitte; was zu viel war, holst du mit einer Anweisung zurück und startest nochmals. Aufnahmen bis 20 Minuten.",
+      "param.n6.label": "Rohschnitt",
+      "param.n7.label": "Rohschnitt mit Untertiteln",
+      "param.n8.label": "Untertitel (SRT)",
+      "param.n9.label": "Liste der Schnitte",
+      "app.title": "Rohschnitt mit Untertiteln",
+      "app.description": "Lade eine Aufnahme mit Sprache hoch. Du erhältst einen sauberen ersten Schnitt, denselben mit Untertiteln, eine SRT-Datei und die Liste der Schnitte.",
+      "app.input.n1.asset": "Aufnahme",
+      "app.input.n2.text": "Anweisungen (freiwillig)",
+      "app.output.n6": "Rohschnitt",
+      "app.output.n7": "Rohschnitt mit Untertiteln",
+      "app.output.n8": "Untertitel (SRT)",
+      "app.output.n9": "Liste der Schnitte"
+    },
+    "es": {
+      "name": "Corte en bruto con subtítulos",
+      "description": "Sube una entrevista, un vídeo a cámara o una presentación: se quitan muletillas, falsos comienzos, tomas repetidas y pausas largas. Obtienes el vídeo cortado, el mismo con subtítulos incrustados, un archivo SRT y la lista de cortes. ElevenLabs oye las palabras, un modelo de lenguaje decide los cortes y ffmpeg corta en local.",
+      "node.n1": "Grabación",
+      "node.n2": "Instrucciones",
+      "node.n3": "Corte en bruto",
+      "node.n4": "Incrustar subtítulos",
+      "node.n5": "Subtítulos",
+      "note.t1": "Las instrucciones son opcionales, por ejemplo «deja las risas» o «quita las preguntas, solo las respuestas». Revisa la lista de cortes tras la ejecución; lo que sobró lo recuperas con una instrucción y vuelves a ejecutar. Grabaciones de hasta 20 minutos.",
+      "param.n6.label": "Corte en bruto",
+      "param.n7.label": "Corte en bruto con subtítulos",
+      "param.n8.label": "Subtítulos (SRT)",
+      "param.n9.label": "Lista de cortes",
+      "app.title": "Corte en bruto con subtítulos",
+      "app.description": "Sube una grabación con voz. Obtienes un primer montaje limpio, el mismo con subtítulos, un archivo SRT y la lista de cortes.",
+      "app.input.n1.asset": "Grabación",
+      "app.input.n2.text": "Instrucciones (opcional)",
+      "app.output.n6": "Corte en bruto",
+      "app.output.n7": "Corte en bruto con subtítulos",
+      "app.output.n8": "Subtítulos (SRT)",
+      "app.output.n9": "Lista de cortes"
+    }
+  }
+}

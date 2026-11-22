@@ -53,6 +53,7 @@ const EXPECTED = [
   'photo-slideshow',
   'photo-to-3d',
   'replace-people-in-video',
+  'rough-cut-subtitles',
   'series-shots',
   'sketch-illustration',
   'song-from-idea',
@@ -96,6 +97,8 @@ function requirementsOf(type) {
   else if (type === 'ad.music') keys.push('elevenlabs');
   else if (type === 'ad.endcard') keys.push('rendernode');
   else if (type === 'video.motion_graphics') keys.push('rendernode');
+  // the rough cut hears the words with ElevenLabs and lets a language model decide the cuts (the subtitles of a timing need neither)
+  else if (type === 'video.rough_cut') keys.push('elevenlabs', 'openrouter');
   else if (type.startsWith('magnific.')) keys.push('magnific');
   else if (type.startsWith('hf.') || ['image.higgsfield', 'video.higgsfield'].includes(type)) keys.push('higgsfield');
   const def = nodeRegistry.get(type);
@@ -706,7 +709,7 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['ad-spot', 'ad-spot-portrait', 'event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['ad-spot', 'ad-spot-portrait', 'event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard', 'rough-cut-subtitles'].includes(item.id)).every((item) => item.available));
       // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
       for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
