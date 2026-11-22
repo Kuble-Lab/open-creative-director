@@ -49,13 +49,15 @@ function testAutoApproval() {
   assert.equal(run.autoApproves(info({ usd: 5 }), 5), true, 'exactly the limit');
   assert.equal(run.autoApproves(info({ usd: 5.01 }), 5), false);
   assert.equal(run.autoApproves(info({ usd: 1 }), null), false, 'off');
-  assert.equal(run.autoApproves(info({ usd: 1, unknownNodes: 1 }), 5), false, 'a step without a price asks');
-  assert.equal(run.autoApproves(info({ usd: 1 }, [{ unknown: true }]), 5), false);
-  // credits count at the server's rate; without a rate the question stays
+  // steps without a price do not bring the question back; the known part still counts
+  assert.equal(run.autoApproves(info({ usd: 1, unknownNodes: 1 }), 5), true);
+  assert.equal(run.autoApproves(info({ usd: 1 }, [{ unknown: true }]), 5), true);
+  assert.equal(run.autoApproves(info({ usd: 6, unknownNodes: 1 }), 5), false);
+  // credits count at the server's rate; without a rate they count as 0
   assert.equal(run.autoApprovalUsd(info({ usd: 1, credits: 2200, creditsUsd: 2.2 })), 3.2);
   assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: 2.2 }), 3), false);
-  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: null }), 100), false);
-  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200 }), 100), false);
+  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: null }), 100), true);
+  assert.equal(run.autoApproves(info({ usd: 1, credits: 2200 }), 100), true);
   // credits that are 0 need no rate
   assert.equal(run.autoApproves(info({ usd: 1, credits: 0 }), 5), true);
 }

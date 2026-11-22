@@ -1628,7 +1628,7 @@
         const autoLimit = runLib.readAutoLimit(autoStorage());
         if (info.needsConfirm && runLib.autoApproves(info, autoLimit)) {
           // started without the question; a step above the person's amount stops the run and asks for a new limit
-          request = { ...request, maxUsd: autoLimit, requireKnownPrices: true };
+          request = { ...request, maxUsd: autoLimit, requireKnownPrices: false };
           ui.toast(T('nodes.run.auto.started', { amount: money(runLib.autoApprovalUsd(info)), limit: money(autoLimit) }), { timeout: 5000 });
         } else if (info.needsConfirm) {
           s.asking = true;

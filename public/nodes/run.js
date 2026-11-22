@@ -470,18 +470,16 @@
   }
 
   // What a plan costs in USD for the automatic approval: the USD estimate plus its credits at the rates of the server
-  // (totals.creditsUsd). null when that is not known: a step without a price, credits without a rate.
+  // (totals.creditsUsd). Steps without a price and credits without a rate count as 0: they do not bring the question back
+  // (the limit of the run still holds for everything that is booked while it runs).
   function autoApprovalUsd(info) {
     if (!info || !info.totals) return null;
     const totals = info.totals;
-    if (totals.unknownNodes || (info.paid || []).some((row) => row.unknown)) return null;
     const usd = isNumber(totals.usd) ? totals.usd : 0;
-    const credits = isNumber(totals.credits) ? totals.credits : 0;
-    if (credits > 0 && !isNumber(totals.creditsUsd)) return null;
-    return usd + (credits > 0 ? totals.creditsUsd : 0);
+    return usd + (isNumber(totals.creditsUsd) ? totals.creditsUsd : 0);
   }
 
-  // Whether a plan may start without the question: a limit is set, every price is known and the total is not above it.
+  // Whether a plan may start without the question: a limit is set and the known total is not above it.
   function autoApproves(info, limit) {
     const cost = autoApprovalUsd(info);
     return cleanAutoLimit(limit) !== null && cost !== null && cost <= limit + 1e-9;
@@ -1460,8 +1458,9 @@
         }
         const autoLimit = readAutoLimit(autoStorage());
         if (info.needsConfirm && autoApproves(info, autoLimit)) {
-          // started without the question: the limit of the run is the person's amount, a step above it stops the run and asks
-          info.approved = { maxUsd: autoLimit, requireKnownPrices: true };
+          // started without the question: the limit of the run is the person's amount, a step above it stops the run and asks;
+          // a step without a price does not stop it (requireKnownPrices false), or every such step would ask again
+          info.approved = { maxUsd: autoLimit, requireKnownPrices: false };
           ui.toast(T('nodes.run.auto.started', { amount: money(autoApprovalUsd(info)), limit: money(autoLimit) }), { timeout: 5000 });
         } else if (info.needsConfirm) {
           const confirmed = await confirmPaid(info, { all: again, items: mode === 'items' });
