@@ -4,6 +4,7 @@
 // All values from the server are written as text, never as HTML.
 (() => {
   const PAGE = 100;
+  const SESSION_PAGE = 10;
   const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 
   // 1536 -> "1.5 KB" in the number format of the language. Binary steps, as the disk tools of the server count.
@@ -41,8 +42,15 @@
 
   const keyOf = (file) => `${file.sessionId}/${file.file}`;
 
+  // The chats and workflows that take room on the server or in the archive, the largest first.
+  function sessionRows(list) {
+    return list
+      .filter((session) => session.files > 0 || session.archivedFiles > 0)
+      .sort((a, b) => b.bytes + (b.archivedBytes || 0) - (a.bytes + (a.archivedBytes || 0)) || String(a.id).localeCompare(String(b.id)));
+  }
+
   if (typeof module === 'object' && module.exports) {
-    module.exports = { formatBytes, visibleFiles, keyOf };
+    module.exports = { formatBytes, visibleFiles, keyOf, sessionRows };
     return;
   }
 
@@ -61,6 +69,7 @@
   let sessions = new Map();
   let request = null;
   let shown = PAGE;
+  let shownSessions = SESSION_PAGE;
   let pendingDelete = [];
   let poll = null;
   const selected = new Map();
@@ -121,6 +130,8 @@
   }
 
   const archiveOn = () => Boolean(report && report.archive && report.archive.canUse && report.archive.connected);
+  // Fetching back is open to everybody who may use the chat or workflow.
+  const restoreOn = () => Boolean(report && report.archive && report.archive.connected);
 
   function renderArchive() {
     const box = el('archive');
@@ -151,6 +162,107 @@
       load();
     });
     box.append(disconnect);
+    if (info.auto) box.append(autoForm(info.auto));
+  }
+
+  // The automatic archive: large old videos go by themselves (POST api/storage/archive/auto).
+  function autoForm(auto) {
+    const form = node('form', '', 'st-auto');
+    form.append(node('h3', T('autoTitle')));
+    const enabled = node('input');
+    enabled.type = 'checkbox';
+    enabled.checked = auto.enabled === true;
+    const toggle = node('label', '', 'st-auto-toggle');
+    toggle.append(enabled, node('span', T('autoEnabled')));
+    const field = (label, value) => {
+      const input = node('input');
+      input.type = 'number';
+      input.min = '1';
+      input.step = '1';
+      input.required = true;
+      input.value = String(value);
+      const wrap = node('label', '', 'mon-field');
+      wrap.append(node('span', label), input);
+      return { wrap, input };
+    };
+    const size = field(T('autoMinMb'), auto.minMb);
+    const age = field(T('autoMinDays'), auto.minDays);
+    const save = node('button', T('autoSave'));
+    save.type = 'submit';
+    const row = node('div', '', 'st-auto-row');
+    row.append(size.wrap, age.wrap, save);
+    const last = auto.lastRunAt ? T('autoLast', { time: stamp(auto.lastRunAt), count: number(auto.lastQueued || 0) }) : T('autoNever');
+    form.append(toggle, row, node('p', last, 'mon-muted'));
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await send('api/storage/archive/auto', 'POST', { enabled: enabled.checked, minMb: Number(size.input.value), minDays: Number(age.input.value) });
+        await load({ quiet: true });
+        setStatus(T('autoSaved'));
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    });
+    return form;
+  }
+
+  // Whole chats and workflows: what they take on the server and in the archive, and the way there and back in one step.
+  function renderSessions() {
+    const box = el('sessions');
+    box.replaceChildren();
+    const info = report.archive || {};
+    const rows = sessionRows(report.sessions);
+    box.hidden = !(info.available && (info.connected || report.totals.archivedFiles > 0)) || !rows.length;
+    if (box.hidden) return;
+    box.append(node('h2', T('sessionsTitle')), node('p', T('sessionsHint'), 'mon-muted'));
+    const showOwner = report.scope === 'all' && report.accounts;
+    const wrap = node('div', '', 'mon-table-wrap');
+    const table = node('table', '', 'st-table');
+    const head = node('tr');
+    head.append(node('th', T('where')), node('th', ''));
+    if (showOwner) head.append(node('th', T('owner')));
+    head.append(node('th', T('onServer'), 'number'), node('th', T('inArchiveHead'), 'number'), node('th', ''));
+    table.append(head);
+    const busy = new Set(report.files.filter((file) => file.job && file.job !== 'error').map((file) => file.sessionId));
+    for (const session of rows.slice(0, shownSessions)) {
+      const row = node('tr');
+      row.append(node('td', sessionLabel(session), 'st-where'), node('td', T(`kind.${['chat', 'workflow', 'orphan'].includes(session.kind) ? session.kind : 'chat'}`), 'mon-muted'));
+      if (showOwner) row.append(node('td', session.owner || T('noOwner')));
+      row.append(
+        node('td', `${bytes(session.bytes)} · ${fileCount(session.files)}`, 'number'),
+        node('td', session.archivedFiles ? `${bytes(session.archivedBytes)} · ${fileCount(session.archivedFiles)}` : '', 'number')
+      );
+      const actions = node('td', '', 'st-actions');
+      if (archiveOn() && session.archivable > 0) {
+        const toArchive = node('button', T('wholeToArchive'));
+        toArchive.type = 'button';
+        toArchive.disabled = busy.has(session.id);
+        toArchive.addEventListener('click', () => moveWhole('archive', session));
+        actions.append(toArchive);
+      }
+      if (restoreOn() && session.archivedFiles > 0) {
+        const restore = node('button', T('wholeRestore'));
+        restore.type = 'button';
+        restore.disabled = busy.has(session.id);
+        restore.addEventListener('click', () => moveWhole('restore', session));
+        actions.append(restore);
+      }
+      row.append(actions);
+      table.append(row);
+    }
+    wrap.append(table);
+    box.append(wrap);
+    if (rows.length > shownSessions) {
+      const more = node('button', T('sessionsMore'));
+      more.type = 'button';
+      more.addEventListener('click', () => {
+        shownSessions += SESSION_PAGE * 3;
+        renderSessions();
+      });
+      const holder = node('div', '', 'st-more');
+      holder.append(more);
+      box.append(holder);
+    }
   }
 
   function renderMetrics() {
@@ -212,7 +324,7 @@
 
   function preview(file) {
     const box = node('div', '', 'st-thumb');
-    if (file.type === 'image') {
+    if (file.type === 'image' && file.url) {
       const image = node('img');
       image.loading = 'lazy';
       image.alt = '';
@@ -292,7 +404,7 @@
       row.append(node('td', stamp(file.modifiedAt)), node('td', bytes(file.size), 'number'));
       const actions = node('td', '', 'st-actions');
       if (file.archived) {
-        if (archiveOn()) {
+        if (restoreOn()) {
           const restore = node('button', T('restore'));
           restore.type = 'button';
           restore.disabled = working;
@@ -330,6 +442,7 @@
     renderArchive();
     renderMetrics();
     renderOwners();
+    renderSessions();
     renderFiles();
     updateSelection();
     el('report').hidden = false;
@@ -365,6 +478,18 @@
     try {
       const body = await send(`api/storage/${kind}`, 'POST', { files: files.map((file) => ({ sessionId: file.sessionId, file: file.file })) });
       for (const item of body.queued) selected.delete(`${item.sessionId}/${item.file}`);
+      await load({ quiet: true });
+      const started = T(kind === 'archive' ? 'archiveStarted' : 'restoreStarted', { count: number(body.queued.length) });
+      if (body.failed.length) setStatus(`${started} ${T('failed', { count: number(body.failed.length), reason: body.failed[0].error })}`, true);
+      else setStatus(started);
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  }
+
+  async function moveWhole(kind, session) {
+    try {
+      const body = await send(`api/storage/${kind}`, 'POST', { sessions: [session.id] });
       await load({ quiet: true });
       const started = T(kind === 'archive' ? 'archiveStarted' : 'restoreStarted', { count: number(body.queued.length) });
       if (body.failed.length) setStatus(`${started} ${T('failed', { count: number(body.failed.length), reason: body.failed[0].error })}`, true);

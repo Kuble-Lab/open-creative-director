@@ -107,7 +107,9 @@ const ROUTE_RULES = {
   'GET /api/storage': 'identified', // admins may ask for everything; everybody else: the files of their own chats and workflows
   'POST /api/storage/delete': 'identified', // admins: every file; everybody else: only their own
   'POST /api/storage/archive': 'admin', // the archive is one Dropbox for the installation
-  'POST /api/storage/restore': 'admin',
+  'POST /api/storage/restore': 'identified', // back from the archive: everybody who may use the chat or workflow
+  'GET /api/storage/archived': 'identified', // is this file in the archive (the note where a picture or video is missing)
+  'POST /api/storage/archive/auto': 'admin',
   'POST /api/storage/archive/connect': 'admin',
   'POST /api/storage/archive/connect/finish': 'admin',
   'DELETE /api/storage/archive/connect': 'admin',
@@ -299,7 +301,9 @@ const PARTICIPANT_RULES = {
   'GET /api/storage': 'own',
   'POST /api/storage/delete': 'own',
   'POST /api/storage/archive': 'admin',
-  'POST /api/storage/restore': 'admin',
+  'POST /api/storage/restore': 'own',
+  'GET /api/storage/archived': 'own',
+  'POST /api/storage/archive/auto': 'admin',
   'POST /api/storage/archive/connect': 'admin',
   'POST /api/storage/archive/connect/finish': 'admin',
   'DELETE /api/storage/archive/connect': 'admin',
