@@ -28,6 +28,7 @@ const rendernode = require('./lib/rendernode');
 const renderNodesStore = require('./lib/rendernodes-store');
 const costs = require('./lib/costs');
 const brandings = require('./lib/brandings');
+const influencers = require('./lib/influencers');
 const brandingImport = require('./lib/branding-import');
 const roles = require('./lib/roles');
 const publicrefs = require('./lib/publicrefs');
@@ -1851,6 +1852,120 @@ app.delete('/api/brandings/:id/fonts/:filename', async (req, res) => {
   } catch (err) {
     fail(res, /Ungueltiger Branding-Dateiname|Dateityp nicht erlaubt/.test(err.message) ? 400 : brandingFontStatus(err), err.message);
   }
+});
+
+function influencerError(res, err) {
+  const status = err.code === 'INFLUENCER_NOT_FOUND' ? 404
+    : ['INFLUENCER_FORBIDDEN', 'INFLUENCER_READONLY'].includes(err.code) ? 403
+      : err.code === 'INFLUENCER_LIMIT' ? 409
+        : err.code === 'INFLUENCER_IMAGE_TOO_LARGE' ? 413
+          : String(err.code || '').startsWith('INFLUENCER_') ? 400 : 500;
+  failWithCode(res, status, err.code || 'INFLUENCER_ERROR', err.message);
+}
+
+function requireInfluencerId(req, res) {
+  if (store.isValidId(req.params.id)) return req.params.id;
+  failWithCode(res, 400, 'INFLUENCER_INVALID', 'Ungueltige Influencer-ID');
+  return null;
+}
+
+// Image upload into an influencer (the raw file as body, the name in X-File-Name), as the font upload of the brandings.
+const parseInfluencerImageBody = express.raw({ type: () => true, limit: influencers.MAX_IMAGE_BYTES });
+function influencerImageBody(req, res, next) {
+  parseInfluencerImageBody(req, res, (err) => {
+    if (!err) return next();
+    if (err.type === 'entity.too.large') return failWithCode(res, 413, 'INFLUENCER_IMAGE_TOO_LARGE', 'Ein Bild darf maximal 15 MB gross sein');
+    return failWithCode(res, 400, 'INFLUENCER_IMAGE_INVALID', `Das Bild konnte nicht empfangen werden: ${err.message}`);
+  });
+}
+
+app.get('/api/influencers', async (req, res) => {
+  try {
+    const viewer = access.viewerOf(req);
+    res.json({ influencers: await influencers.listInfluencers({ viewer }), maxOwned: influencers.MAX_OWNED_INFLUENCERS,
+      owned: await influencers.countOwnedBy(viewer.email) });
+  } catch (err) { influencerError(res, err); }
+});
+
+app.post('/api/influencers', async (req, res) => {
+  try {
+    const influencer = await influencers.createInfluencer(req.body, { viewer: access.viewerOf(req), consent: req.body?.consent });
+    res.status(201).json(influencer);
+  } catch (err) { influencerError(res, err); }
+});
+
+app.get('/api/influencers/:id', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    const viewer = access.viewerOf(req);
+    const influencer = await influencers.readVisibleInfluencer(id, viewer);
+    const editable = influencers.editableBy(influencer, viewer);
+    // who confirmed and who owns it is for the people who may change it, not for everybody who may use a shared one
+    const shown = editable ? influencer : { ...influencer, owner: null, consent: influencer.consent ? { confirmedAt: influencer.consent.confirmedAt } : null };
+    res.json({ ...shown, editable });
+  } catch (err) { influencerError(res, err); }
+});
+
+app.patch('/api/influencers/:id', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    res.json(await influencers.updateInfluencer(id, req.body));
+  } catch (err) { influencerError(res, err); }
+});
+
+app.delete('/api/influencers/:id', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    await influencers.deleteInfluencer(id);
+    res.json({ ok: true });
+  } catch (err) { influencerError(res, err); }
+});
+
+app.post('/api/influencers/:id/duplicate', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    res.status(201).json(await influencers.duplicateInfluencer(id, { viewer: access.viewerOf(req), consent: req.body?.consent }));
+  } catch (err) { influencerError(res, err); }
+});
+
+app.post('/api/influencers/:id/images', influencerImageBody, async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  let filename = String(req.get('x-file-name') || req.query.filename || '').trim();
+  try { filename = decodeURIComponent(filename); } catch (_) {
+    // A malformed header still goes through filename sanitisation.
+  }
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    res.status(201).json(await influencers.saveInfluencerImage(id, { filename, buffer: req.body }));
+  } catch (err) { influencerError(res, err); }
+});
+
+app.delete('/api/influencers/:id/images/:filename', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readEditableInfluencer(id, access.viewerOf(req));
+    res.json(await influencers.removeInfluencerImage(id, req.params.filename));
+  } catch (err) { influencerError(res, err); }
+});
+
+app.get('/api/influencers/:id/assets/:filename', async (req, res) => {
+  const id = requireInfluencerId(req, res);
+  if (!id) return;
+  try {
+    await influencers.readVisibleInfluencer(id, access.viewerOf(req));
+    const buffer = await influencers.readInfluencerAsset(id, req.params.filename);
+    const mime = BRANDING_ASSET_MIME[path.extname(req.params.filename).toLowerCase()] || 'application/octet-stream';
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.type(mime).send(buffer);
+  } catch (err) { influencerError(res, err); }
 });
 
 app.get('/api/folders', async (req, res) => {

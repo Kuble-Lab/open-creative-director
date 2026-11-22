@@ -2254,13 +2254,15 @@ async function testNode() {
       const refused = await errorOf(exec(makeCtx(), inputs({ figure_image: { type: 'list', items: [foreign] } })));
       assert.match(refused.message, /^figure_image: asset .* belongs to another workflow$/);
       assert.equal(calls.length, 0);
-      assert.ok(hudNode.definitions.find((def) => def.type === 'music_video.hud_plan').validate({}, { figure_image: { count: 5 } }).some((issue) => issue.port === 'figure_image'));
+      assert.ok(hudNode.definitions.find((def) => def.type === 'music_video.hud_plan').validate({}, { figure_image: { count: 7 } }).some((issue) => issue.port === 'figure_image'));
+      // an influencer brings up to 6 images; the planner takes the first 3 as references
+      assert.ok(!hudNode.definitions.find((def) => def.type === 'music_video.hud_plan').validate({}, { figure_image: { count: 6 } }).some((issue) => issue.port === 'figure_image'));
       const gif = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'upload', buffer: Buffer.from('GIF89a'), ext: '.gif' })).id);
       const pending = await store.reserveAsset(sessionId, { kind: 'image', ext: '.png' });
       const gone = await assets.valueFromAsset(sessionId, (await store.saveAsset(sessionId, { kind: 'image', buffer: Buffer.from('gone'), ext: '.png' })).id);
       await fsp.rm(assets.assetFilePath(gone));
       for (const [images, message] of [
-        [Array(5).fill(own), /at most 3 images/],
+        [Array(7).fill(own), /at most 6 images/],
         [[gif], /PNG, JPEG or WebP/],
         [[{ ...own, assetId: pending.id }], /not finished/],
         [[{ ...own, assetId: 'missing' }], /does not exist/],

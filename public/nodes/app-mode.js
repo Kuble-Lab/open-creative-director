@@ -725,7 +725,13 @@
       if (!param) return;
       const connected = new Set(graphLib.incomingEdges(s.workflow.graph, node.id).map((edge) => edge.to.port));
       const ports = graphLib.portsFor(reg, node);
-      if (ports.inputs.some((port) => port.param === param.id && connected.has(port.id))) return; // driven by a connection
+      const linked = ports.inputs.find((port) => port.param === param.id && connected.has(port.id));
+      // An influencer may deliberately give no figure. Keep the exposed fallback field editable
+      // so choosing none in the new selector still lets the person describe the figure here.
+      const influencerFallback = linked && !linked.multiple && ['text', 'number'].includes(linked.type) &&
+        graphLib.incomingEdges(s.workflow.graph, node.id).filter((edge) => edge.to.port === linked.id)
+          .every((edge) => nodeOf(edge.from.node)?.type === 'input.influencer');
+      if (linked && !influencerFallback) return; // driven by a connection
       const key = `${node.id}.${param.id}`;
       const effective = graphLib.effectiveParams(def, node);
       // what this browser kept, else what the last run used (app runs override the graph and leave it as it is), else the graph

@@ -27,6 +27,7 @@
         <div id="sessionList" class="session-list"></div>
         <div class="sidebar-foot">
           <button id="brandingsBtn" class="sidebar-brandings" type="button" title="Brandings verwalten" data-i18n="sidebar.brandings" data-i18n-title="sidebar.brandingsTitle">🎨 Brandings</button>
+          <button id="influencersBtn" class="sidebar-brandings" type="button" title="KI-Influencer verwalten" data-i18n="sidebar.influencers" data-i18n-title="sidebar.influencersTitle">🧑‍🎤 Influencer</button>
           <div id="modelInfo" class="muted-xs"></div>
           <div id="renderNodeStatus" class="render-node-status hidden" aria-live="polite">
             <span class="render-node-dot" aria-hidden="true"></span>
@@ -517,6 +518,16 @@
       </div>
     </div>
 
+    <div id="influencersModal" class="modal hidden">
+      <div class="modal-panel brandings-panel" role="dialog" aria-labelledby="influencersTitle">
+        <div class="modal-head">
+          <h2 id="influencersTitle" data-i18n="influencers.title">Influencer</h2>
+          <button id="influencersClose" class="modal-close" title="Schliessen" aria-label="Schliessen" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div id="influencersBody" class="modal-body"></div>
+      </div>
+    </div>
+
     <div id="brandingsModal" class="modal hidden">
       <div class="modal-panel brandings-panel" role="dialog" aria-labelledby="brandingsTitle">
         <div class="modal-head">
@@ -622,5 +633,6 @@
     <script src="nodes/main-library.js"></script>
     <script src="nodes/main-chrome.js"></script>
     <script src="nodes/main.js"></script>
+    <script src="app-influencers.js"></script>
   </body>
 </html>

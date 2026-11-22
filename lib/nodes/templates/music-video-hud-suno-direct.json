@@ -402,6 +402,17 @@
         "params": {
           "label": "Song"
         }
+      },
+      {
+        "id": "n33",
+        "type": "input.influencer",
+        "typeVersion": 1,
+        "x": 1840,
+        "y": -400,
+        "params": {
+          "influencer": ""
+        },
+        "title": "Influencer"
       }
     ],
     "edges": [
@@ -954,6 +965,28 @@
           "node": "n32",
           "port": "inputs"
         }
+      },
+      {
+        "id": "e-influencer-figure",
+        "from": {
+          "node": "n33",
+          "port": "figure"
+        },
+        "to": {
+          "node": "n4",
+          "port": "figure"
+        }
+      },
+      {
+        "id": "e-influencer-images",
+        "from": {
+          "node": "n33",
+          "port": "images"
+        },
+        "to": {
+          "node": "n4",
+          "port": "figure_image"
+        }
       }
     ],
     "groups": [],
@@ -1024,6 +1057,11 @@
         "node": "n1",
         "param": "allow_download_credit",
         "label": "Allow the Suno download credit (needed to fetch the song file)"
+      },
+      {
+        "node": "n33",
+        "param": "influencer",
+        "label": "Influencer (no selection: use Figure, default Claudia)"
       },
       {
         "node": "n4",
@@ -1161,7 +1199,9 @@
       "app.input.n1.allow_download_credit": "Suno-Download-Credit erlauben (nötig, um die Songdatei zu holen)",
       "app.output.n32": "Song",
       "param.n32.label": "Song",
-      "app.hint.n32": "Höre den Song an. «Freigeben und weiter mit Schritt 3» macht das Board, das Figurenblatt und die Bilder. Für einen anderen Song erhöhst du im Node «Song (Suno)» die «Variante»."
+      "app.hint.n32": "Höre den Song an. «Freigeben und weiter mit Schritt 3» macht das Board, das Figurenblatt und die Bilder. Für einen anderen Song erhöhst du im Node «Song (Suno)» die «Variante».",
+      "node.n33": "Influencer",
+      "app.input.n33.influencer": "Influencer (ohne Auswahl: Feld Figur, Standard Claudia)"
     },
     "es": {
       "name": "Videoclip en estilo HUD (canción creada con Suno)",
@@ -1219,7 +1259,9 @@
       "app.input.n1.allow_download_credit": "Permitir el crédito de descarga de Suno (necesario para obtener el archivo)",
       "app.output.n32": "Canción",
       "param.n32.label": "Canción",
-      "app.hint.n32": "Escucha la canción. «Aprobar y seguir con el paso 3» crea el tablero, la hoja del personaje y las imágenes. Para otra canción sube la «Versión» en el nodo «Canción (Suno)»."
+      "app.hint.n32": "Escucha la canción. «Aprobar y seguir con el paso 3» crea el tablero, la hoja del personaje y las imágenes. Para otra canción sube la «Versión» en el nodo «Canción (Suno)».",
+      "node.n33": "Influencer",
+      "app.input.n33.influencer": "Influencer (sin selección: campo Figura, por defecto Claudia)"
     }
   }
 }

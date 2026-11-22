@@ -439,6 +439,7 @@ async function run(iso) {
   // The nodes: the real ones everywhere but at the providers
   const registry = createRegistry();
   nodesBasic.registerAll(registry);
+  iso.load('lib/nodes/nodes-influencer').registerAll(registry);
   musicVideoNodes.registerAll(registry);
   hudNodes.registerAll(registry);
   editNodes.registerAll(registry);
