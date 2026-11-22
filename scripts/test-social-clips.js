@@ -344,8 +344,9 @@ async function testLongFilm(h) {
   };
   try {
     const heard = await nodesRoughCut.hearRecording({ ...h.makeCtx(), toolCtx: {} }, film, {});
-    // the rest from 19:56: 64 s, a little more where the encoder pads the sound
-    assert.ok(seen.length === 2 && seen[0] === 1200 && Math.abs(seen[1] - 64) < 0.5, `two parts: 20 minutes and the rest from 19:56 (${seen.join(', ')})`);
+    // the rest from 19:56: 64 s, and up to a second and a half more: "-shortest" lets the encoder pad the sound by whole AAC
+    // frames (128 ms each at 8 kHz), and how many differs from run to run (0.16 s and 0.54 s were both measured)
+    assert.ok(seen.length === 2 && seen[0] === 1200 && seen[1] > 63.9 && seen[1] < 65.5, `two parts: 20 minutes and the rest from 19:56 (${seen.join(', ')})`);
     seen.length = 0;
     assert.equal(heard.words.length, 24, 'the word at the seam counts once');
     assert.ok(Math.abs(heard.words[12].start - (1196 + 10)) < 1e-6, 'the words of the second part have the times of the film');
