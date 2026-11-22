@@ -17,8 +17,13 @@ const access = require('../lib/access');
 const { createStorageOverview, StorageError, typeOfFile, cleanRelativeFile, MAX_DELETE_ITEMS } = require('../lib/storage-overview');
 const page = require('../public/storage.js');
 
-const ALICE = 'alice@example.com';
-const BOB = 'bob@example.com';
+// The test may run in a checkout that already holds chats and files (started directly, or in a copy with data): its people, its
+// folder without a session and every check are its own, and it removes what it made.
+const RUN = require('node:crypto').randomBytes(4).toString('hex');
+const ALICE = `alice-${RUN}@example.com`;
+const BOB = `bob-${RUN}@example.com`;
+const BOSS = `admin-${RUN}@example.com`;
+const ORPHAN = `orphan-${RUN}`;
 const viewer = (email, admin = false) => ({ active: true, email, identified: Boolean(email), admin, superadmin: false, kind: admin ? 'admin' : 'internal', teamIds: [] });
 const LOCAL = { active: false, email: null, identified: false, admin: true, superadmin: false };
 
@@ -57,7 +62,7 @@ async function main() {
   await fsp.writeFile(path.join(scratch, 'part.wav'), Buffer.alloc(700, 1));
   await store.saveInlineImage(aliceChat.id, Buffer.alloc(400, 2));
   // an asset folder whose session file is gone
-  const orphanDir = path.join(PATHS.assetsDir, 'orphan-1');
+  const orphanDir = path.join(PATHS.assetsDir, ORPHAN);
   await fsp.mkdir(orphanDir, { recursive: true });
   await fsp.writeFile(path.join(orphanDir, 'old.mp4'), Buffer.alloc(1200, 1));
 
@@ -100,23 +105,27 @@ async function main() {
   /* ---------- everything: admins and the local mode only ---------- */
   await rejects(storage.overview({ viewer: viewer(ALICE), scope: 'all' }), 'FORBIDDEN', 403);
   await rejects(storage.overview({ viewer: viewer(null) }), 'LOGIN_REQUIRED', 403);
-  const all = await storage.overview({ viewer: viewer('admin@example.com', true), scope: 'all' });
+  const all = await storage.overview({ viewer: viewer(BOSS, true), scope: 'all' });
   assert.equal(all.scope, 'all');
   assert.equal(all.canSeeAll, true);
-  assert.equal(all.files[0].size, 9000);
-  assert.equal(all.files.length, 6);
+  const ownIds = new Set([aliceChat.id, aliceFlow.id, bobChat.id, ORPHAN]);
+  const own = (report) => report.files.filter((file) => ownIds.has(file.sessionId));
+  assert.equal(own(all)[0].size, 9000);
+  assert.equal(own(all).length, 6);
+  assert.deepEqual(all.files.map((file) => file.size), all.files.map((file) => file.size).sort((a, b) => b - a), 'largest first');
   const owners = Object.fromEntries(all.owners.map((entry) => [entry.owner || '-', entry]));
   assert.equal(owners[BOB].files, 1);
   assert.equal(owners[ALICE].files, 4);
-  assert.equal(owners['-'].files, 1, 'the folder without a session has no owner');
+  assert.ok(owners['-'].files >= 1, 'the folder without a session has no owner');
+  assert.equal(all.sessions.find((session) => session.id === ORPHAN).owner, null);
   assert.ok(owners[BOB].bytes >= 9000);
-  assert.equal(all.sessions.find((session) => session.id === 'orphan-1').kind, 'orphan');
+  assert.equal(all.sessions.find((session) => session.id === ORPHAN).kind, 'orphan');
   // an admin who asks for their own files gets only their own
-  assert.equal((await storage.overview({ viewer: viewer('admin@example.com', true) })).files.length, 0);
+  assert.equal((await storage.overview({ viewer: viewer(BOSS, true) })).files.length, 0);
   // local mode: no accounts, everything is the single user's
   const local = await storage.overview({ viewer: LOCAL });
   assert.equal(local.accounts, false);
-  assert.equal(local.files.length, 6);
+  assert.equal(own(local).length, 6);
 
   /* ---------- delete ---------- */
   await rejects(storage.remove({ viewer: viewer(ALICE), items: [] }), 'INVALID', 400);
@@ -128,7 +137,7 @@ async function main() {
     viewer: viewer(ALICE),
     items: [
       { sessionId: bobChat.id, file: bobVideo.file },
-      { sessionId: 'orphan-1', file: 'old.mp4' },
+      { sessionId: ORPHAN, file: 'old.mp4' },
       { sessionId: aliceChat.id, file: 'ledger.json' },
       { sessionId: aliceChat.id, file: 'asset-ids.json' },
       { sessionId: aliceChat.id, file: `../${bobChat.id}/${bobVideo.file}` },
@@ -201,8 +210,8 @@ async function main() {
 
   // admins delete everything, also in a folder without a session
   const byAdmin = await storage.remove({
-    viewer: viewer('admin@example.com', true),
-    items: [{ sessionId: bobChat.id, file: bobVideo.file }, { sessionId: 'orphan-1', file: 'old.mp4' }]
+    viewer: viewer(BOSS, true),
+    items: [{ sessionId: bobChat.id, file: bobVideo.file }, { sessionId: ORPHAN, file: 'old.mp4' }]
   });
   assert.equal(byAdmin.deleted.length, 2);
   assert.equal(byAdmin.freedBytes, 10200);
@@ -257,6 +266,9 @@ async function main() {
   assert.doesNotMatch(script, /innerHTML/, 'values of the server are written as text');
   assert.match(html, /<dialog id="confirm"/, 'deleting asks first');
   assert.match(read('public', 'shell.js'), /id: 'storage'.*href: 'storage\.html'/);
+
+  for (const session of [aliceChat, aliceFlow, bobChat]) await store.deleteSession(session.id);
+  await fsp.rm(orphanDir, { recursive: true, force: true });
 
   console.log('test-storage-overview.js: ok');
 }
