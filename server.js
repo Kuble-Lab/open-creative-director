@@ -51,6 +51,8 @@ const budget = require('./lib/budget');
 const accessSync = require('./lib/access-sync');
 const loginCodes = require('./lib/login-codes');
 const adminMonitoring = require('./lib/admin-monitoring');
+const adminActivity = require('./lib/admin-activity');
+const strikes = require('./lib/strikes');
 const nodeWorkflows = require('./lib/nodes/workflows-store');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
 const { registerNodeRoutes } = require('./lib/nodes/routes');
@@ -113,6 +115,9 @@ app.use((req, res, next) => {
   }
   return apiMonitor.middleware(req, res, next);
 });
+// A blocked person (lib/strikes.js) may look at and download what exists, but every writing API request answers 403
+// ACCOUNT_BLOCKED. Mounted after the monitor, so refused attempts show up as denied requests and as activity.
+app.use(strikes.createBlockGuard());
 // Consent sees the same recorded person as the rest of the app, before the shared body parsers.
 mcp.oauth.mountLoggedIn(app);
 app.use(compression({
@@ -134,10 +139,10 @@ app.use((req, res, next) => {
   } catch (_) {
     return next();
   }
-  if (page !== '/monitoring.html') return next();
+  if (!['/monitoring.html', '/activity.html'].includes(page)) return next();
   res.set('Cache-Control', 'no-store');
   if (!isSuperAdmin(req)) return res.sendStatus(404);
-  return res.sendFile(path.join(PATHS.root, 'views', 'monitoring.html'));
+  return res.sendFile(path.join(PATHS.root, 'views', page.slice(1)));
 });
 app.use(express.static(PATHS.publicDir));
 
@@ -668,6 +673,29 @@ function startHiggsfieldConnectPolling(expiresIn) {
 }
 
 const readMonitoringJobs = adminMonitoring.createJobsReader();
+// The activity page polls every 10 s: runs and the cost journal are read at most once per 8 s, however many pages are open.
+function sharedRead(read, ttlMs = 8000) {
+  let at = 0;
+  let pending = null;
+  return () => {
+    if (!pending || Date.now() - at >= ttlMs) {
+      at = Date.now();
+      pending = Promise.resolve().then(read);
+      pending.catch(() => { pending = null; });
+    }
+    return pending;
+  };
+}
+const activity = adminActivity.createActivity({
+  monitor: apiMonitor,
+  readRuns: sharedRead(() => nodeWorkflows.defaultStore.listAllRuns()),
+  readJobs: readMonitoringJobs,
+  readCosts: sharedRead(() => costs.readCosts()),
+  readTeams: () => teams.listTeams(),
+  readQueue: () => rendernode.queue(),
+  readCreditRates: () => ({ magnific: settings.getPreference('magnificUsdPerCredit'), higgsfield: settings.getPreference('higgsfieldUsdPerCredit') })
+});
+adminActivity.registerRoutes(app, { isSuperAdmin, activity });
 
 const HIGGSFIELD_CALLBACK_PATH = '/api/higgsfield/oauth/callback';
 
@@ -3030,6 +3058,7 @@ async function startServer() {
     .catch((err) => console.warn('[discovery]', err.message));
   poller.start();
   startAutoArchive();
+  if (access.isActive()) activity.start();
   // the queue of the own computers (WP46): leases, render nodes that took a job, old jobs
   rendernode.queue().start();
   // the render servers in the cloud (WP54): start, delete, reconcile (nothing happens while they are switched off)

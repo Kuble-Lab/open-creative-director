@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Aktivität</title>
+  <!-- Served only to superadmins; relative URLs preserve reverse-proxy sub-paths. -->
+  <link rel="stylesheet" href="monitoring.css">
+</head>
+<body>
+  <main id="activity-root" class="monitoring-shell">
+    <header class="mon-head">
+      <div class="mon-head-copy">
+        <nav class="mon-links">
+          <a class="mon-back" href="./" data-i18n="activity.back">Zur App</a>
+          <a class="mon-back" href="monitoring.html" data-i18n="activity.monitoring">Nutzung und Monitoring</a>
+          <a class="mon-back" href="help.html" data-i18n="activity.help">Hilfe</a>
+        </nav>
+        <h1 data-i18n="activity.title">Aktivität</h1>
+        <p id="updated" class="mon-muted" aria-live="polite"></p>
+      </div>
+      <div id="langSwitch" class="lang-switch" role="group" data-i18n-aria-label="lang.selector" aria-label="Sprache">
+        <button type="button" data-lang="de" aria-label="Deutsch">DE</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="en" aria-label="English">EN</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="es" aria-label="Español">ES</button>
+      </div>
+    </header>
+    <p class="mon-muted" data-i18n="activity.auto">Aktualisiert alle 10 Sekunden; pausiert in versteckten Tabs.</p>
+    <div id="status" class="mon-status" role="status" aria-live="polite"></div>
+    <div id="report" hidden>
+      <section id="capacity" class="activity-capacity" aria-labelledby="capacityTitle">
+        <h2 id="capacityTitle" data-i18n="activity.capacity">Kapazität</h2>
+        <p id="capacityVerdict" class="activity-verdict"></p>
+        <ul id="capacityReasons"></ul>
+        <p id="capacityRule" class="mon-muted"></p>
+      </section>
+      <dl id="metrics" class="mon-metrics"></dl>
+      <dl id="runtime" class="mon-metrics small"></dl>
+      <section aria-labelledby="historyTitle">
+        <h2 id="historyTitle" data-i18n="activity.history">Verlauf · 24 Stunden</h2>
+        <div id="history"></div>
+      </section>
+      <section id="online"></section>
+      <section id="operations"></section>
+      <section id="topCosts" class="activity-top-costs"></section>
+      <section aria-labelledby="strikesTitle">
+        <h2 id="strikesTitle" data-i18n="activity.strikes">Strikes pro Person</h2>
+        <div id="actionStatus" class="mon-status" role="status" aria-live="polite"></div>
+        <div id="strikeUsers"></div>
+      </section>
+      <section id="recentStrikes"></section>
+      <section class="activity-policy" aria-labelledby="policyTitle">
+        <h2 id="policyTitle" data-i18n="activity.policyTitle">Was zählt als Strike?</h2>
+        <p data-i18n="activity.counts"></p>
+        <p data-i18n="activity.excludes"></p>
+        <p id="strikePolicy"></p>
+        <p data-i18n="activity.blockEffect"></p>
+      </section>
+    </div>
+    <noscript>This page needs JavaScript.</noscript>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="activity.js"></script>
+</body>
+</html>

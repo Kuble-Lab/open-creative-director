@@ -61,6 +61,7 @@ const el = {
   userEmail: document.getElementById('userEmail'),
   userAdd: document.getElementById('userAdd'),
   settingsMonitoringLink: document.getElementById('settingsMonitoringLink'),
+  settingsActivityLink: document.getElementById('settingsActivityLink'),
   folderProfilePanel: document.getElementById('folderProfilePanel'),
   folderProfileReadOnly: document.getElementById('folderProfileReadOnly'),
   keyBanner: document.getElementById('keyBanner'),
@@ -768,7 +769,7 @@ async function api(path, options) {
     let payload = null;
     try {
       payload = await res.json();
-      if (payload.error) message = payload.error;
+      message = OCAccess.accountRuleMessage(payload) || payload.error || message;
     } catch (_) {
       /* ignore */
     }

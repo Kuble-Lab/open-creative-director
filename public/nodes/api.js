@@ -28,7 +28,7 @@
     } catch (_) {
       /* not JSON */
     }
-    const error = new Error(payload?.error || `HTTP ${res.status}`);
+    const error = new Error(global.OCAccess?.accountRuleMessage?.(payload) || payload?.error || `HTTP ${res.status}`);
     error.status = res.status;
     if (payload) {
       error.code = payload.code;
@@ -74,7 +74,7 @@
           resolve(payload);
           return;
         }
-        const error = new Error(payload?.error || `HTTP ${xhr.status}`);
+        const error = new Error(global.OCAccess?.accountRuleMessage?.(payload) || payload?.error || `HTTP ${xhr.status}`);
         error.status = xhr.status;
         error.code = payload?.code;
         error.reason = payload?.reason;

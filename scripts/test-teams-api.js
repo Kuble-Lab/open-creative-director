@@ -713,7 +713,7 @@ async function testRulesTable(ctx) {
       assert.equal(response.status, expected, `${route} as ${email}`);
     }
   }
-  assert.equal((await call(P1, 'GET', '/monitoring.html', undefined, { raw: true })).status, 404);
+  for (const url of ['/monitoring.html', '/activity.html']) assert.equal((await call(P1, 'GET', url, undefined, { raw: true })).status, 404);
 
   // forbidden: internal resources answer 403 with a code the client can explain
   const gts = await call(P1, 'GET', '/api/gts/search?q=test');

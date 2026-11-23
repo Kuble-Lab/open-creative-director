@@ -138,6 +138,7 @@
     // Storage overview (storage.html): everybody with an account sees their own files, admins all of them.
     if (!info.active || info.identified) system.push({ id: 'storage', label: tr('menu.storage'), href: 'storage.html' });
     if (info.isSuperAdmin) system.push({ id: 'monitoring', label: tr('account.monitoring'), href: 'monitoring.html' });
+    if (info.isSuperAdmin) system.push({ id: 'activity', label: tr('account.activity'), href: 'activity.html' });
     return { account, system };
   }
 

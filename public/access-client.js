@@ -17,7 +17,7 @@
 //   OCAccess.refreshMe()      reads /api/me again (the budget of a participant changes with every paid action)
 //   OCAccess.budget()         { limitUsd, spentUsd, reservedUsd, remainingUsd, since } of a participant or guest, else null
 //   OCAccess.onChange(fn)     fn(me) runs whenever the identity or the budget was read again
-//   OCAccess.accountRuleMessage(error)  readable text for a refused paid action (402) or feature (403), else null
+//   OCAccess.accountRuleMessage(error)  readable text for an account block, refused paid action or feature, else null
 //   OCAccess.saveSharing(...) PATCH /api/sessions|workflows/:id/share with readable errors
 //   OCAccess.openShareModal() chat view dialog
 //
@@ -69,7 +69,7 @@
       /* not JSON */
     }
     if (!res.ok) {
-      const error = new Error((payload && payload.error) || `HTTP ${res.status}`);
+      const error = new Error(accountRuleMessage(payload) || (payload && payload.error) || `HTTP ${res.status}`);
       error.status = res.status;
       error.code = payload && payload.code;
       error.body = payload;
@@ -282,6 +282,10 @@
     if (!error) return null;
     const code = error.code || (error.body && error.body.code);
     const body = error.body || error;
+    if (code === 'ACCOUNT_BLOCKED') {
+      const localized = body.messages && body.messages[global.getLang?.() || 'de'];
+      return (typeof localized === 'string' && localized) || body.error || error.message || null;
+    }
     if (code === 'BUDGET_EXHAUSTED') return tr('budget.exhausted');
     if (code === 'BUDGET_JOBS_OPEN') return tr('budget.jobsOpen');
     if (code === 'BUDGET_INSUFFICIENT') {

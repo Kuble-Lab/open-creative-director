@@ -520,7 +520,7 @@ async function send() {
       let payload = null;
       try {
         payload = await res.json();
-        if (payload.error) message = payload.error;
+        message = OCAccess.accountRuleMessage(payload) || payload.error || message;
       } catch (_) {
         /* ignore */
       }

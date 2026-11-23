@@ -236,6 +236,7 @@ function testTexts() {
   const access = read('public', 'access-client.js');
   const nodes = ['main.js', 'app-mode.js', 'workflow-list.js'].map((file) => file === 'main.js' ? readNodeMainSource() : read('public', 'nodes', file)).join('\n');
   const monitoring = read('public', 'monitoring.js');
+  const activity = read('public', 'activity.js');
   const teamsUi = read('public', 'teams-ui.js');
   for (const source of [app, access, nodes, teamsUi]) {
     collect(source, /\b(?:t|tr|global\.t|setStatusI18n)\('((?:sharing|account|users|teams|paste|budget|role|costs\.scope|sessions\.lostAccess|profile\.readOnly|context\.owner)[A-Za-z._]*)'/g);
@@ -243,6 +244,21 @@ function testTexts() {
   collect(nodes, /\bT\('(nodes\.(?:share|access|app\.linkCopiedPrivate)[A-Za-z.]*)'/g);
   collect(nodes, /\bui\.T\('(nodes\.(?:share|access|app\.linkCopiedPrivate)[A-Za-z.]*)'/g);
   collect(monitoring, /\bT\('([A-Za-z]+)'/g, 'monitor.');
+  collect(activity, /\bT\('([A-Za-z]+)'/g, 'activity.');
+  // Code tables and conditional labels use the same activity prefix as direct T() calls.
+  for (const match of activity.matchAll(/const (?:REASONS|STATES|STATUSES|STRIKE_CODES) = (\{[^;]+\});/g)) {
+    for (const key of Object.values(vm.runInNewContext(`(${match[1]})`))) used.add(`activity.${key}`);
+  }
+  for (const key of ['block', 'unblock', 'saving', 'confirmBlock', 'confirmUnblock', 'capacityOk', 'capacityWatch', 'capacityUpgrade', 'unavailable', 'actionError', 'cannotBlockAdmin', 'invalidEmail', 'blockedSuccess', 'unblockedSuccess', 'loading', 'loadError', 'enabled', 'disabled', 'loadPerCpu']) used.add(`activity.${key}`);
+  for (const page of ['activity', 'monitoring']) {
+    collect(read('views', `${page}.html`), /\bdata-i18n(?:-aria-label)?="([^"]+)"/g);
+  }
+  for (const lang of ['de', 'en', 'es']) {
+    const keys = Object.keys(dict[lang]).filter((key) => key.startsWith('activity.')).sort();
+    assert.ok(keys.length > 60, `${lang}: complete activity texts`);
+    assert.deepEqual(keys, Object.keys(dict.de).filter((key) => key.startsWith('activity.')).sort(), `${lang}: same activity keys`);
+    for (const key of keys) assert.ok(dict[lang][key].trim(), `${lang}: nonempty ${key}`);
+  }
   // access-client builds a few keys from tables
   for (const key of ['sharing.private', 'sharing.privateHint', 'sharing.team', 'sharing.teamHint', 'sharing.teams', 'sharing.teamsHint', 'sharing.specific', 'sharing.specificHint']) used.add(key);
   // keys built from tables and codes: one text per error code of the teams API and per feature name
@@ -282,10 +298,27 @@ function testHtmlWiring() {
   assert.deepEqual(used.filter((id) => !pageIds.has(id)), [], 'monitoring.js reads ids that views/monitoring.html does not have');
   assert.doesNotMatch(page, /href="\/|src="\//, 'monitoring.html uses relative URLs (works under a sub-path)');
   assert.doesNotMatch(monitoring, /fetch\(`\/|fetch\('\//, 'monitoring.js uses relative URLs');
+
+  const activityPage = read('views', 'activity.html');
+  const activityIds = new Set([...activityPage.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  const activity = read('public', 'activity.js');
+  const activityUsed = [...activity.matchAll(/\bel\('([^']+)'\)/g)].map((match) => match[1]);
+  assert.deepEqual(activityUsed.filter((id) => !activityIds.has(id)), [], 'activity.js reads only existing page ids');
+  assert.match(activityPage, /<main id="activity-root" class="monitoring-shell">/);
+  assert.match(activityPage, /<script src="i18n\.js"><\/script>\s*<script src="activity\.js"><\/script>/);
+  assert.doesNotMatch(activityPage, /href="\/|src="\//, 'activity.html uses relative URLs');
+  assert.doesNotMatch(activity, /fetch\(`\/|fetch\('\//, 'activity.js uses relative URLs');
+  assert.match(page, /href="activity.html"/);
+  assert.match(activityPage, /href="monitoring.html"/);
+  assert.ok(ids.has('settingsActivityLink'));
+  assert.match(index, /id="settingsActivityLink"[^>]*href="activity.html"[^>]*data-i18n="users.activityLink"/);
+  const settings = read('public', 'app-settings.js');
+  assert.match(settings, /el\.settingsActivityLink\.classList\.toggle\('hidden', !me\.isSuperAdmin\)/);
+  assert.match(read('public', 'shell.js'), /if \(info\.isSuperAdmin\) system\.push\(\{ id: 'activity', label: tr\('account.activity'\), href: 'activity.html' \}\)/);
 }
 
 function testSafety() {
-  for (const file of ['public/access-client.js', 'public/monitoring.js', 'public/teams-ui.js', 'public/email-list.js']) {
+  for (const file of ['public/access-client.js', 'public/monitoring.js', 'public/activity.js', 'views/activity.html', 'public/teams-ui.js', 'public/email-list.js']) {
     const source = read(...file.split('/'));
     assert.doesNotMatch(source, /innerHTML|insertAdjacentHTML|outerHTML/, `${file}: no HTML from strings`);
     assert.doesNotMatch(source, /\b(?:window\.)?(?:confirm|alert|prompt)\(/, `${file}: no native dialogs`);
@@ -297,8 +330,22 @@ function testSafety() {
   const block = usersBlock.slice(start, end);
   assert.doesNotMatch(block, /innerHTML|\bconfirm\(|\balert\(/, 'user management block of app.js: no innerHTML and no native dialogs');
   // No internal hosts in the open files.
-  for (const file of ['public/access-client.js', 'public/monitoring.js', 'public/monitoring.css', 'views/monitoring.html', 'public/i18n.js', 'public/teams-ui.js', 'public/help.html']) {
+  for (const file of ['public/access-client.js', 'public/monitoring.js', 'public/activity.js', 'public/monitoring.css', 'views/monitoring.html', 'views/activity.html', 'public/i18n.js', 'public/teams-ui.js', 'public/help.html']) {
     assert.doesNotMatch(read(...file.split('/')), /\.internal\b|10\.\d+\.\d+\.\d+/i, `${file}: no internal names or addresses`);
+    assert.doesNotMatch(read(...file.split('/')), /\u00df/, `${file}: Swiss spelling`);
+  }
+}
+
+async function testBlockedMessages() {
+  const window = load({ me: { active: true, identified: true, isAdmin: false } });
+  await window.OCAccess.ready;
+  const messages = { de: 'Deutscher Sperrtext', en: 'English block message', es: 'Mensaje de bloqueo' };
+  for (const language of ['de', 'en', 'es']) {
+    window.setLang(language);
+    const payload = { code: 'ACCOUNT_BLOCKED', error: messages.de, messages };
+    assert.equal(window.OCAccess.accountRuleMessage(payload), messages[language]);
+    assert.equal(window.OCAccess.accountRuleMessage({ body: payload }), messages[language]);
+    assert.equal(window.OCAccess.accountRuleMessage({ ...payload, messages: {} }), messages.de);
   }
 }
 
@@ -308,6 +355,7 @@ function testSafety() {
   await testActiveHelpers();
   await testParticipant();
   await testSharingRequests();
+  await testBlockedMessages();
   testTexts();
   testHtmlWiring();
   testSafety();
