@@ -930,20 +930,27 @@
   border-color: rgba(95, 211, 162, 0.28);
 }
 
+/* Info is neutral; red is reserved for errors. */
 .nv-node-msg {
   margin: 8px 11px 0;
   padding: 7px 9px;
   max-height: 84px;
   overflow: auto;
   border-radius: 8px;
-  border: 1px solid rgba(224, 104, 95, 0.4);
-  background: rgba(224, 104, 95, 0.09);
-  color: #f0a39c;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
   font-size: 11.5px;
   line-height: 1.45;
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.nv-node[data-status='error'] .nv-node-msg {
+  border-color: rgba(224, 104, 95, 0.4);
+  background: rgba(224, 104, 95, 0.09);
+  color: #f0a39c;
 }
 
 .nv-node-msg.is-empty {
@@ -987,19 +994,9 @@
   color: #201603;
 }
 
-.nv-node[data-status='skipped'] .nv-node-msg,
-.nv-node[data-status='cancelled'] .nv-node-msg {
-  border-color: var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-dim);
-}
-
-/* the place of the film in the render queue (WP54): information, not a fault */
 .nv-node[data-status='waiting_job'] .nv-node-msg {
-  border-color: var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-dim);
   user-select: none;
+  -webkit-user-select: none;
 }
 
 /* run button in the header (appears on hover / selection) */

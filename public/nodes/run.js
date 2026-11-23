@@ -165,11 +165,16 @@
       finishedAt: record.finishedAt ? new Date(record.finishedAt).getTime() : null };
   }
 
-  function renderText(render, T) {
+  function renderText(render, T, nodeStatus) {
     if (!render || !['rendering', 'completed'].includes(render.phase)) return '';
     const names = Array.isArray(render.names) ? render.names : Array.from({ length: Math.min(100, render.count || 0) }, (_, i) => T('nodes.render.computer', { n: i + 1 }));
     if (!names.length) return '';
-    return T(`nodes.render.${render.phase}`, { name: names.join(', ') });
+    if (render.phase === 'rendering') {
+      const text = T(names.length > 1 ? 'nodes.render.renderingMany' : 'nodes.render.rendering', { count: names.length, name: names.join(', ') });
+      return render.total > 1 ? `${text} · ${T('nodes.render.chunks', { done: render.done, total: render.total })}` : text;
+    }
+    const delivered = names.map((name, i) => Array.isArray(render.names) && Array.isArray(render.counts) && render.total > 1 && typeof render.counts[i] === 'number' ? `${name} (${render.counts[i]})` : name);
+    return T(['running', 'waiting_job'].includes(nodeStatus) ? 'nodes.render.finishing' : 'nodes.render.completed', { name: delivered.join(', ') });
   }
 
   function clearResync(state) {
@@ -862,7 +867,7 @@
         slot.tooltip = T('nodes.statusHint.renderQueue');
       }
 
-      const renderedOn = run && ['running', 'waiting_job', 'done'].includes(status) ? renderText(run.render, T) : '';
+      const renderedOn = run && ['running', 'waiting_job', 'done'].includes(status) ? renderText(run.render, T, status) : '';
       if (renderedOn) slot.message = [slot.message, renderedOn].filter(Boolean).join(' · ');
 
       // preview of the selected result (inputs already show their asset in the widget)
@@ -1802,7 +1807,7 @@
           status: shown.status,
           message: (invalid ? invalid.message : shown.status === 'skipped' ? skippedText(shown.message, { withCause: true }) : shown.message) || null,
           fix: invalid ? invalid.fix : null,
-          renderText: run && ['running', 'waiting_job', 'done'].includes(shown.status) ? renderText(run.render, T) : '',
+          renderText: run && ['running', 'waiting_job', 'done'].includes(shown.status) ? renderText(run.render, T, shown.status) : '',
           run: run || null,
           log: runState.logs[nodeId] || [],
           plan: planNode,
