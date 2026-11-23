@@ -453,7 +453,7 @@ async function run(iso) {
     assert.ok(hits.includes('music-video'), `"${query}" (${lang}) finds the music video: ${hits}`);
   }
   // WP44: the three films in the HUD style carry the word in their names, and the description of the Suno pack names the one it leads to
-  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song'], 'a search narrows the list down');
+  assert.deepEqual((await realService.listRunnable(v.s1, { query: 'musikvideo', lang: 'de' })).items.filter((item) => item.kind === 'template').map((item) => item.id), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-guest', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song'], 'a search narrows the list down');
   // the variant with moving images (WP35): the same inputs, no clips to pay for, found by the words of its name and of its price
   const stills = realTemplates.find((item) => item.id === 'music-video-stills');
   assert.deepEqual(stills.inputs.map((input) => input.id), [...music.inputs.map((input) => input.id), 'n14.enabled', 'n10.zoom'], 'the person is asked for the same things, plus the switch for the depth maps and the motion of the scenes');
