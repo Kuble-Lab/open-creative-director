@@ -418,10 +418,85 @@
     }
   }
 
+  // Holds SSE and reconnect saves only for the workflow of this question. Other workflows stay independent.
+  const assistantSaveHolds = new Map();
+  function holdExternalSaves(id = state.workflow && state.workflow.id) {
+    const hold = { events: [] };
+    const holds = assistantSaveHolds.get(id) || new Set();
+    holds.add(hold);
+    assistantSaveHolds.set(id, holds);
+    let released = false;
+    return async (adoptedRev) => {
+      if (released) return;
+      released = true;
+      holds.delete(hold);
+      if (!holds.size) assistantSaveHolds.delete(id);
+      for (const event of hold.events) {
+        if (Number.isFinite(adoptedRev) && event.rev <= adoptedRev) continue;
+        if (state.workflow && state.workflow.id === id) await handleExternalSave(event);
+      }
+    };
+  }
+
+  function savedRev() {
+    return state.workflow && !state.dirtyContent && !state.saving && !state.conflict &&
+      state.saveState !== 'conflict' && Number.isFinite(state.rev) ? state.rev : null;
+  }
+
+  async function adoptServerEdit(edit, id = state.workflow && state.workflow.id) {
+    const workflow = state.workflow;
+    const revision = state.history.revision;
+    const eligible = () => state.workflow === workflow && workflow && workflow.id === id &&
+      savedRev() === edit.baseRev && !runtime.runController?.getRunState().active &&
+      state.history.revision === revision;
+    const reject = (rev) => {
+      if (state.workflow === workflow && workflow && workflow.id === id) enterConflict('external', rev);
+      return { ok: false };
+    };
+    if (!eligible()) return reject(edit.rev);
+    let payload;
+    try { payload = await api.getWorkflow(id); }
+    catch (_) { return reject(edit.rev); }
+    // The GET can race with typing, navigation, another save or another server edit.
+    if (!eligible() || payload.workflow.rev !== edit.rev) return reject(payload.workflow.rev);
+    const graph = graphLib.normalizeLoaded(payload.workflow.graph);
+    graph.viewport = state.graph.viewport;
+    const before = normalizeApp(workflow.app);
+    const after = normalizeApp(payload.workflow.app);
+    // App exposures live outside graph content. Keep both sides on this boundary so undo/redo restores them too.
+    state.history.commit({ ...graphLib.content(graph), assistantApp: { before, after } }, { label: 'edit-assistant' });
+    state.graph = graph;
+    state.workflow = { ...payload.workflow, app: after };
+    state.rev = edit.rev;
+    for (const node of graph.nodes) state.reserved.add(node.id);
+    for (const edge of graph.edges) state.reserved.add(edge.id);
+    runtime.canvas.render(graph);
+    setSaveState('saved');
+    hideBanner();
+    updateUndoButtons();
+    refreshInspector(true);
+    scheduleAppMarks();
+    updateAppButton();
+    updateStart();
+    updateListEntry(id, { updatedAt: payload.workflow.updatedAt, nodeCount: graph.nodes.length });
+    bus.emit('graph', graph);
+    bus.emit('saved', { workflowId: id, rev: edit.rev });
+    return { ok: true };
+  }
+
   async function handleExternalSave(event) {
+    const id = state.workflow && state.workflow.id;
+    const holds = assistantSaveHolds.get(id);
+    if (holds && holds.size) {
+      // A question is unique per workflow; keep one copy if a caller also holds saves.
+      holds.values().next().value.events.push(event);
+      return;
+    }
     // Our own save also arrives here (sometimes before the PUT response): wait for it first.
     if (state.savePromise && state.saving) await state.savePromise.catch(() => {});
-    if (!state.workflow || typeof event.rev !== 'number' || event.rev <= state.rev || state.conflict) return;
+    // A question may have started while an earlier event waited for our PUT.
+    if (state.workflow && state.workflow.id === id && assistantSaveHolds.has(id)) return handleExternalSave(event);
+    if (!state.workflow || state.workflow.id !== id || typeof event.rev !== 'number' || event.rev <= state.rev || state.conflict) return;
     enterConflict('external', event.rev);
   }
 
@@ -527,7 +602,7 @@
     recheckRegistry, recheckPlan, parseHash, rememberReturnHash, navigate, leaveToChat, setActive,
     setAppMode, route, showStageMessage, showListView, hideEmpty, closeEvents, closeWorkflow,
     loadWorkflow, makeRoomForFit, whenLayoutSettled, fitAfterMeasure, openEvents, reconcile,
-    handleExternalSave, handleExternalRename, updateChrome, updateStart, updateAccessChrome,
+    savedRev, holdExternalSaves, adoptServerEdit, handleExternalSave, handleExternalRename, updateChrome, updateStart, updateAccessChrome,
     updateZoomLabel, setDrawer, setInspector, setTool, nativeReplaceState
   });
 })(window);

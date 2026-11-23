@@ -326,8 +326,9 @@
   }
 
   function undo() {
+    const previous = state.history.current();
     const snapshot = state.history.undo();
-    if (snapshot) restoreSnapshot(snapshot);
+    if (snapshot) restoreSnapshot(snapshot, previous && previous.assistantApp ? previous.assistantApp.before : undefined);
   }
 
   function redo() {
@@ -335,7 +336,12 @@
     if (snapshot) restoreSnapshot(snapshot);
   }
 
-  function restoreSnapshot(snapshot) {
+  function restoreSnapshot(snapshot, appOverride) {
+    const app = appOverride || (snapshot.assistantApp && snapshot.assistantApp.after);
+    if (app && state.workflow) {
+      state.workflow.app = runtime.normalizeApp(app);
+      runtime.updateAppButton();
+    }
     const next = graphLib.withContent(state.graph, snapshot);
     OCD.inspector.warnApprovalChanges(state.graph, next, state.results, { repeat: true });
     state.graph = next;
