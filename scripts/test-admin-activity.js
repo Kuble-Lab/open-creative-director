@@ -168,6 +168,15 @@ async function activity(root) {
   assert.equal(report.system.eventLoopLagMs, 12); assert.equal(report.system.rssMb, 4);
   assert.equal(report.costs.todayUsd, 2.5); assert.equal(report.costs.last24hUsd, 2.5); assert.equal(report.costs.lastHourUsd, 2);
   assert.equal(report.costs.unknownToday, 1); assert.equal(report.capacity.testedUsers, 14);
+  // A record that still says 'awaiting_approval' after a restart is not a running run: only what the engine has alive counts.
+  const stale = createActivity({ ...deps, dataDir: path.join(root, 'history-stale'), isLiveRun: (workflowId, runId) => workflowId === 'wf' && runId === 'running', processUptime: () => 7.9,
+    lag: { ...deps.lag, percentile: () => 900000000 } });
+  await stale.sample();
+  const staleReport = await stale.snapshot();
+  assert.deepEqual(staleReport.runs.map((item) => item.runId), ['running']); assert.equal(staleReport.system.uptimeSeconds, 7);
+  // One slow minute (a restart) is shown but does not turn the capacity verdict: that needs three minutes in a row.
+  assert.equal(staleReport.system.eventLoopLagMs, 900);
+  assert(!staleReport.capacity.reasons.some((reason) => reason.code === 'EVENT_LOOP_LAG'));
   assert.equal(report.history.length, 1); assert.equal(report.peaks.d7.online, 1);
   assert.equal(fs.statSync(path.join(dataDir, 'admin-load-history.json')).mode & 0o777, 0o600);
   const first = fs.readFileSync(path.join(dataDir, 'admin-load-history.json'), 'utf8');
