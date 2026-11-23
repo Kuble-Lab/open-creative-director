@@ -693,6 +693,7 @@ const activity = adminActivity.createActivity({
   readCosts: sharedRead(() => costs.readCosts()),
   readTeams: () => teams.listTeams(),
   readQueue: () => rendernode.queue(),
+  isLiveRun: (workflowId, runId) => nodeEngine.activeRun(workflowId)?.runId === runId,
   readCreditRates: () => ({ magnific: settings.getPreference('magnificUsdPerCredit'), higgsfield: settings.getPreference('higgsfieldUsdPerCredit') })
 });
 adminActivity.registerRoutes(app, { isSuperAdmin, activity });
