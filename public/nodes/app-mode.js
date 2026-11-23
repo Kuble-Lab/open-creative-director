@@ -1803,6 +1803,21 @@
       catch (error) { ui.toast((error && error.message) || T('nodes.run.invalidLimit'), { kind: 'error' }); }
     }
 
+    // A run that waits for a new limit goes on without the person where the automatic approval covers it (the same rule as in the
+    // node view): each wait is answered once; when the server refuses, the button stays.
+    const autoAnswered = new Set();
+    function autoResume() {
+      const run = s && s.run;
+      if (!run || run.status !== 'awaiting_approval' || !run.approval || !run.runId) return;
+      const request = runLib.autoResumeRequest(run.approval, runLib.readAutoLimit(autoStorage()));
+      const key = runLib.approvalKey(run.runId, run.approval);
+      if (!request || autoAnswered.has(key)) return;
+      autoAnswered.add(key);
+      api.resumeRun(s.id, run.runId, request)
+        .then(() => ui.toast(T('nodes.run.auto.resumed', { limit: money(request.maxUsd) }), { timeout: 5000 }))
+        .catch(() => {});
+    }
+
     function renderStatus() {
       if (!s || !s.refs) return;
       const box = s.refs.statusBox;
@@ -1813,6 +1828,7 @@
       const hasRun = run.runId || run.active;
       box.classList.toggle('hidden', !hasRun);
       if (!hasRun) return;
+      if (awaiting) autoResume();
       if (awaiting) {
         // The run stands still until a new spending limit is approved (a run with a limit: started in the node view or by an agent).
         // The app view says so and offers the approval; before, it looked like a run that works.

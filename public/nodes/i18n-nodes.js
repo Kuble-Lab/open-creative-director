@@ -226,6 +226,7 @@
     ["nodes.run.auto.title", "Automatische Kostenfreigabe", "Automatic cost approval", "Aprobación automática de costes"],
     ["nodes.run.auto.prompt", "Bis wie viel USD pro Lauf ohne Rückfrage? (leer oder 0 = aus)", "Up to how many USD per run without asking? (empty or 0 = off)", "¿Hasta cuántos USD por ejecución sin preguntar? (vacío o 0 = desactivado)"],
     ["nodes.run.auto.started", "Automatisch freigegeben: {amount} (Grenze {limit} pro Lauf)", "Approved automatically: {amount} (limit {limit} per run)", "Aprobado automáticamente: {amount} (límite {limit} por ejecución)"],
+    ["nodes.run.auto.resumed", "Wartender Lauf automatisch freigegeben (Grenze {limit})", "Waiting run approved automatically (limit {limit})", "Ejecución en espera aprobada automáticamente (límite {limit})"],
     ["nodes.run.auto.chip", "Auto-Freigabe bis {limit}", "Auto-approve up to {limit}", "Aprobación auto. hasta {limit}"],
     ["nodes.run.auto.chipHint", "Kostenpflichtige Läufe bis zu diesem Betrag starten ohne Rückfrage. Klicken zum Ändern oder Ausschalten.", "Paid runs up to this amount start without asking. Click to change or switch off.", "Las ejecuciones de pago hasta este importe empiezan sin preguntar. Haz clic para cambiar o desactivar."],
     ["nodes.run.knownPrices", "Nur bekannte USD-Preise zulassen", "Require known USD prices", "Exigir precios conocidos en USD"],
