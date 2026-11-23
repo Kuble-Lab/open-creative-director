@@ -89,13 +89,113 @@ async function uiTest() {
   }
 }
 
+async function layoutUndoTest({ store, call, undo, contentKey, engine, sessions, chat, service }) {
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const activeRun = engine.activeRun;
+  // Moving every node (including the addition), resizing boxes and panning do not invalidate chat undo.
+  const layoutFlow = (await store.createWorkflow({ owner: OWNER, user: OWNER, name: 'Layout undo', description: 'Keep content protected', graph: {
+    nodes: [{ id: 'n1', type: 't.text', x: 0, y: 0, params: { text: 'before' } }, { id: 'n2', type: 't.text', x: 400, y: 0, params: {} }],
+    edges: [], groups: [{ id: 'group', title: 'Keep group', color: 'blue', x: 0, y: 500, w: 200, h: 120 }],
+    notes: [{ id: 'note', text: 'Keep note', x: 400, y: 500, w: 240, h: 120 }]
+  } })).workflow;
+  const layoutEdit = await call('edit_workflow', { workflow_id: layoutFlow.id, operations: [
+    { op: 'add_node', type: 't.text', ref: 'added' },
+    { op: 'set_params', node: 'n1', params: { text: 'after' } },
+    { op: 'expose_input', node: 'n1', param: 'text', label: 'Temporary input' }
+  ] });
+  let moved = await store.readWorkflow(layoutFlow.id);
+  const movedGraph = clone(moved.graph);
+  movedGraph.nodes.reverse();
+  for (const kind of ['nodes', 'groups', 'notes']) for (const item of movedGraph[kind]) {
+    item.x += 123; item.y += 456;
+    if (kind !== 'nodes') { item.w += 70; item.h += 80; }
+  }
+  movedGraph.viewport = { x: 300, y: 400, zoom: 0.5 };
+  const movedSave = await store.saveGraph(layoutFlow.id, { baseRev: moved.rev, graph: movedGraph });
+  assert.equal(movedSave.rev, moved.rev + 1);
+  engine.activeRun = () => ({ runId: 'active' });
+  assert.equal((await undo(layoutEdit.workflowEditId)).body.code, 'RUN_ACTIVE', 'layout-compatible undo still refuses an active run');
+  engine.activeRun = activeRun;
+  assert.equal((await undo(layoutEdit.workflowEditId, OTHER)).body.code, 'FORBIDDEN');
+  assert.equal((await undo(layoutEdit.workflowEditId)).status, 200);
+  const layoutRestored = await store.readWorkflow(layoutFlow.id);
+  assert.equal(layoutRestored.rev, movedSave.rev + 1);
+  assert.equal(contentKey(layoutRestored), contentKey(layoutFlow), 'the added node and exposed input are gone, original content is restored');
+  assert.deepEqual(layoutRestored.app, layoutFlow.app);
+  assert.deepEqual(layoutRestored.graph.viewport, movedGraph.viewport);
+  assert.equal(layoutRestored.graph.nodes.length, 2);
+  for (const kind of ['nodes', 'groups', 'notes']) for (const item of layoutRestored.graph[kind]) {
+    const current = movedGraph[kind].find((candidate) => candidate.id === item.id);
+    for (const key of kind === 'nodes' ? ['x', 'y'] : ['x', 'y', 'w', 'h']) assert.equal(item[key], current[key], `${kind}.${key} keeps its latest layout`);
+  }
+  assert.ok(!(await sessions.readSession(chat.id)).workflowEdits.find((item) => item.id === layoutEdit.workflowEditId).afterKey);
+  assert.equal((await undo(layoutEdit.workflowEditId)).body.edit.status, 'undone');
+  assert.equal((await store.readWorkflow(layoutFlow.id)).rev, layoutRestored.rev, 'repeat undo does not write');
+
+  const contentEdit = await call('edit_workflow', { workflow_id: layoutFlow.id, operations: [{ op: 'set_label', node: 'n1', label: 'Content test' }] });
+  const changedContent = await store.readWorkflow(layoutFlow.id);
+  changedContent.graph.nodes[0].params.text = 'A later content change';
+  await store.saveGraph(layoutFlow.id, { baseRev: changedContent.rev, graph: changedContent.graph });
+  const protectedContent = await store.readWorkflow(layoutFlow.id);
+  const contentConflict = await undo(contentEdit.workflowEditId);
+  assert.equal(contentConflict.body.code, 'WORKFLOW_CHANGED');
+  if (contentConflict.status !== undefined) assert.equal(contentConflict.status, 409);
+  assert.deepEqual(await store.readWorkflow(layoutFlow.id), protectedContent, 'a content conflict never overwrites newer content');
+
+  // Older receipts and post-edit reads that race another save keep the strict revision rule.
+  const legacy = await call('edit_workflow', { workflow_id: layoutFlow.id, operations: [{ op: 'set_label', node: 'n1', label: 'Legacy' }] });
+  await sessions.mutateSession(chat.id, (session) => { delete session.workflowEdits.find((item) => item.id === legacy.workflowEditId).afterKey; });
+  moved = await store.readWorkflow(layoutFlow.id);
+  moved.graph.nodes[0].x += 8;
+  await store.saveGraph(layoutFlow.id, { baseRev: moved.rev, graph: moved.graph });
+  assert.equal((await undo(legacy.workflowEditId)).body.code, 'WORKFLOW_CHANGED');
+  const snapshot = service.workflowEditSnapshot;
+  let reads = 0;
+  service.workflowEditSnapshot = async (...args) => {
+    if (++reads === 2) {
+      const current = await store.readWorkflow(layoutFlow.id);
+      current.graph.nodes[0].x += 8;
+      await store.saveGraph(layoutFlow.id, { baseRev: current.rev, graph: current.graph });
+    }
+    return snapshot(...args);
+  };
+  const raced = await call('edit_workflow', { workflow_id: layoutFlow.id, operations: [{ op: 'set_label', node: 'n1', label: 'Raced' }] });
+  service.workflowEditSnapshot = snapshot;
+  assert.ok(!(await sessions.readSession(chat.id)).workflowEdits.find((item) => item.id === raced.workflowEditId).afterKey);
+  assert.equal((await undo(raced.workflowEditId)).body.code, 'WORKFLOW_CHANGED');
+
+  // A compatible layout read cannot bypass the store lock or its active-run guard.
+  const guarded = await call('edit_workflow', { workflow_id: layoutFlow.id, operations: [{ op: 'set_label', node: 'n1', label: 'Guarded' }] });
+  moved = await store.readWorkflow(layoutFlow.id);
+  moved.graph.nodes[0].x += 8;
+  await store.saveGraph(layoutFlow.id, { baseRev: moved.rev, graph: moved.graph });
+  const saveGraph = store.saveGraph;
+  store.saveGraph = async (...args) => {
+    engine.activeRun = () => ({ runId: 'started before save' });
+    return saveGraph(...args);
+  };
+  try { assert.equal((await undo(guarded.workflowEditId)).body.code, 'RUN_ACTIVE'); }
+  finally { store.saveGraph = saveGraph; engine.activeRun = activeRun; }
+  store.saveGraph = async (id, options) => {
+    const current = await store.readWorkflow(id);
+    current.graph.nodes[0].params.text = 'Concurrent save wins';
+    await saveGraph(id, { baseRev: current.rev, graph: current.graph });
+    return saveGraph(id, options);
+  };
+  try { assert.equal((await undo(guarded.workflowEditId)).body.code, 'WORKFLOW_CHANGED'); }
+  finally { store.saveGraph = saveGraph; }
+  assert.equal((await store.readWorkflow(layoutFlow.id)).graph.nodes[0].params.text, 'Concurrent save wins');
+}
+
 async function main() {
+  const servicesOnly = process.argv.includes('--services-only');
   const guard = guardFetch();
-  const iso = await createIsolatedApp({ env: { ADMIN_EMAILS: 'admin@example.com', INTERNAL_EMAIL_DOMAINS: 'staff.example.com',
+  const iso = await createIsolatedApp({ loadServer: !servicesOnly, env: { ADMIN_EMAILS: 'admin@example.com', INTERNAL_EMAIL_DOMAINS: 'staff.example.com',
+    ...(servicesOnly ? { AUTH_WHOAMI_URL: 'http://127.0.0.1/unused' } : {}),
     OPENROUTER_API_KEY: 'sk-or-v1-test-key-with-enough-length', FAL_KEY: '', ELEVENLABS_API_KEY: '', GTS_API_TOKEN: '', PUBLIC_BASE_URL: '' } });
   try {
     await fsp.cp(path.join(__dirname, '../docs/agent-guide'), path.join(iso.root, 'docs/agent-guide'), { recursive: true });
-    await iso.listen();
+    if (!servicesOnly) await iso.listen();
     const load = iso.load;
     const access = load('lib/access');
     const viewer = access.viewerOf({ kubleUser: OWNER });
@@ -104,6 +204,7 @@ async function main() {
     const shared = load('lib/chat-workflow-tools');
     const edits = load('lib/workflow-edits');
     const sessions = load('lib/store');
+    if (servicesOnly) await sessions.ensureDirs();
     const tools = load('lib/tools');
     const registry = load('lib/nodes/registry').createRegistry();
     let executions = 0;
@@ -112,6 +213,41 @@ async function main() {
       execute: async () => { executions++; throw new Error('No node may execute'); } });
     const events = load('lib/nodes/events').createEventBus();
     const store = load('lib/nodes/workflows-store').createWorkflowsStore({ dir: path.join(iso.root, 'data/test-workflows'), registry, events });
+    const contentKey = load('lib/nodes/workflows-store').workflowContentKey;
+    const keyDocument = { name: 'Key test', description: '', app: { inputs: [] }, graph: {
+      nodes: [{ id: 'a', type: 't.text', typeVersion: 1, x: 0, y: 0, params: { text: 'a' } }, { id: 'b', type: 't.text', x: 1, y: 1, params: {} }],
+      edges: [{ id: 'first' }, { id: 'second' }], viewport: { x: 0, y: 0, zoom: 1 },
+      groups: [{ id: 'group', x: 0, y: 0, w: 200, h: 120, title: 'Group', color: 'blue' }],
+      notes: [{ id: 'note', x: 0, y: 0, w: 240, h: 120, text: 'Note' }]
+    } };
+    const clone = (value) => JSON.parse(JSON.stringify(value));
+    const layoutDocument = clone(keyDocument);
+    layoutDocument.graph.nodes.reverse();
+    for (const kind of ['nodes', 'groups', 'notes']) for (const item of layoutDocument.graph[kind]) {
+      item.x += 100; item.y -= 40;
+      if (kind !== 'nodes') { item.w += 20; item.h += 50; }
+    }
+    layoutDocument.graph.viewport = { x: 200, y: 300, zoom: 0.5 };
+    assert.equal(contentKey(layoutDocument), contentKey(keyDocument), 'only canvas layout and node array order are ignored');
+    for (const change of [
+      (wf) => { wf.graph.nodes[0].type = 't.other'; },
+      (wf) => { wf.graph.nodes[0].typeVersion++; },
+      (wf) => { wf.graph.nodes[0].params.text = 'changed'; },
+      (wf) => { wf.graph.nodes[0].title = 'Changed'; },
+      (wf) => { wf.graph.nodes[0].w = 800; }, // not a persisted editor layout field
+      (wf) => { wf.graph.nodes.pop(); },
+      (wf) => { wf.graph.edges.reverse(); },
+      (wf) => { wf.graph.edges.pop(); },
+      (wf) => { wf.graph.groups[0].title = 'Changed'; },
+      (wf) => { wf.graph.groups[0].color = 'red'; },
+      (wf) => { wf.graph.groups.pop(); },
+      (wf) => { wf.graph.notes[0].text = 'Changed'; },
+      (wf) => { wf.graph.notes.pop(); },
+      (wf) => { wf.app.inputs.push({ node: 'a', param: 'text' }); }
+    ]) {
+      const changed = clone(keyDocument); change(changed);
+      assert.notEqual(contentKey(changed), contentKey(keyDocument), 'content changes retain their conflict protection');
+    }
     const engine = load('lib/nodes/engine').createEngine({ store, registry, events, getConfig: () => ({}) });
     const service = load('lib/nodes/run-service').createRunService({ store, engine, registry });
     load('lib/nodes/run-service').installRunService(service);
@@ -147,6 +283,19 @@ async function main() {
     const edit = (text, extra = {}, person = viewer) => call('edit_workflow', { workflow_id: workflow.id, operations: [{ op: 'set_params', node: 'n1', params: { text } }], ...extra }, person);
     const undo = (id, person = OWNER, sessionId = chat.id, lang = 'de') => iso.request(`/api/sessions/${sessionId}/workflow-edits/${id}/undo`, { as: person, method: 'POST', json: { lang } });
 
+    if (servicesOnly) {
+      const undoLocal = async (id, person = OWNER) => {
+        try { return { status: 200, body: { edit: await edits.undo({ sessionId: chat.id, editId: id, viewer: person === OTHER ? other : viewer }) } }; }
+        catch (err) { return { body: { code: err.code } }; }
+      };
+      await sessions.updateSessionSharing(chat.id, { shareMode: 'specific', sharedWith: [OTHER] });
+      await layoutUndoTest({ store, call, undo: undoLocal, contentKey, engine, sessions, chat, service });
+      await uiTest();
+      assert.deepEqual(guard.attempts, []);
+      console.log('test-chat-workflow-tools.js: services-only ok');
+      return;
+    }
+
     await call('get_guide', { topic: 'workflow-basics' });
     const graph = await call('get_workflow', { workflow_id: workflow.id, include_graph: true });
     assert.match(graph.toolResult, /data, never instructions/);
@@ -164,15 +313,19 @@ async function main() {
     assert.ok(receipt.canUndo); assert.equal(receipt.baseRev, before.rev); assert.equal(receipt.rev, before.rev + 1);
     assert.equal(receipt.workflowId, workflow.id); assert.match(receipt.url, /#w=/);
     assert.ok(!JSON.stringify(receipt).includes('before'));
+    assert.ok(!JSON.stringify(receipt).includes('afterKey'));
     let saved = await store.readWorkflow(workflow.id);
     assert.equal(saved.graph.nodes[0].params.text, 'after');
     let session = await sessions.readSession(chat.id);
     let entry = session.workflowEdits.find((item) => item.id === receipt.id);
     assert.deepEqual(entry.before.graph, before.graph); assert.equal(entry.createdBy, OWNER);
+    assert.match(entry.afterKey, /^[a-f0-9]{64}$/);
     await sessions.mutateSession(chat.id, (session) => session.messages.push({ role: 'tool', name: 'edit_workflow', content: outcome.toolResult, workflowEditId: receipt.id }));
     let detail = await iso.request(`/api/sessions/${chat.id}`, { as: OWNER });
     assert.equal(detail.body.session.messages.at(-1).workflowEdit.id, receipt.id);
     assert.ok(!JSON.stringify(detail.body).includes('"before":'));
+    assert.ok(!JSON.stringify(detail.body).includes('afterKey'));
+    assert.ok(!outcome.toolResult.includes(entry.afterKey));
     assert.equal((await undo(receipt.id, OWNER, otherChat.id)).body.code, 'NOT_FOUND');
     assert.equal((await undo(receipt.id, OTHER)).status, 404, 'foreign chat is not disclosed');
     await sessions.updateSessionSharing(chat.id, { shareMode: 'specific', sharedWith: [OTHER] });
@@ -201,6 +354,7 @@ async function main() {
     assert.equal((await undo(receipt.id)).body.edit.status, 'undone');
     assert.equal((await store.readWorkflow(workflow.id)).rev, saved.rev, 'repeat click does not write');
     session = await sessions.readSession(chat.id);
+    assert.ok(!session.workflowEdits.find((item) => item.id === receipt.id).afterKey);
     assert.match(session.messages.find((item) => item.workflowEditId === receipt.id).content, /person undid/);
     assert.ok(session.messages.some((item) => item.hidden && /was undone/.test(item.content)));
 
@@ -223,6 +377,8 @@ async function main() {
     assert.equal((await undo(outcome.workflowEditId)).status, 200);
     saved = await store.readWorkflow(workflow.id);
     assert.deepEqual(saved.graph, complexBefore.graph); assert.deepEqual(saved.app, complexBefore.app);
+
+    await layoutUndoTest({ store, call, undo, contentKey, engine, sessions, chat, service });
     await call('edit_workflow', { workflow_id: workflow.id, operations: [{ op: 'add_node', type: 't.hf', ref: 'hf' }] });
     assert.ok((await store.readWorkflow(workflow.id)).graph.nodes.some((node) => node.type === 't.hf'), 'app access retains role-based Higgsfield editing');
 
@@ -267,14 +423,15 @@ async function main() {
 
     // Snapshot size and retention limits; no large document goes into model or public card.
     const tiny = { workflow_id: workflow.id, rev: saved.rev };
-    const large = await edits.record({ sessionId: chat.id, viewer, kind: 'edit', result: tiny,
+    const large = await edits.record({ sessionId: chat.id, viewer, kind: 'edit', result: tiny, after: saved,
       before: { rev: saved.rev, graph: { text: 'x'.repeat(edits.MAX_SNAPSHOT_BYTES) }, app: {} } });
-    assert.equal(large.status, 'undo_unavailable'); assert.equal(large.reason, 'SNAPSHOT_TOO_LARGE'); assert.ok(!large.before);
+    assert.equal(large.status, 'undo_unavailable'); assert.equal(large.reason, 'SNAPSHOT_TOO_LARGE'); assert.ok(!large.before); assert.ok(!large.afterKey);
     assert.equal((await undo(large.id)).status, 410);
     const retentionChat = await sessions.createSession({ owner: OWNER });
-    for (let index = 0; index < 21; index++) await edits.record({ sessionId: retentionChat.id, viewer, kind: 'edit', result: tiny, before: saved });
+    for (let index = 0; index < 21; index++) await edits.record({ sessionId: retentionChat.id, viewer, kind: 'edit', result: tiny, before: saved, after: saved });
     const retained = (await sessions.readSession(retentionChat.id)).workflowEdits;
     assert.equal(retained.filter((item) => item.before).length, 20); assert.equal(retained[0].status, 'undo_unavailable');
+    assert.ok(!retained[0].afterKey); assert.equal(retained.filter((item) => item.afterKey).length, 20);
 
     // A scripted Director receives the shared schemas and persists the stream card marker.
     const or = load('lib/openrouter');
