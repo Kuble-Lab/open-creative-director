@@ -33,6 +33,19 @@ assert.deepEqual(out.files.map((file) => file.path), ['index.html', 'assets/styl
 assert.equal(out.slugSuggestion, 'nova-b-ray-b');
 const html = fileOf(out, 'index.html');
 assert.ok(html.startsWith('<!DOCTYPE html>') && html.includes('<html lang="en">'));
+// share previews need absolute addresses: the first look, resolved against the published address
+assert.ok(html.includes('<meta property="og:image" content="https://nova.host.example/assets/looks/1.jpg">'));
+assert.ok(html.includes('<meta name="twitter:image" content="https://nova.host.example/assets/looks/1.jpg">'));
+assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image">'));
+assert.ok(html.includes('<meta property="og:url" content="https://nova.host.example/">'));
+{
+  // without a published address a relative image would be useless: no image tags, a small card
+  const local = fileOf(site.buildSite({ influencer: { name: 'Nova', full: 'x' }, images: [{ path: 'assets/looks/1.jpg' }] }), 'index.html');
+  assert.ok(!local.includes('og:image') && !local.includes('twitter:image') && !local.includes('og:url'));
+  assert.ok(local.includes('<meta name="twitter:card" content="summary">'));
+  const noSlash = fileOf(site.buildSite({ influencer: { name: 'Nova', full: 'x' }, images: [{ path: 'assets/looks/1.jpg' }], url: 'https://nova.host.example' }), 'index.html');
+  assert.ok(noSlash.includes('<meta property="og:image" content="https://nova.host.example/assets/looks/1.jpg">'));
+}
 assert.ok(html.includes('<meta name="viewport"') && html.includes('href="favicon.svg"'));
 assert.ok(!/<b>Ray<\/b>|<one>|<her>|javascript:|secret\.jpg|user:pw|a\.mp3/.test(html), 'texts are escaped and unsafe sources are dropped');
 assert.ok(html.includes('Nova &lt;b&gt;Ray&lt;/b&gt;') && html.includes('&quot;Tokens&quot; &amp; Tests'));
