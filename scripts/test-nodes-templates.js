@@ -47,6 +47,7 @@ const EXPECTED = [
   'music-video',
   'music-video-hud',
   'music-video-hud-elevenlabs',
+  'music-video-hud-guest',
   'music-video-hud-suno',
   'music-video-hud-suno-direct',
   'music-video-stills',
@@ -192,6 +193,7 @@ async function main() {
     const MARKED = {
       'motion-video-storyboard': ['n8', 'n13'],
       'music-video-hud': ['n30', 'n20', 'n21', 'n22', 'n23', 'n24'],
+      'music-video-hud-guest': ['n30', 'n20', 'n21', 'n36', 'n22', 'n23', 'n24'],
       'music-video-hud-elevenlabs': ['n29', 'n20', 'n21', 'n22', 'n23', 'n24'],
       'music-video-hud-suno': ['n29', 'n20@2', 'n21@2', 'n22@2', 'n23@2', 'n24@2'],
       // the song made by Suno is a step of its own: the pack, the song, then the board and the pictures
@@ -429,7 +431,7 @@ async function main() {
       // every param of every node is one of the node with a valid value (nothing is dropped by the import)
       for (const node of hudDoc.graph.nodes) {
         // The new cache-omitted switch is intentionally absent from the saved template; normalization supplies its exact default.
-        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.params;
+        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.type === 'music_video.hud_plan' ? { ...node.params, guest: '' } : node.params;
         assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), expected, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
       }
       // Nano Banana 2.1 is set on the node of the character sheet and on every node of the pictures (the choice of the owner, not the default of the
@@ -510,7 +512,7 @@ async function main() {
       const elevenDoc = byId['music-video-hud-elevenlabs'];
       const elevenNode = (id) => elevenDoc.graph.nodes.find((node) => node.id === id);
       for (const node of elevenDoc.graph.nodes) {
-        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.params;
+        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.type === 'music_video.hud_plan' ? { ...node.params, guest: '' } : node.params;
         assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), expected, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
       }
       // the chain from the analysis to the film is the one of the first template, node by node (only the place on the canvas differs)
@@ -624,6 +626,22 @@ async function main() {
       assert.deepEqual(doc.graph.notes.map((note) => note.id), ['t1', 't2', 't3', 't4', 't5']);
       assert.deepEqual(['t3', 't4', 't5'].map((id) => doc.i18n.de[`note.${id}`].slice(0, 2)), ['1.', '2.', '3.']);
     }
+    // The duet starts from the upload workflow so the exact guest marks are supplied with the final song.
+    {
+      const doc = byId['music-video-hud-guest'];
+      const get = (id) => doc.graph.nodes.find((n) => n.id === id);
+      assert.equal(get('n34').type, 'input.influencer');
+      assert.deepEqual(get('n35').params, get('n5').params, 'both sheets share model, aspect and count');
+      for (const id of ['n9', 'n10', 'n11']) assert.deepEqual(doc.graph.edges.filter((e) => e.to.node === id && e.to.port === 'images').map((e) => e.from.node), ['n5', 'n35'], 'lead sheet first, guest sheet second');
+      for (const id of ['n6', 'n7', 'n8']) assert.match(get(id).params.template, /first.*lead.*second.*guest.*only the people.*own sheet.*\{\{a\}\}/i);
+      for (const lang of ['en', 'de', 'es']) {
+        const localized = templates.resolveTemplate(doc.id, { lang });
+        assert.ok(localized.app.inputs.some((p) => p.node === 'n34' && p.param === 'influencer'));
+        assert.ok(localized.app.inputs.some((p) => p.node === 'n4' && p.param === 'guest'));
+        assert.ok(localized.app.outputs.some((p) => p.node === 'n36' && p.approve));
+      }
+    }
+
     // music-video-hud-suno-direct: the film of «song by Suno» with the song made inside the workflow. The node «Create song (Suno)» stands where
     // the upload was (n1, the same port `audio`): the pack feeds it, its lyrics go to the line times and its audio to an output of its own.
     // The pack is step 1, the song step 2 (heard before any picture is paid), the board, the sheet and the pictures step 3
@@ -711,7 +729,7 @@ async function main() {
       const ad = noAudio.find((item) => item.id === 'image-to-ad');
       assert.equal(ad.available, false);
       assert.deepEqual(ad.missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }]);
-      assert.ok(noAudio.filter((item) => !['ad-spot', 'ad-spot-portrait', 'event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard', 'rough-cut-subtitles', 'social-clips'].includes(item.id)).every((item) => item.available));
+      assert.ok(noAudio.filter((item) => !['ad-spot', 'ad-spot-portrait', 'event-video', 'image-to-ad', 'talking-portrait', 'video-with-music', 'song-from-idea', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-guest', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard', 'rough-cut-subtitles', 'social-clips'].includes(item.id)).every((item) => item.available));
       // the explainer videos (and the two typography videos, WP40) speak with ElevenLabs
       for (const id of ['explainer-video', 'explainer-video-topic', 'explainer-video-presenter', 'typography-video', 'typography-video-text', 'motion-video-storyboard']) {
         assert.deepEqual(noAudio.find((item) => item.id === id).missing, [{ key: 'elevenlabs', reason: 'ELEVENLABS_API_KEY is not set' }], `${id}: the voice comes from ElevenLabs`);
@@ -742,7 +760,7 @@ async function main() {
       assert.equal(portrait.available, false);
       assert.deepEqual(portrait.missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }]);
       assert.deepEqual(portrait.requires, ['fal', 'elevenlabs']);
-      assert.ok(noFal.filter((item) => !['event-video', 'talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video-presenter', 'video-cutout-overlay', 'replace-people-in-video'].includes(item.id)).every((item) => item.available));
+      assert.ok(noFal.filter((item) => !['event-video', 'talking-portrait', 'photo-to-3d', 'music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-guest', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'explainer-video-presenter', 'video-cutout-overlay', 'replace-people-in-video'].includes(item.id)).every((item) => item.available));
       assert.deepEqual(noFal.find((item) => item.id === 'explainer-video-presenter').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'only the presenter needs fal.ai (the lip sync); the other two explainer videos run without it');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the story clips and the lip sync of the singer scenes run on fal.ai');
       assert.deepEqual(noFal.find((item) => item.id === 'music-video-stills').missing, [{ key: 'fal', reason: 'FAL_KEY is not set' }], 'the lip sync of the singer scenes still does');
@@ -798,7 +816,7 @@ async function main() {
       assert.equal(new Set(templates.ORDER).size, templates.ORDER.length);
       // WP44: the three films in the HUD style and the Suno pack follow the older music videos (the one with the song by Suno right after the one
       // with the song by ElevenLabs), the dubbing stays last
-      assert.deepEqual(templates.ORDER.slice(templates.ORDER.indexOf('music-video')), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song', 'dub-clip']);
+      assert.deepEqual(templates.ORDER.slice(templates.ORDER.indexOf('music-video')), ['music-video', 'music-video-stills', 'music-video-hud', 'music-video-hud-guest', 'music-video-hud-elevenlabs', 'music-video-hud-suno', 'music-video-hud-suno-direct', 'suno-song-pack', 'suno-song', 'dub-clip']);
 
       // the new ones: shapes, cheap defaults, usable for participants (no Higgsfield, no credits)
       assert.deepEqual(types('image-to-video'), ['input.image', 'input.prompt', 'video.seedance', 'output.result']);

@@ -282,7 +282,31 @@ function testTemplates() {
   assert.equal(hudNodes.hudPrices('anthropic/claude-opus-5.5', 0).sheet, undefined);
 }
 
+// Both sheets use the same identity contract. Resolving [GUEST] must never insert the lead into a guest-only picture, including a wide silent scene.
+function testGuestIdentity() {
+  const { guestSong, GUEST_TEXT } = require('./support/hud-plan-prompt-cases');
+  const song = guestSong();
+  const figure = hudPlan.parseFigure('NAME: Lead\nFULL: a woman with copper hair and a silver coat\nSHORT: copper-haired woman');
+  const guest = hudPlan.parseFigure(GUEST_TEXT);
+  const grid = hudPlan.planGrid(song.analysis, song.timing, { guest: true, maxUnits: 70 });
+  const sung = grid.units.find((unit) => unit.voice === 'guest');
+  const silent = grid.units.find((unit) => unit.index > 0 && unit.kind !== 'performance');
+  const entries = [{ index: sung.index, framing: 'CU', subject: 'right', with_figure: false, with_guest: true, plate: 'CU, [GUEST], a warm spotlight, no text, no letters, no logos' },
+    { index: silent.index, framing: 'WS', with_figure: false, with_guest: true, plate: 'WS, [GUEST] listening in the rain, no text, no letters, no logos', motion: 'Slow pull back. No text, letters or logos.' }];
+  const read = hudPlan.readData({ units: entries }, { grid, figure, guest });
+  assert.ok(read.content.units[sung.index].plate.includes(guest.full));
+  assert.ok(!read.content.units[sung.index].plate.includes(figure.full));
+  assert.ok(read.content.units[silent.index].plate.includes(guest.short));
+  assert.equal(read.content.units[silent.index].withLead, false);
+  assert.equal(read.content.units[silent.index].withGuest, true);
+  const completed = hudPlan.completeContent(read.content, { grid, figure, guest });
+  assert.ok(!completed.content.units[silent.index].plate.includes(figure.short), 'repair does not add the lead to a guest-only silent unit');
+  assert.ok(completed.content.units[silent.index].plate.includes(guest.short));
+  assert.equal(hudPlan.sheetPrompt(guest, 'own').includes(guest.full), true);
+}
+
 function main() {
+  testGuestIdentity();
   testImages();
   testWhoGetsThem();
   testSheetPrompt();

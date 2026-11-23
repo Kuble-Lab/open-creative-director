@@ -855,7 +855,29 @@ function testTexts() {
   assert.match(dictionaries.de['nodes.app.fieldEmpty'], /^Das Feld «\{field\}» ist leer\./);
 }
 
+// The same brief writer receives both identities; no extra model answer is needed for a guest's short form.
+async function testGuestBrief() {
+  const { guestSong, GUEST_TEXT } = promptCases;
+  const song = guestSong();
+  const figure = hudPlan.parseFigure(FIGURE_TEXT);
+  const guest = hudPlan.parseFigure(GUEST_TEXT);
+  const grid = hudPlan.planGrid(song.analysis, song.timing, { guest: true, maxUnits: 70 });
+  const calls = [];
+  const written = await hudPlan.writeBrief({ grid, figure, guest, ask: async (request) => { calls.push(request); return { text: BRIEF, usd: 0 }; } });
+  assert.equal(written.brief, BRIEF);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].system, /guest sings lines marked "guest"/);
+  assert.doesNotMatch(calls[0].system, /name the passages that a choir sings/);
+  assert.match(calls[0].prompt, /GUEST\nNAME: Sol/);
+  assert.match(calls[0].prompt, /GUEST LINES/);
+  assert.match(calls[0].prompt, /\| guest/);
+  const base = hudPlan.planGrid(song.analysis, song.timing, { maxUnits: 70 });
+  assert.equal(hudPlan.briefUserPrompt({ grid: base, figure }), hudPlan.briefUserPrompt({ grid: base, figure, guest: null }));
+  assert.equal(hudPlan.briefSystemPrompt(), hudPlan.briefSystemPrompt({ guest: null }));
+}
+
 async function main() {
+  await testGuestBrief();
   try {
     await testGolden();
     testMarks();

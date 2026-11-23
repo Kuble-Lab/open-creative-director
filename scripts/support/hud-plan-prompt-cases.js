@@ -221,3 +221,27 @@ async function fingerprints() {
 }
 
 module.exports = { cases, fingerprints, sha, PRICES, BRIEFS };
+
+// Short call-and-response answers from a four-minute duet. The lead keeps the ordinary dense-song fixture; only the gaps around answers are cleared.
+// Explicit word times let the tests check both the line words and timing-only blockers, rather than trusting line envelopes.
+const GUEST_TEXT = 'NAME: Sol\nFULL: a 42-year-old man with dark curls, a broad nose and a blue linen jacket\nSHORT: a man with dark curls and a blue jacket';
+function guestSong() {
+  const song = makeSong({ seconds: 234 });
+  const spans = [[16.9, 19.3], [120, 123.2], [168.3, 171.1], [177.5, 179.1], [217.2, 218.2]];
+  song.timing.lines = song.timing.lines.filter((line) => !spans.some(([start, end]) => line.end > start - 2 && line.start < end + 2));
+  song.timing.words = song.timing.words.filter((word) => song.timing.lines.some((line) => word.start >= line.start && word.end <= line.end));
+  for (const [at, [start, end]] of spans.entries()) {
+    const text = at % 2 ? '(No.)' : '(Not yet!)';
+    const words = at % 2 ? [{ text: 'No.', start, end }] : [
+      { text: 'Not', start, end: (start + end) / 2 - 0.05 },
+      { text: 'yet!', start: (start + end) / 2 + 0.05, end }
+    ];
+    song.timing.lines.push({ text, voice: 'choir', start, end, words });
+    song.timing.words.push(...words);
+  }
+  song.timing.lines.sort((a, b) => a.start - b.start);
+  song.timing.words.sort((a, b) => a.start - b.start);
+  return song;
+}
+module.exports.guestSong = guestSong;
+module.exports.GUEST_TEXT = GUEST_TEXT;

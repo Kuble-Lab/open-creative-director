@@ -316,7 +316,7 @@ function testOtherCacheKeys() {
   const calibratedLines = [];
   for (const other of templates.loadTemplates()) {
     // templates added later have no keys to keep; the digest covers the ones that existed
-    if (other.id === 'event-video' || other.id === 'genjutsu-people-in-video' || other.id === 'suno-song' || other.id === 'music-video-hud-suno-direct' || other.id === 'ad-spot' || other.id === 'ad-spot-portrait' || other.id === 'rough-cut-subtitles' || other.id === 'social-clips') continue;
+    if (other.id === 'event-video' || other.id === 'genjutsu-people-in-video' || other.id === 'suno-song' || other.id === 'music-video-hud-suno-direct' || other.id === 'music-video-hud-guest' || other.id === 'ad-spot' || other.id === 'ad-spot-portrait' || other.id === 'rough-cut-subtitles' || other.id === 'social-clips') continue;
     for (const lang of LANGS) {
       for (const node of templates.resolveTemplate(other.id, { lang }).graph.nodes) {
         // The new influencer has no historical key; its addition and all retained HUD keys are pinned in test-influencer-node.

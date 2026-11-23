@@ -1762,10 +1762,10 @@ async function testDefinition() {
   const ports = (list) => list.map((port) => [port.id, port.type, Boolean(port.required), port.param || null]);
   // the idea is optional since WP48 (an empty field: the model writes the brief from the song), and the brief that was used is an output
   // WP50: pictures of the person's own figure (optional) in, the reference images of the portrait sheet out
-  assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', false, 'brief'], ['figure', 'text', true, 'figure'], ['song', 'audio', true, null], ['figure_image', 'image', false, null]]);
+  assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', false, 'brief'], ['figure', 'text', true, 'figure'], ['guest', 'text', false, 'guest'], ['song', 'audio', true, null], ['figure_image', 'image', false, null], ['guest_image', 'image', false, null]]);
   assert.equal(def.inputs.find((port) => port.id === 'figure_image').multiple, true);
   assert.deepEqual(def.outputs.map((port) => [port.id, port.type]), [
-    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text'], ['sheet_refs', 'image[]']
+    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text'], ['sheet_refs', 'image[]'], ['guest_sheet_prompt', 'text'], ['guest_sheet_refs', 'image[]']
   ]);
   // the same ports as the plan of the music video, so that the template of the nodes before and after it fits
   const plain = real.get('music_video.plan');
@@ -1778,7 +1778,7 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, listen: true, cuts_from_song: true, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
+    model: '', brief: '', figure: '', guest: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, listen: true, cuts_from_song: true, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
   });
   // WP52a: the share of B-roll and the switch for a plain plan, both added after plans were saved: at their defaults no part of the key
   const brollParam = def.params.find((param) => param.id === 'broll_share');
@@ -1994,7 +1994,156 @@ async function testPromptGuardsAndRefusal() {
   }
 }
 
+// Guest answers have film durations of their own; padding and billing belong to the audio model, never to the edit grid.
+async function testGuestPlanner() {
+  const { guestSong, GUEST_TEXT, PRICES } = require('./support/hud-plan-prompt-cases');
+  const song = guestSong();
+  const options = { maxUnits: 70, motionShare: 0 };
+  const figure = figureOf();
+  const guest = hudPlan.parseFigure(GUEST_TEXT);
+  const grid = hudPlan.planGrid(song.analysis, song.timing, { ...options, guest: true });
+  const baseline = hudPlan.planGrid(song.analysis, song.timing, options);
+  assert.deepEqual(hudPlan.planGrid(song.analysis, song.timing, { ...options, guest: false }), baseline);
+  const sung = grid.units.filter((unit) => unit.kind === 'performance');
+  const guests = sung.filter((unit) => unit.voice === 'guest');
+  assert.equal(grid.guest, true);
+  assert.equal(guests.length, 5);
+  assert.equal(grid.stats.guestSung, 5);
+  near(grid.stats.guestLipsyncSeconds, guests.reduce((sum, unit) => sum + unit.duration, 0), 0.01);
+  assert.deepEqual(sung.filter((unit) => !unit.voice).map((unit) => [unit.start, unit.end]), baseline.units.filter((unit) => unit.kind === 'performance').map((unit) => [unit.start, unit.end]), 'guest selection never moves the lead windows');
+  assert.ok(grid.units.length <= options.maxUnits);
+  assert.deepEqual(sung.map((unit) => unit.clip), sung.map((unit, index) => index));
+  for (const [index, unit] of sung.entries()) {
+    assert.ok(unit.duration >= (unit.voice ? hudPlan.GUEST_WINDOW_MIN : planLib.PERFORMANCE_MIN_SEC) - 0.001);
+    assert.ok(unit.duration <= hudPlan.WINDOW_MAX_LONG + 0.001);
+    for (const edge of [unit.start, unit.end]) assert.ok(!song.timing.words.some((word) => edge > word.start + 0.001 && edge < word.end - 0.001));
+    for (const line of grid.lines.filter((line) => (line.voice === 'choir') !== (unit.voice === 'guest'))) {
+      assert.ok(line.words.every((word) => word.end <= unit.start + 0.001 || word.start >= unit.end - 0.001));
+    }
+    const gaps = [unit.start, grid.duration - unit.end, ...(index ? [unit.start - sung[index - 1].end] : [])];
+    assert.ok(gaps.every((gap) => Math.abs(gap) < 0.001 || gap >= hudPlan.WINDOW_SPACING - 0.001));
+    if (unit.duration < 2.2) assert.deepEqual(unit.cuts.map((cut) => cut.zoom), [1]);
+    assert.ok(unit.cuts.every((cut) => cut.end - cut.start >= (unit.start === 0 ? 0.6 : 0.9) - 0.001));
+  }
+  assert.ok(grid.units.filter((unit) => unit.kind !== 'performance').every((unit) => unit.kind === 'still'), 'covered guest lines do not force neighbouring story clips');
+  const user = hudPlan.userPrompt({ grid, figure, guest, brief: fullBrief('A duet on stage') });
+  assert.match(user, /GUEST \(second reference sheet/);
+  assert.match(user, /GUEST LINES/);
+  assert.match(user, /performance \(guest\)/);
+  assert.match(user, /\| guest/);
+  for (const unit of guests) assert.ok(user.includes(String(unit.index)));
+  assert.match(hudPlan.systemPrompt({ guest }), /first reference sheet is the lead, the second is the guest/);
+  assert.match(hudPlan.briefUserPrompt({ grid, figure, guest }), /GUEST LINES/);
+  assert.match(hudPlan.briefSystemPrompt({ guest }), /guest sings lines marked "guest"/);
+
+  const answer = goodAnswer(grid, figure);
+  for (const unit of guests) Object.assign(answer.units[unit.index], { plate: `CU, [GUEST], guest pose ${unit.index}, no text, no letters, no logos`, with_figure: false, with_guest: true, subject: 'left' });
+  // Both directions of a mistaken placeholder are repaired deterministically; a missing guest gets its identity inserted as well.
+  answer.units[guests[0].index].plate = 'CU, [FIGURE], under amber light, no text, no letters, no logos';
+  answer.units[guests[1].index].plate = 'CU, a portrait under blue light, no text, no letters, no logos';
+  const lead = sung.find((unit) => !unit.voice);
+  answer.units[lead.index].plate += ', [GUEST]';
+  const read = hudPlan.readData(answer, { grid, figure, guest });
+  for (const unit of guests) {
+    const entry = read.content.units[unit.index];
+    assert.equal(entry.withFigure, true, 'guest participates in face and B-roll checks');
+    assert.equal(entry.withLead, false);
+    assert.equal(entry.withGuest, true);
+    assert.ok(entry.plate.includes(guest.full));
+    assert.ok(!entry.plate.includes(figure.full));
+    assert.ok(!/\[(?:FIGURE|GUEST)\]/.test(entry.plate));
+  }
+  assert.ok(!read.content.units[lead.index].plate.includes(guest.full));
+  const plain = hudPlan.completeContent(null, { grid, figure, guest });
+  for (const unit of guests) assert.ok(plain.content.units[unit.index].plate.includes(guest.full));
+  const merged = hudPlan.mergeAnswers({ ...answer, units: answer.units.filter((unit) => unit.index !== guests[0].index) }, { units: [answer.units[guests[0].index]] }, { grid, figure, guest });
+  assert.ok(!hudPlan.missingParts(merged, grid, figure, guest).units.includes(guests[0].index));
+  const result = await hudPlan.runPlanner({ ...song, figureText: FIGURE_TEXT, guestText: GUEST_TEXT, guestSheetReferences: { kind: 'own', count: 2 }, brief: fullBrief('A duet on stage'), options, prices: PRICES, allowPlain: true, ask: async () => ({ text: JSON.stringify(answer), usd: 0 }) });
+  assert.equal(result.guest.name, 'Sol');
+  assert.equal(result.guestSheetPrompt, hudPlan.sheetPrompt(guest, 'own'));
+  assert.match(result.board, /GUEST      Sol: 5 guest lines, 5 with a sung window/);
+  assert.match(result.board, /SUNG \(GUEST\)/);
+  assert.equal(result.cost.parts.guestSheet, PRICES.image);
+  assert.deepEqual(result.plan.performance.map((shot) => shot.clip), sung.map((unit) => unit.clip));
+  for (const shot of result.plan.performance.filter((shot) => shot.voice === 'guest')) {
+    assert.equal(shot.character, 'Sol');
+    assert.equal(shot.with_guest, true);
+    assert.equal(shot.with_figure, false);
+    assert.ok(['left', 'center', 'right'].includes(shot.subject));
+    assert.match(shot.prompt, /second reference sheet for the singer/);
+    assert.ok(!shot.prompt.includes(hudPlan.NO_FIGURE_NOTE));
+  }
+  // A cut answer must keep the resolved guest entries while asking for the missing ones; deriving SHORT never costs another model request.
+  const noShortGuestText = GUEST_TEXT.split('\n').slice(0, 2).join('\n');
+  const firstHalf = { ...answer, units: answer.units.filter((unit) => unit.index !== guests[0].index) };
+  const continuationModel = scriptedModel([
+    { reply: { text: JSON.stringify(firstHalf).slice(0, -1) + ',"unfinished":', finishReason: 'length' } },
+    { units: [answer.units[guests[0].index]] }
+  ], { usd: 0 });
+  const continued = await hudPlan.runPlanner({ ...song, figureText: FIGURE_TEXT, guestText: noShortGuestText, brief: fullBrief('A duet on stage'), options, prices: PRICES, ask: continuationModel.ask });
+  assert.equal(continuationModel.calls.length, 2);
+  assert.match(continuationModel.calls[1].prompt, /YOUR PREVIOUS ANSWER WAS CUT OFF/);
+  assert.match(continuationModel.calls[1].prompt, /GUEST LINES/);
+  assert.equal(continued.guest.short, hudPlan.deriveShort(continued.guest.full));
+  assert.ok(continued.plan.performance.filter((shot) => shot.voice === 'guest').every((shot) => shot.prompt.includes(continued.guest.full)));
+  assert.deepEqual(continued.fallbacks.units, []);
+  const billed = [];
+  const shortCost = hudPlan.estimateCost({ grid: { ...grid, units: [{ kind: 'performance', duration: 1.5 }] }, settings: grid.settings, prices: { ...PRICES, guestSheet: 0.12, lipsync: (seconds) => { billed.push(seconds); return seconds; } } });
+  assert.deepEqual(billed, [5]);
+  assert.equal(shortCost.parts.lipsync, 5);
+  assert.equal(shortCost.parts.guestSheet, 0.12);
+
+  // Short edge cases: the hook and an abutting lead/guest handoff keep separate units. Timing-only lead words block otherwise empty guest gaps.
+  const tiny = (lines, words = lines.flatMap((line) => line.words)) => ({ analysis: { duration: 24, bpm: 120, beats: Array.from({ length: 48 }, (_, at) => at / 2), sections: [{ name: 'Chorus', start: 0, end: 24 }], energy: Array(24).fill(0.8) }, timing: { lines, words } });
+  const line = (start, end, voice) => ({ text: voice ? '(No.)' : 'A long light', start, end, ...(voice ? { voice: 'choir' } : {}), words: [{ text: voice ? 'No.' : 'light', start, end }] });
+  const hookSong = tiny([line(0.1, 0.5, true), line(4, 8)]);
+  const hook = hudPlan.planGrid(hookSong.analysis, hookSong.timing, { guest: true, maxUnits: 30 });
+  assert.equal(hook.units[0].voice, 'guest');
+  assert.equal(hook.units[0].cuts.length, 1);
+  assert.ok(hook.units[0].duration <= 1.5, 'a short guest hook fits the opening cut');
+  const handoffSong = tiny([line(2, 6.1), line(8, 8.6, true)]);
+  const handoff = hudPlan.planGrid(handoffSong.analysis, handoffSong.timing, { guest: true, maxUnits: 30 });
+  const handoffGuest = handoff.units.find((unit) => unit.voice === 'guest');
+  assert.ok(handoffGuest);
+  assert.equal(handoff.units[handoffGuest.index - 1].end, handoffGuest.start);
+  assert.equal(handoff.units[handoffGuest.index - 1].kind, 'performance');
+  const blockedSong = tiny([line(0.1, 0.5, true)], [{ text: 'No.', start: 0.1, end: 0.5 }, { text: 'hidden lead', start: 0.7, end: 2 }]);
+  const blocked = hudPlan.planGrid(blockedSong.analysis, blockedSong.timing, { guest: true, maxUnits: 30, motionShare: 0 });
+  assert.equal(blocked.stats.guestSung, 0);
+  assert.ok(blocked.warnings.includes('NO_GUEST_WINDOWS'));
+  assert.ok(blocked.units.some((unit) => unit.kind === 'story'), 'an uncovered guest line still gets a story clip');
+  const longWords = Array.from({ length: 30 }, (_, at) => ({ text: 'answer', start: 2 + at * 0.6, end: 2.4 + at * 0.6 }));
+  const longRun = tiny([{ text: '(A long answer)', voice: 'choir', start: 2, end: 20, words: longWords }], longWords);
+  const longGrid = hudPlan.planGrid(longRun.analysis, longRun.timing, { guest: true, maxUnits: 30, motionShare: 0 });
+  const longGuestUnits = longGrid.units.filter((unit) => unit.voice === 'guest');
+  assert.equal(longGuestUnits.length, 2, 'long guest runs split at a word gap');
+  assert.equal(longGuestUnits[0].end, longGuestUnits[1].start);
+  assert.ok(longGuestUnits.every((unit) => unit.duration <= hudPlan.WINDOW_MAX_LONG));
+  assert.ok(longWords.every((word) => longGuestUnits.some((unit) => word.start >= unit.start && word.end <= unit.end)));
+  assert.ok(longGrid.units.every((unit) => unit.kind !== 'story'), 'coverage across two windows does not force a story unit');
+  const hidden = tiny([line(2, 3, true), line(8, 9, true)], [{ text: 'No.', start: 2, end: 3 }, { text: 'lead between answers', start: 5, end: 6 }, { text: 'No.', start: 8, end: 9 }]);
+  const separated = hudPlan.planGrid(hidden.analysis, hidden.timing, { guest: true, maxUnits: 30 });
+  assert.equal(separated.stats.guestSung, 2, 'a timing-only lead word splits the guest run');
+  assert.ok(separated.units.filter((unit) => unit.voice).every((unit) => unit.end <= 5 || unit.start >= 6));
+  // A low unit limit must remain usable whenever the lead-only layout was usable, even if every guest answer must be dropped.
+  for (const maxUnits of [6, 8, 10, 12]) {
+    const settings = { maxUnits, clipSeconds: 5, cutsPerMinute: 14, motionShare: 0 };
+    const leadOnly = hudPlan.planGrid(handoffSong.analysis, handoffSong.timing, settings);
+    const withGuest = hudPlan.planGrid(handoffSong.analysis, handoffSong.timing, { ...settings, guest: true });
+    assert.ok(withGuest.units.length <= maxUnits);
+    assert.ok(withGuest.stats.sung <= Math.floor((maxUnits - 1) / 2));
+    assert.deepEqual(withGuest.units.filter((unit) => unit.kind === 'performance' && !unit.voice).map((unit) => [unit.start, unit.end]), leadOnly.units.filter((unit) => unit.kind === 'performance').map((unit) => [unit.start, unit.end]));
+  }
+  const noGuestLines = hudPlan.planGrid(songOf('s60').analysis, songOf('s60').timing, { guest: true });
+  assert.ok(noGuestLines.warnings.includes('NO_GUEST_LINES'));
+  const noGuestInput = { ...songOf('s60'), figureText: FIGURE_TEXT, brief: fullBrief('A light'), ask: async () => ({ text: JSON.stringify(answerFor('s60')), usd: 0 }), options: MIXED };
+  const [oldResult, emptyResult] = await Promise.all([hudPlan.runPlanner(noGuestInput), hudPlan.runPlanner({ ...noGuestInput, guestText: '' })]);
+  assert.deepEqual(emptyResult, oldResult, 'empty guest preserves prompts, board, plan and output keys');
+  assert.ok(!Object.hasOwn(oldResult, 'guestSheetPrompt') && !Object.hasOwn(oldResult, 'guest'));
+}
+
 async function main() {
+  await testGuestPlanner();
   await testPromptGuardsAndRefusal();
   testGrid();
   testGridErrors();
@@ -2112,9 +2261,9 @@ async function testNode() {
       assert.equal(result.variants.length, 1);
       assert.deepEqual(result.cost, { usd: LLM_USD });
       const out = result.variants[0];
-      // every output but the reference images of the sheet: a figure of its own and no official images (WP50)
-      assert.deepEqual(Object.keys(out), def.outputs.map((port) => port.id).filter((id) => id !== 'sheet_refs'));
-      for (const port of def.outputs.filter((item) => item.id !== 'sheet_refs')) assert.equal(out[port.id].type, port.type === 'text' ? 'text' : 'list', port.id);
+      // No references and no guest: optional sheet outputs stay absent, preserving the saved no-guest result shape.
+      assert.deepEqual(Object.keys(out), def.outputs.map((port) => port.id).filter((id) => !['sheet_refs', 'guest_sheet_prompt', 'guest_sheet_refs'].includes(id)));
+      for (const port of def.outputs.filter((item) => !['sheet_refs', 'guest_sheet_prompt', 'guest_sheet_refs'].includes(item.id))) assert.equal(out[port.id].type, port.type === 'text' ? 'text' : 'list', port.id);
       const shots = planLib.parseShots(out.shots.value);
       assert.ok(shots, 'the plan of the cut can be read');
       const stats = grid.stats;
