@@ -1073,6 +1073,7 @@ function renderAccount() {
   el.costsBtn.classList.toggle('hidden', me.active);
   el.usersSection.classList.toggle('hidden', !(me.active && me.isAdmin));
   el.settingsMonitoringLink.classList.toggle('hidden', !me.isSuperAdmin);
+  el.settingsActivityLink.classList.toggle('hidden', !me.isSuperAdmin);
   renderRestrictedView(me);
   renderBudgetBanner();
   OCAccess.renderLoginBanner();

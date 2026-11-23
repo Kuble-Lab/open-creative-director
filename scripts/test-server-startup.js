@@ -30,6 +30,7 @@ function setup(env = {}, sweep = () => Promise.resolve(0)) {
     nodeWorkflows: { defaultStore: { markInterruptedRuns: sweep } },
     discovery: { resolveModels: () => Promise.resolve({}) },
     poller: { start() {} },
+    activity: { start() {} },
     rendernode: { queue: () => ({ start() {} }), cloud: () => ({ start() {} }) },
     access: { isActive: () => false }, accessSync: { enabled: () => false }
   };

@@ -829,6 +829,9 @@ async function testChatToolsAdminOnly({ api, iso }) {
 /* ---------- admin-only routes ---------- */
 
 const ADMIN_ONLY_ROUTES = [
+  ['GET', '/api/admin/activity'],
+  ['POST', '/api/admin/activity/block', { email: 'x@example.com' }],
+  ['POST', '/api/admin/activity/unblock', { email: 'x@example.com' }],
   ['POST', '/api/website-host/connect', {}],
   ['GET', '/api/website-host/oauth/callback'],
   ['DELETE', '/api/website-host/auth'],
@@ -896,7 +899,7 @@ async function testAdminOnly({ api }) {
     for (const email of [ALICE, null]) {
       const response = await api(url, { method, as: email, json });
       // Website host routes fail closed before reaching an unconfigured provider.
-      const expected = url.startsWith('/api/website-host/') ? (email ? 404 : 401) : 403;
+      const expected = url.startsWith('/api/admin/activity') ? 404 : url.startsWith('/api/website-host/') ? (email ? 404 : 401) : 403;
       assert.equal(response.status, expected, `${method} ${url} as ${email || 'anonymous'} -> ${response.status}`);
     }
   }
@@ -1021,7 +1024,7 @@ async function testMonitoring({ api, costsLib, store, chat }) {
 
   // Only superadmins: a plain admin, a user and anonymous callers get a 404 as if the feature did not exist
   for (const email of [ADMIN, ALICE, null]) {
-    for (const url of ['/api/admin/monitoring', '/api/admin/monitoring/export', '/monitoring.html']) {
+    for (const url of ['/api/admin/monitoring', '/api/admin/monitoring/export', '/monitoring.html', '/activity.html']) {
       assert.equal((await api(url, { as: email, raw: true })).status, 404, `${url} as ${email || 'anonymous'}`);
     }
   }
@@ -1219,7 +1222,7 @@ async function testLocalMode() {
     assert.deepEqual(Object.keys((await store.readBrainMemory({ viewer: iso.load('lib/access').viewerOf({ kubleUser: BOB }) }))[0]).sort(), ['note', 'ts']);
 
     // monitoring does not exist: nobody is a superadmin without a login
-    for (const url of ['/api/admin/monitoring', '/api/admin/monitoring/export', '/monitoring.html']) {
+    for (const url of ['/api/admin/monitoring', '/api/admin/monitoring/export', '/monitoring.html', '/activity.html']) {
       assert.equal((await api(url, { as: BOSS, raw: true })).status, 404, url);
     }
 
