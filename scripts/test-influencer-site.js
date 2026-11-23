@@ -76,4 +76,12 @@ const many = site.buildSite({ influencer: { name: 'Max', full: 'x' }, items: Arr
 assert.equal((fileOf(many, 'index.html').match(/<article /g) || []).length, site.MAX_ITEMS);
 assert.throws(() => site.buildSite({ influencer: { name: ' ' } }), TypeError);
 
+// a film on YouTube is embedded by its id; anything that is not an id is dropped
+for (const link of ['https://youtu.be/9kqGUuzK5_s', 'https://www.youtube.com/watch?v=9kqGUuzK5_s&t=4', 'https://youtube.com/shorts/9kqGUuzK5_s', 'https://www.youtube.com/embed/9kqGUuzK5_s', '9kqGUuzK5_s']) assert.equal(site.youtubeId(link), '9kqGUuzK5_s', link);
+for (const link of ['http://youtu.be/9kqGUuzK5_s', 'https://example.com/watch?v=9kqGUuzK5_s', 'https://youtu.be/short', 'https://youtu.be/9kqGUuzK5_s"><script>', '', null]) assert.equal(site.youtubeId(link), '', String(link));
+const tube = fileOf(site.buildSite({ influencer: { name: 'Nova', full: 'x' }, lang: 'en', items: [
+  { id: 't1', kind: 'youtube', youtube: '9kqGUuzK5_s', title: 'Film' }, { id: 't2', kind: 'youtube', youtube: 'x"><script>' }, { id: 't3', kind: 'youtube', src: 'assets/work/a.mp4' }] }), 'index.html');
+assert.equal((tube.match(/<article /g) || []).length, 1, 'only the piece with a real id is shown');
+assert.ok(tube.includes('<iframe src="https://www.youtube-nocookie.com/embed/9kqGUuzK5_s?rel=0"') && tube.includes('referrerpolicy="strict-origin-when-cross-origin"') && tube.includes('1 piece'));
+
 console.log('test-influencer-site.js: ok');

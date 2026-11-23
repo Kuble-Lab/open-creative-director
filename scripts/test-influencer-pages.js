@@ -101,6 +101,8 @@ async function run(iso) {
   assert.deepEqual(image.facts, [{ label: 'Modell', value: 'Testmodell' }]);
   await assert.rejects(pages.addItem(figure.id, { sessionId: foreign.id, assetId: 'img-001' }, options), hasCode('SITE_NOT_FOUND'));
   await assert.rejects(pages.addItem(figure.id, { sessionId: session.id, assetId: 'aud-001' }, options), hasCode('SITE_INVALID'));
+  await assert.rejects(pages.addItem(figure.id, { youtube: 'https://example.com/watch?v=9kqGUuzK5_s' }, options), hasCode('SITE_INVALID'));
+  await assert.rejects(pages.addItem(figure.id, { youtube: 'https://youtu.be/9kqGUuzK5_s', sessionId: session.id, assetId: 'img-001' }, options), hasCode('SITE_INVALID'));
   await pages.updateSite(figure.id, { items: [{ id: image.id, title: 'Neu' }, { id: video.id }] }, options);
   await assert.rejects(pages.updateSite(figure.id, { items: [{ id: 'unknown' }, { id: video.id }] }, options), hasCode('SITE_INVALID'));
   await inf.updateInfluencer(figure.id, { tagline: 'Neu' });
@@ -225,6 +227,18 @@ async function run(iso) {
   const limitFigure = await make();
   await pages.writeSite(limitFigure.id, (site) => { site.items = Array.from({ length: 60 }, (_, i) => ({ id: `w${i.toString(16).padStart(10, '0')}`, kind: 'image' })); });
   await assert.rejects(pages.addItem(limitFigure.id, { sessionId: session.id, assetId: 'img-001' }, options), hasCode('SITE_ITEM_LIMIT'));
+  // A film on YouTube needs no upload: the published page embeds the player.
+  const tubeFigure = await make();
+  const tube = (await pages.addItem(tubeFigure.id, { youtube: 'https://youtu.be/9kqGUuzK5_s', title: 'Film' }, options)).item;
+  assert.equal(tube.kind, 'youtube');
+  assert.equal(tube.youtube, '9kqGUuzK5_s');
+  assert.ok((await pages.previewFile(tubeFigure.id, 'index.html', options)).content.includes('youtube-nocookie.com/embed/9kqGUuzK5_s'));
+  host.calls.length = 0;
+  finish = await (await begin(tubeFigure.id)).finished;
+  assert.equal(finish.errors.length, 0);
+  assert.ok(host.calls.filter((call) => call.name === 'publish_site').flatMap((call) => call.args.files).find((file) => file.path === 'index.html').content.includes('youtube-nocookie.com/embed/9kqGUuzK5_s'));
+  assert.ok(!host.calls.some((call) => call.name === 'import_asset_from_url'));
+  await assert.rejects(pages.addItem(limitFigure.id, { youtube: '9kqGUuzK5_s' }, options), hasCode('SITE_ITEM_LIMIT'));
   const deleted = await make();
   let resumeDeleted;
   const deleteGate = new Promise((resolve) => { resumeDeleted = resolve; });
@@ -280,6 +294,7 @@ async function directRouteChecks(iso, id, host) {
   assert.match(result.headers['Content-Security-Policy'], /default-src 'none'.*style-src 'self'.*connect-src 'none'/);
   assert.doesNotMatch(result.headers['Content-Security-Policy'], /unsafe-inline/);
   assert.match(result.headers['Content-Security-Policy'], /style-src 'self' 'sha256-[A-Za-z0-9+/=]+';/);
+  assert.match(result.headers['Content-Security-Policy'], /frame-src https:\/\/www\.youtube-nocookie\.com;/);
   assert.equal(result.headers['X-Content-Type-Options'], 'nosniff');
   assert.equal(result.headers['Cache-Control'], 'no-store');
   assert.equal(result.headers['Referrer-Policy'], 'no-referrer');
