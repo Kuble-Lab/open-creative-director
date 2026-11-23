@@ -14,25 +14,43 @@ function pure() {
   const jobs = new Map();
   jobs.set('a', { status: 'running', nodeName: 'Cloud Display' });
   jobs.set('b', { status: 'queued' });
-  assert.deepEqual(renderStatus(jobs), { phase: 'rendering', names: ['Cloud Display'] });
+  assert.deepEqual(renderStatus(jobs), { phase: 'rendering', names: ['Cloud Display'], done: 0, total: 2 });
   jobs.set('a', { status: 'completed', nodeName: 'Cloud Display' });
   assert.equal(renderStatus(jobs), null, 'queued chunks do not claim the whole film finished');
   jobs.set('b', { status: 'completed', nodeName: 'Workstation' });
   const render = renderStatus(jobs);
-  assert.deepEqual(render.names, ['Cloud Display', 'Workstation']);
+  assert.deepEqual(render, { phase: 'completed', names: ['Cloud Display', 'Workstation'], done: 2, total: 2, counts: [1, 1] });
+  assert.equal(renderStatus(new Map()), null);
+  const mixed = new Map([['a', { status: 'completed', nodeName: 'Mac' }], ['b', { status: 'running', nodeName: 'GPU' }], ['c', { status: 'failed' }], ['d', { status: 'cancelled' }]]);
+  assert.deepEqual(renderStatus(mixed), { phase: 'rendering', names: ['GPU'], done: 1, total: 4 });
+  jobs.set('c', { status: 'completed', nodeName: 'Cloud Display' });
+  assert.deepEqual(renderStatus(jobs), { phase: 'completed', names: ['Cloud Display', 'Workstation'], done: 3, total: 3, counts: [2, 1] });
   const record = { nodes: { n: { render } } };
   for (const viewer of [{ active: false }, { admin: true }, { kind: 'internal' }]) assert.deepEqual(publicStatus(record, viewer), record);
   for (const viewer of [{ kind: 'participant' }, { kind: 'guest' }, null]) {
     const filtered = publicStatus(record, viewer);
-    assert.deepEqual(filtered.nodes.n.render, { phase: 'completed', count: 2 });
+    assert.deepEqual(filtered.nodes.n.render, { phase: 'completed', count: 2, done: 2, total: 2 });
     assert.ok(!JSON.stringify(filtered).includes('Workstation'));
+    assert.equal(filtered.nodes.n.render.names, undefined);
+    assert.equal(filtered.nodes.n.render.counts, undefined);
   }
   assert.deepEqual(record.nodes.n.render.names, ['Cloud Display', 'Workstation'], 'filtering never mutates shared records');
+  assert.deepEqual(publicStatus({ render: { phase: 'rendering', names: ['Private'], done: '1', total: undefined, counts: [1] } }, null), { render: { phase: 'rendering', count: 1 } });
   const snapshot = { type: 'snapshot', activeRun: { nodeRenders: { n: render, idle: null } } };
-  assert.deepEqual(publicStatus(snapshot, { kind: 'guest' }).activeRun.nodeRenders, { n: { phase: 'completed', count: 2 }, idle: null });
+  assert.deepEqual(publicStatus(snapshot, { kind: 'guest' }).activeRun.nodeRenders, { n: { phase: 'completed', count: 2, done: 2, total: 2 }, idle: null });
   for (const [index, lang] of ['de', 'en', 'es'].entries()) {
     const { rows } = require('../public/nodes/i18n-nodes');
     const T = (key, data) => rows.find((row) => row[0] === key)[index + 1].replace(/\{(\w+)\}/g, (_, k) => data[k]);
+    const one = { phase: 'rendering', names: ['Mac mini M4 Pro'], done: 0, total: 1 };
+    assert.equal(run.renderText(one, T, 'running'), T('nodes.render.rendering', { name: 'Mac mini M4 Pro' }), lang);
+    const two = { ...one, names: ['Mac mini M4 Pro', 'Acer RTX 3080'], done: 2, total: 5 };
+    assert.equal(run.renderText(two, T, 'running'), T('nodes.render.renderingMany', { count: 2, name: two.names.join(', ') }) + ' · ' + T('nodes.render.chunks', { done: 2, total: 5 }), lang);
+    assert.equal(run.renderText({ ...one, done: 1, total: 3 }, T, 'running'), T('nodes.render.rendering', { name: one.names[0] }) + ' · ' + T('nodes.render.chunks', { done: 1, total: 3 }), lang);
+    const finished = { phase: 'completed', names: two.names, counts: [3, 2], done: 5, total: 5 };
+    const name = 'Mac mini M4 Pro (3), Acer RTX 3080 (2)';
+    for (const status of ['running', 'waiting_job']) assert.equal(run.renderText(finished, T, status), T('nodes.render.finishing', { name }), lang);
+    assert.equal(run.renderText(finished, T, 'done'), T('nodes.render.completed', { name }), lang);
+    assert.equal(run.renderText({ phase: 'completed', count: 2, done: 5, total: 5 }, T, 'running'), T('nodes.render.finishing', { name: [1, 2].map((n) => T('nodes.render.computer', { n })).join(', ') }), lang);
     assert.ok(run.renderText(render, T).includes('Cloud Display'), lang);
     assert.ok(!run.renderText({ phase: 'completed', count: 1 }, T).includes('Cloud Display'), lang);
   }
@@ -48,14 +66,15 @@ function pure() {
   state = run.reduce(state, { type: 'node_status', runId: 'new', nodeId: 'n', status: 'running' });
   assert.equal(state.nodes.n.render, undefined, 'a fresh run clears attribution');
   const tr = (key, data) => `${key}:${data.name || data.n}`;
-  assert.equal(run.renderText({ phase: 'completed', count: 2 }, tr), 'nodes.render.completed:nodes.render.computer:1, nodes.render.computer:2');
+  assert.equal(run.renderText({ phase: 'completed', count: 2, done: 2, total: 2 }, tr), 'nodes.render.completed:nodes.render.computer:1, nodes.render.computer:2');
 }
 
 async function main() {
   pure();
-  const isolated = await createIsolatedApp({ active: false });
+  const isolated = await createIsolatedApp({ active: false, loadServer: false });
   let queue;
   try {
+    await isolated.load('lib/store').ensureDirs();
     const { createRenderQueue } = isolated.load('lib/render-queue');
     const { createRenderAgentsStore } = isolated.load('lib/render-agents');
     const { defaultMayServe } = isolated.load('lib/rendernode');
@@ -76,7 +95,7 @@ async function main() {
       await queue.enqueue({ html: '<html>render</html>', owner: 'lokal', onStatus: ctx.toolCtx.onRenderStatus });
       const job = await queue.poll(agent, { waitMs: 0 });
       assert.ok(job);
-      assert.deepEqual(engine.activeRun(ctx.workflowId).nodeRenders.n, { phase: 'rendering', names: ['Cloud Display'] });
+      assert.deepEqual(engine.activeRun(ctx.workflowId).nodeRenders.n, { phase: 'rendering', names: ['Cloud Display'], done: 0, total: 1 });
       await queue.acceptResult(agent, job.jobId, job.lease, Readable.from([MP4]));
       assert.deepEqual(queue.status(job.jobId).nodeName, 'Cloud Display');
       return { variants: [{ out: textValue('done') }] };
@@ -88,7 +107,7 @@ async function main() {
     const id = await engine.start(workflow.id, { mode: 'all' });
     const record = await engine.whenFinished(workflow.id, id);
     assert.equal(record.status, 'completed', JSON.stringify(record.nodes));
-    assert.deepEqual(record.nodes.n.render, { phase: 'completed', names: ['Cloud Display'] });
+    assert.deepEqual(record.nodes.n.render, { phase: 'completed', names: ['Cloud Display'], done: 1, total: 1, counts: [1] });
     assert.deepEqual((await store.readRun(workflow.id, id)).nodes.n.render, record.nodes.n.render);
     assert.ok(received.some((event) => event.type === 'node_status' && event.render?.phase === 'rendering'));
     assert.ok(received.some((event) => event.status === 'done' && event.render?.phase === 'completed'));
