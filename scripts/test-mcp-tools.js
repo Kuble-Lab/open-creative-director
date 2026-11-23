@@ -364,8 +364,8 @@ async function run(iso, holder) {
 
   /* ============ R: rights and visibility ============ */
 
-  const readNames = ['estimate_run', 'get_run', 'get_workflow', 'list_node_types', 'list_templates', 'list_workflows', 'suno_audio', 'suno_library', 'suno_status'];
-  const startNames = ['cancel_run', 'create_from_template', 'create_workflow', 'edit_workflow', 'run_workflow', 'upload_asset'];
+  const readNames = ['estimate_run', 'get_guide', 'get_influencer', 'get_influencer_site', 'get_run', 'get_workflow', 'get_workflow_costs', 'get_workflow_results', 'list_influencers', 'list_node_types', 'list_templates', 'list_workflows', 'suno_audio', 'suno_library', 'suno_status'];
+  const startNames = ['add_influencer_image', 'add_influencer_site_item', 'cancel_run', 'create_from_template', 'create_influencer', 'create_workflow', 'delete_result_entry', 'duplicate_workflow', 'edit_workflow', 'publish_influencer_site', 'remove_influencer_site_item', 'resume_run', 'run_workflow', 'update_influencer', 'update_influencer_site', 'upload_asset'];
   const readList = (await rpc(reader.secret, 'tools/list')).json.result.tools;
   assert.deepEqual(readList.map((item) => item.name), readNames, 'a read key lists the reading tools only');
   assert.ok(readList.every((item) => item.annotations.readOnlyHint === true));
@@ -1119,6 +1119,185 @@ async function run(iso, holder) {
   // the list carries the address too
   const listed = await ok(editor.secret, 'list_workflows', { query: 'Von Grund auf' });
   assert.equal(listed.workflows[0].url, urlOf(blank.workflow_id));
+
+  /* ============ partial runs, approval, result history and duplication ============ */
+
+  const partial = await mk(STAFF1, 'Partial branches', {
+    nodes: [...paidGraph().nodes, node('other', 't.paid')], edges: paidGraph().edges
+  });
+  const wholePlan = await ok(starter.secret, 'estimate_run', { workflow_id: partial.id });
+  const nodeArgs = { workflow_id: partial.id, mode: 'node', node_ids: ['b'] };
+  const partialPlan = await ok(starter.secret, 'estimate_run', nodeArgs);
+  assert.equal(partialPlan.mode, 'node');
+  assert.deepEqual(partialPlan.node_ids, ['b']);
+  assert.equal(partialPlan.estimate_usd, 0.5);
+  assert.ok(partialPlan.steps_to_run < wholePlan.steps_to_run);
+  assert.deepEqual(partialPlan.steps.map((step) => step.node_id), ['a', 'b']);
+  const beforePartial = calls.paid;
+  await refused(starter.secret, 'run_workflow', { ...nodeArgs, max_usd: 0.4 }, /more than the max_usd/);
+  const tinyPartial = makeKey({ name: 'Partial limit', right: 'start', maxRunUsd: 0.2 });
+  secrets.push(tinyPartial.secret);
+  await refused(tinyPartial.secret, 'run_workflow', { ...nodeArgs, max_usd: 1 }, /per run/);
+  await refused(starter.secret, 'run_workflow', { ...nodeArgs, node_ids: ['missing'], max_usd: 1 }, /unknown node missing/);
+  await refused(reader.secret, 'estimate_run', { ...nodeArgs, node_ids: ['missing'] }, /unknown node missing/);
+  assert.equal((await wfStore.listRuns(partial.id)).length, 0);
+  const firstPartial = await ok(starter.secret, 'run_workflow', { ...nodeArgs, max_usd: 0.5, inputs: { 'a.prompt': 'partial input' } });
+  assert.equal(firstPartial.mode, 'node');
+  assert.deepEqual(firstPartial.node_ids, ['b']);
+  await finish(starter.secret, firstPartial.run_id);
+  assert.equal(calls.paid, beforePartial + 1, 'the unrelated paid branch did not run');
+  const partialRecord = await wfStore.readRun(partial.id, firstPartial.run_id);
+  assert.deepEqual(Object.keys(partialRecord.nodes).sort(), ['a', 'b']);
+  const cachedPlan = await ok(reader.secret, 'estimate_run', nodeArgs);
+  assert.equal(cachedPlan.steps_to_run, 0);
+  assert.equal(cachedPlan.estimate_usd, 0);
+  const forcedPlan = await ok(reader.secret, 'estimate_run', { ...nodeArgs, force: true });
+  assert.equal(forcedPlan.estimate_usd, 0.5);
+  const againPartial = await ok(starter.secret, 'run_workflow', { ...nodeArgs, max_usd: 0.5, force: true });
+  await finish(starter.secret, againPartial.run_id);
+  assert.equal(calls.paid, beforePartial + 2, 'force reruns the cached target');
+  const selection = await ok(starter.secret, 'run_workflow', { workflow_id: partial.id, mode: 'selection', node_ids: ['other'], max_usd: 0.5 });
+  await finish(starter.secret, selection.run_id);
+  assert.equal(calls.paid, beforePartial + 3);
+
+  // A list-producing double and a mapped node prove that items reaches the engine unchanged (including force's no-op).
+  registry.register({ type: 't.list', category: 'text', inputs: [], outputs: [{ id: 'out', type: 'text[]' }],
+    execute: async () => ({ variants: [{ out: types.listValue('text', [textValue('one'), textValue('two')]) }] }) });
+  const itemsWorkflow = await mk(STAFF1, 'Items', { nodes: [node('list', 't.list'), node('mapped', 't.paid')], edges: [edge('listedge', 'list', 'out', 'mapped', 'in')] });
+  const listOnly = await ok(starter.secret, 'run_workflow', { workflow_id: itemsWorkflow.id, mode: 'node', node_ids: ['list'], max_usd: 0 });
+  await finish(starter.secret, listOnly.run_id);
+  const initialItems = await ok(starter.secret, 'run_workflow', { workflow_id: itemsWorkflow.id, max_usd: 1 });
+  await finish(starter.secret, initialItems.run_id);
+  const itemsArgs = { workflow_id: itemsWorkflow.id, mode: 'items', node_id: 'mapped', items: [1], force: true };
+  const itemsPlan = await ok(reader.secret, 'estimate_run', itemsArgs);
+  assert.equal(itemsPlan.mode, 'items');
+  assert.equal(itemsPlan.estimate_usd, 0.5);
+  const beforeItems = calls.paid;
+  const remadeItem = await ok(starter.secret, 'run_workflow', { ...itemsArgs, max_usd: 0.5 });
+  await finish(starter.secret, remadeItem.run_id);
+  assert.equal(calls.paid, beforeItems + 1, 'only the chosen list item reran');
+  await refused(starter.secret, 'run_workflow', { ...itemsArgs, items: [10], max_usd: 0.5 }, /item|outside|range/);
+
+  const history = await ok(reader.secret, 'get_workflow_results', { workflow_id: partial.id, node_id: 'b', text_chars: 3, history_limit: 1 });
+  assert.equal(history.nodes.length, 1);
+  assert.equal(history.nodes[0].node_id, 'b');
+  assert.equal(history.nodes[0].history.length, 1);
+  assert.equal(history.nodes[0].history[0].selected, true);
+  assert.equal(history.nodes[0].history[0].entry_id, history.nodes[0].selected.entry_id);
+  assert.equal(history.nodes[0].history[0].cost_usd, 0.4);
+  assert.equal(history.nodes[0].history[0].variants[0].items[0].text, 'pai…');
+  const mediaHistory = await ok(reader.secret, 'get_workflow_results', { workflow_id: runInfo.workflow_id, node_id: 'n4' });
+  const mediaItem = mediaHistory.nodes[0].history[0].variants[0].items[0];
+  assert.ok(mediaItem.asset_id);
+  assert.equal((await fetch(`${base}${pathOf(mediaItem.url)}`)).status, 200);
+  const totalCosts = await ok(reader.secret, 'get_workflow_costs', { workflow_id: partial.id });
+  assert.equal(totalCosts.total_usd, 1.2);
+  assert.equal(totalCosts.count, 3);
+  assert.equal(totalCosts.by_type[0].type, 'brain');
+  assert.equal(totalCosts.by_model[0].model, 'double');
+  assert.ok(totalCosts.first_at && totalCosts.last_at);
+
+  const entryToDelete = history.nodes[0].history[0].entry_id;
+  const deleteArgs = { workflow_id: partial.id, node_id: 'b', entry_id: entryToDelete };
+  await refused(starter.secret, 'delete_result_entry', deleteArgs, /Nothing was deleted.*person/);
+  assert.ok((await wfStore.readResults(partial.id)).nodes.b.history.some((entry) => entry.id === entryToDelete));
+  await refused(reader.secret, 'delete_result_entry', { ...deleteArgs, confirm: true }, /may only read/);
+  openGate();
+  const activePartial = await ok(starter.secret, 'run_workflow', { ...nodeArgs, max_usd: 0.5, force: true });
+  await refused(starter.secret, 'delete_result_entry', { ...deleteArgs, confirm: true }, /already active/);
+  gate.current.release();
+  await finish(starter.secret, activePartial.run_id);
+  gate.current = null;
+  const deletedEntry = await ok(starter.secret, 'delete_result_entry', { ...deleteArgs, confirm: true });
+  assert.deepEqual(deletedEntry.removed, [entryToDelete]);
+  assert.ok(!(await wfStore.readResults(partial.id)).nodes.b.history.some((entry) => entry.id === entryToDelete));
+  await refused(starter.secret, 'delete_result_entry', { ...deleteArgs, confirm: true }, /entry was not found/);
+
+  const copyKey = makeKey({ name: 'Copies', right: 'start' });
+  secrets.push(copyKey.secret);
+  const copied = await ok(copyKey.secret, 'duplicate_workflow', { workflow_id: sharedWithAll.id, name: 'My own copy' });
+  const copyStored = await wfStore.readWorkflow(copied.workflow_id);
+  assert.equal(copyStored.owner, STAFF1);
+  assert.equal(copied.name, 'My own copy');
+  assert.equal(copied.rev, 1);
+  assert.notEqual(copyStored.sessionId, sharedWithAll.sessionId);
+  assert.equal(copied.url, urlOf(copied.workflow_id));
+  assert.deepEqual((await wfStore.readResults(copied.workflow_id)).nodes, {});
+  for (let i = 1; i < 30; i += 1) mcp.accounting.noteWorkflowCreated(copyKey.id);
+  const copiesBefore = (await wfStore.listWorkflows()).length;
+  await refused(copyKey.secret, 'duplicate_workflow', { workflow_id: partial.id }, /30 workflows/);
+  await refused(copyKey.secret, 'create_workflow', {}, /30 workflows/);
+  assert.equal((await wfStore.listWorkflows()).length, copiesBefore);
+  await refused(reader.secret, 'duplicate_workflow', { workflow_id: partial.id }, /may only read/);
+
+  // The first paid step books more than its estimate; the next step must wait for a higher total approval.
+  const viaSeen = [];
+  registry.register({ type: 't.overrun', category: 'text', paid: true, cost: { unit: 'usd', estimate: () => ({ usd: 0.25 }) },
+    inputs: [{ id: 'in', type: 'text' }], outputs: [{ id: 'out', type: 'text' }], execute: async (ctx) => {
+      viaSeen.push({ ...costs.currentVia() });
+      if (ctx.nodeId === 'second') await waitGate(ctx.signal);
+      const amount = ctx.nodeId === 'first' ? 0.8 : 0.25;
+      await costs.recordCost({ ts: new Date().toISOString(), sessionId: ctx.sessionId, type: 'brain', model: 'overrun', cost: amount, user: ctx.user });
+      return { variants: [{ out: textValue('price changed') }], cost: { usd: amount } };
+    } });
+  const approvalGraph = () => ({ nodes: [node('first', 't.overrun'), node('second', 't.overrun')], edges: [edge('sequence', 'first', 'out', 'second', 'in')] });
+  const resumeKey = makeKey({ name: 'Approval', right: 'start', maxRunUsd: 1.5, maxMonthUsd: 2 });
+  secrets.push(resumeKey.secret);
+  const approvalFlow = await mk(STAFF1, 'Approval', approvalGraph());
+  const pausedRun = await ok(resumeKey.secret, 'run_workflow', { workflow_id: approvalFlow.id, max_usd: 0.5 });
+  const approvalRun = await waitFor(async () => {
+    const value = await ok(resumeKey.secret, 'get_run', { run_id: pausedRun.run_id });
+    assert.equal(value.finished, false, JSON.stringify(value));
+    return value.status === 'awaiting_approval' && value.approval ? value : null;
+  }, 'approval');
+  assert.equal(approvalRun.approval.node, 'second');
+  assert.equal(approvalRun.approval.required_usd, 1.05);
+  assert.equal(approvalRun.approval.estimated_usd, 0.25);
+  assert.equal(approvalRun.approval.max_usd, 0.5);
+  assert.ok(approvalRun.approval.label);
+  assert.match(approvalRun.next, /person.*resume_run/);
+  await refused(resumeKey.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1 }, /at least \$1\.05/);
+  await refused(resumeKey.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1.6 }, /per run/);
+  await refused(starter.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1.1 }, /not started with this key/);
+  await refused(reader.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1.1 }, /may only read/);
+  assert.equal((await ok(resumeKey.secret, 'get_run', { run_id: pausedRun.run_id })).status, 'awaiting_approval');
+  assert.equal((await mcp.accounting.monthUsage(resumeKey.id)).reservedUsd, 0.5);
+  // 0.8 booked + 1.3 ceiling would exceed 2.0, while 0.8 + 1.1 fits when the old 0.5 hold is replaced.
+  await refused(resumeKey.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1.3 }, /per month/);
+  openGate();
+  const resumedRun = await ok(resumeKey.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1.1 });
+  assert.equal(resumedRun.status, 'running');
+  await waitFor(() => viaSeen.length === 2, 'the resumed step');
+  assert.equal(viaSeen[1].reservationId, viaSeen[0].reservationId);
+  assert.equal(viaSeen[0].reservationUsd, 0.5);
+  assert.equal(viaSeen[1].reservationUsd, 1.1, 'future provider jobs inherit the raised reservation from the original async context');
+  assert.equal((await mcp.accounting.monthUsage(resumeKey.id)).reservedUsd, 1.1);
+  await refused(resumeKey.secret, 'run_workflow', { workflow_id: (await fresh()).id, max_usd: 0.5 }, /per month/);
+  await refused(resumeKey.secret, 'resume_run', { run_id: pausedRun.run_id, max_usd: 1.1 }, /not waiting for approval/);
+  gate.current.release();
+  assert.equal((await finish(resumeKey.secret, pausedRun.run_id)).status, 'completed');
+  gate.current = null;
+  await waitFor(async () => (await mcp.accounting.monthUsage(resumeKey.id)).reservedUsd === 0, 'resumed reservation released');
+  assert.equal((await mcp.accounting.monthUsage(resumeKey.id)).spentUsd, 1.05);
+
+  // The conservative boundary: persisted jobs with the old hold cannot safely be rewritten by this key queue.
+  const fakeJobs = [{ keyId: resumeKey.id, mcpReservationId: 'persisted', mcpReservedUsd: 0.5 }];
+  const conservative = iso.load('lib/mcp/accounting').createAccounting({ budget: { spentByKey: async () => 0 }, loadJobs: async () => fakeJobs });
+  const originalVia = { reservationUsd: 0.5 };
+  conservative.begin(resumeKey.id, 'waiting', 0.5, 'persisted', originalVia);
+  await conservative.monthUsage(resumeKey.id);
+  assert.equal(conservative.reservationFor('waiting').canRaise, false);
+  assert.throws(() => conservative.raiseReservation('waiting', 1.1), /safely/);
+  assert.equal(originalVia.reservationUsd, 0.5);
+  assert.equal(conservative.reservedUsd(resumeKey.id), 0.5);
+
+  for (const [name, args] of [
+    ['get_workflow_results', {}], ['get_workflow_costs', {}], ['duplicate_workflow', {}],
+    ['delete_result_entry', { node_id: 'b', entry_id: 'entry', confirm: true }]
+  ]) await refused(starter.secret, name, { workflow_id: foreignPrivate.id, ...args }, /Not found/);
+  const foreignRun = await baseService.start(runServiceLib.viewerForUser(STAFF2), foreignPrivate.id, { maxUsd: 0 });
+  await baseService.waitForRun(runServiceLib.viewerForUser(STAFF2), foreignRun.runId);
+  await refused(starter.secret, 'resume_run', { run_id: foreignRun.runId, max_usd: 1 }, /Not found/);
 
   // no key shows up in any answer
   const output = everything.join('\n');
