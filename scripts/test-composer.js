@@ -357,6 +357,50 @@ async function testEditService() {
   });
   assert.equal(graded.changed, true);
   assert.deepEqual(saved[saved.length - 1].nodes[0].params.layers.layers[0].gradient.stops.map((stop) => stop.color), ['#ff0000', '#ff000000']);
+
+  const size = { w: 296, h: 240 }; // the room lib/nodes/edit-service.js gives a node
+  const placedNode = (id, x, y) => ({ id, type: 'image.composer', x, y, params: {} });
+  const add = (position = {}) => ({ op: 'add_node', type: 'image.composer', ...position });
+  const intersects = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  const place = async (graph, operations) => {
+    const result = await service.edit(viewer, { ...workflow, graph: { edges: [], ...graph } }, { operations });
+    return { result, graph: saved.at(-1) };
+  };
+  const occupied = {
+    nodes: [placedNode('left', 0, 0), placedNode('right', 660, 0)],
+    notes: [{ id: 'note', x: 1320, y: 0, w: 350, h: 1000 }],
+    groups: [{ id: 'group', x: 1320, y: 1000, w: 350, h: 1000 }]
+  };
+  let placed = await place(occupied, [add(), add(), add()]);
+  for (const added of placed.graph.nodes.slice(2)) {
+    assert.equal(added.x, 1336, 'automatic column starts beyond the right edge plus gap');
+    assert.equal(added.x % 8, 0); assert.equal(added.y % 8, 0);
+    for (const obstacle of [...placed.graph.nodes.filter((item) => item.id !== added.id).map((item) => ({ ...item, ...size })), ...occupied.notes, ...occupied.groups]) {
+      assert.ok(!intersects({ ...added, ...size }, obstacle), 'automatic placement avoids nodes, notes and groups');
+    }
+  }
+  placed = await place(occupied, [add({ x: 1400.25, y: 400.75 })]);
+  assert.equal(placed.graph.nodes.at(-1).x, 1400.25); assert.equal(placed.graph.nodes.at(-1).y, 400.75);
+  assert.equal(placed.result.notes.length, 0, 'explicit positions may overlap notes and groups');
+  placed = await place(occupied, [add({ x: 0, y: 0 }), add({ x: 0, y: 0 })]);
+  for (const added of placed.graph.nodes.slice(2)) {
+    assert.equal(added.x, 0);
+    assert.ok(added.y >= size.h); assert.equal(added.y % 8, 0);
+    assert.ok(!placed.graph.nodes.some((other) => other.id !== added.id && intersects({ ...added, ...size }, { ...other, ...size })));
+  }
+  assert.equal(placed.result.notes.length, 2); assert.ok(placed.result.notes.every((note) => /position overlapped.*moved/.test(note)));
+  placed = await place(occupied, [add({ x: 1320, y: 2000 }), add()]);
+  assert.ok(placed.graph.nodes.at(-1).y >= 2000 + size.h, 'automatic placement also avoids an explicit addition in the same call');
+  placed = await place({ nodes: [] }, [add()]);
+  assert.equal(placed.graph.nodes[0].x, 0); assert.equal(placed.graph.nodes[0].y, 0);
+  placed = await place({ nodes: [placedNode('left', 0, 0), placedNode('removed', 664, 0)] }, [{ op: 'remove_node', node: 'removed' }, add()]);
+  assert.equal(placed.graph.nodes.at(-1).x, 680, 'the automatic column ignores removed nodes');
+  assert.equal(placed.graph.nodes.at(-1).y, 0, 'removed nodes no longer reserve space');
+  placed = await place({ nodes: [], notes: [{ id: 'fallback', x: 0, y: 0 }], groups: [{ id: 'fallback-group', x: 0, y: 120 }] }, [add({ x: 10 })]);
+  assert.ok(placed.graph.nodes[0].y >= 240, 'partial positions use automatic placement and default box sizes');
+  const count = require('../lib/nodes/workflows-store').LIMITS.maxNodes - 1;
+  placed = await place({ nodes: Array.from({ length: count }, (_, i) => placedNode(`existing${i}`, 0, i * size.h)) }, [add({ x: 0, y: 0 })]);
+  assert.equal(placed.graph.nodes.at(-1).y, count * size.h, 'bounded placement clears a full column at the node limit');
   console.log('ok testEditService');
 }
 
@@ -433,6 +477,11 @@ async function testExecute() {
 }
 
 (async () => {
+  if (process.argv.includes('--edit-service-only')) {
+    await testEditService();
+    console.log('test-composer.js: edit-service-only ok');
+    return;
+  }
   testModel();
   await testRender();
   testRegistry();
