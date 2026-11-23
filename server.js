@@ -18,6 +18,7 @@ const brain = require('./lib/brain');
 const tools = require('./lib/tools');
 const videoModels = require('./lib/video-models');
 const workflowRuns = require('./lib/workflow-runs');
+const workflowEdits = require('./lib/workflow-edits');
 const videoRefusal = require('./lib/video-refusal');
 const resultMeta = require('./lib/result-meta');
 const gts = require('./lib/gts');
@@ -2471,7 +2472,7 @@ app.get('/api/sessions/:id', async (req, res) => {
         folder: typeof session.folder === 'string' && session.folder.trim() ? session.folder.trim() : null,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-        messages: await workflowRuns.attachRuns(
+        messages: workflowEdits.attachEdits(await workflowRuns.attachRuns(
           videoModels.attachChoices(
             await withOriginAccess(req, session.messages.filter((message) => !message.hidden).map((message) => ({ ...message }))),
             session,
@@ -2479,7 +2480,7 @@ app.get('/api/sessions/:id', async (req, res) => {
           ),
           session,
           { viewer, budgetStatus }
-        ),
+        ), session, viewer),
         videoModelPreference: videoModels.publicPreference(session, viewer),
         brandings: await visibleBrandingIds(session.brandings, viewer),
         contextFiles: session.contextFiles,
@@ -2791,6 +2792,22 @@ app.post('/api/sessions/:id/workflow-runs/:requestId/cancel', async (req, res) =
     res.json({ run });
   } catch (err) {
     failWorkflowRun(res, err);
+  }
+});
+
+app.post('/api/sessions/:id/workflow-edits/:editId/undo', async (req, res) => {
+  const id = requireSessionId(req, res);
+  if (!id) return;
+  if (!(await guardSession(req, res, id))) return;
+  const { uiText } = require('./lib/ui-text');
+  const lang = ['de', 'en', 'es'].includes(req.body?.lang) ? req.body.lang : 'de';
+  try {
+    const edit = await workflowEdits.undo({ sessionId: id, editId: req.params.editId, viewer: access.viewerOf(req) });
+    res.json({ edit });
+  } catch (err) {
+    const code = ['ENOENT', 'WORKFLOW_NOT_FOUND'].includes(err.code) ? 'NOT_FOUND' : err.code === 'FORBIDDEN_FOR_ROLE' ? 'FORBIDDEN' : err.code;
+    const status = { WORKFLOW_CHANGED: 409, RUN_ACTIVE: 409, UNDO_UNAVAILABLE: 410, FORBIDDEN: 403, NOT_FOUND: 404 }[code] || 500;
+    res.status(status).json({ code: status === 500 ? 'UNKNOWN' : code, error: uiText(lang, `workflowEdit.error.${status === 500 ? 'UNKNOWN' : code}`) });
   }
 });
 

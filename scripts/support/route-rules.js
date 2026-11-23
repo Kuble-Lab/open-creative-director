@@ -189,6 +189,7 @@ const ROUTE_RULES = {
   'GET /api/sessions/:id/workflow-runs/:requestId': 'session', // the state of a workflow card of the Director
   'POST /api/sessions/:id/workflow-runs/:requestId': 'session', // the click on "Start" of that card
   'POST /api/sessions/:id/workflow-runs/:requestId/cancel': 'session',
+  'POST /api/sessions/:id/workflow-edits/:editId/undo': 'session',
   'DELETE /api/sessions/:id/video-model-preference': 'session',
   'GET /api/nodes/composer/fonts/:dir/:file': 'open', // the bundled fonts of the Composer (open licence, whitelist)
   'GET /api/nodes/registry': 'public',
@@ -220,6 +221,8 @@ const ROUTE_RULES = {
   'POST /api/workflows/:id/runs/plan': 'workflow',
   'POST /api/workflows/:id/runs': 'workflow',
   'POST /api/workflows/:id/assistant': 'workflow',
+  'POST /api/workflows/:id/assistant/actions/:actionId': 'workflow', // the click that confirms an action the assistant prepared
+  'DELETE /api/workflows/:id/assistant/actions/:actionId': 'workflow',
   'GET /api/workflows/:id/runs': 'workflow',
   'GET /api/workflows/:id/costs': 'workflow',
   'GET /api/workflows/:id/outputs.zip': 'workflow',
@@ -411,6 +414,7 @@ const PARTICIPANT_RULES = {
   'GET /api/sessions/:id/workflow-runs/:requestId': 'same',
   'POST /api/sessions/:id/workflow-runs/:requestId': 'same', // plus the budget (402) and the rules for Higgsfield: the run service decides
   'POST /api/sessions/:id/workflow-runs/:requestId/cancel': 'same',
+  'POST /api/sessions/:id/workflow-edits/:editId/undo': 'same',
   'DELETE /api/sessions/:id/video-model-preference': 'same',
   'GET /api/nodes/composer/fonts/:dir/:file': 'same', // the bundled fonts of the Composer, the same for everybody
   'GET /api/nodes/registry': 'filtered', // Higgsfield nodes marked as not available
@@ -442,6 +446,8 @@ const PARTICIPANT_RULES = {
   'POST /api/workflows/:id/runs/plan': 'same', // plus the budget and the blocked nodes in the plan
   'POST /api/workflows/:id/runs': 'same', // plus the budget (402) and no Higgsfield nodes (403)
   'POST /api/workflows/:id/assistant': 'same', // plus the budget (402), their model list, no Higgsfield nodes in the catalogue
+  'POST /api/workflows/:id/assistant/actions/:actionId': 'same', // bound to the person who asked and to the workflow
+  'DELETE /api/workflows/:id/assistant/actions/:actionId': 'same',
   'GET /api/workflows/:id/runs': 'same',
   'GET /api/workflows/:id/costs': 'same',
   'GET /api/workflows/:id/outputs.zip': 'same',

@@ -21,6 +21,8 @@ function toolLabel(message) {
   if (message.name === 'generate_video' && message.videoModelChoice?.status === 'pending') return t('tools.videoChoosing');
   if (message.name === 'generate_video' && (message.videoModelChoice?.status || message.videoModelChoiceStatus) === 'cancelled') return t('videoModel.cancelledTitle');
   if (message.name === 'generate_video') return t('tools.videoStarted');
+  if (message.workflowEditId) return t('workflowEdit.label');
+  if (['get_guide', 'get_workflow', 'list_node_types', 'get_workflow_results', 'get_workflow_costs', 'estimate_run', 'edit_workflow', 'create_workflow', 'duplicate_workflow'].includes(message.name)) return t('tools.actionDone');
   if (message.name === 'list_workflows') return t('tools.workflowsListed');
   if (message.name === 'run_workflow') return t(`tools.workflow.${message.workflowRun?.status || message.workflowRunStatus || 'running'}`);
   if (message.name === 'higgsfield_generate_image') return t('tools.higgsfieldImageStarted');
@@ -294,6 +296,7 @@ function renderDetail() {
       wrap.appendChild(chip(known || (failed ? String(message.content).slice(0, 200) : toolLabel(message)), false, failed));
       if (message.videoModelChoice) wrap.appendChild(videoModelChoiceCard(message.videoModelChoice));
       if (message.workflowRun) wrap.appendChild(workflowRunCard(message.workflowRun));
+      if (message.workflowEdit) wrap.appendChild(workflowEditCard(message.workflowEdit));
 
       const grid = document.createElement('div');
       grid.className = 'asset-grid';

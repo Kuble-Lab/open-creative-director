@@ -527,6 +527,7 @@ async function testSharing(ctx) {
     ['GET', `/api/sessions/${chat.id}/workflow-runs/wfr-x`],
     ['POST', `/api/sessions/${chat.id}/workflow-runs/wfr-x`, {}],
     ['POST', `/api/sessions/${chat.id}/workflow-runs/wfr-x/cancel`, {}],
+    ['POST', `/api/sessions/${chat.id}/workflow-edits/wfe-x/undo`, {}],
     ['DELETE', `/api/sessions/${chat.id}/video-model-preference`]
   ];
   for (const email of [P2, P3, GUEST]) {
@@ -641,6 +642,8 @@ async function testSharing(ctx) {
     ['POST', `/api/workflows/${id}/runs/plan`, { mode: 'node', nodeIds: ['n1'] }],
     ['POST', `/api/workflows/${id}/runs`, { mode: 'selection', nodeIds: ['n1'], force: true }],
     ['POST', `/api/workflows/${id}/assistant`, { question: 'Hallo', canvas: { nodes: [], edges: [] } }],
+    ['POST', `/api/workflows/${id}/assistant/actions/act-x`, {}],
+    ['DELETE', `/api/workflows/${id}/assistant/actions/act-x`],
     ['GET', `/api/workflows/${id}/runs`],
     ['GET', `/api/workflows/${id}/costs`],
     ['GET', `/api/workflows/${id}/runs/run-1`],
