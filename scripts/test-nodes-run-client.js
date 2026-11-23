@@ -58,6 +58,14 @@ function testAutoApproval() {
   assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: 2.2 }), 3), false);
   assert.equal(run.autoApproves(info({ usd: 1, credits: 2200, creditsUsd: null }), 100), true);
   assert.equal(run.autoApproves(info({ usd: 1, credits: 2200 }), 100), true);
+  // a run that waits: a step without a price goes on, a step within the limit goes on, above the limit the person decides
+  assert.deepEqual(run.autoResumeRequest({ nodeId: 'n3', requiredUsd: null, maxUsd: 1 }, 40), { maxUsd: 40, requireKnownPrices: false });
+  assert.deepEqual(run.autoResumeRequest({ nodeId: 'n3', requiredUsd: null, maxUsd: 60 }, 40), { maxUsd: 60, requireKnownPrices: false }, 'never lowers the limit of the run');
+  assert.deepEqual(run.autoResumeRequest({ nodeId: 'n4', requiredUsd: 3.2, maxUsd: 1 }, 40), { maxUsd: 40, requireKnownPrices: false });
+  assert.equal(run.autoResumeRequest({ nodeId: 'n4', requiredUsd: 41, maxUsd: 1 }, 40), null);
+  assert.equal(run.autoResumeRequest({ nodeId: 'n4', requiredUsd: 3.2, maxUsd: 1 }, null), null, 'off');
+  assert.equal(run.autoResumeRequest(null, 40), null);
+  assert.notEqual(run.approvalKey('r1', { nodeId: 'n3', requiredUsd: null, maxUsd: 1 }), run.approvalKey('r1', { nodeId: 'n4', requiredUsd: null, maxUsd: 1 }));
   // credits that are 0 need no rate
   assert.equal(run.autoApproves(info({ usd: 1, credits: 0 }), 5), true);
 }

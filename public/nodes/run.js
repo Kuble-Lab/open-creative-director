@@ -490,6 +490,22 @@
     return cleanAutoLimit(limit) !== null && cost !== null && cost <= limit + 1e-9;
   }
 
+  // A run that waits for a new spending limit (started with a smaller limit, with "known prices only", or by an agent): what the
+  // automatic approval answers without the person, or null when the person has to decide (off, or the run would go above the limit).
+  // A step without a price goes on within the limit the run has or the person's, whichever is higher; a step with a price goes on
+  // when the run stays within the person's limit.
+  function autoResumeRequest(approval, limit) {
+    const auto = cleanAutoLimit(limit);
+    if (!approval || auto === null) return null;
+    const current = isNumber(approval.maxUsd) ? approval.maxUsd : 0;
+    if (approval.requiredUsd === null || approval.requiredUsd === undefined) return { maxUsd: Math.max(current, auto), requireKnownPrices: false };
+    if (!isNumber(approval.requiredUsd) || approval.requiredUsd > auto + 1e-9) return null;
+    return { maxUsd: Math.max(current, auto), requireKnownPrices: false };
+  }
+
+  // One wait of a run as a key: the same wait is answered automatically once (a refusal leaves the question to the person).
+  const approvalKey = (runId, approval) => `${runId}|${approval && approval.nodeId}|${approval && approval.requiredUsd}|${approval && approval.maxUsd}`;
+
   // The field of the confirmation dialogs that switches the automatic approval on, changes its limit or switches it off.
   // el: the element helper of the page. read() gives the limit to store (null = off) or undefined when the amount is invalid.
   function autoApproveField(el, T, limit) {
@@ -627,6 +643,8 @@
     autoApprovalUsd,
     autoApproves,
     autoApproveField,
+    autoResumeRequest,
+    approvalKey,
     ACTIVE_STATUSES,
     FINAL_STATUSES,
     MAX_HISTORY,
@@ -1018,13 +1036,14 @@
       }
       // A run that waits for a new spending limit does nothing until the person approves: it must not look like a run that works.
       // The summary and the button stand out, and on the change into the wait a toast and the title of the tab say so (once).
+      autoResume();
       const awaiting = runState.status === 'awaiting_approval';
       parts.resume.classList.toggle('hidden', !awaiting);
       if (awaiting) {
         text = T('nodes.run.awaiting', { amount: runState.approval?.requiredUsd == null ? T('nodes.run.confirm.unknown') : money(runState.approval.requiredUsd) });
         state = 'awaiting';
       }
-      if (awaiting && awaitingRunId !== runState.runId) ui.toast(T('nodes.run.awaitingToast', { button: T('nodes.run.resume') }), { kind: 'warn', timeout: 20000 });
+      if (awaiting && awaitingRunId !== runState.runId && !autoResuming) ui.toast(T('nodes.run.awaitingToast', { button: T('nodes.run.resume') }), { kind: 'warn', timeout: 20000 });
       awaitingRunId = awaiting ? runState.runId : null;
       markTitle(awaiting ? T('nodes.run.awaitingTitle') : '');
       const accounting = runState.accounting || (!runState.runId ? recentRuns[0]?.accounting : null);
@@ -1379,6 +1398,24 @@
       saveAutoLimit(autoLimit);
       info.approved = { maxUsd, requireKnownPrices: known.checked };
       return true;
+    }
+
+    // A run that waits for a new limit goes on without the person where the automatic approval covers it (autoResumeRequest):
+    // each wait is answered once; when the server refuses, the button and the question stay as they were.
+    let autoResuming = false;
+    const autoAnswered = new Set();
+    function autoResume() {
+      if (runState.status !== 'awaiting_approval' || !runState.approval || !runState.runId || autoResuming) return;
+      const request = autoResumeRequest(runState.approval, readAutoLimit(autoStorage()));
+      const key = approvalKey(runState.runId, runState.approval);
+      if (!request || autoAnswered.has(key)) return;
+      autoAnswered.add(key);
+      autoResuming = true;
+      const id = workflowId();
+      api.resumeRun(id, runState.runId, request)
+        .then(() => { ui.toast(T('nodes.run.auto.resumed', { limit: money(request.maxUsd) }), { timeout: 5000 }); return pollRun(); })
+        .catch(() => {})
+        .finally(() => { autoResuming = false; updateTopbar(); });
     }
 
     // Stores the limit of the automatic approval (null = off) and says so when it changed.
