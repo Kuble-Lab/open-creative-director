@@ -153,6 +153,8 @@
     assets: (id) => request('GET', `/api/workflows/${enc(id)}/assets`),
     // assistant of the node view (WP25): { question, canvas, history, lang } -> { answer, mentions, insert?, ... }
     assistant: (id, body) => request('POST', `/api/workflows/${enc(id)}/assistant`, body),
+    assistantAction: (id, actionId) => request('POST', `/api/workflows/${enc(id)}/assistant/actions/${enc(actionId)}`, { lang: withUiLanguage({}).uiLang }),
+    discardAssistantAction: (id, actionId) => request('DELETE', `/api/workflows/${enc(id)}/assistant/actions/${enc(actionId)}`),
     // run UX (WP6)
     plan: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs/plan`, withUiLanguage(body)),
     startRun: (id, body) => request('POST', `/api/workflows/${enc(id)}/runs`, withUiLanguage(body)),

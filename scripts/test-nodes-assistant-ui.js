@@ -375,6 +375,14 @@ class FakeNode {
     return this.all(selector)[0] || null;
   }
 
+  querySelectorAll(selector) {
+    return this.all(selector);
+  }
+
+  contains(node) {
+    return node === this || this.children.some((child) => child.contains(node));
+  }
+
   remove() {
     if (!this.parent) return;
     this.parent.children = this.parent.children.filter((kid) => kid !== this);
@@ -435,16 +443,25 @@ function harness(lang = 'de', options = {}) {
   const ui = fakeUi(T);
   const listeners = {};
   const bus = { on: (name, fn) => (listeners[name] = listeners[name] || []).push(fn), emit: (name, payload) => (listeners[name] || []).forEach((fn) => fn(payload)) };
-  const calls = { ask: [], insert: [], undo: 0, flush: 0, plan: 0, help: [], show: [], toggles: [] };
+  const calls = { actions: [], discards: [], releases: [], holds: [], adopts: [], starts: [], ask: [], insert: [], undo: 0, flush: 0, plan: 0, help: [], show: [], toggles: [] };
   const queue = [];
   const api = {
+    assistantAction: async (id, actionId) => {
+      calls.actions.push({ id, actionId });
+      if (state.actionError) throw state.actionError;
+      return { ok: true, result: state.actionResult || {} };
+    },
+    discardAssistantAction: async (id, actionId) => {
+      calls.discards.push({ id, actionId });
+      if (state.actionError) throw state.actionError;
+    },
     assistant: (id, body) => {
       calls.ask.push({ id, body });
       return new Promise((resolve, reject) => queue.push({ resolve, reject }));
     }
   };
   const state = {
-    workflowId: 'wf-1',
+    workflowId: 'wf-1', savedRev: 7, dirty: false, conflict: false, activeRun: false, adoptOk: true,
     graph: (() => {
       let graph = graphLib.emptyGraph();
       graph = graphLib.addNode(reg, graph, 'input.prompt', { x: 0, y: 0, params: { prompt: 'Fuchs' } }).graph;
@@ -485,6 +502,18 @@ function harness(lang = 'de', options = {}) {
     flushSave: async () => {
       calls.flush += 1;
     },
+    savedRev: () => state.dirty || state.conflict ? null : state.savedRev,
+    holdExternalSaves: (id) => {
+      calls.holds.push(id);
+      return (rev) => calls.releases.push(rev);
+    },
+    adoptServerEdit: async (edit, id) => {
+      calls.adopts.push({ edit, id });
+      if (state.adoptOk) { state.revision += 1; state.savedRev = edit.rev; }
+      return { ok: state.adoptOk };
+    },
+    isRunActive: () => state.activeRun,
+    startRun: (request) => calls.starts.push(request),
     plan: async () => {
       calls.plan += 1;
       if (state.planError) throw new Error('plan failed');
@@ -494,7 +523,8 @@ function harness(lang = 'de', options = {}) {
     getLang: () => lang,
     onToggle: (open, opts) => calls.toggles.push([open, Boolean(opts && opts.focus)]),
     ...(options.choices ? { getModelChoices: options.choices } : {}),
-    ...(options.store ? { modelStore: options.store } : {})
+    ...(options.store ? { modelStore: options.store } : {}),
+    ...(options.deps || {})
   });
   // the access object of the page is absent here: a person without restrictions
   void history;
@@ -509,11 +539,13 @@ function harness(lang = 'de', options = {}) {
     modelSelect: () => host.querySelector('.nv-asst-model-select')
   };
   const answerWith = async (value, index = 0) => {
+    await tick();
     queue[index].resolve(value);
     await tick();
     await tick();
   };
   const failWith = async (error, index = 0) => {
+    await tick();
     queue[index].reject(error);
     await tick();
     await tick();
@@ -552,6 +584,7 @@ async function testControllerBasics() {
   h.view.input().fire('keydown', { key: 'Enter', isComposing: true });
   assert.equal(h.calls.ask.length, 0);
   const enter = h.view.input().fire('keydown', { key: 'Enter' });
+  await tick();
   assert.equal(enter.defaultPrevented, true);
   assert.equal(h.calls.ask.length, 1);
   const request = h.calls.ask[0];
@@ -570,6 +603,7 @@ async function testControllerBasics() {
   // a second question while the first is open is not sent
   h.type('Noch eine Frage');
   h.view.form().fire('submit');
+  await tick();
   assert.equal(h.calls.ask.length, 1);
   assert.equal(h.view.send().disabled, true);
 
@@ -593,6 +627,7 @@ async function testControllerBasics() {
   // the next question carries the conversation
   h.type('Und dann?');
   h.view.form().fire('submit');
+  await tick();
   assert.equal(h.calls.ask.length, 2);
   assert.deepEqual(h.calls.ask[1].body.history, [{ role: 'user', text: 'Was macht der Node?' }, { role: 'assistant', text: 'Erster Absatz.\n\nZweiter <b>Absatz</b> mit <script>x</script>.' }]);
   await h.answerWith({ answer: 'Fertig.', mentions: [], usage: { billing: 'usd', usd: 0.0123, calls: 1, replaced: false }, quota: { remaining: 3, max: 30, windowSeconds: 600 } }, 1);
@@ -604,14 +639,17 @@ async function testControllerBasics() {
   // unknown cost is said so, a replacement for the subscription is noted (with its price, or without)
   h.type('Drittens');
   h.view.form().fire('submit');
+  await tick();
   await h.answerWith({ answer: 'Über OpenRouter.', mentions: [], usage: { billing: 'usd', usd: 0.02, replaced: true }, quota: { remaining: 20, max: 30, windowSeconds: 600 } }, 2);
   assert.match(h.host.all('.nv-asst-note').map((node) => node.textContent).join('|'), /kostete \$0\.0200/);
   h.type('Viertens');
   h.view.form().fire('submit');
+  await tick();
   await h.answerWith({ answer: 'Noch einmal.', mentions: [], usage: { billing: 'usd', usd: null, replaced: true } }, 3);
   assert.match(h.host.all('.nv-asst-note').map((node) => node.textContent).join('|'), /Kosten sind unbekannt/);
   h.type('Fünftens');
   h.view.form().fire('submit');
+  await tick();
   await h.answerWith({ answer: 'Teilnehmende.', mentions: [], usage: { billing: 'usd', usd: null, replaced: false } }, 4);
   assert.ok(h.host.all('.nv-asst-meta').some((node) => node.textContent === h.T('nodes.assistant.questionCostUnknown')), 'unknown is never shown as 0');
 
@@ -621,6 +659,7 @@ async function testControllerBasics() {
   assert.equal(h.host.all('.nv-asst-chip').length, 3);
   // a chip asks its sentence
   h.host.all('.nv-asst-chip')[1].fire('click');
+  await tick();
   assert.equal(h.calls.ask.at(-1).body.question, h.T('nodes.assistant.suggest.2'));
   assert.deepEqual(h.calls.ask.at(-1).body.history, [], 'the cleared conversation is not sent again');
 }
@@ -670,6 +709,7 @@ async function testInsertCard() {
   h.state.plan = { nodes: { n3: { status: 'stale', executions: 1, estimate: { usd: 0.134 } }, n4: { status: 'stale', executions: 1, estimate: null } } };
   h.type('Füge ein Titelbild hinzu');
   h.view.form().fire('submit');
+  await tick();
   h.state.insertResult = insertResultFor(h, ['n3', 'n4'], ['e5', 'e6'], [{ index: 2, code: 'incompatible' }]);
   h.state.revision = 4;
   await h.answerWith({
@@ -697,7 +737,7 @@ async function testInsertCard() {
   assert.match(card.textContent, /Verbindungen, die nicht gesetzt werden konnten: 1/);
   assert.match(card.textContent, /Es wurde nichts gestartet\. Zum Starten klickst du oben auf «Alles ausführen» oder «Auswahl ausführen»\./);
   // the cost comes from the engine plan after the save: a price and one node without
-  assert.equal(h.calls.flush, 1, 'saved first, the plan reads the saved workflow');
+  assert.equal(h.calls.flush, 2, 'saved before asking and before the cost plan');
   assert.equal(h.calls.plan, 1);
   const cost = h.host.querySelector('.nv-asst-cost');
   assert.match(cost.textContent, /^Geschätzte Kosten pro Lauf: \$0\.13 · bezahlte Nodes ohne Schätzung: 1$/);
@@ -730,6 +770,7 @@ async function testInsertCard() {
   free.panel.open();
   free.type('add a prompt');
   free.view.form().fire('submit');
+  await tick();
   free.state.insertResult = (() => {
     const result = insertResultFor(free, ['n3'], []);
     free.state.graph = { ...free.state.graph, nodes: free.state.graph.nodes.map((node) => (node.id === 'n3' ? { ...node, type: 'input.prompt' } : node)) };
@@ -744,6 +785,7 @@ async function testInsertCard() {
   const broken = harness('es');
   broken.panel.open();
   broken.panel.ask('añade una imagen');
+  await tick();
   broken.state.insertResult = insertResultFor(broken, ['n3'], ['e9']);
   broken.state.plan = null;
   await broken.answerWith({ answer: 'Hecho.', mentions: [], insert: { nodes: [{ ref: 'g', type: 'image.generate', params: {} }], edges: [] }, usage: { billing: 'subscription', usd: 0, calls: 1 } });
@@ -751,6 +793,7 @@ async function testInsertCard() {
   const failedPlan = harness('en');
   failedPlan.panel.open();
   failedPlan.panel.ask('add an image');
+  await tick();
   failedPlan.state.insertResult = insertResultFor(failedPlan, ['n3'], ['e9']);
   failedPlan.state.planError = true;
   await failedPlan.answerWith({ answer: 'Done.', mentions: [], insert: { nodes: [{ ref: 'g', type: 'image.generate', params: {} }], edges: [] }, usage: { billing: 'subscription', usd: 0, calls: 1 } });
@@ -761,6 +804,7 @@ async function testInsertCard() {
   const only = harness('en');
   only.panel.open();
   only.panel.ask('connect them');
+  await tick();
   only.state.insertResult = { ids: { nodes: [], notes: [], groups: [], edges: ['e7'] }, idMap: {}, skippedLinks: [], bounds: null };
   only.state.graph = { ...only.state.graph, edges: [{ id: 'e7', from: { node: 'n1', port: 'prompt' }, to: { node: 'n2', port: 'prompt' } }] };
   await only.answerWith({ answer: 'Connected.', mentions: [], insert: { nodes: [], edges: [{ from: { node: 'n1', port: 'prompt' }, to: { node: 'n2', port: 'prompt' } }] }, usage: { billing: 'subscription', usd: 0, calls: 1 } });
@@ -774,6 +818,7 @@ async function testInsertCard() {
   const refused = harness('de');
   refused.panel.open();
   refused.panel.ask('fügt etwas ein');
+  await tick();
   refused.state.insertResult = null;
   await refused.answerWith({ answer: 'Vorschlag.', mentions: [], insert: { nodes: [{ ref: 'g', type: 'image.generate', params: {} }], edges: [] }, usage: { billing: 'subscription', usd: 0, calls: 1 } });
   assert.equal(refused.host.querySelector('.nv-asst-card'), null);
@@ -783,6 +828,7 @@ async function testInsertCard() {
   const nothing = harness('de');
   nothing.panel.open();
   nothing.panel.ask('verbinde');
+  await tick();
   nothing.state.insertResult = { ids: { nodes: [], notes: [], groups: [], edges: [] }, idMap: {}, skippedLinks: [{ index: 0, code: 'input_taken' }], bounds: null };
   await nothing.answerWith({ answer: 'Verbunden.', mentions: [], insert: { nodes: [], edges: [{ from: { node: 'n1', port: 'prompt' }, to: { node: 'n2', port: 'prompt' } }] }, usage: { billing: 'subscription', usd: 0, calls: 1 } });
   assert.equal(nothing.host.querySelector('.nv-asst-card'), null);
@@ -790,6 +836,7 @@ async function testInsertCard() {
   const rejected = harness('de');
   rejected.panel.open();
   rejected.panel.ask('mach was');
+  await tick();
   await rejected.answerWith({ answer: 'Geht nicht.', mentions: [], insertRejected: true, usage: { billing: 'subscription', usd: 0, calls: 2 } });
   assert.equal(rejected.calls.insert.length, 0);
   assert.match(rejected.host.all('.nv-asst-note')[0].textContent, /Es wurde nichts eingefügt/);
@@ -800,6 +847,7 @@ async function testWorkflowsAndErrors() {
   const h = harness('de');
   h.panel.open();
   h.panel.ask('Frage in A');
+  await tick();
   h.state.workflowId = 'wf-2';
   h.panel.workflowChanged();
   assert.equal(h.view.messages().length, 0, 'workflow B starts empty');
@@ -808,6 +856,7 @@ async function testWorkflowsAndErrors() {
   assert.equal(h.calls.insert.length, 0, 'nothing is inserted into another workflow');
   assert.equal(h.view.messages().length, 0, 'and nothing appears in the panel of B');
   h.panel.ask('Frage in B');
+  await tick();
   assert.equal(h.calls.ask.at(-1).id, 'wf-2');
   assert.deepEqual(h.calls.ask.at(-1).body.history, []);
   h.state.workflowId = 'wf-1';
@@ -825,6 +874,7 @@ async function testWorkflowsAndErrors() {
   blocked.panel.open();
   blocked.state.canInsert = false;
   blocked.panel.ask('add a node');
+  await tick();
   await blocked.answerWith({ answer: 'Here.', mentions: [], insert: { nodes: [{ ref: 'g', type: 'image.generate', params: {} }], edges: [] }, usage: { billing: 'subscription', usd: 0, calls: 1 } });
   assert.equal(blocked.calls.insert.length, 0);
   assert.match(blocked.host.all('.nv-asst-note')[0].textContent, /Not inserted/);
@@ -833,6 +883,7 @@ async function testWorkflowsAndErrors() {
   const budget = harness('de');
   budget.panel.open();
   budget.panel.ask('Frage');
+  await tick();
   await budget.failWith(Object.assign(new Error('Dein Budget ist aufgebraucht.'), { status: 402, code: 'BUDGET_EXHAUSTED', body: { budget: { limitUsd: 5, spentUsd: 5, reservedUsd: 0, remainingUsd: 0 } } }));
   assert.ok(budget.host.querySelector('.nv-asst-bubble.is-budget'));
   assert.equal(budget.host.querySelector('.nv-asst-bubble.is-budget').textContent, 'Dein Budget ist aufgebraucht.');
@@ -844,14 +895,17 @@ async function testWorkflowsAndErrors() {
   const net = harness('en');
   net.panel.open();
   net.panel.ask('First question');
+  await tick();
   await net.answerWith({ answer: 'First answer.', mentions: [], usage: { billing: 'subscription', usd: 0, calls: 1 } });
   net.panel.ask('Second question');
+  await tick();
   assert.equal(net.calls.ask.length, 2);
   await net.failWith(Object.assign(new Error('Failed to fetch'), { status: 0 }), 1);
   assert.equal(net.host.querySelector('.nv-asst-bubble.is-error').textContent, net.T('nodes.assistant.error.network'));
   const retry = net.host.querySelector('.nv-asst-retry');
   assert.ok(retry, 'a lost connection: ask again');
   retry.fire('click');
+  await tick();
   assert.equal(net.calls.ask.length, 3);
   assert.equal(net.calls.ask[2].body.question, 'Second question', 'the same question');
   assert.deepEqual(net.calls.ask[2].body.history, [{ role: 'user', text: 'First question' }, { role: 'assistant', text: 'First answer.' }], 'the failed try is not part of the history');
@@ -863,6 +917,7 @@ async function testWorkflowsAndErrors() {
   const limit = harness('es');
   limit.panel.open();
   limit.panel.ask('Pregunta');
+  await tick();
   await limit.failWith(Object.assign(new Error('Demasiadas preguntas.'), { status: 429, code: 'RATE_LIMITED' }));
   assert.ok(limit.host.querySelector('.nv-asst-bubble.is-limit'));
   assert.equal(limit.host.querySelector('.nv-asst-retry'), null);
@@ -876,6 +931,7 @@ async function testCardWithRealHistory() {
     h.panel.open();
     h.type('Füge ein Titelbild hinzu');
     h.view.form().fire('submit');
+    await tick();
     h.state.insertResult = insertResultFor(h, ['n3'], ['e5']);
     hist.commit({ n: 'assistant insert' }); // main.js insertSubgraph: ONE step
     await h.answerWith({
@@ -929,6 +985,7 @@ async function testLongConversation() {
   h.panel.open();
   for (let index = 1; index <= 45; index += 1) {
     h.panel.ask(`Question ${index}`);
+    await tick();
     await h.answerWith({ answer: `Answer ${index}`, mentions: [], usage: { billing: 'subscription', usd: 0, calls: 1 } }, index - 1);
   }
   assert.ok(h.view.messages().length <= assistant.LIMITS.keptMessages + 1, 'the oldest messages go');
@@ -1001,6 +1058,7 @@ async function testModelChoice() {
 
   // the first question carries the default model
   h.panel.ask('Was ist das?');
+  await tick();
   assert.equal(h.calls.ask[0].body.model, 'openai/gpt-6.1-sol');
   await h.answerWith({ answer: 'Antwort.', mentions: [], usage: { model: 'openai/gpt-6.1-sol', billing: 'usd', usd: 0.01, calls: 1, replaced: false } });
   // under the answer: the model that answered, by the name of the chat
@@ -1013,6 +1071,7 @@ async function testModelChoice() {
   assert.deepEqual(store.writes, ['anthropic/claude-opus-5.5']);
   assert.equal(h.view.modelSelect().value, 'anthropic/claude-opus-5.5');
   h.panel.ask('Und jetzt?');
+  await tick();
   assert.equal(h.calls.ask[1].body.model, 'anthropic/claude-opus-5.5');
   await h.answerWith({ answer: 'Mit Opus.', mentions: [], usage: { model: 'anthropic/claude-opus-5.5', billing: 'usd', usd: 0.09, calls: 1, replaced: false } }, 1);
   assert.deepEqual(h.host.all('.nv-asst-model').map((node) => node.textContent), ['Antwort von 6.1 Sol', 'Antwort von claude-opus-5.5'], 'every answer says which model gave it');
@@ -1020,15 +1079,18 @@ async function testModelChoice() {
   h.view.modelSelect().value = 'chatgpt/gpt-6.1-sol';
   h.view.modelSelect().fire('change');
   h.panel.ask('Mit Abo');
+  await tick();
   assert.equal(h.calls.ask[2].body.model, 'chatgpt/gpt-6.1-sol');
   await h.answerWith({ answer: 'Ersatz.', mentions: [], usage: { model: 'openai/gpt-6.1-sol', billing: 'usd', usd: 0.02, calls: 1, replaced: true } }, 2);
   assert.equal(h.host.all('.nv-asst-model').at(-1).textContent, 'Antwort von 6.1 Sol (Ersatz)');
   assert.match(h.host.all('.nv-asst-note').map((node) => node.textContent).join('|'), /kostete \$0\.0200/);
   // an answer without a model in the usage names none; one with a model that is not on the list is named by its short id
   h.panel.ask('Ohne Angabe');
+  await tick();
   await h.answerWith({ answer: 'Ohne.', mentions: [], usage: { billing: 'subscription', usd: 0, calls: 1 } }, 3);
   assert.equal(h.host.all('.nv-asst-model').length, 3);
   h.panel.ask('Unbekanntes Modell');
+  await tick();
   await h.answerWith({ answer: 'Fremd.', mentions: [], usage: { model: 'vendor/model-x', billing: 'usd', usd: 0.01, calls: 1 } }, 4);
   assert.equal(h.host.all('.nv-asst-model').at(-1).textContent, 'Antwort von model-x');
 
@@ -1037,6 +1099,7 @@ async function testModelChoice() {
   again.panel.open();
   assert.equal(again.view.modelSelect().value, 'chatgpt/gpt-6.1-sol', 'the saved model is selected again');
   again.panel.ask('Nach dem Neuladen');
+  await tick();
   assert.equal(again.calls.ask[0].body.model, 'chatgpt/gpt-6.1-sol');
 
   // the saved model is not on the list any more (the role changed, the configuration changed): the default again, and the
@@ -1046,6 +1109,7 @@ async function testModelChoice() {
   assert.equal(reduced.view.modelSelect().value, 'openai/gpt-6.1-sol', 'back to the default');
   assert.deepEqual(optionsOf(reduced).map((row) => row[0]), ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5']);
   reduced.panel.ask('Question');
+  await tick();
   assert.equal(reduced.calls.ask[0].body.model, 'openai/gpt-6.1-sol');
   assert.equal(JSON.stringify(reduced.calls.ask[0].body).includes('chatgpt/'), false);
   assert.equal(store.value, 'chatgpt/gpt-6.1-sol', 'the saved text is left alone until the person chooses again');
@@ -1056,6 +1120,7 @@ async function testModelChoice() {
   late.panel.open();
   assert.equal(late.view.modelRow().classes.has('hidden'), true, 'no list yet: no row');
   late.panel.ask('Ohne Liste');
+  await tick();
   assert.equal('model' in late.calls.ask[0].body, false, 'without a list the request carries no model: the server takes the model of a new chat');
   late.panel.close();
   loaded = chatChoices();
@@ -1067,6 +1132,7 @@ async function testModelChoice() {
   bare.panel.open();
   assert.equal(bare.view.modelRow().classes.has('hidden'), true);
   bare.panel.ask('Wie bisher');
+  await tick();
   assert.equal('model' in bare.calls.ask[0].body, false);
 
   // a store or a list that throws never breaks the panel
@@ -1074,6 +1140,7 @@ async function testModelChoice() {
   broken.panel.open();
   assert.equal(broken.view.modelRow().classes.has('hidden'), true);
   broken.panel.ask('Trotzdem');
+  await tick();
   assert.equal(broken.calls.ask.length, 1);
   const flaky = harness('de', { choices: () => chatChoices(), store: blocked });
   flaky.panel.open();
@@ -1082,6 +1149,7 @@ async function testModelChoice() {
   assert.doesNotThrow(() => flaky.view.modelSelect().fire('change'));
   assert.equal(flaky.view.modelSelect().value, 'anthropic/claude-sonnet-5.5', 'the choice holds for this page when nothing can be saved');
   flaky.panel.ask('Ohne Speicher');
+  await tick();
   assert.equal(flaky.calls.ask[0].body.model, 'anthropic/claude-sonnet-5.5');
 
   // a single model (a participant with one allowed model): shown, but nothing to choose
@@ -1091,12 +1159,14 @@ async function testModelChoice() {
   assert.equal(single.view.modelSelect().disabled, true);
   assert.equal(single.view.modelSelect().value, 'anthropic/claude-sonnet-5.5');
   single.panel.ask('Eine Wahl');
+  await tick();
   assert.equal(single.calls.ask[0].body.model, 'anthropic/claude-sonnet-5.5');
 
   // the server refuses a model (a stale tab): the sentence of the server is shown, no "ask again" that would fail the same way
   const refused = harness('de', { choices: () => chatChoices(), store: memory() });
   refused.panel.open();
   refused.panel.ask('Gesperrt?');
+  await tick();
   await refused.failWith(Object.assign(new Error('Das Modell des Assistenten ist für dein Konto nicht freigegeben.'), { status: 403, code: 'FORBIDDEN_FOR_ROLE' }));
   assert.match(refused.host.querySelector('.nv-asst-bubble.is-error').textContent, /Modell des Assistenten/);
   assert.equal(refused.host.querySelector('.nv-asst-retry'), null);
@@ -1104,6 +1174,7 @@ async function testModelChoice() {
   refused.view.modelSelect().value = 'anthropic/claude-sonnet-5.5';
   refused.view.modelSelect().fire('change');
   refused.panel.ask('Anderes Modell');
+  await tick();
   assert.equal(refused.calls.ask[1].body.model, 'anthropic/claude-sonnet-5.5');
 
   // the texts exist in three languages; a repaint (language change) keeps the choice
@@ -1118,6 +1189,345 @@ async function testModelChoice() {
   const es = harness('es', { choices: () => chatChoices(), store: memory() });
   es.panel.open();
   assert.equal(es.host.querySelector('.nv-asst-model-label').textContent, 'Modelo');
+}
+
+/* ---------- P/C: tool cards and saved edits ---------- */
+
+const EDIT = { baseRev: 7, rev: 8, changes: [{ op: 'set_params', node: { id: 'n1', type: 'input.prompt', label: 'Songtext' }, params: ['prompt'] }] };
+const RUN = { mode: 'selection', nodeIds: ['n1', 'n2'], force: true, nodes: [{ id: 'n1', label: 'Text' }, { id: 'n2', label: 'Bild' }], estimate: { paid: true, usd: 0.5, credits: 0, unknownNodes: 0, willRun: 2 } };
+
+function testToolCardText() {
+  for (const lang of ['de', 'en', 'es']) {
+    const T = textOf(lang);
+    const changes = assistant.EDIT_OPS.map((op) => ({ op, node: { id: 'n1', label: 'Songtext' }, params: ['prompt'], param: 'prompt', from: { node: { id: 'a', label: 'Figur' }, port: 'image' }, to: { node: { id: 'b', label: 'Bild' }, port: 'input' } }));
+    for (const change of changes) {
+      const lines = assistant.changeLines({ changes: [change] }, T, (id) => id.toUpperCase());
+      assert.equal(lines.length, 1);
+      assert.doesNotMatch(lines[0], /nodes\.assistant|\{|ß/);
+      if (change.op === 'set_params' || change.op.includes('expose')) assert.match(lines[0], /PROMPT/);
+    }
+    const shortened = assistant.changeLines({ changes, more: 2 }, T);
+    assert.equal(shortened.length, 7);
+    assert.equal(shortened[6], T('nodes.assistant.change.more', { count: 4 }));
+    assert.deepEqual(assistant.changeLines(null, T), []);
+    const run = assistant.runLines(RUN, T, () => '$0.50');
+    assert.ok(run[0].includes('Text, Bild'));
+    assert.equal(run[1], T('nodes.assistant.run.force'));
+    assert.equal(run[2], T('nodes.assistant.run.cost', { amount: '$0.50' }));
+    assert.equal(assistant.runLines({ ...RUN, mode: 'all', force: false }, T, () => '$0.50')[0], T('nodes.assistant.run.all'));
+    assert.ok(assistant.runLines({ ...RUN, estimate: { paid: false } }, T).includes(T('nodes.assistant.run.free')));
+    assert.ok(assistant.runLines({ ...RUN, estimate: null }, T).includes(T('nodes.assistant.run.unknown')));
+    assert.ok(assistant.runLines({ ...RUN, estimate: { ...RUN.estimate, unknownNodes: 1 } }, T).includes(T('nodes.assistant.run.unknown')));
+    for (const tool of assistant.ACTION_TOOLS) {
+      const text = assistant.confirmationText({ tool, facts: { influencerName: 'Ada', name: 'A', siteUrl: 'https://example.org/a', visibility: 'public', itemTitle: 'Portrait', nodeLabel: 'Bild', slug: 'ada', newFact: '<text>', ignored: {} } }, T);
+      assert.doesNotMatch([text.title, ...text.lines, text.verb].join('\n'), /nodes\.assistant|\{|ß/);
+      assert.ok(text.lines.some((line) => line.includes('newFact: <text>')));
+      assert.equal(text.lines.some((line) => line.includes('[object Object]')), false);
+      if (tool === 'publish_influencer_site') {
+        assert.ok(text.title.includes('Ada'));
+        assert.ok(text.lines.includes(T('nodes.assistant.confirm.public')));
+      }
+      if (['delete_result_entry', 'remove_influencer_site_item'].includes(tool)) assert.ok(text.lines.includes(T('nodes.assistant.confirm.irreversible')));
+      if (tool === 'create_influencer') assert.ok(text.lines.includes(dictionaries[lang].t('influencers.consent')), 'same consent wording as figure creation');
+      assert.doesNotMatch(assistant.confirmationText({ tool }, T).title, /undefined|\{/);
+    }
+  }
+  for (const url of ['javascript:alert(1)', 'data:text/plain,x', '/relative', '//example.org', 'file:///tmp/x', 'https://', null]) assert.equal(assistant.safeActionUrl(url), null);
+  for (const url of ['https://example.org/a', 'http://example.org/b']) assert.equal(assistant.safeActionUrl(url), url);
+}
+
+async function testToolCards() {
+  for (const flags of [{}, { dirty: true }, { conflict: true }]) {
+    const h = harness();
+    Object.assign(h.state, flags);
+    h.panel.ask('Ändere den Text');
+    await tick();
+    assert.equal(h.calls.flush, 1);
+    assert.equal(h.calls.ask[0].body.tools, true);
+    assert.equal(h.calls.ask[0].body.rev, flags.dirty || flags.conflict ? null : 7);
+    await h.failWith(new Error('network'));
+    assert.deepEqual(h.calls.releases, [null], 'errors release held external saves');
+  }
+  let saveDone;
+  let cleanRev = null;
+  const waiting = harness('de', { deps: { flushSave: () => new Promise((resolve) => { saveDone = resolve; }), savedRev: () => cleanRev } });
+  waiting.panel.ask('Warte auf Speichern');
+  assert.equal(waiting.calls.ask.length, 0);
+  cleanRev = 12;
+  saveDone();
+  await tick();
+  assert.equal(waiting.calls.ask[0].body.rev, 12, 'revision is read after the save');
+  await waiting.answerWith({ answer: 'ok' });
+
+  const h = harness();
+  h.panel.open();
+  h.panel.ask('Ändere');
+  await h.answerWith({ answer: 'Geändert.', edit: EDIT, steps: [{ tool: 'get_workflow', ok: true }, { tool: 'new_tool', ok: false }] });
+  assert.equal(h.calls.adopts.length, 1);
+  assert.deepEqual(h.calls.releases, [8]);
+  assert.match(h.host.querySelector('.nv-asst-edit').textContent, /Songtext: prompt geändert/);
+  assert.match(h.host.querySelector('.nv-asst-steps').textContent, /Workflow, new_tool/);
+  const undo = h.host.querySelector('.nv-asst-undo');
+  h.state.revision += 1;
+  h.bus.emit('graph');
+  assert.equal(h.host.querySelector('.nv-asst-undo').disabled, true);
+  undo.fire('click');
+  assert.equal(h.calls.undo, 0, 'a stale button also rechecks history');
+
+  const fresh = harness();
+  fresh.panel.open();
+  fresh.panel.ask('Ändere');
+  await fresh.answerWith({ answer: 'ok', edit: EDIT });
+  fresh.host.querySelector('.nv-asst-show').fire('click');
+  assert.deepEqual(fresh.calls.show, [['n1']]);
+  fresh.host.querySelector('.nv-asst-undo').fire('click');
+  assert.equal(fresh.calls.undo, 1);
+  assert.match(fresh.host.querySelector('.nv-asst-edit').textContent, /Rückgängig gemacht/);
+  fresh.state.workflowId = 'wf-2';
+  fresh.panel.workflowChanged();
+  fresh.state.workflowId = 'wf-1';
+  fresh.panel.workflowChanged();
+  assert.match(fresh.host.querySelector('.nv-asst-edit').textContent, /Rückgängig gemacht/);
+  fresh.panel.ask('Weiter');
+  await tick();
+  assert.deepEqual(fresh.calls.ask[1].body.history, [{ role: 'user', text: 'Ändere' }, { role: 'assistant', text: 'ok' }], 'history contains texts only');
+
+  const rejected = harness();
+  rejected.panel.open();
+  rejected.state.adoptOk = false;
+  rejected.panel.ask('Ändere und füge ein');
+  await rejected.answerWith({ answer: 'ok', edit: EDIT, insert: INSERT });
+  assert.equal(rejected.calls.insert.length, 0);
+  assert.match(rejected.host.querySelector('.nv-asst-edit').textContent, /Banner/);
+  assert.ok(rejected.host.textContent.includes(rejected.T('nodes.assistant.notInsertedEdit')));
+  assert.deepEqual(rejected.calls.releases, [null]);
+  const both = harness();
+  both.panel.open();
+  both.panel.ask('Ändere und füge ein');
+  both.state.insertResult = insertResultFor(both, ['n3'], []);
+  await both.answerWith({ answer: 'ok', edit: EDIT, insert: INSERT });
+  assert.equal(both.calls.insert.length, 1);
+  assert.ok(both.host.querySelector('.nv-asst-edit'));
+  assert.ok(both.host.querySelector('.nv-asst-card'));
+
+  const run = harness();
+  run.panel.open();
+  run.panel.ask('Bereite vor');
+  await run.answerWith({ answer: 'ok', run: RUN });
+  assert.equal(run.calls.starts.length, 0);
+  run.state.activeRun = true;
+  run.bus.emit('sse', { type: 'run_started' });
+  assert.equal(run.host.querySelector('.nv-asst-start').disabled, true);
+  run.host.querySelector('.nv-asst-start').fire('click');
+  assert.equal(run.calls.starts.length, 0);
+  run.state.activeRun = false;
+  run.bus.emit('sse', { type: 'run_finished' });
+  const start = run.host.querySelector('.nv-asst-start');
+  start.fire('click'); start.fire('click');
+  assert.deepEqual(run.calls.starts, [{ mode: RUN.mode, nodeIds: RUN.nodeIds, nodeId: undefined, items: undefined, force: true }]);
+  assert.match(run.host.querySelector('.nv-asst-start').textContent, /An die App übergeben/);
+  run.state.workflowId = 'other';
+  start.fire('click');
+  assert.equal(run.calls.starts.length, 1);
+  const free = harness();
+  free.panel.open(); free.panel.ask('Kostenlos');
+  await free.answerWith({ answer: 'ok', run: { ...RUN, estimate: { paid: false } } });
+  assert.equal(free.calls.starts.length, 0);
+  free.host.querySelector('.nv-asst-start').fire('click');
+  assert.equal(free.calls.starts.length, 1);
+
+  const action = { id: 'action-1', tool: 'publish_influencer_site', facts: { influencerName: 'Ada', visibility: 'public' } };
+  for (const scenario of ['done', 'expired', 'error', 'discarded']) {
+    const a = harness();
+    a.panel.open(); a.panel.ask('Publizieren');
+    await a.answerWith({ answer: 'Bitte prüfen.', confirm: [action] });
+    assert.equal(a.calls.actions.length + a.calls.discards.length, 0);
+    a.view.input().fire('keydown', { key: 'Enter' });
+    assert.equal(a.calls.actions.length + a.calls.discards.length, 0, 'Enter in input never confirms');
+    if (scenario === 'expired') a.state.actionError = Object.assign(new Error('old'), { status: 410, code: 'ACTION_EXPIRED' });
+    if (scenario === 'error') a.state.actionError = new Error('Bitte später versuchen.');
+    a.state.actionResult = { url: 'https://example.org/ada' };
+    const button = a.host.querySelector(scenario === 'discarded' ? '.nv-asst-discard' : '.nv-asst-accept');
+    button.fire('click'); button.fire('click');
+    assert.equal(a.host.querySelector('.nv-asst-accept').disabled, true);
+    assert.equal(a.host.querySelector('.nv-asst-discard').disabled, true);
+    await tick();
+    assert.equal(a.calls.actions.length + a.calls.discards.length, 1);
+    assert.deepEqual((scenario === 'discarded' ? a.calls.discards : a.calls.actions)[0], { id: 'wf-1', actionId: 'action-1' });
+    const box = a.host.querySelector('.nv-asst-confirm');
+    if (scenario === 'expired') assert.match(box.textContent, /Abgelaufen. Frag noch einmal./);
+    if (scenario === 'discarded') assert.match(box.textContent, /Verworfen/);
+    if (scenario === 'error') {
+      assert.match(box.textContent, /Bitte später versuchen/);
+      assert.equal(a.host.querySelector('.nv-asst-accept').disabled, false);
+      assert.equal(a.host.querySelector('.nv-asst-discard').disabled, false);
+      a.state.actionError = null;
+      a.host.querySelector('.nv-asst-accept').fire('click');
+      await tick();
+      assert.equal(a.calls.actions.length, 2);
+    }
+    if (scenario === 'done') {
+      assert.match(box.textContent, /Erledigt/);
+      const link = box.querySelector('.nv-asst-result-link');
+      assert.equal(link.getAttribute('target'), '_blank');
+      assert.equal(link.getAttribute('rel'), 'noopener noreferrer');
+      assert.equal(link.getAttribute('href'), 'https://example.org/ada');
+      a.state.workflowId = 'other'; a.panel.workflowChanged();
+      a.state.workflowId = 'wf-1'; a.panel.workflowChanged();
+      assert.match(a.host.querySelector('.nv-asst-confirm').textContent, /Erledigt/);
+    }
+  }
+  const multi = harness();
+  multi.panel.open(); multi.panel.ask('Zwei Aktionen');
+  await multi.answerWith({ answer: 'Prüfe beide.', confirm: [action, { ...action, id: 'action-2' }] });
+  global.document = { get activeElement() { return FakeNode.focused; } };
+  try {
+    const buttons = multi.host.all('.nv-asst-accept');
+    assert.equal(buttons.some((button) => button.getAttribute('autofocus')), false);
+    buttons[1].fire('click');
+    await tick();
+    assert.equal(FakeNode.focused, multi.host.all('.nv-asst-action-status')[1], 'focus stays on the completed action');
+    assert.equal(multi.calls.actions[0].actionId, 'action-2');
+    assert.equal(multi.host.all('.nv-asst-accept').length, 1, 'the other action is still available');
+    const tab = multi.host.fire('keydown', { key: 'Tab' });
+    assert.equal(tab.defaultPrevented, false, 'Tab remains native keyboard navigation');
+  } finally { delete global.document; }
+
+}
+
+// Real workflow adoption, SSE holding, history restoration and revision-checked autosave; no server or provider.
+async function testAssistantWorkflowIntegration() {
+  const calls = { saves: [], renders: [] };
+  const ui = fakeUi(textOf('de'));
+  const api = {
+    getWorkflow: async () => ({ workflow: structuredClone(calls.server) }),
+    saveWorkflow: async (id, body) => { calls.saves.push({ id, body }); return { rev: body.baseRev + 1 }; }
+  };
+  const window = { OCDNodes: { graph: graphLib, history: historyLib, api, ui, archiveUi: {}, inspector: { warnApprovalChanges() {} } } };
+  const context = { window, history: { replaceState() {} }, setTimeout, clearTimeout, console };
+  vm.runInNewContext(read('public/nodes/main-state.js'), context);
+  const runtime = window.OCDNodes.main;
+  const state = runtime.state;
+  state.workflow = { id: 'wf', rev: 7, app: { inputs: [] } };
+  state.rev = 7;
+  state.graph = graphLib.addNode(reg, graphLib.emptyGraph(), 'input.prompt', { params: { prompt: 'old' } }).graph;
+  state.history.reset(graphLib.content(state.graph));
+  state.results = { kept: true };
+  state.selection.nodes.add('n1');
+  runtime.canvas = { render: (graph) => calls.renders.push(graph) };
+  runtime.dom = { start: new FakeNode('div'), banner: new FakeNode('div'), saveState: new FakeNode('span'), undo: {}, redo: {} };
+  runtime.workflowList = { setData() {} };
+  Object.assign(runtime, {
+    normalizeApp: (app) => structuredClone(app || { inputs: [] }),
+    scheduleAppMarks() {}, updateAppButton() {}, updateStart() {}, pruneApp() {}, syncAppRemaps() {},
+    currentApp: () => state.workflow.app
+  });
+  vm.runInNewContext(read('public/nodes/main-workflow.js'), context);
+  vm.runInNewContext(read('public/nodes/main-editing.js'), context);
+  for (const connect of runtime.connect) connect();
+  const serverGraph = structuredClone(state.graph);
+  serverGraph.nodes[0].params.prompt = 'new';
+  calls.server = { id: 'wf', rev: 8, graph: serverGraph, app: { inputs: [{ node: 'n1', param: 'prompt' }] } };
+  const initialHistorySize = state.history.size;
+  const viewport = state.graph.viewport;
+  const results = state.results;
+  const selection = state.selection;
+  let release = runtime.holdExternalSaves();
+  await runtime.handleExternalSave({ rev: 8 });
+  await runtime.handleExternalSave({ rev: 8 });
+  assert.equal(state.conflict, null, 'SSE before response is held');
+  assert.equal((await runtime.adoptServerEdit(EDIT, 'wf')).ok, true);
+  await release(8);
+  assert.equal(state.conflict, null);
+  assert.equal(state.history.size, initialHistorySize + 1, 'one history step');
+  assert.equal(state.graph.nodes[0].params.prompt, 'new');
+  assert.equal(state.graph.viewport, viewport);
+  assert.equal(state.results, results);
+  assert.equal(state.selection, selection);
+  assert.equal(state.dirtyContent, false);
+  assert.equal(state.rev, 8);
+  runtime.undo();
+  assert.equal(state.graph.nodes[0].params.prompt, 'old');
+  assert.equal(state.workflow.app.inputs.length, 0, 'undo also restores app exposure');
+  assert.equal(state.dirtyContent, true);
+  await runtime.flushSave();
+  assert.equal(calls.saves.at(-1).body.baseRev, 8, 'undo saves against adopted server revision');
+  assert.equal(calls.saves.at(-1).body.graph.nodes[0].params.prompt, 'old');
+  assert.equal(calls.saves.at(-1).body.app.inputs.length, 0);
+  runtime.redo();
+  assert.equal(state.workflow.app.inputs.length, 1);
+  await runtime.flushSave();
+  // App-only edit still gets its own snapshot even when the graph is identical.
+  const base = state.rev;
+  calls.server = { ...calls.server, rev: base + 1, app: { inputs: [] } };
+  const size = state.history.size;
+  assert.equal((await runtime.adoptServerEdit({ baseRev: base, rev: base + 1, changes: [{ op: 'unexpose_input' }] }, 'wf')).ok, true);
+  assert.equal(state.history.size, size + 1);
+  runtime.undo();
+  assert.equal(state.workflow.app.inputs.length, 1);
+  await runtime.flushSave();
+
+  release = runtime.holdExternalSaves();
+  await runtime.handleExternalSave({ rev: state.rev + 1 });
+  await release(null);
+  assert.equal(state.conflict.source, 'external', 'errors and aborts replay external saves');
+  state.conflict = null; state.saveState = 'saved';
+  release = runtime.holdExternalSaves();
+  await runtime.handleExternalSave({ rev: state.rev + 2 });
+  await release(state.rev + 1);
+  assert.equal(state.conflict.rev, state.rev + 2, 'newer revisions still show banner');
+  state.conflict = null; state.saveState = 'saved';
+  state.dirtyContent = true;
+  assert.equal(runtime.savedRev(), null);
+  assert.equal((await runtime.adoptServerEdit({ baseRev: state.rev, rev: state.rev + 1 }, 'wf')).ok, false);
+  assert.equal(state.graph.nodes[0].params.prompt, 'new', 'local content is not overwritten');
+  state.conflict = null; state.saveState = 'saved'; state.dirtyContent = false;
+  calls.server.rev = state.rev + 2;
+  assert.equal((await runtime.adoptServerEdit({ baseRev: state.rev, rev: state.rev + 1 }, 'wf')).ok, false, 'GET must have the exact response revision');
+  state.conflict = null; state.saveState = 'saved';
+  let finishGet;
+  api.getWorkflow = () => new Promise((resolve) => { finishGet = resolve; });
+  const pending = runtime.adoptServerEdit({ baseRev: state.rev, rev: state.rev + 1 }, 'wf');
+  state.dirtyContent = true;
+  finishGet({ workflow: { ...calls.server, rev: state.rev + 1 } });
+  assert.equal((await pending).ok, false, 'typing during GET is rechecked');
+  state.conflict = null; state.saveState = 'saved'; state.dirtyContent = false;
+  // An SSE handler already waiting for an ordinary save must respect a question that starts meanwhile.
+  let finishSave;
+  state.saving = true;
+  state.savePromise = new Promise((resolve) => { finishSave = resolve; });
+  const earlierEvent = runtime.handleExternalSave({ rev: state.rev + 1 });
+  release = runtime.holdExternalSaves();
+  state.saving = false;
+  finishSave();
+  await earlierEvent;
+  assert.equal(state.conflict, null);
+  await release(null);
+  assert.equal(state.conflict.source, 'external');
+  state.conflict = null; state.saveState = 'saved';
+  runtime.runController = { getRunState: () => ({ active: true }) };
+  assert.equal((await runtime.adoptServerEdit({ baseRev: state.rev, rev: state.rev + 1 }, 'wf')).ok, false, 'active runs prevent adoption');
+  runtime.runController = null;
+  state.conflict = null; state.saveState = 'saved';
+  assert.equal((await runtime.adoptServerEdit({ baseRev: state.rev, rev: state.rev + 1 }, 'other')).ok, false, 'another workflow is never overwritten');
+  assert.equal(state.conflict, null, 'no banner in another workflow');
+  clearTimeout(state.saveTimer); clearTimeout(state.retryTimer);
+}
+
+async function testActionApi() {
+  const requests = [];
+  let response = { ok: true, status: 204 };
+  const window = {};
+  vm.runInNewContext(read('public/nodes/api.js'), { window, fetch: async (url, init) => { requests.push({ url, init }); return response; } });
+  const api = window.OCDNodes.api;
+  await api.assistantAction('w/a', 'a/b');
+  await api.discardAssistantAction('w/a', 'a/b');
+  assert.equal(requests[0].url, 'api/workflows/w%2Fa/assistant/actions/a%2Fb');
+  assert.equal(requests[0].init.method, 'POST');
+  assert.equal(JSON.parse(requests[0].init.body).lang, 'en', 'the action carries the UI language');
+  assert.equal(requests[1].init.method, 'DELETE');
+  response = { ok: false, status: 410, json: async () => ({ code: 'ACTION_EXPIRED', error: 'Abgelaufen.' }) };
+  await assert.rejects(api.assistantAction('w', 'a'), (error) => error.message === 'Abgelaufen.' && error.code === 'ACTION_EXPIRED');
 }
 
 /* ---------- W: wiring ---------- */
@@ -1135,7 +1545,7 @@ function testWiring() {
     assert.doesNotMatch(code, /document\.write|eval\(/, file);
   }
   assert.doesNotMatch(source, /localStorage|sessionStorage/, 'the conversation is not stored anywhere');
-  assert.doesNotMatch(source, /\.startRun|runAll|bus\.emit\(.run/, 'the assistant never starts a run');
+  assert.doesNotMatch(source, /api\.startRun|runAll|bus\.emit\(.run/, 'runs only go through the existing controller after a click');
 
   // every class has a rule
   const css = read('public/nodes/nodes.css');
@@ -1180,6 +1590,11 @@ function testWiring() {
   // every text exists in all three languages: the literal keys, the ones built at run time, no sharp s, same placeholders
   const keys = new Set();
   for (const code of [source, main]) for (const match of code.matchAll(/'(nodes\.assistant\.[A-Za-z0-9_.]+)'/g)) keys.add(match[1]);
+  for (const op of assistant.EDIT_OPS) keys.add(`nodes.assistant.change.${op}`);
+  for (const tool of assistant.ACTION_TOOLS) for (const suffix of ['title', 'verb']) keys.add(`nodes.assistant.confirm.${tool}.${suffix}`);
+  for (const fact of assistant.FACT_KEYS) keys.add(`nodes.assistant.fact.${fact}`);
+  for (const state of ['busy', 'done', 'discarded', 'expired']) keys.add(`nodes.assistant.confirm.${state}`);
+  for (const key of Object.keys(dictionaries.de.I18N.de).filter((key) => key.startsWith('nodes.assistant.tool.'))) keys.add(key);
   for (const reason of assistant.ADJUST_REASONS) keys.add(`nodes.assistant.adjusted.${reason}`);
   for (const key of ['nodes.assistant.adjusted.other', 'nodes.assistant.suggest.1', 'nodes.assistant.suggest.2', 'nodes.assistant.suggest.3', 'nodes.assistant.inserted.one', 'nodes.assistant.inserted.many', 'nodes.assistant.connected.one', 'nodes.assistant.connected.many', 'nodes.assistant.toastNotStarted', 'nodes.connect.input_taken']) keys.add(key);
   assert.ok(keys.size > 40, `expected many keys, found ${keys.size}`);
@@ -1207,6 +1622,10 @@ function testWiring() {
   testFailure();
   testInsertIntoGraph();
   testModelPure();
+  testToolCardText();
+  await testToolCards();
+  await testAssistantWorkflowIntegration();
+  await testActionApi();
   await testControllerBasics();
   await testModelChoice();
   await testEscapeAndKeys();

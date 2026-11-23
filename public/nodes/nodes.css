@@ -9271,3 +9271,12 @@ button.nv-scene-preview:focus-visible {
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
+
+/* Assistant tool cards use the existing card rhythm and keyboard focus treatment. */
+.nv-asst-edit, .nv-asst-run, .nv-asst-confirm { min-width: 0; }
+.nv-asst-steps { margin: 8px 0; color: var(--text-dim); font-size: 11px; }
+.nv-asst-action-status { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nv-asst-result-link { display: block; overflow-wrap: anywhere; margin: 8px 0; }
+.nv-asst-start, .nv-asst-accept, .nv-asst-discard { min-height: 36px; white-space: normal; }
+.nv-asst-start:focus-visible, .nv-asst-accept:focus-visible, .nv-asst-discard:focus-visible,
+.nv-asst-action-status:focus-visible, .nv-asst-result-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

@@ -1,7 +1,7 @@
 'use strict';
 
 // Assistant of the node view (WP25, part 2: the panel). It answers questions about nodes and, when asked, adds nodes and
-// connects them. It never starts a run and never changes or deletes what is already on the canvas.
+// connects them, adopts saved edits with undo and prepares runs and actions that require an explicit click.
 //
 // Part 1 is pure and UMD (module.exports in Node tests, window.OCDNodes.assistant in the browser):
 //   summarizeCanvas   the canvas as the endpoint wants it (ids, types, titles, short plain params, connections, selection,
@@ -190,6 +190,59 @@
     return lines;
   }
 
+  const EDIT_OPS = Object.freeze(['add_node', 'remove_node', 'set_params', 'set_label', 'connect', 'disconnect', 'expose_input', 'unexpose_input']);
+  const ACTION_TOOLS = Object.freeze(['publish_influencer_site', 'delete_result_entry', 'remove_influencer_site_item', 'update_influencer_site', 'add_influencer_site_item', 'update_influencer', 'create_influencer']);
+  const FACT_KEYS = Object.freeze(['influencerName', 'siteUrl', 'slug', 'visibility', 'itemTitle', 'nodeLabel', 'name']);
+
+  function changeLines(edit, T, paramLabel = (id) => id) {
+    const changes = Array.isArray(edit && edit.changes) ? edit.changes : [];
+    const name = (node) => node && (node.label || node.id || node.type) || '';
+    const lines = changes.filter((change) => change && EDIT_OPS.includes(change.op)).map((change) => T(`nodes.assistant.change.${change.op}`, {
+      node: name(change.node), from: name(change.from && change.from.node), to: name(change.to && change.to.node),
+      params: (Array.isArray(change.params) ? change.params : []).map(paramLabel).join(', '),
+      param: change.param ? paramLabel(change.param) : ''
+    }));
+    const hidden = Math.max(0, lines.length - LIMITS.namesShown) + (Number.isFinite(edit && edit.more) ? edit.more : 0);
+    return [...lines.slice(0, LIMITS.namesShown), ...(hidden ? [T('nodes.assistant.change.more', { count: hidden })] : edit && edit.more ? [T('nodes.assistant.change.moreUnknown')] : [])];
+  }
+
+  function runIsPaid(run) {
+    return !run.estimate || Boolean(Array.isArray(run.estimate.paid) ? run.estimate.paid.length : run.estimate.paid);
+  }
+
+  function runLines(run, T, formatAmount) {
+    const names = (Array.isArray(run.nodes) ? run.nodes : []).map((node) => node.label || node.id).filter(Boolean);
+    const targets = names.length ? names.join(', ') : (run.nodeIds || [run.nodeId]).filter(Boolean).join(', ');
+    const estimate = run.estimate;
+    const unknown = !estimate || (Array.isArray(estimate.unknownNodes) ? estimate.unknownNodes.length : estimate.unknownNodes) ||
+      (runIsPaid(run) && !isNumber(estimate.usd) && !isNumber(estimate.credits));
+    return [
+      T(run.mode === 'all' ? 'nodes.assistant.run.all' : 'nodes.assistant.run.nodes', { names: targets }),
+      ...(run.force ? [T('nodes.assistant.run.force')] : []),
+      T(!estimate || (runIsPaid(run) && unknown) ? 'nodes.assistant.run.unknown' : runIsPaid(run) ? 'nodes.assistant.run.cost' : 'nodes.assistant.run.free', { amount: estimate && formatAmount ? formatAmount(estimate) : '' }),
+      T('nodes.assistant.run.notStarted')
+    ];
+  }
+
+  function confirmationText(action, T) {
+    const facts = isPlain(action.facts) ? action.facts : {};
+    const title = T(`nodes.assistant.confirm.${action.tool}.title`, { name: facts.influencerName || facts.name || T('nodes.assistant.confirm.figure') });
+    const lines = Object.entries(facts).filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value)).map(([key, value]) =>
+      `${FACT_KEYS.includes(key) ? T(`nodes.assistant.fact.${key}`) : key}: ${String(value)}`);
+    if (action.tool === 'publish_influencer_site') lines.push(T(facts.visibility === 'public' ? 'nodes.assistant.confirm.public' : 'nodes.assistant.confirm.visible'));
+    if (['delete_result_entry', 'remove_influencer_site_item'].includes(action.tool)) lines.push(T('nodes.assistant.confirm.irreversible'));
+    if (action.tool === 'create_influencer') lines.push(T('nodes.assistant.confirm.consent'));
+    return { title, lines, verb: T(`nodes.assistant.confirm.${action.tool}.verb`) };
+  }
+
+  function safeActionUrl(value) {
+    if (typeof value !== 'string' || !/^https?:\/\//i.test(value)) return null;
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+    } catch (_) { return null; }
+  }
+
   /* ---------- costs from the engine plan ---------- */
 
   // nodes: [{ id, type }] the inserted nodes; plan: the answer of POST .../runs/plan (or null); isPaid(type): boolean.
@@ -269,6 +322,7 @@
     requestHistory,
     buildSubgraph,
     adjustedLines,
+    EDIT_OPS, ACTION_TOOLS, FACT_KEYS, changeLines, runIsPaid, runLines, confirmationText, safeActionUrl,
     costOfInserted,
     failure,
     modelChoices,
@@ -281,6 +335,8 @@
   // deps: { OCD, host (the <aside>), help (node-help.js: openPopover(type, anchor)), getWorkflowId(), getGraph(), getReg(),
   //   getSelection() -> [nodeId], getWarnings() -> [{ node?, message }], canInsert(), insert(sub, options) -> result | null
   //   (main.js insertSubgraph), historyRevision(), undo(), flushSave(), plan() -> Promise<plan>, showNodes(ids),
+  //   savedRev() -> number|null, holdExternalSaves(workflowId) -> release(adoptedRev|null),
+  //   adoptServerEdit(edit, workflowId) -> Promise<{ok}>, startRun(request), isRunActive(),
   //   getLang(), onToggle(open, options),
   //   getModelChoices() -> { models, defaultModel, labelOf } (the models of the chat; none: no list in the panel),
   //   modelStore: { read() -> id | '', write(id) } (the saved choice of this person; every access guarded by the owner) }
@@ -561,7 +617,18 @@
         }
         wrap.append(links);
       }
+      if (message.steps && message.steps.length) {
+        const names = message.steps.map((step) => {
+          const key = `nodes.assistant.tool.${step.tool}`;
+          const label = T(key);
+          return label === key ? step.tool : label;
+        });
+        wrap.append(el('p', { class: 'nv-asst-steps', text: T('nodes.assistant.steps', { tools: names.join(', ') }) }));
+      }
+      if (message.editCard) wrap.append(renderEditCard(message));
       if (message.card) wrap.append(renderCard(message));
+      if (message.runCard) wrap.append(renderRunCard(message));
+      for (const action of message.confirmations || []) wrap.append(renderConfirmation(message, action));
       for (const note of message.notes || []) wrap.append(el('div', { class: `nv-asst-note is-${note.kind || 'info'}` }, icon(note.kind === 'warn' ? 'warning' : 'check', 13), el('span', { text: note.text })));
       if (message.adjusted && message.adjusted.length) {
         const list = el('ul', { class: 'nv-asst-adjusted' });
@@ -579,6 +646,11 @@
     // not on the canvas any more). "Not changed" is the revision counter of history.js, which every commit, undo, redo, reset and
     // clear moves on; the position in the stack would stay the same once the stack is full or after the workflow is opened again.
     function cardState(card) {
+      if (card.kind === 'edit') {
+        if (card.undone) return 'gone';
+        if (!card.adopted) return 'later';
+        return deps.historyRevision() === card.revision ? 'ready' : 'later';
+      }
       const graph = deps.getGraph();
       const present = card.nodeIds.length
         ? card.nodeIds.every((id) => graph.nodes.some((node) => node.id === id))
@@ -634,26 +706,115 @@
       // only new nodes can cost something; a connection never does
       if (card.nodeIds.length) box.append(el('p', { class: `nv-asst-card-line nv-asst-cost is-${card.cost ? card.cost.state : 'checking'}`, title: T('nodes.cost.estimateHint'), text: costText(card.cost) }));
       box.append(el('p', { class: 'nv-asst-card-line is-faint', text: T('nodes.assistant.notStarted', { all: T('nodes.run.all'), selection: T('nodes.run.selection') }) }));
+      box.append(renderUndoActions(message, card, state));
+      return box;
+    }
+
+    // Both insertion and saved-edit cards use the same history guard and undo controls.
+    function renderUndoActions(message, card, state) {
       const actions = el('div', { class: 'nv-asst-card-actions' });
-      if (state === 'gone') {
-        if (card.undone) actions.append(el('span', { class: 'nv-asst-undone', text: T('nodes.assistant.undone') }));
-      } else {
+      if (card.undone) actions.append(el('span', { class: 'nv-asst-undone', text: T('nodes.assistant.undone') }));
+      else if (state !== 'gone' && card.adopted !== false) {
         const undo = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-asst-undo', disabled: state !== 'ready' }, icon('undo', 13), el('span', { text: T('nodes.assistant.undo') }));
-        undo.title = state === 'ready' ? T('nodes.assistant.undoTitle') : T('nodes.assistant.undoLater');
+        undo.title = T(state === 'ready' ? 'nodes.assistant.undoTitle' : 'nodes.assistant.undoLater');
         undo.addEventListener('click', () => {
-          if (cardState(card) !== 'ready') return;
+          if (deps.getWorkflowId() !== message.workflowId || cardState(card) !== 'ready') return;
           card.undone = true;
           deps.undo();
-          repaintCards();
+          if (deps.getWorkflowId() === message.workflowId) place(message);
         });
         actions.append(undo);
-        if (card.nodeIds.length) {
-          const show = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-asst-show', title: T('nodes.assistant.showTitle') }, icon('fit', 13), el('span', { text: T('nodes.assistant.show') }));
-          show.addEventListener('click', () => deps.showNodes(card.nodeIds.filter((id) => deps.getGraph().nodes.some((node) => node.id === id))));
-          actions.append(show);
-        }
       }
-      box.append(actions);
+      if (state !== 'gone' && card.nodeIds.length) {
+        const show = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-asst-show', title: T('nodes.assistant.showTitle') }, icon('fit', 13), el('span', { text: T('nodes.assistant.show') }));
+        show.addEventListener('click', () => {
+          if (deps.getWorkflowId() === message.workflowId) deps.showNodes(card.nodeIds.filter((id) => deps.getGraph().nodes.some((node) => node.id === id)));
+        });
+        actions.append(show);
+      }
+      return actions;
+    }
+
+    function renderEditCard(message) {
+      const card = message.editCard;
+      const state = cardState(card);
+      card.lastState = state;
+      const box = el('section', { class: 'nv-asst-card nv-asst-edit' });
+      box.append(el('h3', { class: 'nv-asst-card-title', text: T('nodes.assistant.changed', { count: card.edit.changes.length + (Number.isFinite(card.edit.more) ? card.edit.more : 0) }) }));
+      const list = el('ul', { class: 'nv-asst-adjusted' });
+      for (const line of changeLines(card.edit, T, ui.paramLabel)) list.append(el('li', { text: line }));
+      box.append(list);
+      if (!card.adopted) box.append(el('p', { class: 'nv-asst-card-line is-warn', text: T('nodes.assistant.editConflict') }));
+      else box.append(renderUndoActions(message, card, state));
+      return box;
+    }
+
+    function runDisabled(message) {
+      return message.runCard.used || deps.getWorkflowId() !== message.workflowId || Boolean(deps.isRunActive && deps.isRunActive());
+    }
+
+    function renderRunCard(message) {
+      const card = message.runCard;
+      const box = el('section', { class: 'nv-asst-card nv-asst-run' });
+      box.append(el('h3', { class: 'nv-asst-card-title', text: T('nodes.assistant.run.title') }));
+      for (const line of runLines(card.request, T, (cost) => amountText(cost) || money(cost.usd))) box.append(el('p', { class: 'nv-asst-card-line', text: line }));
+      card.lastDisabled = runDisabled(message);
+      const start = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-asst-start', disabled: card.lastDisabled,
+        text: T(card.used ? 'nodes.assistant.run.handed' : runIsPaid(card.request) ? 'nodes.assistant.run.checkStart' : 'nodes.assistant.run.start') });
+      start.addEventListener('click', () => {
+        if (runDisabled(message) || !deps.startRun) return;
+        card.used = true;
+        place(message);
+        const { mode, nodeIds, nodeId, items, force } = card.request;
+        // The run controller owns all gates, including costs, automatic approval and active runs.
+        Promise.resolve(deps.startRun({ mode, nodeIds, nodeId, items, force })).catch(() => {});
+      });
+      box.append(start);
+      return box;
+    }
+
+    function renderConfirmation(message, action) {
+      const text = confirmationText(action, T);
+      const box = el('section', { class: 'nv-asst-card nv-asst-confirm' });
+      box.append(el('h3', { class: 'nv-asst-card-title', text: text.title }));
+      for (const line of text.lines) box.append(el('p', { class: 'nv-asst-card-line', text: line }));
+      const status = el('p', { class: 'nv-asst-action-status', role: 'status', tabindex: '-1', text: action.error || (action.state ? T(`nodes.assistant.confirm.${action.state}`) : '') });
+      box.append(status);
+      const url = safeActionUrl(action.result && action.result.url);
+      if (url) box.append(el('a', { class: 'nv-asst-result-link', href: url, target: '_blank', rel: 'noopener noreferrer', text: action.result.url }));
+      if (['done', 'discarded', 'expired'].includes(action.state)) return box;
+      const controls = el('div', { class: 'nv-asst-card-actions' });
+      const accept = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-asst-accept', disabled: action.state === 'busy', text: text.verb });
+      const discard = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-asst-discard', disabled: action.state === 'busy', text: T('nodes.assistant.confirm.discard') });
+      const perform = async (remove) => {
+        if (action.state === 'busy' || ['done', 'discarded', 'expired'].includes(action.state)) return;
+        action.state = 'busy';
+        action.error = '';
+        accept.disabled = discard.disabled = true;
+        status.textContent = T('nodes.assistant.confirm.busy');
+        status.focus({ preventScroll: true });
+        try {
+          if (remove) await api.discardAssistantAction(message.workflowId, action.id);
+          else {
+            const answer = await api.assistantAction(message.workflowId, action.id);
+            action.result = answer.result;
+          }
+          action.state = remove ? 'discarded' : 'done';
+        } catch (error) {
+          action.state = error.code === 'ACTION_EXPIRED' ? 'expired' : '';
+          if (!action.state) action.error = error.message;
+        }
+        if (deps.getWorkflowId() === message.workflowId) {
+          const focused = typeof document !== 'undefined' && box.contains(document.activeElement);
+          place(message);
+          // Restore focus only if it was still in this action, never while someone types elsewhere.
+          if (focused) shown.get(message.id)?.querySelectorAll('.nv-asst-action-status')[message.confirmations.indexOf(action)]?.focus({ preventScroll: true });
+        }
+      };
+      accept.addEventListener('click', () => perform(false));
+      discard.addEventListener('click', () => perform(true));
+      controls.append(accept, discard);
+      box.append(controls);
       return box;
     }
 
@@ -662,12 +823,9 @@
       const current = thread();
       if (!current || !view.list) return;
       for (const message of current.messages) {
-        if (!message.card) continue;
-        const state = cardState(message.card);
-        if (message.card.lastState !== state) {
-          message.card.lastState = state;
-          place(message);
-        }
+        const cards = [message.card, message.editCard].filter(Boolean);
+        if (cards.some((card) => card.lastState !== cardState(card)) ||
+            (message.runCard && message.runCard.lastDisabled !== runDisabled(message))) place(message);
       }
     }
 
@@ -761,26 +919,39 @@
       place(pending);
       scrollDown();
       paintSend();
-      const body = {
-        question,
-        canvas: summarizeCanvas(deps.getGraph(), { selected: deps.getSelection(), warnings: deps.getWarnings() }),
-        history,
-        lang: deps.getLang()
-      };
-      // the model of the list in the panel (a saved model that is not allowed any more is not sent: the default is)
-      const model = currentModel();
-      if (model) body.model = model;
       let answer = null;
       let problem = null;
+      let message;
+      let adoptedRev = null;
+      const release = deps.holdExternalSaves ? deps.holdExternalSaves(current.id) : () => {};
       try {
+        await deps.flushSave();
+        const body = {
+          question,
+          canvas: summarizeCanvas(deps.getGraph(), { selected: deps.getSelection(), warnings: deps.getWarnings() }),
+          history, lang: deps.getLang(), tools: true,
+          rev: deps.getWorkflowId() === current.id && deps.savedRev ? deps.savedRev() : null
+        };
+        if (deps.getWorkflowId() !== current.id) throw new Error(T('nodes.assistant.notInserted'));
+        const model = currentModel();
+        if (model) body.model = model;
         answer = await api.assistant(current.id, body);
+        let adopted = false;
+        if (answer.edit && deps.adoptServerEdit) {
+          const result = await deps.adoptServerEdit(answer.edit, current.id);
+          adopted = Boolean(result && result.ok);
+          if (adopted) adoptedRev = answer.edit.rev;
+        }
+        message = answerMessage(current, answer, adopted);
       } catch (error) {
         problem = error;
+      } finally {
+        await release(adoptedRev);
       }
       current.busy = false;
       const index = current.messages.indexOf(pending);
       if (index < 0) return; // the conversation was cleared meanwhile
-      const message = problem ? errorMessage(problem) : answerMessage(current, answer);
+      if (problem) message = errorMessage(problem);
       message.id = pending.id;
       current.messages[index] = message;
       if (deps.getWorkflowId() === current.id) {
@@ -805,10 +976,10 @@
     }
 
     // The answer of the server -> the message; an insert proposal is applied right here (one step in the history).
-    function answerMessage(current, answer) {
+    function answerMessage(current, answer, adopted = false) {
       const reg = deps.getReg();
       const mentions = (Array.isArray(answer.mentions) ? answer.mentions : []).filter((type, index, all) => typeof type === 'string' && reg && reg.types.has(type) && all.indexOf(type) === index);
-      const message = { role: 'assistant', text: String(answer.answer || ''), mentions, notes: [], meta: [], modelLine: '', adjusted: [] };
+      const message = { role: 'assistant', workflowId: current.id, text: String(answer.answer || ''), mentions, notes: [], meta: [], modelLine: '', adjusted: [] };
       if (answer.budget) setBudget(answer.budget);
       const usage = isPlain(answer.usage) ? answer.usage : {};
       if (usage.replaced) {
@@ -820,7 +991,18 @@
       const quota = isPlain(answer.quota) ? answer.quota : null;
       if (quota && isNumber(quota.remaining) && quota.remaining <= QUOTA_NOTE_AT) message.meta.push(T('nodes.assistant.quotaLow', { remaining: quota.remaining, minutes: Math.max(1, Math.round((Number(quota.windowSeconds) || 600) / 60)) }));
       if (answer.insertRejected) message.notes.push({ kind: 'warn', text: T('nodes.assistant.rejected') });
-      if (answer.insert) applyInsert(current, answer, message);
+      message.steps = (Array.isArray(answer.steps) ? answer.steps : []).filter((step) => step && typeof step.tool === 'string');
+      if (answer.edit) {
+        const changes = Array.isArray(answer.edit.changes) ? answer.edit.changes : [];
+        const nodeIds = [...new Set(changes.flatMap((change) => [change.node?.id, change.from?.node?.id, change.to?.node?.id]).filter(Boolean))];
+        message.editCard = { kind: 'edit', edit: { ...answer.edit, changes }, nodeIds, adopted, revision: deps.historyRevision(), undone: false };
+      }
+      if (answer.insert) {
+        if (answer.edit && !adopted) message.notes.push({ kind: 'warn', text: T('nodes.assistant.notInsertedEdit') });
+        else applyInsert(current, answer, message);
+      }
+      if (answer.run) message.runCard = { request: answer.run, used: false };
+      message.confirmations = (Array.isArray(answer.confirm) ? answer.confirm : []).filter((action) => action && ACTION_TOOLS.includes(action.tool)).map((action) => ({ ...action, state: '', error: '' }));
       return message;
     }
 
@@ -904,7 +1086,7 @@
       if (open) paintAll();
     }
 
-    OCD.bus.on('graph', () => {
+    for (const event of ['graph', 'sse', 'reconcile']) OCD.bus.on(event, () => {
       if (open) repaintCards();
     });
 
