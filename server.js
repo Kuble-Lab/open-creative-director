@@ -1903,14 +1903,7 @@ app.get('/api/influencers/:id', async (req, res) => {
   if (!id) return;
   try {
     const viewer = access.viewerOf(req);
-    const influencer = await influencers.readVisibleInfluencer(id, viewer);
-    const editable = influencers.editableBy(influencer, viewer);
-    // who confirmed and who owns it, and the settings of its page (they name the people who may open a protected page), are for the
-    // people who may change it, not for everybody who may use a shared or open one
-    const { site, ...usable } = influencer;
-    const shown = editable ? influencer : { ...usable, owner: null, consent: influencer.consent ? { confirmedAt: influencer.consent.confirmedAt } : null };
-    const { own, claimable } = influencers.influencerSummary(influencer, { viewer });
-    res.json({ ...shown, editable, own, claimable });
+    res.json(await influencers.readInfluencerView(id, viewer));
   } catch (err) { influencerError(res, err); }
 });
 

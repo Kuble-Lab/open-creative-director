@@ -442,6 +442,18 @@ location /supercomputer/ {
 
 | Tool | Right | What it does |
 | --- | --- | --- |
+| `get_guide` | read | Lists guide topics; with topic reads the guide. Read workflow-basics before building or starting. |
+| `get_workflow_results` | read | Result text and file links with asset_id; history entries with entry_id |
+| `get_workflow_costs` | read | Costs already incurred by a workflow |
+| `resume_run` | read and start | Continues an awaiting_approval run after the person approves, with run_id and max_usd |
+| `duplicate_workflow` | read and start | Copies a workflow, with an optional name |
+| `delete_result_entry` | read and start | Deletes one result history entry only after the person agrees, with confirm: true |
+| `list_influencers`, `get_influencer` | read | Lists characters and reads their details |
+| `create_influencer`, `update_influencer`, `add_influencer_image` | read and start | Creates or edits characters and adds uploaded images; creation needs the person’s consent and consent: true |
+| `get_influencer_site` | read | Page settings, publication status and preview_url (app login required) |
+| `update_influencer_site`, `add_influencer_site_item`, `remove_influencer_site_item` | read and start | Edits a page and its items: YouTube, uploaded files or workflow results; ask before removing content |
+| `publish_influencer_site` | read and start | Publishes only after the person agrees, with confirm: true; returns the public URL when ready |
+| `suno_status`, `suno_library`, `suno_audio` | read | Reads the connected Suno account and existing songs; no song generation |
 | `list_templates` | read | Templates with inputs and cost range |
 | `list_workflows` | read | Own and shared workflows |
 | `get_workflow` | read | Address in the app (`url`), nodes, inputs, latest results as links; with `include_graph` the graph (nodes with params and ports, connections) |
@@ -454,6 +466,8 @@ location /supercomputer/ {
 | `edit_workflow` | read and start | Changes the graph with the rules of the editor: add and remove nodes, connect and disconnect, set params and labels, choose the inputs of the workflow. All operations of a call or none; nothing runs |
 | `run_workflow` | read and start | Starts a run; requires `max_usd`, the most the agent accepts to pay |
 | `cancel_run` | read and start | Cancels a run of this key |
+
+`estimate_run` and `run_workflow` accept mode (all, node, selection, items), node_ids or node_id + items, and force. Estimate the same scope before each run and ask the person before paid work. Publication and deletion need the person’s yes; no tool deletes entire workflows or influencers.
 
 Every answer about a workflow carries its address in the app (`url`, `<base>/#w=<id>`). `edit_workflow` acts as the person: it reaches their workflows and those shared with them, refuses node types priced in credits (Higgsfield) and file params (expose the param with `expose_input` and give the file in `inputs`), and reports whether the workflow can run afterwards.
 
@@ -469,7 +483,7 @@ A *Read only* key sees and uses the read tools. `run_workflow` refuses with a re
 
 **Reverse proxy.** The app checks the key itself, so three paths must be released **without a login in front**: the endpoint `/mcp`, `/mcp/files/` and `/mcp/upload/`. In nginx that is `location = /mcp` and `location ^~ /mcp/`; a plain `location /mcp` would also release `/mcp-ui.js` and every other path that begins with `/mcp`. Everything else keeps the login. For `/mcp/upload/` allow large bodies and do not buffer them (nginx: `client_max_body_size 500m;` and `proxy_request_buffering off;`). Set `PUBLIC_BASE_URL` to the public address of the app, otherwise the dialog and the links show the internal one. Agents send no `Origin` header; requests from a browser page are checked against the whole origin (scheme, host and port): the address in `PUBLIC_BASE_URL` is allowed, further origins go into `MCP_ALLOWED_ORIGINS` (comma-separated; a bare host means `https://host`). Loopback addresses are accepted only on a local installation, without `PUBLIC_BASE_URL` (or with a loopback one), and only on the port of the app itself. The app does not limit wrong keys per IP address (the keys have 256 bits); do that at the proxy if you need it. The paths `/.well-known/oauth-*` are not used (bearer key only); the proxy may answer them with `404`.
 
-Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `test-mcp-tools.js`, `test-mcp-limits.js` (JSON-RPC client over real HTTP against isolated app copies, no paid call) and `test-mcp-ui.js`.
+Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `test-mcp-tools.js`, `test-mcp-limits.js` (JSON-RPC client over real HTTP against isolated app copies, no paid call) and `test-mcp-ui.js`, `test-agent-guide.js`, `test-mcp-influencer-tools.js`.
 
 ## Tests
 

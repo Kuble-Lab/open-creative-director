@@ -1,0 +1,10 @@
+# Influencers and their pages
+Create a consented character, attach reference images and prepare a page for approval.
+
+1. Use `list_influencers` and `get_influencer` first. Before `create_influencer`, ask the person to confirm that the character does not depict a real person without consent; only then send consent: true. Required text fields are name (60 characters maximum) and full (1500). Other text limits: tagline 300, short 400, looks 1000, face 400, never 400, credit 200, style 1000. The optional voice object holds voice_id (letters, digits, hyphens or underscores), name (80) and description (400). Use `update_influencer` to change fields. At most ten owned influencers are allowed.
+2. Use `upload_asset`, then `add_influencer_image` with its asset_id. Each influencer accepts at most six PNG/JPEG/WebP images, each up to 15 MB. Use `get_influencer` to check the saved result.
+3. Use `edit_workflow` to add input.influencer and set its influencer parameter to the ID. Its outputs are figure, images, voice, voice_description and style; images preserves saved order. Inspect target ports with `list_node_types` before connecting.
+4. Read `get_influencer_site`, then use `update_influencer_site` for page settings. `add_influencer_site_item` accepts a youtube link, an uploaded asset_id, or workflow_id plus asset_id for a workflow result. Inspect results with `get_workflow_results` to find that asset_id. `remove_influencer_site_item` removes a page item; obtain the person's yes before removing content.
+5. Share preview_url for review: it needs the person's app login. Confirm visibility and content with the person before publication. Only after their yes call `publish_influencer_site` with confirm: true (optional wait_seconds). A public page is publicly visible. Publication returns the public URL when ready; if still running, check `get_influencer_site` and give the person the resulting URL.
+
+There is no MCP tool to delete an entire influencer. Preparing a page is not publication.

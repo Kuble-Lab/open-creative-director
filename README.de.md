@@ -450,6 +450,18 @@ location /supercomputer/ {
 
 | Werkzeug | Recht | Was es tut |
 | --- | --- | --- |
+| `get_guide` | Lesen | Listet Leitfaden-Themen; mit topic den Text lesen. Vor dem Bauen oder Starten workflow-basics lesen. |
+| `get_workflow_results` | Lesen | Ergebnistexte und Dateilinks mit asset_id; Verlaufseinträge mit entry_id |
+| `get_workflow_costs` | Lesen | Bisherige Kosten eines Workflows |
+| `resume_run` | Lesen und starten | Setzt awaiting_approval nach dem Ja der Person fort, mit run_id und max_usd |
+| `duplicate_workflow` | Lesen und starten | Kopiert einen Workflow, optional mit neuem Namen |
+| `delete_result_entry` | Lesen und starten | Löscht einen Ergebnis-Verlaufseintrag erst nach dem Ja der Person, mit confirm: true |
+| `list_influencers`, `get_influencer` | Lesen | Listet Figuren und liest ihre Details |
+| `create_influencer`, `update_influencer`, `add_influencer_image` | Lesen und starten | Legt Figuren an, bearbeitet sie und ergänzt hochgeladene Bilder; Anlegen braucht die Einwilligung der Person und consent: true |
+| `get_influencer_site` | Lesen | Seiteneinstellungen, Publikationsstatus und preview_url (App-Login nötig) |
+| `update_influencer_site`, `add_influencer_site_item`, `remove_influencer_site_item` | Lesen und starten | Bearbeitet Seite und Inhalte: YouTube, Uploads oder Workflow-Ergebnisse; vor dem Entfernen fragen |
+| `publish_influencer_site` | Lesen und starten | Publiziert erst nach dem Ja der Person, mit confirm: true; liefert die öffentliche URL, sobald bereit |
+| `suno_status`, `suno_library`, `suno_audio` | Lesen | Liest das verbundene Suno-Konto und bestehende Songs; keine Song-Erzeugung |
 | `list_templates` | Lesen | Vorlagen mit Eingängen und Kostenspanne |
 | `list_workflows` | Lesen | Eigene und geteilte Workflows |
 | `get_workflow` | Lesen | Adresse in der App (`url`), Nodes, Eingänge, letzte Ergebnisse als Links; mit `include_graph` der Graph (Nodes mit Parametern und Anschlüssen, Verbindungen) |
@@ -463,6 +475,8 @@ location /supercomputer/ {
 | `run_workflow` | Lesen und starten | Startet einen Lauf; verlangt `max_usd`, den höchsten Betrag, den der Agent zu zahlen bereit ist |
 | `cancel_run` | Lesen und starten | Bricht einen Lauf dieses Schlüssels ab |
 
+`estimate_run` und `run_workflow` nehmen mode (all, node, selection, items), node_ids oder node_id + items und force an. Vor jedem Lauf denselben Umfang schätzen und vor bezahlter Arbeit die Person fragen. Publizieren und Löschen brauchen ihr Ja; kein Werkzeug löscht ganze Workflows oder Influencer.
+
 Jede Antwort zu einem Workflow nennt seine Adresse in der App (`url`, `<Basis>/#w=<id>`). `edit_workflow` handelt als die Person: Es erreicht ihre Workflows und die mit ihr geteilten, lehnt Node-Typen mit Credit-Preis (Higgsfield) und Datei-Parameter ab (den Parameter mit `expose_input` zum Eingang machen und die Datei in `inputs` mitgeben) und meldet, ob der Workflow danach starten kann.
 
 Ein Schlüssel «Nur lesen» sieht und nutzt die Lese-Werkzeuge. `run_workflow` lehnt mit einem verständlichen Grund ab, und es wird nichts belastet, wenn die Schätzung über `max_usd` oder über dem Limit pro Lauf liegt, wenn der Kalendermonat das Monatslimit überschreiten würde (gebuchte Kosten des Schlüssels plus Reservierungen laufender Läufe), wenn ein bezahlter Schritt keinen bekannten Preis hat, wenn der Workflow Higgsfield nutzt (für Agents gesperrt), wenn der Schlüssel schon zwei Läufe laufen hat oder wenn das Budget der Person nicht reicht.
@@ -475,7 +489,7 @@ Ein Schlüssel «Nur lesen» sieht und nutzt die Lese-Werkzeuge. `run_workflow` 
 
 **Reverse-Proxy.** Die App prüft den Schlüssel selbst. Darum müssen drei Pfade **ohne vorgeschaltetes Login** freigegeben werden: der Endpunkt `/mcp`, `/mcp/files/` und `/mcp/upload/`. In nginx sind das `location = /mcp` und `location ^~ /mcp/`; ein einfaches `location /mcp` würde auch `/mcp-ui.js` und jeden anderen Pfad freigeben, der mit `/mcp` beginnt. Alles andere bleibt hinter dem Login. Für `/mcp/upload/` grosse Anfragekörper zulassen und nicht puffern (nginx: `client_max_body_size 500m;` und `proxy_request_buffering off;`). Setze `PUBLIC_BASE_URL` auf die öffentliche Adresse der App, sonst zeigen der Dialog und die Links die interne. Agents senden keinen `Origin`-Header; Anfragen einer Browser-Seite werden gegen den ganzen Ursprung geprüft (Schema, Host und Port): die Adresse in `PUBLIC_BASE_URL` ist erlaubt, weitere Ursprünge gehören in `MCP_ALLOWED_ORIGINS` (durch Komma getrennt; ein blosser Host bedeutet `https://Host`). Loopback-Adressen gelten nur bei einer lokalen Installation, ohne `PUBLIC_BASE_URL` (oder mit einer Loopback-Adresse), und nur auf dem Port der App selbst. Falsche Schlüssel begrenzt die App nicht pro IP-Adresse (die Schlüssel haben 256 Bit); das gehört bei Bedarf in den Proxy. Die Pfade `/.well-known/oauth-*` werden nicht gebraucht (nur Bearer-Schlüssel); der Proxy darf sie mit `404` beantworten.
 
-Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `test-mcp-tools.js`, `test-mcp-limits.js` (JSON-RPC-Client über echtes HTTP gegen isolierte App-Kopien, kein bezahlter Aufruf) und `test-mcp-ui.js`.
+Tests: `scripts/test-mcp-protocol.js`, `test-mcp-keys.js`, `test-mcp-api.js`, `test-mcp-tools.js`, `test-mcp-limits.js` (JSON-RPC-Client über echtes HTTP gegen isolierte App-Kopien, kein bezahlter Aufruf) und `test-mcp-ui.js`, `test-agent-guide.js`, `test-mcp-influencer-tools.js`.
 
 ## Tests
 
