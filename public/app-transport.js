@@ -337,7 +337,8 @@ function handleEvent(event) {
     live.textEl = null;
     const node = document.createElement('div');
     node.className = 'msg tool';
-    const c = chip(event.label || t('common.working'), true, false);
+    const workflowTool = ['get_guide', 'get_workflow', 'list_node_types', 'get_workflow_results', 'get_workflow_costs', 'estimate_run', 'edit_workflow', 'create_workflow', 'duplicate_workflow'].includes(event.tool);
+    const c = chip(workflowTool ? t('workflowEdit.tool') : event.label || t('common.working'), true, false);
     node.appendChild(c);
     appendLiveNode(node);
     live.chips.push(c);
@@ -363,6 +364,15 @@ function handleEvent(event) {
     node.className = 'msg tool';
     node.appendChild(chip(t('tools.videoChoosing'), false, false));
     node.appendChild(videoModelChoiceCard(event.choice));
+    appendLiveNode(node);
+    return;
+  }
+  if (event.type === 'workflow_edit' && event.edit) {
+    finishChips();
+    live.textEl = null;
+    const node = document.createElement('div');
+    node.className = 'msg tool';
+    node.appendChild(workflowEditCard(event.edit));
     appendLiveNode(node);
     return;
   }

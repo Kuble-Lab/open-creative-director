@@ -159,6 +159,7 @@ async function testSessions(ctx) {
     ['GET', `/api/sessions/${chat.id}/workflow-runs/wfr-x`],
     ['POST', `/api/sessions/${chat.id}/workflow-runs/wfr-x`, {}],
     ['POST', `/api/sessions/${chat.id}/workflow-runs/wfr-x/cancel`, {}],
+    ['POST', `/api/sessions/${chat.id}/workflow-edits/wfe-x/undo`, {}],
     ['DELETE', `/api/sessions/${chat.id}/video-model-preference`]
   ];
   for (const [method, url, json] of foreign) {

@@ -783,3 +783,60 @@ function messageShell(role) {
   return { wrap, bubble };
 }
 
+
+// Edit cards use the existing workflow card layout and safe text nodes.
+function workflowEditCard(edit) {
+  const card = document.createElement('section');
+  card.className = `workflow-run workflow-edit ${edit.status}`;
+  card.dataset.editId = edit.id;
+  card.setAttribute('aria-label', t('workflowEdit.label'));
+  const head = document.createElement('div');
+  head.className = 'wr-head';
+  head.appendChild(textNode('span', 'wr-kind', t('workflowEdit.label')));
+  head.appendChild(textNode('span', 'wr-state', t(`workflowEdit.state.${edit.status}`)));
+  card.appendChild(head);
+  card.appendChild(textNode('strong', 'wr-title', edit.title));
+  if (edit.kind !== 'edit') card.appendChild(textNode('p', 'wr-meta', t(`workflowEdit.${edit.kind}`)));
+  for (const change of edit.changes || []) {
+    const [op, ...detail] = change.split(' · ');
+    card.appendChild(textNode('p', 'wr-meta', [t(`workflowEdit.change.${op}`), ...detail].join(' · ')));
+  }
+  if (edit.status === 'undo_unavailable') card.appendChild(textNode('p', 'wr-note', t(edit.reason === 'NO_CHANGE' ? 'workflowEdit.noChange' : edit.reason === 'SNAPSHOT_TOO_LARGE' ? 'workflowEdit.tooLarge' : 'workflowEdit.expired')));
+  const foot = document.createElement('div');
+  foot.className = 'wr-foot';
+  const open = workflowRunOpenLink(edit);
+  if (open) foot.appendChild(open);
+  if (edit.canUndo) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wr-cancel';
+    button.textContent = t('workflowEdit.undo');
+    button.disabled = state.streaming;
+    button.addEventListener('click', () => undoWorkflowEdit(edit, card, button));
+    foot.appendChild(button);
+  }
+  card.appendChild(foot);
+  return card;
+}
+
+async function undoWorkflowEdit(edit, card, button) {
+  const sessionId = state.currentId;
+  if (!sessionId || state.streaming || button.disabled) return;
+  button.disabled = true;
+  button.textContent = t('workflowEdit.working');
+  card.querySelector('.wr-error-text')?.remove();
+  try {
+    const data = await api(`/api/sessions/${encodeURIComponent(sessionId)}/workflow-edits/${encodeURIComponent(edit.id)}/undo`, {
+      method: 'POST', body: JSON.stringify({ lang: getLang() })
+    });
+    if (state.currentId !== sessionId) return;
+    for (const message of state.detail?.session?.messages || []) if (message.workflowEditId === edit.id) message.workflowEdit = data.edit;
+    card.replaceWith(workflowEditCard(data.edit));
+  } catch (err) {
+    if (state.currentId !== sessionId) return;
+    const known = ['WORKFLOW_CHANGED', 'RUN_ACTIVE', 'UNDO_UNAVAILABLE', 'FORBIDDEN', 'NOT_FOUND'].includes(err.code);
+    card.appendChild(textNode('p', 'wr-error-text', t(`workflowEdit.error.${known ? err.code : 'UNKNOWN'}`)));
+    button.textContent = t('workflowEdit.undo');
+    button.disabled = ['UNDO_UNAVAILABLE', 'FORBIDDEN', 'NOT_FOUND', 'WORKFLOW_CHANGED'].includes(err.code);
+  }
+}

@@ -7,6 +7,15 @@ const { POLICY, EXCEPTIONS, ASSISTANT_ONLY, assertParity, createAssistantTools }
 async function main() {
   const list = buildTools(); // Construct definitions only: no service, key, provider or network needed.
   assert.equal(assertParity(list), true);
+  const chat = require('../lib/chat-workflow-tools');
+  assert.equal(chat.assertParity(list), true);
+  const viewer = { active: true, identified: true, email: 'person@example.com' };
+  const chatTools = chat.createChatTools({ viewer }).tools;
+  const definitions = require('../lib/tools').toolDefinitions(viewer);
+  for (const tool of chatTools) assert.deepEqual(definitions.find((item) => item.function.name === tool.name).function.parameters, chat.offeredTool(list.find((item) => item.name === tool.name)).inputSchema);
+  assert.throws(() => chat.assertParity([...list, { name: 'new_tool' }]), /chat policy/);
+  assert.throws(() => chat.assertParity(list, chatTools.map((tool) => tool.name === 'get_workflow' ? { ...tool, inputSchema: {} } : tool)), /schema differs/);
+  assert.throws(() => chat.assertParity(list, chatTools.slice(1)), /differ from policy/);
   const offered = createAssistantTools({ workflowId: 'open', viewer: { active: false }, rev: null }).tools;
   assert.deepEqual(offered.map((tool) => tool.name).sort(), Object.keys(POLICY).sort());
   assert.ok(Object.isFrozen(POLICY) && Object.isFrozen(EXCEPTIONS) && Object.isFrozen(ASSISTANT_ONLY));
