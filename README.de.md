@@ -327,6 +327,8 @@ Kommt die Login-Mail einer teilnehmenden Person nicht an (Firewall, Quarantäne)
 
 ## Agent-Zugang (MCP) (optional)
 
+Der Node-Assistent nutzt dieselben Werkzeugdefinitionen und Dienste wie der Agent-Zugang. Er liest Daten und ändert den gespeicherten offenen Workflow direkt (mit Rückgängig im Editor). Läufe, Publizieren, das Löschen von Ergebnissen sowie Änderungen an Figuren oder ihren Seiten brauchen einen Klick in der App; der Assistent bereitet sie nur vor. Ungespeicherte Änderungen müssen vor Werkzeug-Edits gespeichert werden; Vorschläge für neue Nodes funktionieren weiterhin auf der Arbeitsfläche des Browsers.
+
 Externe Agents (Claude Code, Codex, eigene Bots) können über einen [MCP](https://modelcontextprotocol.io)-Endpunkt Läufe in der App bestellen. Ein Agent arbeitet mit einem persönlichen Schlüssel im Namen der Person, die ihn angelegt hat: mit denselben Vorlagen, Workflows und Kostenregeln wie in der Oberfläche, begrenzt pro Lauf und pro Monat. Die App führt die Workflows aus; der Agent bestellt nur Läufe und holt die Ergebnisse. Der Endpunkt ist `POST /mcp` (MCP über Streamable HTTP, Antworten nur als JSON; `GET` ergibt `405`). Es ist eine kleine eigene Umsetzung ohne zusätzliche Abhängigkeit. Sie spricht die Protokollrevision 2026-07-28 und, mit `initialize` und Versionsaushandlung, die früheren Revisionen 2025-11-25, 2025-06-18 und 2025-03-26. JSON-RPC-Batches (ein Array mit bis zu 10 Nachrichten) nimmt sie an, wie es die Revision 2025-03-26 verlangt, also ohne Versions-Header oder mit `2025-03-26`.
 
 **Einrichten**
