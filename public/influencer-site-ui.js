@@ -185,6 +185,18 @@
     }
   }
 
+  async function addYoutube() {
+    const id = site.id;
+    try {
+      const answer = await api(`${base(id)}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youtube: site.youtube || '' }) });
+      if (!showing(id)) return;
+      site.youtube = '';
+      take({ ...site.data, site: answer.site }, { keepDraft: true });
+    } catch (err) {
+      if (showing(id)) site.error = err.message;
+    }
+  }
+
   async function removeItem(itemId) {
     const id = site.id;
     try {
@@ -253,7 +265,7 @@
       img.loading = 'lazy';
       thumb.appendChild(img);
     } else {
-      thumb.appendChild(element('span', '', t(info.kind === 'video' ? 'influencers.site.kindVideo' : 'influencers.site.kindImage')));
+      thumb.appendChild(element('span', '', info.kind === 'youtube' ? 'YouTube' : t(info.kind === 'video' ? 'influencers.site.kindVideo' : 'influencers.site.kindImage')));
     }
     row.appendChild(thumb);
 
@@ -265,7 +277,7 @@
     text.placeholder = t('influencers.site.itemText');
     text.setAttribute('aria-label', t('influencers.site.itemText'));
     texts.append(title, text);
-    texts.appendChild(element('span', 'influencer-field-hint', [info.date, t(info.hosted ? 'influencers.site.itemHosted' : 'influencers.site.itemDraft')].filter(Boolean).join(' · ')));
+    texts.appendChild(element('span', 'influencer-field-hint', [info.date, info.kind === 'youtube' ? 'YouTube' : t(info.hosted ? 'influencers.site.itemHosted' : 'influencers.site.itemDraft')].filter(Boolean).join(' · ')));
     row.appendChild(texts);
 
     const actions = element('div', 'influencer-site-item-actions');
@@ -384,6 +396,13 @@
       d.items.forEach((item, index) => list.appendChild(itemRow(item, index, locked)));
       container.appendChild(list);
     }
+    // a film that is already on YouTube comes in by its link
+    const tubeRow = element('div', 'influencer-site-row');
+    const tube = input('input', site.youtube, { max: 200, disabled: locked, onInput: (value) => { site.youtube = value; } });
+    tube.placeholder = t('influencers.site.youtubeLink');
+    tube.setAttribute('aria-label', t('influencers.site.youtubeLink'));
+    tubeRow.append(tube, managerAction(t('influencers.site.youtubeAdd'), () => run(addYoutube), { disabled: locked }));
+    container.appendChild(tubeRow);
 
     if (site.error) container.appendChild(element('div', 'branding-import-feedback error', site.error));
     if (s.lastError && !running) container.appendChild(element('div', 'branding-import-feedback error', s.lastError));
