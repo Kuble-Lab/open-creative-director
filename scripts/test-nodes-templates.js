@@ -431,7 +431,7 @@ async function main() {
       // every param of every node is one of the node with a valid value (nothing is dropped by the import)
       for (const node of hudDoc.graph.nodes) {
         // The new cache-omitted switch is intentionally absent from the saved template; normalization supplies its exact default.
-        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.type === 'music_video.hud_plan' ? { ...node.params, guest: '' } : node.params;
+        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.type === 'music_video.hud_plan' ? { ...node.params, guest: '', duet_scenes: node.params.duet_scenes || 'off' } : node.params;
         assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), expected, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
       }
       // Nano Banana 2.1 is set on the node of the character sheet and on every node of the pictures (the choice of the owner, not the default of the
@@ -512,7 +512,7 @@ async function main() {
       const elevenDoc = byId['music-video-hud-elevenlabs'];
       const elevenNode = (id) => elevenDoc.graph.nodes.find((node) => node.id === id);
       for (const node of elevenDoc.graph.nodes) {
-        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.type === 'music_video.hud_plan' ? { ...node.params, guest: '' } : node.params;
+        const expected = node.type === 'music_video.hud_render' ? { ...node.params, chorus_words: 'off' } : node.type === 'music_video.hud_plan' ? { ...node.params, guest: '', duet_scenes: node.params.duet_scenes || 'off' } : node.params;
         assert.deepEqual(nodeRegistry.normalizeParams(nodeRegistry.get(node.type), node.params), expected, `${node.id} (${node.type}): every param is one of the node, with a valid value`);
       }
       // the chain from the analysis to the film is the one of the first template, node by node (only the place on the canvas differs)
@@ -631,6 +631,15 @@ async function main() {
       const doc = byId['music-video-hud-guest'];
       const get = (id) => doc.graph.nodes.find((n) => n.id === id);
       assert.equal(get('n34').type, 'input.influencer');
+      assert.equal(get('n4').params.duet_scenes, 'auto');
+      assert.equal(get('n37').type, 'fal.h3_reference');
+      assert.deepEqual(get('n37').params, { resolution: '768P', aspect_ratio: '16:9', prompt_expansion: 'disabled', duration: 5, duration_from_audio: true, seed: null, safety: true, prompt: '' });
+      assert.deepEqual(doc.graph.edges.filter((e) => e.to.node === 'n37').map((e) => [e.from.node, e.from.port, e.to.port]), [
+        ['n4', 'duet_prompts', 'prompt'], ['n4', 'duet_audio', 'audio'], ['n5', 'image', 'images'], ['n35', 'image', 'images']
+      ]);
+      assert.ok(doc.graph.edges.some((e) => e.from.node === 'n37' && e.from.port === 'video' && e.to.node === 'n16' && e.to.port === 'duet'));
+      assert.ok(!doc.graph.edges.some((e) => e.to.node === 'n37' && e.to.port === 'audios'));
+      assert.ok(!doc.app.outputs.some((o) => o.node === 'n37' && o.approve), 'duet generation follows the existing picture approval stage');
       assert.deepEqual(get('n35').params, get('n5').params, 'both sheets share model, aspect and count');
       for (const id of ['n9', 'n10', 'n11']) assert.deepEqual(doc.graph.edges.filter((e) => e.to.node === id && e.to.port === 'images').map((e) => e.from.node), ['n5', 'n35'], 'lead sheet first, guest sheet second');
       for (const id of ['n6', 'n7', 'n8']) assert.match(get(id).params.template, /first.*lead.*second.*guest.*only the people.*own sheet.*\{\{a\}\}/i);
