@@ -184,6 +184,8 @@
     /* ----- data ----- */
 
     const clips = () => (model ? model.clips : []);
+    // "Clip 7": the number of the clip in the film, the name people use when they talk about it
+    const clipTitle = (clip) => T('nodes.timeline.clipNumber', { number: clips().indexOf(clip) + 1 });
     const shown = () => tl.filter(clips(), filter, runView());
     const selected = () => clips().find((clip) => clip.key === selectedKey) || null;
     const statusOf = (clip) => tl.status(clip, runView());
@@ -317,12 +319,15 @@
       clipsRow.textContent = '';
       for (const entry of layout.clips) {
         const clip = entry.clip;
-        const label = clip.label || clip.key;
+        const label = clipTitle(clip);
         const button = el('button', {
           type: 'button', class: 'nv-tl-clip', role: 'option', title: `${label} · ${T(STATUS[entry.status])}`,
           'aria-label': `${label}, ${kindLabel(clip.kind)}, ${T(STATUS[entry.status])}`, 'aria-selected': String(clip.key === selectedKey),
           dataset: { kind: clip.kind, status: entry.status, key: clip.key }, style: `left:${entry.left}px;width:${Math.max(3, entry.width - 1)}px`
-        }, el('span', { class: 'nv-tl-clip-badge' }, icon(STATUS_ICON[entry.status], 10)), el('span', { class: 'nv-tl-clip-label', text: label }));
+        }, el('span', { class: 'nv-tl-clip-badge' }, icon(STATUS_ICON[entry.status], 10)),
+        el('span', { class: 'nv-tl-clip-text' },
+          el('span', { class: 'nv-tl-clip-label', text: label }),
+          el('span', { class: 'nv-tl-clip-sub', text: `${kindLabel(clip.kind)} · ${clip.duration.toFixed(1)} s` })));
         if (entry.overWidth > 0) button.append(el('span', { class: 'nv-tl-over', style: `width:${entry.overWidth}px`, title: T('nodes.timeline.over', { seconds: clip.over.toFixed(1) }) }));
         button.classList.toggle('is-selected', clip.key === selectedKey);
         button.addEventListener('click', () => select(clip.key));
@@ -418,7 +423,7 @@
       const status = statusOf(clip);
       const running = Boolean(deps.getRun() && deps.getRun().active);
       detail.append(el('div', { class: 'nv-tl-detail-head' },
-        el('h2', { class: 'nv-tl-detail-name', text: clip.label || clip.key }),
+        el('h2', { class: 'nv-tl-detail-name', text: clip.label ? `${clipTitle(clip)} · ${clip.label}` : clipTitle(clip) }),
         el('span', { class: 'nv-tl-chip', dataset: { kind: clip.kind }, text: kindLabel(clip.kind) }),
         el('span', { class: 'nv-tl-chip nv-tl-statuschip', dataset: { status } }, icon(STATUS_ICON[status], 11), el('span', { text: T(STATUS[status]) }))));
 
@@ -470,10 +475,14 @@
         sync();
         detail.append(el('h3', { class: 'nv-tl-sub', text: T('nodes.timeline.feedback') }), field,
           el('p', { class: 'nv-tl-hint', text: T(clip.feedbackCapability === 'notes' ? 'nodes.timeline.feedbackNotes' : 'nodes.timeline.feedbackPrompt') }));
-        actions.append(approve, send);
+        if (clip.asset) actions.append(approve);
+        actions.append(send);
       } else {
-        detail.append(el('p', { class: 'nv-tl-hint', text: T(clip.producer ? 'nodes.timeline.feedbackNone' : 'nodes.timeline.producerNone') }));
-        actions.append(approve);
+        // a place without a clip has nothing to approve; the notice above says what is missing
+        if (clip.asset) {
+          detail.append(el('p', { class: 'nv-tl-hint', text: T(clip.producer ? 'nodes.timeline.feedbackNone' : 'nodes.timeline.producerNone') }));
+          actions.append(approve);
+        }
       }
       if (clip.producer) {
         const again = el('button', { type: 'button', class: 'nv-btn nv-tl-again' }, icon('refresh', 14), el('span', { text: T('nodes.timeline.again') }));
@@ -675,11 +684,11 @@
         busy = false;
         root.classList.remove('is-busy');
         setModel(payload.timeline);
-        // the next clip that still waits, so a pass through the film is one key per clip
+        // the next clip that still waits (a place without a clip has nothing to approve), so a pass through the film is one key per clip
         if (status === 'approved' && keys.length === 1) {
           const list = shown();
           const index = list.findIndex((clip) => clip.key === keys[0]);
-          const next = list.slice(index + 1).find((clip) => statusOf(clip) !== 'approved');
+          const next = list.slice(index + 1).find((clip) => clip.asset && statusOf(clip) !== 'approved');
           if (next) select(next.key, { reveal: true });
         }
         if (deps.refreshPlan) deps.refreshPlan();

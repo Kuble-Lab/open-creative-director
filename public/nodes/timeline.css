@@ -517,17 +517,18 @@
 }
 
 .nv-tl-clips {
-  height: 52px;
+  height: 60px;
 }
 
 .nv-tl-clip {
   position: absolute;
   top: 4px;
-  height: 44px;
+  height: 52px;
   display: flex;
   align-items: flex-start;
-  gap: 4px;
-  padding: 4px 4px 0 5px;
+  gap: 5px;
+  padding: 6px 4px 0 6px;
+  overflow: visible;
   border: 0;
   border-left: 3px solid var(--tl-kind, var(--tl-clip));
   border-radius: 4px;
@@ -548,11 +549,27 @@
   z-index: 2;
 }
 
-.nv-tl-clip-label {
+.nv-tl-clip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+}
+
+.nv-tl-clip-label,
+.nv-tl-clip-sub {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.nv-tl-clip-label {
+  font-weight: 600;
+}
+
+.nv-tl-clip-sub {
+  color: var(--text-dim);
+  font-size: 10.5px;
 }
 
 .nv-tl-clip-badge {
@@ -582,13 +599,14 @@
   to { transform: rotate(360deg); }
 }
 
-/* the part of a clip that is longer than its piece of sound */
+/* the part of a clip that is longer than its piece of sound: a hatched strip over the start of the next clip */
 .nv-tl-over {
   position: absolute;
   left: 100%;
-  top: 0;
   bottom: 0;
-  border-radius: 0 4px 4px 0;
+  height: 8px;
+  z-index: 1;
+  border-radius: 0 3px 3px 0;
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 70%, transparent) 0 4px, transparent 4px 8px);
   pointer-events: none;
 }
