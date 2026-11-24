@@ -163,6 +163,10 @@
         onParam: (nodeId, paramId, value, meta) => applyParams(nodeId, { [paramId]: value }, meta, `p:${nodeId}:${paramId}`),
         onParams: (nodeId, patch, meta, key) => applyParams(nodeId, patch, meta, `p:${nodeId}:${key || Object.keys(patch).join(',')}`),
         onTitle: (nodeId, title) => renameNode(nodeId, title),
+        onRemoveItemEdit: (nodeId, portId, index) => applyGraph({
+          ...state.graph,
+          nodes: state.graph.nodes.map((node) => node.id === nodeId ? OCD.itemEdits.withoutItemEdit(node, portId, index) : node)
+        }, { history: 'item-edit' }),
         onExtractPrompt: extractPrompt,
         onConvertMotionHtml: convertMotionHtml,
         onFix: applyFix,

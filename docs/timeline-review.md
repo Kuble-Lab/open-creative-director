@@ -91,11 +91,23 @@ A re-roll without feedback is the same run request with no edit.
 
 ### 5. Engine: item edits
 
-`node.itemEdits = { [portId]: { [index]: { text, was } } }` on any node (the graph normaliser keeps unknown node fields; validate shape and size
-in `normalizeGraph`: text ports only, at most 200 entries, text at most 8000 characters). When the engine resolves a **mapped text input** of the
-node, an entry whose `was` equals the current upstream text of that item replaces it with `text`; a stale entry (upstream changed) is ignored and
-logged once. Because item keys are computed from the item's inputs, only the edited item runs again; planning/estimates must see the same
-replaced value. The scene table of the inspector shows the edited text and marks it as edited, with a way to remove the edit.
+`node.itemEdits = { [portId]: { [index]: { text, was } } }` on any node. The graph normaliser keeps unknown node fields;
+`normalizeGraph` validates this field explicitly and rejects invalid data with `INVALID_WORKFLOW`: declared text inputs only (`text` or
+`text[]`, including dynamic ports), at most 200 entries across the node, canonical non-negative safe integer indexes, `text` a string of at
+most 8000 JavaScript characters and `was` a string. Unknown node types cannot carry non-empty item edits because their ports cannot be
+validated. Empty port maps and an empty `itemEdits` object are omitted.
+
+Only a **mapped scalar text input** applies edits: a `text` port fed by a list, after normal input coercion. Whole-list inputs (`text[]` or
+`multiple`) and scalar values stay unchanged. An entry whose `was` equals the current upstream text of that item replaces it with `text`;
+a stale entry (upstream changed) is ignored. Execution logs a stale edit once per engine instance, using a bounded deduplication set; plans
+stay read-only and do not log it again. No prompt content is logged. The pure `applyItemEdits` helper exported by `lib/nodes/engine.js`
+returns `{ value, edited, stale }` (the index lists identify applied and stale edits) without mutating the upstream list. Its implementation
+is shared with the inspector in `public/nodes/item-edits.js`.
+
+Because item keys are computed from the item's inputs, only the edited item runs again; planning/estimates use the same input resolver and
+see the same replaced value. Nodes without edits keep their cache keys. Where the inspector already has a scene table, its main text shows
+the edited prompt and a marker, or the upstream text and an outdated marker for a stale edit. Removing an edit uses the normal graph save
+and undo path. No new table is forced onto other nodes.
 
 ### 6. The gate
 

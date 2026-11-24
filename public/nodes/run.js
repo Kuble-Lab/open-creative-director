@@ -1580,6 +1580,7 @@
         order: outputOrder(node),
         hidden: hiddenPorts(node),
         inputPorts: ports.inputs,
+        itemEdits: node.itemEdits,
         edges: st.graph.edges,
         upstreamVariant: (id) => selectedVariant(st.results, id)
       });
@@ -1591,7 +1592,7 @@
       const edits = targetNode ? OCD.sceneTable.sceneEdits({ target, variant: selectedVariant(st.results, target.nodeId), params: targetNode.params, count: table.count }) : null;
       return {
         ...table,
-        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index), edit: edits ? edits[row.index] || null : null })),
+        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index), edit: !row.itemEdit && edits ? edits[row.index] || null : null })),
         // the typed texts as the planner holds them now (the value the fields change)
         edits: edits && targetNode.params && typeof targetNode.params[target.param.id] === 'object' ? targetNode.params[target.param.id] : {},
         entryId: entry ? entry.id : null,

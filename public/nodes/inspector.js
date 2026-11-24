@@ -30,7 +30,7 @@
   function affectedApprovals(before, after, results) {
     if (!before || !after || !approvedNodes(results).length) return [];
     const changed = new Set();
-    const signature = (node) => JSON.stringify(node && [node.type, node.typeVersion, Object.fromEntries(Object.entries(node.params || {}).filter(([key]) => key !== 'label' && key !== 'title'))]);
+    const signature = (node) => JSON.stringify(node && [node.type, node.typeVersion, Object.fromEntries(Object.entries(node.params || {}).filter(([key]) => key !== 'label' && key !== 'title')), node.itemEdits]);
     const old = new Map((before.nodes || []).map((node) => [node.id, node]));
     for (const node of after.nodes || []) {
       if (signature(old.get(node.id)) !== signature(node)) changed.add(node.id);
@@ -540,6 +540,14 @@
           }
         } else {
           main.append(el('div', { class: `nv-scene-text ${row.text ? '' : 'is-empty'}`.trim(), text: row.text ? OCD.preview.shortText(row.text, 160) : ui.T('nodes.scenes.noText'), title: row.text || '' }));
+        }
+        if (row.itemEdit) {
+          meta.append(el('span', { class: 'nv-badge nv-scene-edited', text: ui.T(row.itemEdit.stale ? 'nodes.scenes.itemEditStale' : 'nodes.scenes.itemEdited') }));
+          if (cb.onRemoveItemEdit) {
+            const reset = el('button', { type: 'button', class: 'nv-scene-reset', disabled: data.busy, text: ui.T('nodes.scenes.itemEditRemove') });
+            reset.addEventListener('click', () => cb.onRemoveItemEdit(nodeId, row.itemEdit.port, row.index));
+            meta.append(reset);
+          }
         }
         if (row.duration !== null) meta.append(el('span', { class: 'nv-scene-duration', text: OCD.sceneTable.clock(row.duration), title: ui.T('nodes.scenes.duration') }));
         meta.append(el('span', { class: 'nv-scene-cost', text: hintFor(row.cost || data.cost) }));
@@ -1175,7 +1183,7 @@
           const outCount = graphLib.outgoingEdges(ctx.graph, node.id).length;
           const modelReady = model ? ui.peekModelDetail(model)?.state : '';
           const exposure = cb.app ? cb.app.signature(node.id) : '';
-          parts.push(node.id, node.type, visible.join(','), connected.join(','), model, variant, modelReady, outCount, sources.join(','), exposure);
+          parts.push(node.id, node.type, visible.join(','), connected.join(','), model, variant, modelReady, outCount, sources.join(','), exposure, JSON.stringify(node.itemEdits || {}));
         }
       } else if (sel.notes.size === 1 && sel.nodes.size === 0) {
         parts.push([...sel.notes][0]);
