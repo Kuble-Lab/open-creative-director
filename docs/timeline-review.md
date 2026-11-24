@@ -1,6 +1,6 @@
 # Timeline review (clip approval before the cut)
 
-Status: engine, timeline service, review store, feedback and routes implemented. The pure browser timeline module and API client are implemented and tested; the DOM overlay and its integration are still pending. Keep this file as the documentation of the feature and correct it where the code ends up different.
+Status: implemented (engine, timeline service, review store, feedback, routes, the pure browser module, the overlay and its integration into card, inspector and run path). Keep this file as the documentation of the feature and correct it where the code ends up different.
 
 ## Goal
 
@@ -218,6 +218,23 @@ Statuses: approved, feedback sent, being made again (a run with this item is act
 Rules of the repository apply: all texts in `public/nodes/i18n-nodes.js` in DE/EN/ES (Swiss spelling, no sharp s), no `innerHTML` with data, no
 native dialogs, help page `public/help.html` updated in all three language blocks (new section or extension of the node view section), README
 mention where node view features are listed.
+
+As built:
+
+- The overlay is `OCD.timelineUi.open(deps)`; `main.js` hands it the workflow, the node, the run controller and the save path
+  (`flushSave`, `holdExternalSaves`, `adoptServerEdit`), so a feedback edit made by the server is adopted like an assistant edit. Its styles
+  are in `public/nodes/timeline.css` (own file next to `nodes.css`, same tokens).
+- `publicDescriptor` of the registry carries `timeline: true` for cutting nodes; the card and the inspector show the button from that.
+- A start that is stopped only by `TIMELINE_REVIEW_OPEN` shows a notice and opens the timeline instead of the issue dialog. The card state is
+  "Waiting for review" in the colour of an outdated node, with the fix button "Timeline".
+- "Approve all <kind>" sends the keys of the clips of the selected clip's kind that have an asset (`{ keys, status }`), so a missing clip never
+  fails the whole request.
+- Approvals and feedback are refused while a run is active (`RUN_ACTIVE`); the overlay disables these buttons and says so. Watching stays
+  possible, and the view reloads when the run ends.
+- The run state of the node view does not name the items of an items run. The overlay therefore shows "being made again" for the item it
+  started itself; an items run started elsewhere shows as an active run only.
+- The version count is the number of result entries of the producer node (the node view keeps the history per node, not per item).
+- "Render film" starts the normal run of the whole workflow (`mode: 'all'`), through the usual plan, issues and cost confirmation.
 
 ## Tests
 

@@ -47,6 +47,40 @@
     });
   }
 
+  /* ---------- the timeline review ---------- */
+
+  // The overlay of a cutting node (timeline-ui.js): opened from the button of the node (card and inspector) and when a run stops
+  // because the cut waits for the review of its clips.
+  function openTimeline(nodeId) {
+    const node = graphLib.getNode(state.graph, nodeId);
+    if (!node || !OCD.timelineUi || !state.reg || !state.workflow) return;
+    const run = runtime.runController;
+    const titleOf = (id) => run.inspectorApi.titleOf(id);
+    OCD.timelineUi.open({
+      workflowId: state.workflow.id,
+      nodeId,
+      workflowName: () => (state.workflow && state.workflow.name) || '',
+      nodeTitle: titleOf,
+      getNode: () => graphLib.getNode(state.graph, nodeId),
+      getRun: () => run.getRunState(),
+      producerInfo: (id, item) => {
+        const producer = graphLib.getNode(state.graph, id);
+        const info = run.inspectorApi.info(id);
+        if (!producer || !info) return null;
+        const model = producer.params && typeof producer.params.model === 'string' ? producer.params.model : '';
+        return { model, cost: OCD.sceneTable.itemCost(info.plan, info.def, item), versions: (info.results || []).length };
+      },
+      costText: run.inspectorApi.costText,
+      setReview: (value) => applyParams(nodeId, { review: value }, { commit: true }, `p:${nodeId}:review`),
+      flushSave: () => flushSave(),
+      savedRev: () => runtime.savedRev(),
+      holdExternalSaves: (id) => runtime.holdExternalSaves(id),
+      adoptServerEdit: (edit, id) => runtime.adoptServerEdit(edit, id),
+      startRun: (request) => run.startRun(request),
+      refreshPlan: () => run.refreshPlan()
+    });
+  }
+
   /* ---------- boot ---------- */
 
   function installHashGuard() {
@@ -138,6 +172,7 @@
         if (node) nodeHelp.openPopover(node.type, anchor);
       },
       fix: applyFix,
+      timeline: openTimeline,
       select: selectNodeById,
       reorder: reorderInput,
       orderMenu: (nodeId, portId, edgeId, x, y) => ui.menu(x, y, orderMenuItems(nodeId, portId, edgeId))
@@ -156,6 +191,19 @@
     bus.on('sse', refreshComposer);
     bus.on('reconcile', refreshComposer);
     bus.on('workflow:close', () => OCD.composer && OCD.composer.current() && OCD.composer.current().close());
+    // The timeline review follows the run (a clip that is made again, a run that ended) and closes with its node or workflow.
+    const refreshTimeline = () => {
+      const open = OCD.timelineUi && OCD.timelineUi.current();
+      if (!open) return;
+      if (!graphLib.getNode(state.graph, open.nodeId)) open.close();
+      // after the run controller, which hears the same event, has taken it in
+      else setTimeout(() => open.onRun(), 0);
+    };
+    bus.on('graph', refreshTimeline);
+    bus.on('sse', refreshTimeline);
+    bus.on('reconcile', refreshTimeline);
+    bus.on('timeline:review', (event) => event && event.nodeId && openTimeline(event.nodeId));
+    bus.on('workflow:close', () => OCD.timelineUi && OCD.timelineUi.current() && OCD.timelineUi.current().close());
     runtime.inspector = OCD.inspector.createInspector({
       host: runtime.dom.inspectorScroll,
       getReg: () => state.reg,
@@ -170,6 +218,7 @@
         onExtractPrompt: extractPrompt,
         onConvertMotionHtml: convertMotionHtml,
         onFix: applyFix,
+        onTimeline: openTimeline,
         help: nodeHelp,
         onDelete: deleteSelection,
         onDuplicate: duplicateSelection,

@@ -458,6 +458,8 @@
     if (fixId === 'motion-html') convertMotionHtml(nodeId);
     else if (fixId === 'add-input') addInputFor(nodeId, fix && fix.port);
     else if (fixId === 'pick-input') pickInputFor(nodeId, fix && fix.port);
+    // a cutter that waits for the review of its clips: main.js opens the timeline
+    else if (fixId === 'timeline' && OCD.bus) OCD.bus.emit('timeline:review', { nodeId });
   }
 
   // Assigns a workflow to a project (chat folder) or removes the assignment.

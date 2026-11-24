@@ -221,6 +221,12 @@
       const fromBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm', disabled: info.busy || !info.canRun, title: ui.T('nodes.run.fromHint') }, ui.icon('skip', 13), el('span', { text: ui.T('nodes.run.from') }));
       fromBtn.addEventListener('click', () => cb.run.runFrom(nodeId));
       buttons.append(runBtn, fromBtn);
+      // the timeline review of a cutting node (timeline-ui.js)
+      if (info.def.timeline && cb.onTimeline) {
+        const timelineBtn = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-insp-timeline', title: ui.T('nodes.timeline.openHint') }, ui.icon('video', 13), el('span', { text: ui.T('nodes.timeline.open') }));
+        timelineBtn.addEventListener('click', () => cb.onTimeline(nodeId));
+        buttons.append(timelineBtn);
+      }
       body.append(buttons);
       if (info.status === 'error') {
         const box = el('div', { class: 'nv-notice is-error' }, ui.icon('warning', 14), el('span', { class: 'nv-notice-text nv-scroll', text: info.message || ui.T('nodes.run.failedNode') }));
