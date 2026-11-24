@@ -199,7 +199,7 @@ No new MCP tools in this version (note it in the PR as follow-up for parity).
 time, peaks from PCM samples, keyboard actions) and `public/nodes/timeline-ui.js` (DOM). A full-size overlay of the node view, opened from a
 button "Timeline" on the card and in the inspector of a cutting node (and from the waiting-for-review state).
 
-Layout (reference picture: `docs/screenshots/timeline-review-draft.png`):
+Layout (reference picture: `docs/screenshots/timeline-review.png`):
 
 - header: workflow name, "n of m approved" with a bar, counts (feedback, being made again, open), "Approve all <kind>", the switch "Render the
   film only after approval" (the `review` param), and "Render film" (starts a normal run of the workflow; locked with the number of open clips
