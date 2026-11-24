@@ -138,9 +138,26 @@ function nearestColour(rgb) {
   return best.hex;
 }
 
+// The guest branch has no extra clip approval result, like the other clip kinds. Its socket-free execution (empty and populated lists,
+// real edit adapter, zero paid runs for an empty exchange) is in test-music-video-hud-duet-template.js so it also runs in restricted sandboxes.
+function testGuestBranch() {
+  const doc = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nodes', 'templates', 'music-video-hud-guest.json'), 'utf8'));
+  const planner = doc.graph.nodes.find((node) => node.id === 'n4');
+  const duet = doc.graph.nodes.find((node) => node.type === 'fal.h3_reference');
+  assert.equal(planner.params.duet_scenes, 'auto');
+  assert.equal(duet.params.duration_from_audio, true);
+  assert.equal(duet.params.prompt_expansion, 'disabled');
+  assert.deepEqual(doc.graph.edges.filter((edge) => edge.to.node === duet.id && edge.to.port === 'images').map((edge) => edge.from.node), ['n5', 'n35']);
+  assert.deepEqual(doc.graph.edges.filter((edge) => edge.to.node === duet.id && edge.to.port === 'audio').map((edge) => edge.from.port), ['duet_audio']);
+  assert.ok(!doc.app.outputs.some((output) => output.node === duet.id && output.approve));
+  assert.ok(duet.y < doc.graph.nodes.find((node) => node.id === 'n12').y - 1000, 'the tall reference node leaves room above the sung clips');
+  for (const lang of ['de', 'es']) assert.ok(doc.i18n[lang][`node.${duet.id}`]);
+}
+
 /* ---------- main ---------- */
 
 async function main() {
+  testGuestBranch();
   const guard = guardFetch();
   const iso = await createIsolatedApp({
     env: {

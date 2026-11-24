@@ -1765,7 +1765,7 @@ async function testDefinition() {
   assert.deepEqual(ports(def.inputs), [['analysis', 'text', true, null], ['timing', 'text', true, null], ['brief', 'text', false, 'brief'], ['figure', 'text', true, 'figure'], ['guest', 'text', false, 'guest'], ['song', 'audio', true, null], ['figure_image', 'image', false, null], ['guest_image', 'image', false, null]]);
   assert.equal(def.inputs.find((port) => port.id === 'figure_image').multiple, true);
   assert.deepEqual(def.outputs.map((port) => [port.id, port.type]), [
-    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text'], ['sheet_refs', 'image[]'], ['guest_sheet_prompt', 'text'], ['guest_sheet_refs', 'image[]']
+    ['shots', 'text'], ['performance_prompts', 'text[]'], ['performance_audio', 'audio[]'], ['story_prompts', 'text[]'], ['story_motion', 'text[]'], ['still_prompts', 'text[]'], ['graphics', 'text'], ['board', 'text'], ['sheet_prompt', 'text'], ['brief', 'text'], ['sheet_refs', 'image[]'], ['guest_sheet_prompt', 'text'], ['guest_sheet_refs', 'image[]'], ['duet_prompts', 'text[]'], ['duet_audio', 'audio[]']
   ]);
   // the same ports as the plan of the music video, so that the template of the nodes before and after it fits
   const plain = real.get('music_video.plan');
@@ -1778,7 +1778,7 @@ async function testDefinition() {
 
   // the settings, their defaults and their ranges
   assert.deepEqual(real.normalizeParams(def, {}), {
-    model: '', brief: '', figure: '', guest: '', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, listen: true, cuts_from_song: true, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
+    model: '', brief: '', figure: '', guest: '', duet_scenes: 'off', style: '', theme: 'hud', accent: '#3B82F6', hud_language: 'en', brief_language: 'en', official_images: false, listen: true, cuts_from_song: true, cuts_per_minute: 24, max_units: 50, lipsync_seconds_per_minute: 22, motion_share: 1, clip_seconds: 5, broll_share: 0.35, allow_plain: false
   });
   // WP52a: the share of B-roll and the switch for a plain plan, both added after plans were saved: at their defaults no part of the key
   const brollParam = def.params.find((param) => param.id === 'broll_share');
@@ -1920,7 +1920,7 @@ function testI18n() {
   // the codes of the errors: every code the planner can throw has a text, and the figures it names are placeholders
   const source = fs.readFileSync(path.join(root, 'lib', 'nodes', 'nodes-music-video-hud.js'), 'utf8') + fs.readFileSync(path.join(root, 'lib', 'music-video-hud', 'plan.js'), 'utf8');
   const codes = new Set([...source.matchAll(/'(HUDPLAN_[A-Z_]+)'/g)].map((match) => match[1]));
-  assert.deepEqual([...codes].sort(), ['HUDPLAN_BRIEF_FAILED', 'HUDPLAN_IDEA_EMPTY', 'HUDPLAN_MODEL_FAILED', 'HUDPLAN_NO_BRIEF', 'HUDPLAN_NO_FIGURE', 'HUDPLAN_NO_LINES', 'HUDPLAN_TOO_LONG']);
+  assert.deepEqual([...codes].sort(), ['HUDPLAN_BRIEF_FAILED', 'HUDPLAN_DUET_PROMPT_LONG', 'HUDPLAN_IDEA_EMPTY', 'HUDPLAN_MODEL_FAILED', 'HUDPLAN_NO_BRIEF', 'HUDPLAN_NO_FIGURE', 'HUDPLAN_NO_LINES', 'HUDPLAN_TOO_LONG']);
   for (const code of codes) for (const lang of ['de', 'en', 'es']) assert.ok(window.I18N[lang][`nodes.issue.${code}`], `${lang}: no text for ${code}`);
   for (const lang of ['de', 'en', 'es']) for (const name of ['seconds', 'units', 'clip', 'needed']) assert.ok(window.I18N[lang]['nodes.issue.HUDPLAN_TOO_LONG'].includes(`{${name}}`), `${lang}: HUDPLAN_TOO_LONG names {${name}}`);
   // WP52a: the error of a model that delivered too little names the tries, the tokens, the cost and what is missing (every placeholder is a field of err.data)
@@ -2262,8 +2262,8 @@ async function testNode() {
       assert.deepEqual(result.cost, { usd: LLM_USD });
       const out = result.variants[0];
       // No references and no guest: optional sheet outputs stay absent, preserving the saved no-guest result shape.
-      assert.deepEqual(Object.keys(out), def.outputs.map((port) => port.id).filter((id) => !['sheet_refs', 'guest_sheet_prompt', 'guest_sheet_refs'].includes(id)));
-      for (const port of def.outputs.filter((item) => !['sheet_refs', 'guest_sheet_prompt', 'guest_sheet_refs'].includes(item.id))) assert.equal(out[port.id].type, port.type === 'text' ? 'text' : 'list', port.id);
+      assert.deepEqual(Object.keys(out), def.outputs.map((port) => port.id).filter((id) => !['sheet_refs', 'guest_sheet_prompt', 'guest_sheet_refs', 'duet_prompts', 'duet_audio'].includes(id)));
+      for (const port of def.outputs.filter((item) => !['sheet_refs', 'guest_sheet_prompt', 'guest_sheet_refs', 'duet_prompts', 'duet_audio'].includes(item.id))) assert.equal(out[port.id].type, port.type === 'text' ? 'text' : 'list', port.id);
       const shots = planLib.parseShots(out.shots.value);
       assert.ok(shots, 'the plan of the cut can be read');
       const stats = grid.stats;

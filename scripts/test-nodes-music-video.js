@@ -233,7 +233,7 @@ function testDefinitions({ registry, registryModule, tools, planLib, editLib, vo
   assert.equal(edit.category, 'edit-video');
   assert.equal(edit.paid, false);
   assert.deepEqual(ports(edit.inputs), [
-    ['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true], ['still_clips', 'video', false, true], ['captions', 'text', false, false]
+    ['song', 'audio', true, false], ['shots', 'text', true, false], ['story', 'video', true, true], ['performance', 'video', false, true], ['still_clips', 'video', false, true], ['duet', 'video', false, true], ['captions', 'text', false, false]
   ]);
   assert.equal(edit.inputs.find((port) => port.id === 'story').max, planLib.MAX_SHOTS);
   assert.equal(edit.inputs.find((port) => port.id === 'performance').max, planLib.MAX_SHOTS);

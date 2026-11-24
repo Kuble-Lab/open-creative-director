@@ -443,7 +443,7 @@ async function main() {
       assert.equal(defaultRegistry.isRestricted(defaultRegistry.get('fal.h3_reference')), false);
       assert.equal(defaultRegistry.get(TYPE).cost.unit, 'usd');
       assert.equal(defaultRegistry.providerOf ? defaultRegistry.providerOf(defaultRegistry.get(TYPE)) : 'fal', 'fal');
-      assert.deepEqual(defaultRegistry.get('fal.h3_reference').inputs.map((port) => port.id), ['prompt', 'images', 'videos', 'audios']);
+      assert.deepEqual(defaultRegistry.get('fal.h3_reference').inputs.map((port) => port.id), ['prompt', 'audio', 'images', 'videos', 'audios']);
       // the prices
       const prices = nodesFal.PRICES.videoEdit;
       assert.deepEqual(prices.kling.perSecond, { standard: 0.14, pro: 0.14, '4k': 0.42 });

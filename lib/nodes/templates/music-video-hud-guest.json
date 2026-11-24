@@ -3,7 +3,7 @@
   "format": "ocd.workflow",
   "version": 1,
   "name": "Music video in the HUD style (guest duet)",
-  "description": "Upload a duet song and its final lyrics. Choose a guest influencer or describe the guest in the Guest field. Whole lines in round brackets or marked [Choir] become short guest lip-sync units; the lead keeps the other sung units. Two character sheets preserve the separate identities in scene pictures, lead first and guest second. Approve the brief, board, both sheets and pictures before the clips and HUD. A guest identity is required in this template: without one the required prompt of the guest sheet is empty; use the your-song template for a solo film.",
+  "description": "Upload a duet song and its final lyrics. Choose a guest influencer or describe the guest in the Guest field. Whole lines in round brackets or marked [Choir] become short guest lip-sync units; the lead keeps the other sung units. Two character sheets preserve the separate identities in scene pictures, lead first and guest second. Approve the brief, board, both sheets and pictures before the clips and HUD. A guest identity is required in this template: without one the required prompt of the guest sheet is empty; use the your-song template for a solo film. Close voice exchanges with gaps of at most 1 s become shared duet scenes of 5 to 15 s within the lip-sync budget. Both singers stay in the same frame and each sings only their own lines. H3 Max reference receives the lead sheet as Image 1, the guest sheet as Image 2 and the exact WAV excerpt as Audio 1. Duet clips start after the same picture approvals as sung clips. With no suitable exchange the duet lists are empty and no duet clip is generated.",
   "requires": [
     "openrouter",
     "ffmpeg",
@@ -69,7 +69,8 @@
           "clip_seconds": 5,
           "broll_share": 0.35,
           "allow_plain": false,
-          "guest": ""
+          "guest": "",
+          "duet_scenes": "auto"
         }
       },
       {
@@ -391,6 +392,24 @@
           "label": "Guest character sheet"
         },
         "title": "Guest character sheet"
+      },
+      {
+        "id": "n37",
+        "type": "fal.h3_reference",
+        "typeVersion": 1,
+        "x": 2280,
+        "y": -650,
+        "title": "Duet clips (two singers)",
+        "params": {
+          "resolution": "768P",
+          "aspect_ratio": "16:9",
+          "prompt_expansion": "disabled",
+          "duration": 5,
+          "duration_from_audio": true,
+          "seed": null,
+          "safety": true,
+          "prompt": ""
+        }
       }
     ],
     "edges": [
@@ -987,6 +1006,61 @@
           "node": "n11",
           "port": "images"
         }
+      },
+      {
+        "id": "e-duet-prompt",
+        "from": {
+          "node": "n4",
+          "port": "duet_prompts"
+        },
+        "to": {
+          "node": "n37",
+          "port": "prompt"
+        }
+      },
+      {
+        "id": "e-duet-audio",
+        "from": {
+          "node": "n4",
+          "port": "duet_audio"
+        },
+        "to": {
+          "node": "n37",
+          "port": "audio"
+        }
+      },
+      {
+        "id": "e-duet-lead",
+        "from": {
+          "node": "n5",
+          "port": "image"
+        },
+        "to": {
+          "node": "n37",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e-duet-guest",
+        "from": {
+          "node": "n35",
+          "port": "image"
+        },
+        "to": {
+          "node": "n37",
+          "port": "images"
+        }
+      },
+      {
+        "id": "e-duet-edit",
+        "from": {
+          "node": "n37",
+          "port": "video"
+        },
+        "to": {
+          "node": "n16",
+          "port": "duet"
+        }
       }
     ],
     "groups": [],
@@ -1005,7 +1079,7 @@
         "y": 1500,
         "w": 400,
         "h": 780,
-        "text": "The first reference sheet is the lead, the second is the guest. Each scene draws only the people it names. Guest answers may be shorter than five seconds; their audio is extended to 5.05 seconds for lip sync, then the cut keeps only the planned scene from the clip start at normal speed. Inspect both sheets and scene pictures before approval. Keep clip duration, frame rate and aspect settings aligned with the base template."
+        "text": "The first reference sheet is the lead, the second is the guest. Each scene draws only the people it names. Guest answers may be shorter than five seconds; their audio is extended to 5.05 seconds for lip sync, then the cut keeps only the planned scene from the clip start at normal speed. Inspect both sheets and scene pictures before approval. Keep clip duration, frame rate and aspect settings aligned with the base template. Close voice exchanges with gaps of at most 1 s become shared duet scenes of 5 to 15 s within the lip-sync budget. Both singers stay in the same frame and each sings only their own lines. H3 Max reference receives the lead sheet as Image 1, the guest sheet as Image 2 and the exact WAV excerpt as Audio 1. Duet clips start after the same picture approvals as sung clips. With no suitable exchange the duet lists are empty and no duet clip is generated."
       }
     ],
     "viewport": {
@@ -1017,7 +1091,7 @@
   "app": {
     "enabled": true,
     "title": "Music video in the HUD style (guest duet)",
-    "description": "Upload a duet song and its final lyrics. Choose a guest influencer or describe the guest in the Guest field. Whole lines in round brackets or marked [Choir] become short guest lip-sync units; the lead keeps the other sung units. Two character sheets preserve the separate identities in scene pictures, lead first and guest second. Approve the brief, board, both sheets and pictures before the clips and HUD. A guest identity is required in this template: without one the required prompt of the guest sheet is empty; use the your-song template for a solo film.",
+    "description": "Upload a duet song and its final lyrics. Choose a guest influencer or describe the guest in the Guest field. Whole lines in round brackets or marked [Choir] become short guest lip-sync units; the lead keeps the other sung units. Two character sheets preserve the separate identities in scene pictures, lead first and guest second. Approve the brief, board, both sheets and pictures before the clips and HUD. A guest identity is required in this template: without one the required prompt of the guest sheet is empty; use the your-song template for a solo film. Close voice exchanges with gaps of at most 1 s become shared duet scenes of 5 to 15 s within the lip-sync budget. Both singers stay in the same frame and each sings only their own lines. H3 Max reference receives the lead sheet as Image 1, the guest sheet as Image 2 and the exact WAV excerpt as Audio 1. Duet clips start after the same picture approvals as sung clips. With no suitable exchange the duet lists are empty and no duet clip is generated.",
     "inputs": [
       {
         "node": "n1",
@@ -1129,7 +1203,7 @@
   "i18n": {
     "de": {
       "name": "Musikvideo im HUD-Stil (Duett mit Gast)",
-      "description": "Lade einen Duett-Song und seinen endgültigen Text hoch. Wähle einen Gast-Influencer oder beschreibe den Gast im Feld Gast. Ganze Zeilen in runden Klammern oder mit [Choir] werden kurze Gast-Einheiten mit Lippensync; die Hauptfigur behält die anderen Gesangseinheiten. Zwei Figurenblätter halten die Identitäten in den Szenenbildern getrennt: Hauptfigur zuerst, Gast danach. Gib Briefing, Board, beide Figurenblätter und Bilder vor den Clips und dem HUD frei. Diese Vorlage braucht eine Gast-Identität: Ohne sie bleibt der erforderliche Prompt des Gast-Figurenblatts leer. Nutze für einen Solofilm die Vorlage mit eigenem Song.",
+      "description": "Lade einen Duett-Song und seinen endgültigen Text hoch. Wähle einen Gast-Influencer oder beschreibe den Gast im Feld Gast. Ganze Zeilen in runden Klammern oder mit [Choir] werden kurze Gast-Einheiten mit Lippensync; die Hauptfigur behält die anderen Gesangseinheiten. Zwei Figurenblätter halten die Identitäten in den Szenenbildern getrennt: Hauptfigur zuerst, Gast danach. Gib Briefing, Board, beide Figurenblätter und Bilder vor den Clips und dem HUD frei. Diese Vorlage braucht eine Gast-Identität: Ohne sie bleibt der erforderliche Prompt des Gast-Figurenblatts leer. Nutze für einen Solofilm die Vorlage mit eigenem Song. Nahe Wechsel der Stimmen mit höchstens 1 s Lücke werden gemeinsame Duett-Szenen von 5 bis 15 s innerhalb des Lippensync-Budgets. Beide Figuren bleiben im selben Bild und jede singt nur ihre Zeilen. H3 Max reference erhält das Hauptfigurenblatt als Image 1, das Gastblatt als Image 2 und den exakten WAV-Ausschnitt als Audio 1. Duett-Clips starten nach derselben Bilderfreigabe wie Gesangsclips. Ohne passende Kette sind die Duett-Listen leer und es entsteht kein Duett-Clip.",
       "node.n1": "Song",
       "node.n5": "Figurenblatt",
       "node.n6": "Gesangs-Prompts mit Figurenblatt",
@@ -1144,9 +1218,9 @@
       "node.n15": "Standbild-Clips (Parallaxe)",
       "node.n16": "Grundschnitt (ohne Untertitel)",
       "note.t1": "Lade den endgültigen Duett-Song und Text hoch. Schreibe die Zeilen der Hauptfigur ohne runde Klammern; setze jede Gastantwort als eigene Zeile in runde Klammern, oder nutze [Choir] für einen reinen Gastabschnitt. Wähle den Gast-Influencer oder fülle Gast-Identität aus. Diese Vorlage braucht einen Gast, da dessen Figurenblatt einen Prompt benötigt. Nutze für einen Solofilm die Vorlage mit eigenem Song.",
-      "note.t2": "Das erste Referenzblatt zeigt die Hauptfigur, das zweite den Gast. Jede Szene zeichnet nur die genannten Personen. Gastantworten dürfen kürzer als fünf Sekunden sein; ihr Audio wird für den Lippensync auf 5.05 Sekunden verlängert. Der Schnitt übernimmt nur die geplante Szene ab Clip-Anfang mit normaler Geschwindigkeit. Prüfe beide Figurenblätter und die Szenenbilder vor der Freigabe. Clip-Länge, Bildrate und Seitenverhältnis bleiben auf die Basisvorlage abgestimmt.",
+      "note.t2": "Das erste Referenzblatt zeigt die Hauptfigur, das zweite den Gast. Jede Szene zeichnet nur die genannten Personen. Gastantworten dürfen kürzer als fünf Sekunden sein; ihr Audio wird für den Lippensync auf 5.05 Sekunden verlängert. Der Schnitt übernimmt nur die geplante Szene ab Clip-Anfang mit normaler Geschwindigkeit. Prüfe beide Figurenblätter und die Szenenbilder vor der Freigabe. Clip-Länge, Bildrate und Seitenverhältnis bleiben auf die Basisvorlage abgestimmt. Nahe Wechsel der Stimmen mit höchstens 1 s Lücke werden gemeinsame Duett-Szenen von 5 bis 15 s innerhalb des Lippensync-Budgets. Beide Figuren bleiben im selben Bild und jede singt nur ihre Zeilen. H3 Max reference erhält das Hauptfigurenblatt als Image 1, das Gastblatt als Image 2 und den exakten WAV-Ausschnitt als Audio 1. Duett-Clips starten nach derselben Bilderfreigabe wie Gesangsclips. Ohne passende Kette sind die Duett-Listen leer und es entsteht kein Duett-Clip.",
       "app.title": "Musikvideo im HUD-Stil (Duett mit Gast)",
-      "app.description": "Lade einen Duett-Song und seinen endgültigen Text hoch. Wähle einen Gast-Influencer oder beschreibe den Gast im Feld Gast. Ganze Zeilen in runden Klammern oder mit [Choir] werden kurze Gast-Einheiten mit Lippensync; die Hauptfigur behält die anderen Gesangseinheiten. Zwei Figurenblätter halten die Identitäten in den Szenenbildern getrennt: Hauptfigur zuerst, Gast danach. Gib Briefing, Board, beide Figurenblätter und Bilder vor den Clips und dem HUD frei. Diese Vorlage braucht eine Gast-Identität: Ohne sie bleibt der erforderliche Prompt des Gast-Figurenblatts leer. Nutze für einen Solofilm die Vorlage mit eigenem Song.",
+      "app.description": "Lade einen Duett-Song und seinen endgültigen Text hoch. Wähle einen Gast-Influencer oder beschreibe den Gast im Feld Gast. Ganze Zeilen in runden Klammern oder mit [Choir] werden kurze Gast-Einheiten mit Lippensync; die Hauptfigur behält die anderen Gesangseinheiten. Zwei Figurenblätter halten die Identitäten in den Szenenbildern getrennt: Hauptfigur zuerst, Gast danach. Gib Briefing, Board, beide Figurenblätter und Bilder vor den Clips und dem HUD frei. Diese Vorlage braucht eine Gast-Identität: Ohne sie bleibt der erforderliche Prompt des Gast-Figurenblatts leer. Nutze für einen Solofilm die Vorlage mit eigenem Song. Nahe Wechsel der Stimmen mit höchstens 1 s Lücke werden gemeinsame Duett-Szenen von 5 bis 15 s innerhalb des Lippensync-Budgets. Beide Figuren bleiben im selben Bild und jede singt nur ihre Zeilen. H3 Max reference erhält das Hauptfigurenblatt als Image 1, das Gastblatt als Image 2 und den exakten WAV-Ausschnitt als Audio 1. Duett-Clips starten nach derselben Bilderfreigabe wie Gesangsclips. Ohne passende Kette sind die Duett-Listen leer und es entsteht kein Duett-Clip.",
       "app.input.n1.asset": "Song",
       "app.input.n4.brief": "Idee fürs Video (ein paar Worte reichen; leer: aus dem Song)",
       "app.input.n4.figure": "Figur (optional, Standard: Claudia)",
@@ -1182,11 +1256,12 @@
       "param.n36.label": "Figurenblatt Gast",
       "app.input.n34.influencer": "Gast-Influencer",
       "app.input.n4.guest": "Gast-Identität (ohne gewählten Influencer)",
-      "app.output.n36": "Figurenblatt Gast"
+      "app.output.n36": "Figurenblatt Gast",
+      "node.n37": "Duett-Clips (zwei Singende)"
     },
     "es": {
       "name": "Videoclip en estilo HUD (dueto con invitado)",
-      "description": "Sube un dueto y su letra final. Elige un influencer invitado o describe al invitado en el campo Invitado. Las líneas completas entre paréntesis o marcadas [Choir] se convierten en unidades cortas de sincronización labial del invitado; la figura principal conserva las otras unidades cantadas. Dos hojas de personaje mantienen las identidades en las imágenes: primero la figura principal y después el invitado. Aprueba el brief, tablero, ambas hojas e imágenes antes de los clips y el HUD. Esta plantilla necesita una identidad invitada: sin ella el prompt obligatorio de su hoja queda vacío; usa la plantilla de canción propia para un solo cantante.",
+      "description": "Sube un dueto y su letra final. Elige un influencer invitado o describe al invitado en el campo Invitado. Las líneas completas entre paréntesis o marcadas [Choir] se convierten en unidades cortas de sincronización labial del invitado; la figura principal conserva las otras unidades cantadas. Dos hojas de personaje mantienen las identidades en las imágenes: primero la figura principal y después el invitado. Aprueba el brief, tablero, ambas hojas e imágenes antes de los clips y el HUD. Esta plantilla necesita una identidad invitada: sin ella el prompt obligatorio de su hoja queda vacío; usa la plantilla de canción propia para un solo cantante. Los cambios cercanos de voz con pausas de hasta 1 s forman escenas compartidas de dueto de 5 a 15 s dentro del presupuesto de sincronización labial. Ambos cantantes permanecen en el mismo plano y cada uno canta solo sus líneas. H3 Max reference recibe la hoja principal como Image 1, la invitada como Image 2 y el extracto WAV exacto como Audio 1. Los clips de dueto empiezan tras la misma aprobación de imágenes que los clips cantados. Sin un intercambio adecuado las listas quedan vacías y no se genera ningún clip de dueto.",
       "node.n1": "Canción",
       "node.n5": "Hoja del personaje",
       "node.n6": "Prompts de canto con la hoja",
@@ -1201,9 +1276,9 @@
       "node.n15": "Clips de imágenes fijas (paralaje)",
       "node.n16": "Montaje base (sin subtítulos)",
       "note.t1": "Sube el dueto y su letra final. Escribe las líneas de la figura principal sin paréntesis; pon cada respuesta del invitado en una línea propia entre paréntesis, o usa [Choir] para una sección solo del invitado. Elige el influencer invitado o rellena su identidad. Esta plantilla necesita un invitado porque su hoja requiere un prompt. Para un solo cantante usa la plantilla de canción propia.",
-      "note.t2": "La primera referencia es la hoja de la figura principal, la segunda la del invitado. Cada escena dibuja solo las personas que nombra. Las respuestas invitadas pueden durar menos de cinco segundos; su audio se amplía a 5.05 segundos para la sincronización labial y el montaje conserva solo la escena planificada desde el inicio del clip, a velocidad normal. Revisa ambas hojas y las escenas antes de aprobar. Mantén duración, fotogramas y proporción alineados con la plantilla base.",
+      "note.t2": "La primera referencia es la hoja de la figura principal, la segunda la del invitado. Cada escena dibuja solo las personas que nombra. Las respuestas invitadas pueden durar menos de cinco segundos; su audio se amplía a 5.05 segundos para la sincronización labial y el montaje conserva solo la escena planificada desde el inicio del clip, a velocidad normal. Revisa ambas hojas y las escenas antes de aprobar. Mantén duración, fotogramas y proporción alineados con la plantilla base. Los cambios cercanos de voz con pausas de hasta 1 s forman escenas compartidas de dueto de 5 a 15 s dentro del presupuesto de sincronización labial. Ambos cantantes permanecen en el mismo plano y cada uno canta solo sus líneas. H3 Max reference recibe la hoja principal como Image 1, la invitada como Image 2 y el extracto WAV exacto como Audio 1. Los clips de dueto empiezan tras la misma aprobación de imágenes que los clips cantados. Sin un intercambio adecuado las listas quedan vacías y no se genera ningún clip de dueto.",
       "app.title": "Videoclip en estilo HUD (dueto con invitado)",
-      "app.description": "Sube un dueto y su letra final. Elige un influencer invitado o describe al invitado en el campo Invitado. Las líneas completas entre paréntesis o marcadas [Choir] se convierten en unidades cortas de sincronización labial del invitado; la figura principal conserva las otras unidades cantadas. Dos hojas de personaje mantienen las identidades en las imágenes: primero la figura principal y después el invitado. Aprueba el brief, tablero, ambas hojas e imágenes antes de los clips y el HUD. Esta plantilla necesita una identidad invitada: sin ella el prompt obligatorio de su hoja queda vacío; usa la plantilla de canción propia para un solo cantante.",
+      "app.description": "Sube un dueto y su letra final. Elige un influencer invitado o describe al invitado en el campo Invitado. Las líneas completas entre paréntesis o marcadas [Choir] se convierten en unidades cortas de sincronización labial del invitado; la figura principal conserva las otras unidades cantadas. Dos hojas de personaje mantienen las identidades en las imágenes: primero la figura principal y después el invitado. Aprueba el brief, tablero, ambas hojas e imágenes antes de los clips y el HUD. Esta plantilla necesita una identidad invitada: sin ella el prompt obligatorio de su hoja queda vacío; usa la plantilla de canción propia para un solo cantante. Los cambios cercanos de voz con pausas de hasta 1 s forman escenas compartidas de dueto de 5 a 15 s dentro del presupuesto de sincronización labial. Ambos cantantes permanecen en el mismo plano y cada uno canta solo sus líneas. H3 Max reference recibe la hoja principal como Image 1, la invitada como Image 2 y el extracto WAV exacto como Audio 1. Los clips de dueto empiezan tras la misma aprobación de imágenes que los clips cantados. Sin un intercambio adecuado las listas quedan vacías y no se genera ningún clip de dueto.",
       "app.input.n1.asset": "Canción",
       "app.input.n4.brief": "Idea para el vídeo (bastan unas palabras; vacío: desde la canción)",
       "app.input.n4.figure": "Figura (opcional, por defecto: Claudia)",
@@ -1239,7 +1314,8 @@
       "param.n36.label": "Hoja del personaje invitado",
       "app.input.n34.influencer": "Influencer invitado",
       "app.input.n4.guest": "Identidad del invitado (sin influencer seleccionado)",
-      "app.output.n36": "Hoja del personaje invitado"
+      "app.output.n36": "Hoja del personaje invitado",
+      "node.n37": "Clips de dueto (dos cantantes)"
     }
   }
 }

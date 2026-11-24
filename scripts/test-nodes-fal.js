@@ -189,7 +189,7 @@ async function main() {
 
       const ports = (type) => ({ in: oneOf(registry, type).inputs.map((port) => port.id), out: oneOf(registry, type).outputs.map((port) => port.id) });
       assert.deepEqual(ports('fal.h3_video'), { in: ['prompt', 'first_frame', 'last_frame', 'audio'], out: ['video', 'expanded_prompt'] });
-      assert.deepEqual(ports('fal.h3_reference'), { in: ['prompt', 'images', 'videos', 'audios'], out: ['video', 'expanded_prompt'] });
+      assert.deepEqual(ports('fal.h3_reference'), { in: ['prompt', 'audio', 'images', 'videos', 'audios'], out: ['video', 'expanded_prompt'] });
       assert.deepEqual(ports('fal.h3_lipsync'), { in: ['image', 'audio'], out: ['video'] });
       assert.deepEqual(ports('fal.h3_camera'), { in: ['image', 'prompt'], out: ['video', 'expanded_prompt'] });
       assert.deepEqual(ports('fal.h3_extend'), { in: ['video', 'prompt'], out: ['video', 'expanded_prompt'] });
@@ -205,8 +205,8 @@ async function main() {
       assert.deepEqual([prompt.type, prompt.required, prompt.param], ['text', true, 'prompt']);
       assert.equal(oneOf(registry, 'fal.h3_video').params.find((param) => param.id === 'prompt').inline, true);
       assert.equal(oneOf(registry, 'fal.h3_camera').inputs[1].required, false);
-      assert.equal(oneOf(registry, 'fal.h3_reference').inputs[1].max, 9);
-      assert.equal(oneOf(registry, 'fal.h3_reference').inputs[2].max, 3);
+      assert.equal(oneOf(registry, 'fal.h3_reference').inputs[2].max, 9);
+      assert.equal(oneOf(registry, 'fal.h3_reference').inputs[3].max, 3);
       assert.equal(oneOf(registry, 'fal.model').inputs[3].max, 5);
       // defaults from the schemas
       const defaults = (type) => registry.normalizeParams(oneOf(registry, type), {});
