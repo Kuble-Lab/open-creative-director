@@ -2947,8 +2947,12 @@ app.post('/api/sessions/:id/message', async (req, res) => {
 });
 
 // Node view API (registry, workflows, uploads, runs, SSE); must stay before the catch-all below.
-const nodeEngine = createNodeEngine({ store: nodeWorkflows.defaultStore, getConfig: () => runtime });
+const nodeTimeline = require('./lib/timeline/service').createTimelineService({ store: nodeWorkflows.defaultStore,
+  registry: require('./lib/nodes/registry').registry, getConfig: () => runtime,
+  runEngine: { isBusy: (id) => nodeEngine.isBusy(id), activeRun: (id) => nodeEngine.activeRun(id) } });
+const nodeEngine = createNodeEngine({ store: nodeWorkflows.defaultStore, getConfig: () => runtime, checkTimelineReview: nodeTimeline.checkReview });
 registerNodeRoutes(app, {
+  timelineService: nodeTimeline,
   runtime,
   publicRuntimeConfig,
   engine: nodeEngine,

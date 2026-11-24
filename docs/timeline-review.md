@@ -50,7 +50,7 @@ First adapters:
 - `event_video.cut`: its contract supplies contiguous clip times. The adapter validates that contract and reuses `sourceOf`/`shotSeconds`
   from `lib/event-video/cut.js` for videos, photos, AI and parallax clips; no sound row (the natural-sound stem is produced by this node).
 
-The adapters live in `lib/timeline/models.js`; node definitions only attach the function, without changing ports, params or cache keys.
+The adapters live in `lib/timeline/models.js`; node definitions attach the function without changing ports or cache keys. The registry adds the review control described in section 6.
 Music-video guest vocals keep the `performance` port and numbering but expose kind `guest`; duet scenes use their separate port and numbering.
 Sections come from the shots, lines from connected captions where available, otherwise from the shot's line and voice.
 
@@ -114,7 +114,20 @@ The graph is saved through the normal save path with the browser revision (`rev`
 active). The answer carries the new prompt and the run request the UI should start: `{ mode: 'items', nodeId: <producer>, items: [index] }`.
 The run itself goes through the **normal cost path** of the node view (estimate, cost dialog/auto approval). The service never starts a paid run.
 
-A re-roll without feedback is the same run request with no edit.
+A re-roll is requested through this same method with empty or whitespace-only `text` and the current `rev`: it returns
+`{ prompt, rev, runRequest }` without editing the graph or review history. A feedback edit returns
+`{ prompt, rev, updatedAt, runRequest }`. A producer without an unambiguous mapped item cannot be re-rolled here
+(`TIMELINE_REROLL_UNAVAILABLE`); non-empty feedback without a notes or mapped-prompt capability is
+`TIMELINE_FEEDBACK_UNAVAILABLE`. This does not prevent approval of the clip.
+
+The service takes `runEngine` for the active-run check (also rechecked under `saveGraph`'s lock), `complete` for an injectable
+LLM adapter, and `getConfig` for the running model restrictions. Production uses `lib/nodes/llm.js`: the HUD default model,
+the normal cost journal and participant budget reservation, with the assistant's price estimate and unknown-cost fallback.
+The service itself never calls an executor or starts a run. Text and returned prompts are limited to 8000 JavaScript
+characters; notes use the registry's existing `MAX_NOTE_CHARS` limit. Scene notes reuse `parseBrief`'s scene id or the voice
+nodes' one-based `s1`, `s2`, ... keys. Rewriting an existing item edit retains its original upstream `was` anchor.
+Stale revisions and active runs are refused before calling the model and again when saving; a model call already completed
+before such a conflict remains billed, as with other brain calls.
 
 ### 5. Engine: item edits
 
@@ -144,12 +157,38 @@ checks before executing the node that every clip of its timeline is approved for
 for review" with a button that opens the timeline, not as a red failure. Planning (estimate) reports the stop in advance where it can.
 The app view and agents are unaffected while the param is `off`; templates stay `off`.
 
+`createEngine({ checkTimelineReview })` injects an async function receiving
+`{ workflow, results, node, params, inputs }`, returning `{ approved, open, total }`. Production wires the timeline service's
+`checkReview` into the shared engine. It builds the same timeline view using the run's **resolved inputs**, so newly generated
+upstream assets are checked rather than old selected results. The engine holds no workflow lock during this check; the real
+review store can safely acquire its workflow-then-review locks. Without the dependency, `required` fails closed. An unavailable
+or empty timeline also fails closed (`open: 0, total: 0` when no model is known).
+
+A whole-node cache hit is returned before the gate. When inputs are known during planning, the plan reports
+`TIMELINE_REVIEW_OPEN` with counts and zero executions for the cutter and its downstream nodes. `start` rejects that known
+stop before creating a run or reserving participant budget (HTTP 409). Otherwise execution checks the gate before entering
+the cutter's executor or reserving its step; downstream nodes are skipped. Upstream work needed to discover the timeline
+can already have run and incurred costs; the gate does not undo that work or a run-level budget reservation made for it.
+
+The registry declares `review` with `cacheExclude: true`; `cacheParams` excludes it at **all** values. Its `omitWhenAbsent`
+metadata preserves the shape of existing graphs/templates in `paramDefaults` and `normalizeParams`; `effectiveParams` applies the declared
+`off` default for execution. Template JSON and digest expectations remain unchanged.
+
 ### 7. Routes (`lib/nodes/routes.js`, same access rules as editing/running the workflow)
 
 - `GET  /api/workflows/:id/timeline` → the cutting nodes with a timeline
 - `GET  /api/workflows/:id/timeline/:nodeId` → the view of 2
 - `PUT  /api/workflows/:id/timeline/:nodeId/review` `{ keys: [...] | kind, status: 'approved' | 'open' }`
 - `POST /api/workflows/:id/timeline/:nodeId/clips/:key/feedback` `{ text, rev }`
+
+Responses are `{ nodes: [...] }`, `{ timeline: model | null }`, `{ timeline: model }`, and the feedback response from section 4,
+respectively. A review selection is either `{ keys: [clipKey, ...], status }` or `{ kind, status }`, never both. At most 500
+keys are accepted. Keys are 1–160 characters, begin with an ASCII letter/digit/underscore and then contain only those,
+periods, colons or hyphens; prototype keys are rejected. Unknown/empty selections are invalid, and missing assets cannot be
+approved. IDs use the existing route ID validation. Reads and writes use the same `canUse` permission as graph editing and
+running (the repository currently has no separate read-only workflow role). Feedback requires a non-negative safe-integer
+browser revision, even for a re-roll. Route errors use the existing `{ error, code }` format; revision and active-run conflicts
+are HTTP 409, malformed inputs 400 and inaccessible workflows 404.
 
 No new MCP tools in this version (note it in the PR as follow-up for parity).
 

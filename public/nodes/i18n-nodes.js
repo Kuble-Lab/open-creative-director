@@ -6,6 +6,9 @@
 // Dynamic content (Higgsfield model names and parameters, LLM model ids, voices) is shown raw.
 (function (global) {
   const rows = [
+    ['nodes.param.review', 'Timeline-Freigabe', 'Timeline approval', 'Aprobación de la línea de tiempo'],
+    ['nodes.option.required', 'Erforderlich', 'Required', 'Obligatoria'],
+    ['nodes.issue.TIMELINE_REVIEW_OPEN', 'Der Schnitt wartet auf die Freigabe der aktuellen Clips ({open} von {total} offen).', 'The cut is waiting for approval of the current clips ({open} of {total} open).', 'El montaje espera la aprobación de los clips actuales ({open} de {total} pendientes).'],
     ["nodes.type.input.influencer.label", "Influencer", "Influencer", "Influencer"],
     ["nodes.type.input.influencer.keywords", "Influencer, Figur, Charakter, Persona, Avatar, Sängerin, Stimme, Referenzbilder", "influencer, figure, character, persona, avatar, singer, voice, reference images", "influencer, figura, personaje, persona, avatar, cantante, voz, imágenes de referencia"],
     ["nodes.type.input.influencer.help", "Gibt die ausgewählte Figur als Text, Referenzbilder, Stimme, Stimmbeschreibung und Stil weiter. Ohne Auswahl bleiben alle Ausgänge leer.", "Passes the selected figure on as text, reference images, voice, voice description and style. Without a selection all outputs stay empty.", "Entrega la figura seleccionada como texto, imágenes de referencia, voz, descripción de voz y estilo. Sin selección todas las salidas quedan vacías."],

@@ -180,7 +180,11 @@
   // nodes is "auto" there). `default` stays what a saved node without the param runs with. Mirrors registry.initialParams on the server.
   function initialParams(def) {
     const out = paramDefaults(def);
-    for (const param of def?.params || []) if (param.initial !== undefined) out[param.id] = clone(param.initial);
+    for (const param of def?.params || []) {
+      // A control the server leaves out of saved graphs until it is set (its default applies when the node runs).
+      if (param.omitWhenAbsent) delete out[param.id];
+      else if (param.initial !== undefined) out[param.id] = clone(param.initial);
+    }
     return out;
   }
 
