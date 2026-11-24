@@ -218,7 +218,7 @@ async function testDefinition(h) {
     ['duet', 'video', false],
     ['captions', 'text', false]
   ]);
-  assert.deepEqual(registry.paramDefaults(node), { transition: 'cut', resolution: '720p', fps: '25', fit: 'crop', fade_out: 1, captions: 'off', captions_position: 'bottom' });
+  assert.deepEqual(registry.paramDefaults(node), { transition: 'cut', resolution: '720p', fps: '25', fit: 'crop', fade_out: 1, captions: 'off', captions_position: 'bottom', review: 'off' });
   assert.deepEqual(node.params.find((param) => param.id === 'captions').options, ['off', 'karaoke', 'words', 'lines']);
   assert.deepEqual(node.params.find((param) => param.id === 'captions_position').options, ['bottom', 'middle', 'top']);
   assert.deepEqual(node.params.find((param) => param.id === 'captions_position').showIf, { param: 'captions', in: ['karaoke', 'words', 'lines'] }, 'the position matters only with captions');

@@ -171,8 +171,9 @@ the cutter's executor or reserving its step; downstream nodes are skipped. Upstr
 can already have run and incurred costs; the gate does not undo that work or a run-level budget reservation made for it.
 
 The registry declares `review` with `cacheExclude: true`; `cacheParams` excludes it at **all** values. Its `omitWhenAbsent`
-metadata preserves the shape of existing graphs/templates in `paramDefaults` and `normalizeParams`; `effectiveParams` applies the declared
-`off` default for execution. Template JSON and digest expectations remain unchanged.
+metadata makes `normalizeParams` leave the param out of saved graphs and templates that do not set it; `effectiveParams` applies the declared
+`off` default for execution. `paramDefaults` lists it like every other param, so a node added in the node view starts with `review: 'off'`.
+Template JSON and digest expectations remain unchanged.
 
 ### 7. Routes (`lib/nodes/routes.js`, same access rules as editing/running the workflow)
 
