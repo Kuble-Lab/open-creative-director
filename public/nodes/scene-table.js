@@ -6,12 +6,12 @@
 // inspector (inspector.js) draws them and run.js (inspectorApi.scenes / runItems) hands in the state and starts the run.
 
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./item-edits'));
   else {
     root.OCDNodes = root.OCDNodes || {};
-    root.OCDNodes.sceneTable = factory();
+    root.OCDNodes.sceneTable = factory(root.OCDNodes.itemEdits);
   }
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (itemEditsLib) {
   // Nodes whose list is their setting or their destination: no table
   const NO_TABLE_CATEGORIES = Object.freeze(['input', 'output']);
   // Where the text of an item may also come from where no text input is connected: the settings of the entry
@@ -51,22 +51,33 @@
 
   // The text an item gets in: the first text input (in the order of the ports) with a connection whose value has text for this item.
   // A list from upstream gives its item of the same number, a single text is the same for all items.
-  function mainText({ index, inputPorts, edges, upstreamVariant, entry }) {
+  function mainTextInfo({ index, inputPorts, edges, upstreamVariant, entry, itemEdits }) {
     for (const port of inputPorts || []) {
       if (!isTextPort(port)) continue;
       const edge = (edges || []).find((item) => item.to && item.to.port === port.id && item.to.node === port.nodeId);
       if (!edge) continue;
       const variant = upstreamVariant ? upstreamVariant(edge.from.node) : null;
       const value = variant ? variant[edge.from.port] : null;
-      const text = isList(value) ? textOf(value.items[index]) : textOf(value);
-      if (text && text.trim()) return readable(text.trim());
+      let item = isList(value) ? value.items[index] : value;
+      let itemEdit = null;
+      // Only scalar text ports fed by a list map, exactly as in engine.resolveNodeInputs.
+      if (isList(value) && port.type === 'text') {
+        if (item?.type === 'number') item = { type: 'text', value: String(item.value) };
+        const applied = itemEditsLib.applyItemEdit(item, itemEdits?.[port.id]?.[index]);
+        item = applied.value;
+        if (applied.edited || applied.stale) itemEdit = { port: port.id, index, stale: applied.stale };
+      }
+      const text = textOf(item);
+      if (itemEdit || (text && text.trim())) return { text: text === null ? '' : readable(text.trim()), ...(itemEdit ? { itemEdit } : {}) };
     }
     const params = (entry && entry.params) || {};
     for (const key of TEXT_PARAMS) {
-      if (typeof params[key] === 'string' && params[key].trim()) return params[key].trim();
+      if (typeof params[key] === 'string' && params[key].trim()) return { text: params[key].trim() };
     }
-    return '';
+    return { text: '' };
   }
+
+  function mainText(options) { return mainTextInfo(options).text; }
 
   // The kind of preview a value gets: image and video as a tile (a click opens it), audio with a player, text shortened.
   function kindOf(value) {
@@ -86,7 +97,7 @@
   // Returns { port, count, aligned, rows: [{ index, number, value, kind, text, duration }] }. `aligned` is true where the entry
   // knows the key of every item (itemKeys, made by a run of the node per item): only then are single items made again without the
   // others; an older result or a node that makes its list as a whole cannot be.
-  function sceneTable({ nodeId, category, entry, variant, order, hidden, inputPorts, edges, upstreamVariant }) {
+  function sceneTable({ nodeId, category, entry, variant, order, hidden, inputPorts, edges, upstreamVariant, itemEdits }) {
     if (NO_TABLE_CATEGORIES.includes(category) || !isObject(variant)) return null;
     const hide = hidden instanceof Set ? hidden : new Set(hidden || []);
     const ids = [...(order || []).filter((id) => id in variant), ...Object.keys(variant).filter((id) => !(order || []).includes(id))].filter((id) => !hide.has(id));
@@ -99,7 +110,7 @@
       number: index + 1,
       value,
       kind: kindOf(value),
-      text: mainText({ index, inputPorts: ports, edges, upstreamVariant, entry }),
+      ...mainTextInfo({ index, inputPorts: ports, edges, upstreamVariant, entry, itemEdits }),
       duration: durationOf(value)
     }));
     const aligned = Boolean(entry) && Array.isArray(entry.itemKeys) && entry.itemKeys.length === variant[port].items.length;

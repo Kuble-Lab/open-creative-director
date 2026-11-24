@@ -209,6 +209,7 @@
     sparkle: 'M12 4l1.8 4.7L18.5 10l-4.7 1.3L12 16l-1.8-4.7L5.5 10l4.7-1.3zM19 16l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z',
     fullscreen: 'M4 9V4h5M20 15v5h-5',
     play: 'M8 5.5v13l11-6.5z',
+    pause: 'M8 5v14M16 5v14',
     stop: 'M7 7h10v10H7z',
     skip: 'M5 5.5v13l9-6.5zM18 5v14',
     'chevron-left': 'M15 6l-6 6 6 6',
@@ -1615,13 +1616,24 @@
     // Row of the connections of a multi-input in the order the model receives them (applyOrder).
     const order = el('div', { class: 'nv-node-order is-empty' });
     const params = el('div', { class: 'nv-node-params' });
+    // The timeline review of a cutting node (timeline-ui.js): which clip is placed when, with approval and feedback per clip.
+    const timeline = el('div', { class: 'nv-node-timeline nv-nodrag' });
+    if (def && def.timeline) {
+      const openTimeline = el('button', { type: 'button', class: 'nv-btn nv-btn-sm nv-node-timeline-open', title: T('nodes.timeline.openHint') }, icon('video', 13), el('span', { text: T('nodes.timeline.open') }));
+      openTimeline.addEventListener('pointerdown', (event) => event.stopPropagation());
+      openTimeline.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (cardActions.timeline && state.node) cardActions.timeline(state.node.id);
+      });
+      timeline.append(openTimeline);
+    } else timeline.classList.add('is-empty');
     // A line to read under the settings (the length of a song and where it comes from), filled through the slot.
     const note = el('div', { class: 'nv-node-note is-empty', dataset: { slot: 'note' } });
     const preview = el('div', { class: 'nv-node-preview', dataset: { slot: 'preview' } });
     const pager = el('div', { class: 'nv-node-pager' });
     const cost = el('span', { class: 'nv-node-cost', dataset: { slot: 'cost' } });
     const foot = el('div', { class: 'nv-node-foot' }, pager, cost);
-    card.append(head, model, status, message, fix, ports, order, params, note, preview, foot);
+    card.append(head, model, status, message, fix, ports, order, params, timeline, note, preview, foot);
     const state = {
       el: card,
       refs: { head, model, iconWrap, title, badges, helpBtn, runBtn, status, message, fix, ports, order, params, note, preview, pager, cost, foot },

@@ -828,6 +828,9 @@
         } else if (shown.port) {
           data.port = ui.portLabel(shown.port);
         }
+      } else if (shown.code === 'TIMELINE_REVIEW_OPEN') {
+        // the cut waits for the review of its clips: not an error to repair, the timeline is where it goes on
+        fix = { id: 'timeline', label: T('nodes.timeline.open'), title: T('nodes.timeline.openHint'), icon: 'video' };
       }
       return { message: ui.issueText({ code: shown.code, data, port: shown.port, message: shown.message }, variant), fix };
     }
@@ -874,6 +877,10 @@
       if (translated) {
         slot.message = translated;
         slot.fix = invalid.fix;
+      }
+      if (status === 'invalid' && shown.code === 'TIMELINE_REVIEW_OPEN') {
+        slot.label = T('nodes.timeline.waiting');
+        slot.tooltip = translated || '';
       }
       if (status === 'skipped') slot.message = skippedText(shown.message);
       if ((status === 'running' || status === 'waiting_job') && run && run.startedAt) slot.since = run.startedAt;
@@ -1490,7 +1497,12 @@
         if (!info.valid) {
           plan = planned;
           schedulePaint();
-          await showIssues(info.errors);
+          // A cut that waits for the review of its clips is the only thing in the way: the timeline opens instead of a list of errors.
+          const reviewStop = info.errors.length === 1 && info.errors[0].code === 'TIMELINE_REVIEW_OPEN' ? info.errors[0] : null;
+          if (reviewStop) {
+            ui.toast(ui.issueText(reviewStop), { kind: 'warn', timeout: 6000 });
+            bus.emit('timeline:review', { nodeId: reviewStop.nodeId });
+          } else await showIssues(info.errors);
           return;
         }
         const gate = gateOf(info);
@@ -1515,6 +1527,10 @@
           if (error.status === 409 && error.code === 'RUN_ACTIVE') {
             ui.toast(T('nodes.run.alreadyRunning'), { kind: 'warn' });
             if (error.runId) dispatch({ type: 'snapshot', activeRun: { runId: error.runId, mode: null, nodes: {} } });
+          } else if (error.code === 'TIMELINE_REVIEW_OPEN') {
+            // the review became open between the plan and the start
+            ui.toast(ui.issueText({ code: error.code, data: error.data || {}, message: error.message }), { kind: 'warn', timeout: 6000 });
+            schedulePlan(0);
           } else if (error.status === 409) {
             ui.toast(T('nodes.run.conflict'), { kind: 'warn' });
           } else if (error.status === 429) {
@@ -1580,6 +1596,7 @@
         order: outputOrder(node),
         hidden: hiddenPorts(node),
         inputPorts: ports.inputs,
+        itemEdits: node.itemEdits,
         edges: st.graph.edges,
         upstreamVariant: (id) => selectedVariant(st.results, id)
       });
@@ -1591,7 +1608,7 @@
       const edits = targetNode ? OCD.sceneTable.sceneEdits({ target, variant: selectedVariant(st.results, target.nodeId), params: targetNode.params, count: table.count }) : null;
       return {
         ...table,
-        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index), edit: edits ? edits[row.index] || null : null })),
+        rows: table.rows.map((row) => ({ ...row, cost: OCD.sceneTable.itemCost(planNode, def, row.index), edit: !row.itemEdit && edits ? edits[row.index] || null : null })),
         // the typed texts as the planner holds them now (the value the fields change)
         edits: edits && targetNode.params && typeof targetNode.params[target.param.id] === 'object' ? targetNode.params[target.param.id] : {},
         entryId: entry ? entry.id : null,

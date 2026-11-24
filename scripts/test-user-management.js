@@ -319,6 +319,10 @@ const FOREIGN_WORKFLOW_ROUTES = (id) => [
   ['PATCH', `/api/workflows/${id}/results/n1`, { entry: 'e' }],
   ['DELETE', `/api/workflows/${id}/results/n1`],
   ['DELETE', `/api/workflows/${id}/results/n1/entries/e`],
+  ['GET', `/api/workflows/${id}/timeline`],
+  ['GET', `/api/workflows/${id}/timeline/n1`],
+  ['PUT', `/api/workflows/${id}/timeline/n1/review`, { keys: ['story:0'], status: 'approved' }],
+  ['POST', `/api/workflows/${id}/timeline/n1/clips/story:0/feedback`, { text: 'x', rev: 1 }],
   ['GET', `/api/workflows/${id}/events`]
 ];
 

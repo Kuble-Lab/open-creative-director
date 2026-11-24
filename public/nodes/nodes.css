@@ -9280,3 +9280,8 @@ button.nv-scene-preview:focus-visible {
 .nv-asst-start, .nv-asst-accept, .nv-asst-discard { min-height: 36px; white-space: normal; }
 .nv-asst-start:focus-visible, .nv-asst-accept:focus-visible, .nv-asst-discard:focus-visible,
 .nv-asst-action-status:focus-visible, .nv-asst-result-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+/* the timeline review of a cutting node: its button in the inspector (the overlay itself is styled in timeline.css) */
+.nv-insp-timeline {
+  white-space: nowrap;
+}
