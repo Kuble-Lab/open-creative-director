@@ -43,9 +43,16 @@ First adapters:
   This also covers the HUD music video and the ad spot template, which cut with this node.
 - `explainer.edit`: scenes in order from `shots`/`timing`; sound per scene is the voice (`audio` list), so `audio` is null and every clip carries
   `sound: { port: 'audio', item }` instead; the UI then draws the scene voices one after the other in the waveform row. `clips`, `intro`, `outro`
-  where present.
+  where present. Like the cutter, the adapter uses stored scene lengths (or voice timing plus the scene tail before rendering), frame rounding
+  and `lib/explainer-edit.js` `planTimeline` for crossfades; a missing generated replacement keeps the normal scene.
 - `video.concat`: the clips in edge order, starts from the real durations of the assets, no sound row (the clips play with their own sound).
-- `event_video.cut`: add it if its plan gives clean clip times; otherwise leave it out and say so here.
+  Without known clip lengths it returns null rather than inventing times.
+- `event_video.cut`: its contract supplies contiguous clip times. The adapter validates that contract and reuses `sourceOf`/`shotSeconds`
+  from `lib/event-video/cut.js` for videos, photos, AI and parallax clips; no sound row (the natural-sound stem is produced by this node).
+
+The adapters live in `lib/timeline/models.js`; node definitions only attach the function, without changing ports, params or cache keys.
+Music-video guest vocals keep the `performance` port and numbering but expose kind `guest`; duet scenes use their separate port and numbering.
+Sections come from the shots, lines from connected captions where available, otherwise from the shot's line and voice.
 
 Nodes that cut one recording (`video.rough_cut`, `video.social_clips`) are out of scope.
 
@@ -64,12 +71,32 @@ Nodes that cut one recording (`video.rough_cut`, `video.social_clips`) are out o
 
 It also lists the cutting nodes of a workflow that have a timeline.
 
+`createTimelineService({ store, registry, engine, reviewStore, resolveAsset })` exposes `listTimelineNodes(workflowId)` (available models:
+`{ nodeId, type, label, duration, clips }`) and `getTimeline(workflowId, nodeId)` (model or null). `engine` defaults to the shared engine module,
+`reviewStore` to `store.timelineReviews`. `resolveStoredInputs` and `selectedVariant` are exported by the engine: they read the selected entry
+and variant, never execute a node, and resolve ports independently so a missing clip input does not hide a known plan. An input that cannot be
+resolved stays absent as a whole; later edges are never silently moved into an unresolved required input's place.
+
+Each clip adds `asset: { id, url, duration } | null`, `over` (zero without a warning), `missing`, `producer: { nodeId, item } | null`,
+`prompt` (the full mapped text, including current item edits), `promptPort`, `feedbackCapability: 'notes' | 'prompt' | null`, and `review`.
+`audioAsset` resolves the model's audio reference; `soundAsset` resolves each explainer scene's sound reference. The default asset resolver reads
+the ledger and checks the local file, using local ffprobe only if its duration is absent. Tests can inject an asset resolver.
+Known stored durations keep a missing file's slot visible; its `asset` is null and `missing` is true.
+Producer tracing follows edge/list positions and verified asset identity through `util.pick` and `util.router`; a media-list reference is traced
+only when exactly one selected non-input/non-utility output identifies its original producer. Uploads and ambiguous origins return null.
+
 ### 3. Review state: `lib/timeline/review-store.js`
 
 One JSON file per workflow next to its other data (same locking/atomic write pattern as the results store). Per cutting node and clip key:
 `{ status: 'approved', assetId, by, at }` and the feedback history `[{ text, by, at, was, prompt }]` (at most 10 per clip). An approval is bound
 to the asset: when the clip at that place is a different asset, the clip is open again. Deleting a workflow removes the file; duplicating does
 not copy it.
+
+The workflow store exposes `timelineReviews` (`read`, `setReview`, `appendFeedback`) backed by `<workflow>/timeline-review.json`, shaped as
+`{ nodes: { [nodeId]: { [clipKey]: { status, assetId?, by?, at?, feedback: [] } } }`. Updates take the workflow lock followed by a separate review
+lock and use the workflow store's atomic JSON writer. Deletion removes the file under these locks; a later write rechecks workflow existence.
+`reviewForAsset(record, assetId)` is the pure approval check shared with the future gate: no current asset or a different asset means open,
+with the feedback history retained. Opening a clip or appending feedback clears its approval; the newest ten feedback entries remain.
 
 ### 4. Feedback
 
