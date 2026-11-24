@@ -1,6 +1,6 @@
 # Timeline review (clip approval before the cut)
 
-Status: specification for the first version. Keep this file as the documentation of the feature and correct it where the code ends up different.
+Status: engine, timeline service, review store, feedback and routes implemented. The pure browser timeline module and API client are implemented and tested; the DOM overlay and its integration are still pending. Keep this file as the documentation of the feature and correct it where the code ends up different.
 
 ## Goal
 
