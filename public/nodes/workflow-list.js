@@ -164,7 +164,7 @@
       const row = el('div', { class: `nv-wf-item ${active ? 'is-active' : ''}`.trim(), role: 'listitem', dataset: { id: workflow.id } });
       const open = el('button', { type: 'button', class: 'nv-wf-open', 'aria-current': active ? 'true' : null });
       const thumb = el('span', { class: 'nv-wf-thumb' });
-      if (workflow.thumbnail) thumb.append(el('img', { src: api.rel(workflow.thumbnail), alt: '', loading: 'lazy', draggable: 'false' }));
+      if (workflow.thumbnail) thumb.append(el('img', { src: typeof api.thumb === 'function' ? api.thumb(workflow.thumbnail, 96) : api.rel(workflow.thumbnail), alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));
       else thumb.append(ui.icon('workflow', 16));
       const text = el('span', { class: 'nv-wf-text' });
       const nameLine = el('span', { class: 'nv-wf-nameline' }, el('span', { class: 'nv-wf-name', text: workflow.name }));

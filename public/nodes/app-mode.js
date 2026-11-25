@@ -1964,7 +1964,7 @@
       const cell = el('div', { class: `nv-appleaf is-${leaf.type}` });
       if (OCD.preview.isMedia(leaf)) {
         const frame = el('div', { class: 'nv-appleaf-frame' });
-        const media = OCD.preview.mediaNode(leaf, { scrolling: true });
+        const media = OCD.preview.mediaNode(leaf, { scrolling: true, thumbWidth: 640 });
         frame.append(media);
         shapeToFilm(media, media);
         if (leaf.type === 'image') {

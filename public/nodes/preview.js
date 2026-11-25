@@ -138,7 +138,9 @@
   function mediaNode(value, options = {}) {
     if (value.type === 'model3d') return modelNode(value, options);
     if (value.type === 'image') {
-      return el('img', { class: `nv-media nv-media-image${alphaClass(value)}`, src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' });
+      // options.thumbWidth: a small copy of the image (tiles of a gallery); without it the original
+      const src = options.thumbWidth ? ui.thumbUrl(value, options.thumbWidth) : ui.mediaUrl(value);
+      return el('img', { class: `nv-media nv-media-image${alphaClass(value)}`, src, alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' });
     }
     if (value.type === 'video') {
       return el('video', { class: `nv-media nv-media-video${alphaClass(value)}`, src: videoSource(value), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
@@ -402,7 +404,7 @@
       wrap.append(icon('file', 14));
     } else if (value.type === 'image' && isMedia(value)) {
       wrap.classList.toggle('nv-alpha', hasAlpha(value));
-      wrap.append(el('img', { src: ui.mediaUrl(value), alt: '', loading: 'lazy', draggable: 'false' }));
+      wrap.append(el('img', { src: ui.thumbUrl(value, 160), alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));
     } else if (value.type === 'video' && isMedia(value)) {
       wrap.classList.toggle('nv-alpha', hasAlpha(value));
       wrap.append(el('video', { src: videoSource(value), muted: true, preload: 'metadata', playsinline: true, tabindex: '-1' }), el('span', { class: 'nv-thumb-badge' }, icon('play', 9)));
@@ -413,7 +415,7 @@
       // the preview image of the model when there is one, else the 3D tile; never an audio player
       const poster = options.poster && isMedia(options.poster) && options.poster.type === 'image' ? options.poster : null;
       if (poster) {
-        wrap.append(el('img', { src: ui.mediaUrl(poster), alt: '', loading: 'lazy', draggable: 'false' }), el('span', { class: 'nv-thumb-badge is-model' }, icon('cube', 10)));
+        wrap.append(el('img', { src: ui.thumbUrl(poster, 160), alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }), el('span', { class: 'nv-thumb-badge is-model' }, icon('cube', 10)));
       } else {
         wrap.classList.add('is-glyph', 'is-model');
         wrap.append(icon('cube', 18));

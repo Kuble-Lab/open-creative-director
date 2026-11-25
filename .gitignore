@@ -3,6 +3,7 @@ node_modules/
 data/
 assets/
 projects/
+cache/
 *.log
 .DS_Store
 render-node/node_modules/
