@@ -584,6 +584,17 @@ async function run(iso, holder) {
   const uploadTool = startList.find((tool) => tool.name === 'upload_asset');
   assert.match(uploadTool.description, /pdf, txt, md/);
   assert.match(uploadTool.description, /50 MB/);
+  // url: the app fetches the file itself; only public https addresses (the download itself: scripts/test-mcp-url-import.js)
+  assert.match(uploadTool.description, /url: the app downloads the file itself/);
+  await refused(starter.secret, 'upload_asset', { url: 'http://example.com/song.mp3' }, /Only https addresses/);
+  await refused(starter.secret, 'upload_asset', { url: 'https://127.0.0.1/song.mp3' }, /private or local network/);
+  await refused(starter.secret, 'upload_asset', { url: 'https://localhost/song.mp3' }, /private or local network|could not be found/);
+  await refused(starter.secret, 'upload_asset', { url: 'https://[::1]/song.mp3' }, /private or local network/);
+  await refused(starter.secret, 'upload_asset', { url: 'https://user:pw@example.com/song.mp3' }, /user name or password/);
+  await refused(starter.secret, 'upload_asset', { url: 'https://example.com:8443/song.mp3' }, /port \(443\)/);
+  await refused(starter.secret, 'upload_asset', { url: 'https://example.com/a.mp3', data_base64: 'AAAA' }, /only one of url, import_id and data_base64/);
+  await refused(starter.secret, 'upload_asset', { import_id: 'imp_000000000000000000000000' }, /no download with this import_id/);
+  await refused(starter.secret, 'upload_asset', {}, /filename is required/);
   // wrong type, not base64, empty, nothing known
   await refused(starter.secret, 'upload_asset', { filename: 'run.exe', data_base64: Buffer.from('MZ').toString('base64') }, /Unsupported file type/);
   await refused(starter.secret, 'upload_asset', { filename: 'doc.docx', mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, /Unsupported file type/); // a PDF is a document since WP37a
@@ -1095,8 +1106,36 @@ async function run(iso, holder) {
   await bad([{ op: 'remove_node', node: 'zz' }], /there is no node "zz"/);
   await bad([{ op: 'disconnect', edge: 'e99' }], /no connection with the id/);
   await bad([{ op: 'set_label', node: 'n1', label: 'ok' }, { op: 'explode' }], /arguments|unknown "op"|must be one of/);
-  await bad([{ op: 'add_node', type: 'input.media_list', params: { assets: [] } }], /holds files and cannot be set here/);
+  await bad([{ op: 'add_node', type: 'input.media_list', params: { assets: ['upload-999'] } }], /No file has been uploaded with this key yet/);
+  await bad([{ op: 'add_node', type: 'input.image', params: { asset: 5 } }], /takes the asset_id of a file uploaded with upload_asset/);
   assert.equal((await wfStore.readWorkflow(blank.workflow_id)).rev, builtRev, 'refused edits change nothing');
+
+  // file params: an uploaded file goes into an input node (copied into the session of the workflow)
+  const editorPng = await ok(editor.secret, 'upload_asset', { filename: 'cover.png', data_base64: PNG.toString('base64') });
+  await bad([{ op: 'add_node', type: 'input.audio', params: { asset: editorPng.asset_id } }], /is image, this node takes audio/);
+  await bad([{ op: 'add_node', type: 'input.image', params: { asset: 'upload-999' } }], /was not uploaded with this key/);
+  assert.equal((await wfStore.readWorkflow(blank.workflow_id)).rev, builtRev, 'refused file edits change nothing');
+  const withFile = await ok(editor.secret, 'edit_workflow', {
+    workflow_id: blank.workflow_id,
+    operations: [
+      { op: 'add_node', type: 'input.image', ref: 'pic', params: { asset: editorPng.asset_id } },
+      { op: 'add_node', type: 'input.media_list', ref: 'list', params: { assets: [editorPng.asset_id, editorPng.asset_id] } }
+    ]
+  });
+  assert.match(withFile.notes.join(' '), /1 file put into the workflow/);
+  const filed = await wfStore.readWorkflow(blank.workflow_id);
+  const picNode = filed.graph.nodes.find((item) => item.id === withFile.created_nodes.pic);
+  assert.equal(picNode.params.asset.sessionId, filed.sessionId, 'the file lives in the session of the workflow');
+  assert.equal(picNode.params.asset.type, 'image');
+  assert.notEqual(picNode.params.asset.assetId, undefined);
+  await fsp.access(path.join(iso.load('lib/store').sessionAssetDir(filed.sessionId), picNode.params.asset.file));
+  const listNode = filed.graph.nodes.find((item) => item.id === withFile.created_nodes.list);
+  assert.equal(listNode.params.assets.length, 2);
+  assert.equal(listNode.params.assets[0].assetId, picNode.params.asset.assetId, 'one file given twice is copied once');
+  const shownFile = await ok(editor.secret, 'get_workflow', { workflow_id: blank.workflow_id, include_graph: true });
+  assert.deepEqual(shownFile.graph.nodes.find((item) => item.id === picNode.id).params.asset, { file: picNode.params.asset.assetId, type: 'image' });
+  const cleared = await ok(editor.secret, 'edit_workflow', { workflow_id: blank.workflow_id, operations: [{ op: 'remove_node', node: picNode.id }, { op: 'remove_node', node: listNode.id }] });
+  assert.equal(cleared.removed_nodes.length, 2);
 
   // disconnect and unexpose; a workflow that lost a required connection says so and does not start
   const cut = await ok(editor.secret, 'edit_workflow', {

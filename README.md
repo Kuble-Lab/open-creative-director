@@ -475,7 +475,7 @@ location /supercomputer/ {
 | `list_node_types` | read | Node types that can be added, with ports; with `types` also their params |
 | `estimate_run` | read | Cost estimate of the engine with the paid steps |
 | `get_run` | read | Status, progress, results as links (can wait up to 30 s) |
-| `upload_asset` | read and start | Image, video or audio as an input: base64 up to 15 MB, larger files through a one-time upload link |
+| `upload_asset` | read and start | Image, video, audio (a song) or document as an input. Three ways: `url` (the app downloads the file itself from a public https address: CDN, Suno, Dropbox or Google Drive share link, presigned link; a long download answers with an `import_id` to ask again), base64 up to 15 MB, or a one-time upload link (PUT) up to 500 MB |
 | `create_from_template` | read and start | Creates a workflow from a template and fills its inputs; required inputs left out make a draft (`missing_inputs`) instead of a refusal |
 | `create_workflow` | read and start | Creates an empty workflow |
 | `edit_workflow` | read and start | Changes the graph with the rules of the editor: add and remove nodes, connect and disconnect, set params and labels, choose the inputs of the workflow. All operations of a call or none; nothing runs |
@@ -484,7 +484,9 @@ location /supercomputer/ {
 
 `estimate_run` and `run_workflow` accept mode (all, node, selection, items), node_ids or node_id + items, and force. Estimate the same scope before each run and ask the person before paid work. Publication and deletion need the person’s yes; no tool deletes entire workflows or influencers.
 
-Every answer about a workflow carries its address in the app (`url`, `<base>/#w=<id>`). `edit_workflow` acts as the person: it reaches their workflows and those shared with them, refuses node types priced in credits (Higgsfield) and file params (expose the param with `expose_input` and give the file in `inputs`), and reports whether the workflow can run afterwards.
+Every answer about a workflow carries its address in the app (`url`, `<base>/#w=<id>`). `edit_workflow` acts as the person: it reaches their workflows and those shared with them, refuses node types priced in credits (Higgsfield), and reports whether the workflow can run afterwards. File params of the input nodes (image, video, audio, media list, document) take the `asset_id` from `upload_asset` (for example `{"op":"set_params","node":"n2","params":{"asset":"upload-004"}}`); the file is checked (finished, right type) and copied into the workflow, so it shows in the node like a file dragged in by hand.
+
+**Download from an address (`upload_asset` with `url`).** For agents whose own machine cannot reach the app (a cloud sandbox behind an allowlist) or that can only pass text (a chat connector): the server fetches the file. Only `https` on port 443 without user name or password; every host and every redirect (at most 5) must resolve to public addresses only, and the connection goes to exactly the checked address (no DNS rebinding); a web page (`text/html`) is refused; the size limits of uploads and the storage limits of the key apply; 20 s to the first byte, 30 s without data, 15 minutes in all; two downloads per key and six in all at a time. Dropbox share links (`dl=0`) and Google Drive file links are turned into their download address. Code: `lib/mcp/url-import.js`, test `scripts/test-mcp-url-import.js`.
 
 `create_from_template` and `run_workflow` accept optional `file_marks` for app file inputs with per-file AI marks: an object from asset id, `session_id/asset_id` or `wf/asset_id` to `never` or `always`. Omit `auto`. Unknown files and invalid marks are refused before changing the workflow; marks follow copied files into its storage.
 
