@@ -9,6 +9,15 @@
     return String(path).replace(/^\/+/, '');
   }
 
+  // A small copy of an image asset for lists and previews (lib/thumbnails.js): /assets/... images get ?w=<width>, the server
+  // answers with an image at most that wide. Every other address (videos, external links, data:) stays as it is.
+  const THUMB_IMAGE = /^\/?assets\/[^?#]+\.(png|jpe?g|webp|gif|bmp|tiff?)$/i;
+  function thumb(path, width) {
+    const value = String(path || '');
+    if (!value || !THUMB_IMAGE.test(value)) return rel(value);
+    return `${rel(value)}?w=${Math.max(1, Math.round(Number(width) || 320))}`;
+  }
+
   async function request(method, path, body, options = {}) {
     const init = { method, headers: {} };
     if (body !== undefined) {
@@ -127,6 +136,7 @@
 
   OCD.api = {
     rel,
+    thumb,
     request,
     upload,
     importZip,

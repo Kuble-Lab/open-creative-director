@@ -54,6 +54,7 @@ const adminMonitoring = require('./lib/admin-monitoring');
 const adminActivity = require('./lib/admin-activity');
 const strikes = require('./lib/strikes');
 const nodeWorkflows = require('./lib/nodes/workflows-store');
+const thumbnails = require('./lib/thumbnails');
 const { createEngine: createNodeEngine } = require('./lib/nodes/engine');
 const { registerNodeRoutes } = require('./lib/nodes/routes');
 const { createRunService, installRunService } = require('./lib/nodes/run-service');
@@ -169,9 +170,38 @@ app.use('/assets', (req, res, next) => {
   if (/\.(pdf|txt|md)$/i.test(name)) res.setHeader('Content-Disposition', 'attachment');
   next();
 });
+// ?w=<width> on an image asset: a small copy instead of the original (lib/thumbnails.js), for lists and previews. Runs
+// after the access check of the caller; without a copy (no ffmpeg, unreadable image) the original follows.
+const thumbnailer = thumbnails.createThumbnailer({ assetsDir: PATHS.assetsDir, cacheDir: PATHS.thumbsDir });
+async function sendAsset(req, res, next, handler, decodedPath, privateCache) {
+  if (req.query && req.query.w !== undefined && (req.method === 'GET' || req.method === 'HEAD')) {
+    const relPath = decodedPath.replace(/^\/+/, '');
+    const segments = relPath.split('/');
+    const plain = segments.length >= 2 && !relPath.includes('%') &&
+      segments.every((segment) => segment && segment !== '.' && segment !== '..' && !segment.includes('\\') && !segment.includes('\0'));
+    if (plain && thumbnails.isImageFile(relPath)) {
+      const thumb = await thumbnailer.get(relPath, req.query.w);
+      if (thumb) {
+        return res.sendFile(thumb.file, {
+          cacheControl: false,
+          lastModified: true,
+          headers: {
+            'Content-Type': thumb.type,
+            'Cache-Control': privateCache ? 'private, max-age=2592000, immutable' : 'public, max-age=2592000, immutable'
+          }
+        }, (err) => { if (err && !res.headersSent) handler(req, res, next); });
+      }
+    }
+  }
+  return handler(req, res, next);
+}
 app.use('/assets', async (req, res, next) => {
   const viewer = access.viewerOf(req);
-  if (!viewer.active) return assetStatic(req, res, next);
+  if (!viewer.active) {
+    let decoded = '';
+    try { decoded = decodeURIComponent(String(req.path || '')); } catch (_) { return assetStatic(req, res, next); }
+    return sendAsset(req, res, next, assetStatic, decoded, false);
+  }
   // The static handler decodes the path itself and would follow ".." inside the assets folder into another
   // session, so the decoded path must be a plain /<sessionId>/<file...> without dot segments or a second layer of escapes.
   let decodedPath = '';
@@ -195,7 +225,7 @@ app.use('/assets', async (req, res, next) => {
   } catch (_) {
     return res.sendStatus(404);
   }
-  return assetStaticPrivate(req, res, next);
+  return sendAsset(req, res, next, assetStaticPrivate, decodedPath, true);
 });
 
 const PUBLIC_REF_MIME = {

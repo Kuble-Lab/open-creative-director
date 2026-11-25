@@ -44,7 +44,7 @@
     const wrap = el('span', { class: `nv-ap-thumb is-${kind}` });
     // an asset marked with transparency sits on a chequerboard (the class is on the picture, so the bars of the square tile stay plain)
     const alphaClass = item.alpha === true ? 'nv-alpha' : null;
-    if (kind === 'image') wrap.append(el('img', { class: alphaClass, src: url, alt: '', loading: 'lazy', draggable: 'false' }));
+    if (kind === 'image') wrap.append(el('img', { class: alphaClass, src: typeof api.thumb === 'function' ? api.thumb(item.url || '', 320) : url, alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));
     else if (kind === 'video') wrap.append(el('video', { class: alphaClass, src: `${url}#t=0.1`, muted: true, preload: 'metadata', playsinline: true }));
     else wrap.append(icon(kind === 'model3d' ? 'cube' : 'audio', 22));
     return wrap;

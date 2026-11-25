@@ -855,6 +855,12 @@
     return value && typeof value.url === 'string' ? api.rel(value.url) : '';
   }
 
+  // The address of a small copy of an image (at most `width` pixels wide, see api.thumb); everything else as mediaUrl.
+  function thumbUrl(value, width) {
+    if (!value || typeof value.url !== 'string') return '';
+    return typeof api.thumb === 'function' ? api.thumb(value.url, width) : api.rel(value.url);
+  }
+
   function isMediaValue(value) {
     return Boolean(value) && ['image', 'video', 'audio'].includes(value.type) && typeof value.url === 'string';
   }
@@ -862,7 +868,8 @@
   function mediaElement(value, options = {}) {
     const url = mediaUrl(value);
     if (value.type === 'image') {
-      const img = el('img', { class: `nv-media nv-media-image${value.alpha === true ? ' nv-alpha' : ''}`, src: url, alt: '', loading: 'lazy', draggable: 'false' });
+      // the card shows a copy at most 640 pixels wide; the large view (double click) opens the original
+      const img = el('img', { class: `nv-media nv-media-image${value.alpha === true ? ' nv-alpha' : ''}`, src: thumbUrl(value, 640), alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' });
       if (options.zoom !== false) {
         img.addEventListener('dblclick', (event) => {
           event.stopPropagation();
@@ -927,7 +934,7 @@
       const items = value.items || [];
       for (const item of items.slice(0, 12)) {
         const cell = el('div', { class: 'nv-pv-cell' });
-        if (item && item.type === 'image') cell.append(el('img', { src: mediaUrl(item), alt: '', loading: 'lazy', draggable: 'false' }));
+        if (item && item.type === 'image') cell.append(el('img', { src: thumbUrl(item, 320), alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));
         else if (item && item.type === 'text') cell.append(el('span', { text: String(item.value).slice(0, 80) }));
         else if (item && item.type === 'number') cell.append(el('span', { text: String(item.value) }));
         else if (item && item.type === 'document') cell.append(icon('file', 16), el('span', { text: String(item.name || item.file || '').slice(0, 40) }));
@@ -2260,6 +2267,7 @@
     portOverLimit,
     mediaElement,
     mediaUrl,
+    thumbUrl,
     isMediaValue,
     isDocumentValue,
     documentElement,
