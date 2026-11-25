@@ -427,6 +427,75 @@ async function main() {
       assert.equal((await engine.plan(wf.id, { mode: 'all' })).nodes.u.status, 'stale');
     }
 
+    /* ----- an older version made with OTHER parameters stays selected when the nodes behind it run ----- */
+    {
+      resetState();
+      const wf = await makeWorkflow([node('s', 't.src', { text: 'sled' }, 0, 0), node('u', 't.upper', {}, 100, 0)], edges('s.out>u.in'));
+      const engine = makeEngine();
+      const setText = async (text) => {
+        const current = await wfStore.readWorkflow(wf.id);
+        await wfStore.saveGraph(wf.id, { baseRev: current.rev, graph: { ...current.graph, nodes: current.graph.nodes.map((item) => (item.id === 's' ? { ...item, params: { text } } : item)) } });
+      };
+      await run(engine, wf.id, { mode: 'all' });
+      await setText('snowman');
+      await run(engine, wf.id, { mode: 'all' });
+      const [snowman, sled] = (await results(wf.id, 's')).history;
+      assert.notEqual(snowman.cacheKey, sled.cacheKey, 'other parameters give another cache key');
+      assert.equal(sled.variants[0].out.value, 'sled');
+
+      // without the key of now the choice is lost as before: the run takes the entry of the current parameters again
+      await wfStore.selectVariant(wf.id, 's', { entry: sled.id, variant: 0 });
+      await run(engine, wf.id, { mode: 'node', nodeIds: ['u'] });
+      assert.equal((await results(wf.id, 's')).selected.entry, snowman.id);
+
+      // the page ties the choice to the key the node has now (PATCH results/:nodeId)
+      const keyNow = await engine.cacheKeyNow(wf.id, 's');
+      assert.equal(keyNow, snowman.cacheKey);
+      const chosen = await wfStore.selectVariant(wf.id, 's', { entry: sled.id, variant: 0, pinnedKey: keyNow });
+      assert.deepEqual(chosen.selected, { entry: sled.id, variant: 0, pinnedKey: keyNow });
+      const plan = await engine.plan(wf.id, { mode: 'node', nodeIds: ['u'] });
+      assert.equal(plan.nodes.s.status, 'cached', 'the chosen entry stands for the node');
+      resetState();
+      const downstream = await run(engine, wf.id, { mode: 'node', nodeIds: ['u'] });
+      assert.equal(downstream.nodes.s.status, 'cached');
+      assert.deepEqual(env.state.counts, {}, 'u is cached from the first run with the sled, s does not run');
+      assert.deepEqual((await results(wf.id, 's')).selected, { entry: sled.id, variant: 0, pinnedKey: keyNow }, 'the run keeps the choice');
+      const uNow = await results(wf.id, 'u');
+      assert.equal(uNow.history.find((entry) => entry.id === uNow.selected.entry).variants[0].out.value, 'SLED', 'the node behind it reads the chosen entry');
+      // a run of the whole workflow and a plain run of the node itself keep it too
+      await run(engine, wf.id, { mode: 'all' });
+      await run(engine, wf.id, { mode: 'node', nodeIds: ['s'] });
+      assert.deepEqual(env.state.counts, {});
+      assert.equal((await results(wf.id, 's')).selected.entry, sled.id);
+
+      // choosing the entry of the current parameters needs no tie
+      const back = await wfStore.selectVariant(wf.id, 's', { entry: snowman.id, variant: 0, pinnedKey: keyNow });
+      assert.deepEqual(back.selected, { entry: snowman.id, variant: 0 });
+      await wfStore.selectVariant(wf.id, 's', { entry: sled.id, variant: 0, pinnedKey: keyNow });
+
+      // a changed parameter ends the choice: the node is made again
+      await setText('tree');
+      assert.equal((await engine.plan(wf.id, { mode: 'all' })).nodes.s.status, 'stale');
+      resetState();
+      await run(engine, wf.id, { mode: 'all' });
+      assert.deepEqual(env.state.counts, { s: 1, u: 1 });
+      const sAfter = await results(wf.id, 's');
+      assert.equal(sAfter.selected.pinnedKey, undefined);
+      assert.equal(sAfter.history[0].variants[0].out.value, 'tree');
+
+      // a forced run of the node makes a new version in spite of a choice
+      await wfStore.selectVariant(wf.id, 's', { entry: sled.id, variant: 0, pinnedKey: await engine.cacheKeyNow(wf.id, 's') });
+      resetState();
+      await run(engine, wf.id, { mode: 'node', nodeIds: ['s'], force: true });
+      assert.deepEqual(env.state.counts, { s: 1 });
+      assert.equal((await results(wf.id, 's')).selected.pinnedKey, undefined);
+
+      // while a node before it is not up to date the key is not known
+      const wf2 = await makeWorkflow([node('s', 't.src', { text: 'a' }, 0, 0), node('u', 't.upper', {}, 100, 0)], edges('s.out>u.in'));
+      assert.equal(await engine.cacheKeyNow(wf2.id, 'u'), null);
+      assert.equal(await engine.cacheKeyNow(wf2.id, 'missing'), null);
+    }
+
     /* ----- errors block descendants, independent branches finish ----- */
     {
       resetState();
