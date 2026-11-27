@@ -44,10 +44,56 @@ function audioCard(asset) {
   return card;
 }
 
+// A stored file that is no picture (a font, a PDF, a sound or video uploaded or imported from a branding) gets a file card
+// with name, icon and download link instead of a broken image. Images and assets without a recognisable extension stay images.
+const CARD_IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|svg|heic|heif)$/i;
+const CARD_AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac)$/i;
+const CARD_VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
+const CARD_FONT_EXT = /\.(ttf|otf|woff2?)$/i;
+
+function assetFileExtension(asset) {
+  const path = String(asset.file || asset.url || '').split(/[?#]/, 1)[0];
+  const match = /\.[A-Za-z0-9]{1,6}$/.exec(path);
+  return match ? match[0].toLowerCase() : '';
+}
+
+// The name a person knows the file by: the original name of an upload or import, else the stored file name.
+function assetFileLabel(asset) {
+  const prompt = String(asset.prompt || '');
+  const upload = /^Upload:\s*(.+)$/.exec(prompt);
+  if (upload) return upload[1].trim();
+  const imported = /^Branding-Import:\s*(.+?)\s+aus\s+\S+$/.exec(prompt);
+  if (imported) return imported[1].trim();
+  return String(asset.file || asset.url || asset.id || '').split(/[?#]/, 1)[0].split('/').pop() || asset.id;
+}
+
+function fileCard(asset) {
+  const card = document.createElement('div');
+  card.className = 'asset-card asset-file';
+  const name = assetFileLabel(asset);
+  const ext = assetFileExtension(asset);
+  const link = document.createElement('a');
+  link.className = 'asset-file-link';
+  link.href = rel(asset.url);
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.download = name;
+  link.title = name;
+  const icon = CARD_FONT_EXT.test(ext) ? '🔤' : ext === '.pdf' ? '📕' : '📄';
+  link.textContent = `${icon} ${name}`;
+  card.appendChild(link);
+  card.appendChild(assetMeta(asset));
+  return card;
+}
+
 function mediaCard(asset) {
   if (asset.kind === 'video') return videoCard(asset);
   if (asset.kind === 'audio') return audioCard(asset);
-  return imageCard(asset);
+  const ext = assetFileExtension(asset);
+  if (!ext || CARD_IMAGE_EXT.test(ext)) return imageCard(asset);
+  if (CARD_VIDEO_EXT.test(ext)) return videoCard(asset);
+  if (CARD_AUDIO_EXT.test(ext)) return audioCard(asset);
+  return fileCard(asset);
 }
 
 // The price line of a result: the real cost in USD, "Higgsfield credits" for Higgsfield (it bills in credits, not USD), and
