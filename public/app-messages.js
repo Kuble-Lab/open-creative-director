@@ -262,7 +262,11 @@ function renderDetail() {
         }
         wrap.insertBefore(row, bubble);
       }
-      const text = textFromContent(message.content)
+      // the text of an uploaded PDF goes to the Director as its own part ("[PDF-Inhalt …"); the bubble shows only the file
+      const shown = Array.isArray(message.content)
+        ? message.content.filter((part) => !(part && part.type === 'text' && String(part.text || '').startsWith('[PDF-Inhalt ')))
+        : message.content;
+      const text = textFromContent(shown)
         .split('\n')
         .filter((line) => !/^Hochgeladene\S* .*gespeichert als Asset /.test(line))
         .join('\n');

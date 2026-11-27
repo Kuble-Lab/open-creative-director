@@ -148,10 +148,11 @@ async function testModelLibrary() {
   assert.equal(imageModels.isAllowed({ imageModel: GPT, imageModels: DEFAULT_CONFIG.imageModels }, NANO_21), true, 'on the default list');
   for (const [id, name] of [[SUNBURST, 'GPT Image 2.6 Sunburst'], [FLARE, 'GPT Image 2.6 Flare']]) {
     assert.deepEqual(imageModels.referenceLimits(id), { min: 0, max: 16 });
-    assert.equal(imageModels.estimateUsd(id), null);
+    assert.equal(imageModels.estimateUsd(id), 0.12, 'a cautious estimate (2026-11-27), the booked cost is what the provider reports');
     assert.equal(imageModels.displayName(id), name);
   }
-  assert.equal(imageModels.estimateUsd(GPT), null, 'the price of GPT Image 2 depends on the quality the provider picks');
+  assert.equal(imageModels.estimateUsd(GPT), 0.25, 'GPT Image 2 depends on the quality the provider picks: a cautious upper estimate');
+  assert.equal(imageModels.estimateUsd('openai/gpt-image-2.5-sunburst'), 0.25, 'the default model has a price, so agent access can start a new workflow');
   assert.equal(imageModels.estimateUsd(ONE_REF), null);
   assert.equal(imageModels.estimateUsd(''), null);
   assert.equal(imageModels.estimateUsd(undefined), null);
@@ -167,11 +168,11 @@ async function testModelLibrary() {
 
   // option lists: generate
   const generateList = await imageModels.options({ config: CONFIG });
-  assert.deepEqual(generateList[0], { value: '', label: 'GPT Image 2', default: true }, 'the model of the configuration first, as the choice "no choice"');
+  assert.deepEqual(generateList[0], { value: '', label: 'GPT Image 2', default: true, estimateUsd: 0.25 }, 'the model of the configuration first, as the choice "no choice"');
   assert.deepEqual(generateList.map((item) => item.value), ['', GPT, NANO, ONE_REF, TEXT_ONLY, UNKNOWN_REFS], 'a model that needs a reference image is left out');
   assert.deepEqual(generateList.find((item) => item.value === NANO), { value: NANO, label: 'Nano Banana Pro', estimateUsd: 0.134 });
   assert.ok(generateList.every((item) => !('references' in item)), 'the generate list does not talk about references');
-  assert.ok(generateList.filter((item) => item.value !== NANO && !item.default).every((item) => !('estimateUsd' in item)), 'no price, no field');
+  assert.ok(generateList.filter((item) => item.value !== NANO && item.value !== GPT && !item.default).every((item) => !('estimateUsd' in item)), 'no price, no field');
 
   // option lists: edit (a model that takes no reference is left out, the limit stops at the ceiling of the input)
   const editList = await imageModels.options({ config: CONFIG, edit: true, ceiling: 8 });
@@ -322,10 +323,10 @@ async function main() {
         const context = { config: CONFIG, inputs: {}, connected: new Set(['model']) };
         assert.deepEqual(node.cost.estimate(params, context), { usd: 0.268 }, 'unresolved connection keeps template fallback estimate');
         assert.deepEqual(node.cost.estimate(params, { ...context, inputs: { model: text(` ${NANO} `) } }), { usd: 0.268 });
-        assert.equal(node.cost.estimate(params, { ...context, inputs: { model: text(SUNBURST) } }), null, 'unknown GPT Image list price is never zero');
+        assert.deepEqual(node.cost.estimate(params, { ...context, inputs: { model: text(SUNBURST) } }), { usd: 0.24 }, 'the cautious GPT Image list price, 2 images');
         const historyContext = { ...context, workflow: { graph: { nodes: [{ id: 'old', type }] } }, results: { nodes: { old: { history: [{ createdAt: '2026-11-17', params: { model: NANO, count: 1 }, cost: { usd: 0.07, model: SUNBURST }, variants: [{}] }] } } } };
         assert.deepEqual(node.cost.estimate(params, { ...historyContext, inputs: { model: text(SUNBURST) } }), { usd: 0.14 }, 'history matches the effective model, not the parameter');
-        assert.equal(node.cost.estimate(params, { ...historyContext, inputs: { model: text(FLARE) } }), null, 'another GPT Image model cannot borrow that price');
+        assert.deepEqual(node.cost.estimate(params, { ...historyContext, inputs: { model: text(FLARE) } }), { usd: 0.24 }, 'another GPT Image model cannot borrow that price: its own list price');
         assert.deepEqual(node.cost.estimate(params, { ...context, inputs: { model: text(' ') } }), node.cost.estimate(params, { config: CONFIG }), 'blank input keeps the old estimate');
         const prior = { ...node, inputs: node.inputs.filter((port) => port.id !== 'model') };
         const options = { node: { id: 'pic' }, params, edges: type === 'image.edit' ? [{ from: { node: 'seed', port: 'image' }, to: { node: 'pic', port: 'images' } }] : [], outputsOf: () => ({ image: image1 }), maxListItems: 50 };
@@ -447,12 +448,12 @@ async function main() {
       await run('image.edit', makeCtx(), { prompt: text('x'), images: list('image', [image1]), model: text(GPT) }, { model: NANO });
       assert.deepEqual(seen, [
         { name: 'generate_image', imageEstimateUsd: 0.134, model: NANO },
-        { name: 'generate_image', imageEstimateUsd: undefined, model: GPT },
-        { name: 'generate_image', imageEstimateUsd: undefined, model: GPT },
+        { name: 'generate_image', imageEstimateUsd: 0.25, model: GPT },
+        { name: 'generate_image', imageEstimateUsd: 0.25, model: GPT },
         { name: 'edit_image', imageEstimateUsd: 0.134, model: NANO },
         { name: 'generate_image', imageEstimateUsd: 0.134, model: NANO },
-        { name: 'edit_image', imageEstimateUsd: undefined, model: GPT }
-      ], 'a known price goes along, an unknown one is not passed (never 0)');
+        { name: 'edit_image', imageEstimateUsd: 0.25, model: GPT }
+      ], 'the price of the model goes along (GPT Image: the cautious estimate since 2026-11-27)');
       // the configured model counts too: Nano Banana Pro as the standard reserves its price
       seen.length = 0;
       await run('image.generate', makeCtx({ ...CONFIG, imageModel: NANO }), { prompt: text('x') });
@@ -596,7 +597,7 @@ async function main() {
       assert.deepEqual(estimateGenerate({ model: NANO }, { config: CONFIG, connected: new Set(['images']), inputs: { images: list('image', [image1, image2, image3]) } }), { usd: 0.13736 });
       assert.deepEqual(estimateGenerate({ model: NANO }, { config: CONFIG, connected: new Set(['images']), inputs: {} }), { usd: 0.13848 }, 'not known yet: four');
       assert.deepEqual(estimateGenerate({ model: NANO_21 }, { config: { ...CONFIG, imageModels: [...CONFIG.imageModels, NANO_21] }, connected: new Set(['images']), inputs: { images: list('image', [image1, image2, image3]) } }), { usd: 0.03652 }, 'the sheet of the HUD: 0.034 USD and three references');
-      assert.equal(estimateGenerate({ model: GPT }, { config: CONFIG, connected: new Set(['images']), inputs: {} }), null);
+      assert.deepEqual(estimateGenerate({ model: GPT }, { config: CONFIG, connected: new Set(['images']), inputs: {} }), { usd: 0.25 }, 'GPT Image: no reference surcharge known, the cautious list price');
       const historical = {
         config: CONFIG,
         workflow: { graph: { nodes: [{ id: 'earlier', type: 'image.generate' }] } },
@@ -635,8 +636,8 @@ async function main() {
       // no choice: the price of the configured model
       assert.deepEqual(estimate('image.generate', {}, { config: { ...CONFIG, imageModel: NANO } }), { usd: 0.134 });
       // unknown stays unknown (null, never 0)
-      assert.equal(estimate('image.generate', {}, { config: CONFIG }), null, 'GPT Image 2: no price known before a run');
-      assert.equal(estimate('image.generate', { model: GPT }, { config: CONFIG }), null);
+      assert.deepEqual(estimate('image.generate', {}, { config: CONFIG }), { usd: 0.25 }, 'GPT Image 2: the cautious list price before a run');
+      assert.deepEqual(estimate('image.generate', { model: GPT }, { config: CONFIG }), { usd: 0.25 });
       assert.equal(estimate('image.generate', { model: ONE_REF }, { config: CONFIG }), null);
       assert.equal(estimate('image.generate', {}, undefined), null);
       assert.equal(estimate('image.edit', { model: NOT_LISTED }, {}), null);
@@ -669,7 +670,7 @@ async function main() {
       assert.ok(Math.abs(estimate('image.generate', { model: GPT }, { ...ranGpt, config: { ...CONFIG, imageModel: NANO } }).usd - 0.04) < 1e-9, 'an explicit choice of the old model finds the run');
       assert.ok(Math.abs(estimate('image.generate', {}, { ...ranGpt, config: CONFIG }).usd - 0.04) < 1e-9);
       // another node type does not count
-      assert.equal(estimate('image.edit', { model: GPT }, { ...history('image.generate', 'n1', entries), config: CONFIG }), null);
+      assert.deepEqual(estimate('image.edit', { model: GPT }, { ...history('image.generate', 'n1', entries), config: CONFIG }), { usd: 0.25 }, 'no history of its own type: the list price');
       // a node of the same type elsewhere in the workflow does
       const second = { workflow: { graph: { nodes: [{ id: 'a', type: 'image.edit' }, { id: 'b', type: 'image.edit' }] } }, results: { nodes: { b: { history: [done({ model: NANO, count: 2 }, 0.3, '2026-10-02T10:00:00Z')] } } }, config: CONFIG };
       assert.ok(Math.abs(estimate('image.edit', { model: NANO }, second).usd - 0.15) < 1e-9);
@@ -732,9 +733,9 @@ async function main() {
       const plan = await engine.plan(workflow.id, { mode: 'all' });
       assert.equal(plan.valid, true, JSON.stringify(plan.issues));
       assert.deepEqual(plan.nodes.g1.estimate, { usd: 0.268 }, 'Nano Banana Pro: list price per image, two variants');
-      assert.equal(plan.nodes.g2.estimate, null, 'GPT Image 2: unknown, not 0');
-      assert.equal(plan.totals.unknownNodes, 1);
-      assert.ok(Math.abs(plan.totals.usd - 0.268) < 1e-9);
+      assert.deepEqual(plan.nodes.g2.estimate, { usd: 0.25 }, 'GPT Image 2: the cautious list price, not unknown');
+      assert.equal(plan.totals.unknownNodes, 0);
+      assert.ok(Math.abs(plan.totals.usd - 0.518) < 1e-9);
       assert.ok(listReads >= 1, 'the plan reads the model list first (prepare)');
 
       const record = await engine.whenFinished(workflow.id, await engine.start(workflow.id, { mode: 'all', user: 'tester' }));

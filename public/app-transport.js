@@ -210,7 +210,7 @@ function readFile(file) {
 }
 
 const CONTEXT_FILE_EXTENSIONS = /\.(md|txt|markdown)$/i;
-const UPLOAD_EXTENSIONS = /\.(png|jpe?g|webp|gif|mp3|wav|m4a|aac|mp4|webm|ttf|otf|woff2?|md|txt|markdown)$/i;
+const UPLOAD_EXTENSIONS = /\.(png|jpe?g|webp|gif|mp3|wav|m4a|aac|mp4|webm|ttf|otf|woff2?|md|txt|markdown|pdf)$/i;
 
 function isContextFile(name) {
   return CONTEXT_FILE_EXTENSIONS.test(String(name || ''));
@@ -218,7 +218,7 @@ function isContextFile(name) {
 
 function isSupportedUpload(type, name) {
   const mime = String(type || '').toLowerCase();
-  if (mime.startsWith('image/') || mime.startsWith('audio/') || mime.startsWith('video/') || mime.startsWith('font/')) return true;
+  if (mime.startsWith('image/') || mime.startsWith('audio/') || mime.startsWith('video/') || mime.startsWith('font/') || mime === 'application/pdf') return true;
   return UPLOAD_EXTENSIONS.test(String(name || ''));
 }
 
