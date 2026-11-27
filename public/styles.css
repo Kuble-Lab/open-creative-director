@@ -2067,6 +2067,22 @@ code {
   max-width: 100%;
 }
 
+.asset-card .asset-file-link {
+  display: block;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-card .asset-file-link:hover {
+  text-decoration: underline;
+}
+
 .asset-meta {
   display: flex;
   flex-wrap: wrap;
