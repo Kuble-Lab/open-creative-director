@@ -2958,7 +2958,7 @@ async function main() {
       assert.equal(planBefore.valid, true, JSON.stringify(planBefore.issues));
       assert.equal(planBefore.nodes.n3.status, 'stale');
       assert.equal(planBefore.nodes.n3.paid, true);
-      assert.equal(planBefore.nodes.n3.estimate, null, 'no price table: unknown before the first run');
+      assert.deepEqual(planBefore.nodes.n3.estimate, { usd: 0.75 }, 'before the first run: the cautious list price of the default model, 3 variants');
       assert.equal(planBefore.totals.paidNodes, 2);
 
       const runId = await engine.start(wf.id, { mode: 'all', user: 'tester' });

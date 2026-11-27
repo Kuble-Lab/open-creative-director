@@ -72,7 +72,7 @@ async function run(iso) {
   const base = (await sheet.status(item.id, { viewer, config })).estimate;
   assert.deepEqual([base.count, base.model, base.usd, base.references, base.available, base.reason], [4, model, 0.14104, 0, true, null]);
   assert.ok(base.modelLabel);
-  assert.equal((await sheet.estimate(item, { viewer, config: { imageModel: 'openai/gpt-image-2' } })).usd, null);
+  assert.equal((await sheet.estimate(item, { viewer, config: { imageModel: 'example/image-without-price' } })).usd, null);
   assert.equal((await sheet.estimate(item, { viewer, config: { imageModel: '' } })).reason, 'no_model');
   await assert.rejects(begin(item.id, { config: { imageModel: '' } }), (err) => err.code === 'INFLUENCER_SHEET_UNAVAILABLE' && err.reason === 'no_model');
   iso.setEnv('OPENROUTER_API_KEY', '');
