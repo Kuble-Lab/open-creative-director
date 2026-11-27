@@ -240,7 +240,8 @@
           }
         }
       }
-      return found ? ui.mediaUrl(found) : null;
+      // a small copy for the chip (see api.thumb); the chip is a few pixels, the original can be several MB
+      return found ? (typeof ui.thumbUrl === 'function' ? ui.thumbUrl(found, 96) : ui.mediaUrl(found)) : null;
     }
 
     // One row per multi-input of the node that has two or more connections, in the order the engine collects them.
