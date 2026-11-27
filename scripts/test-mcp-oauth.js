@@ -184,9 +184,9 @@ async function roles(h, client) {
   let connection = h.keys.list({ owner: PARTICIPANT }).find((k) => k.status === 'active');
   assert.equal(connection.maxRunUsd, 1); assert.equal(connection.maxMonthUsd, 5); assert.equal(Date.parse(connection.expiresAt) - Date.parse(connection.createdAt), 30 * 86400000); checks++;
   let r = await h.rpc(issued.access_token, 'tools/call', { name: 'estimate_run', arguments: { workflow_id: 'wf1' } });
-  check(r.text.includes('Higgsfield is not available'), r.text);
+  check(/Higgsfield.*not available through agent access/.test(r.text), r.text);
   r = await h.rpc(issued.access_token, 'tools/call', { name: 'run_workflow', arguments: { workflow_id: 'wf1', max_usd: 1 } });
-  assert.equal(r.json.result.isError, true); check(r.text.includes('Higgsfield is not available'));
+  assert.equal(r.json.result.isError, true); check(/Higgsfield.*not available through agent access/.test(r.text));
   assert.equal((await h.request('/api/mcp/policy', { method: 'PUT', data: { participant: { ...DEFAULT_PARTICIPANT, defaultRunUsd: 0.25, maxRunUsd: 0.25, defaultMonthUsd: 1, maxMonthUsd: 1 } } })).status, 200);
   r = await h.rpc(issued.access_token, 'tools/call', { name: 'estimate_run', arguments: { workflow_id: 'wf1' } }); check(r.text.includes('per run set for this key'));
   const auth = h.mcp.oauth.tokens.authenticate(issued.access_token, RESOURCE); assert.equal(auth.key.maxRunUsd, 0.25); assert.equal(auth.key.maxMonthUsd, 1);
