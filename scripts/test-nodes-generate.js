@@ -2129,11 +2129,12 @@ async function main() {
         assert.ok(!('medias' in submits()[0].args.requests[0].params));
         assert.equal(plain.variants[0].video.type, 'video');
 
-        // an image reference plus one audio track: the image role is the image one, the audio role comes from the model
+        // an image reference plus one audio track: next to audio the image is a reference (image_references, the model has
+        // that role), not the start frame; the audio role comes from the model
         reset();
         const talking = await generateVideo({ prompt: text('Talking head'), refs: list('image', [image1]), audio: audio1 });
         assert.deepEqual(submits()[0].args.requests[0].params.medias, [
-          { value: importId(1), role: 'start_image' },
+          { value: importId(1), role: 'image_references' },
           { value: importId(2), role: 'audio_references' }
         ]);
         assert.equal(talking.variants[0].video.type, 'video');
@@ -2142,8 +2143,8 @@ async function main() {
         reset();
         await generateVideo({ prompt: text('Two tracks'), refs: list('image', [image1, image2]), audio: list('audio', [audio1, audio2]) });
         assert.deepEqual(submits()[0].args.requests[0].params.medias, [
-          { value: importId(1), role: 'start_image' },
-          { value: importId(2), role: 'start_image' },
+          { value: importId(1), role: 'image_references' },
+          { value: importId(2), role: 'image_references' },
           { value: importId(3), role: 'audio_references' },
           { value: importId(4), role: 'audio_references' }
         ]);
