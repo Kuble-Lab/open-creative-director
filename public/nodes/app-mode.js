@@ -1964,7 +1964,7 @@
       const cell = el('div', { class: `nv-appleaf is-${leaf.type}` });
       if (OCD.preview.isMedia(leaf)) {
         const frame = el('div', { class: 'nv-appleaf-frame' });
-        const media = OCD.preview.mediaNode(leaf, { scrolling: true, thumbWidth: 640 });
+        const media = OCD.preview.mediaNode(leaf, { scrolling: true });
         frame.append(media);
         shapeToFilm(media, media);
         if (leaf.type === 'image') {
@@ -1996,7 +1996,7 @@
       const tile = el('figure', { class: `nv-appgal-tile is-${leaf.type}`, dataset: { node: item.node } });
       const frame = el('div', { class: 'nv-appgal-frame' });
       if (OCD.preview.isMedia(leaf)) {
-        const media = OCD.preview.mediaNode(leaf, { scrolling: true });
+        const media = OCD.preview.mediaNode(leaf, { scrolling: true, thumbWidth: 640 });
         if (leaf.type === 'video') {
           // no controls in the tile: they would take the click that opens the large view; the film plays silently under the pointer
           media.removeAttribute('controls');

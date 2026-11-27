@@ -200,7 +200,8 @@
   // the size of the viewer overlay; options.scrolling: the model sits in a page that scrolls (app view). Dragging turns the model and the wheel zooms it: none of it reaches the canvas behind.
   function modelNode(value, options = {}) {
     const wrap = el('div', { class: `nv-model nv-nodrag ${options.large ? 'is-large' : ''}`.trim(), title: T('nodes.model.hint') });
-    const poster = options.poster && isMedia(options.poster) ? ui.mediaUrl(options.poster) : '';
+    const poster = !(options.poster && isMedia(options.poster)) ? ''
+      : (options.thumbWidth && options.poster.type === 'image' ? ui.thumbUrl(options.poster, options.thumbWidth) : ui.mediaUrl(options.poster));
     const status = el('div', { class: 'nv-model-status', role: 'status', text: T('nodes.model.loading') });
     // no AR attributes: the view never offers augmented reality. touch-action: on the canvas card a finger drag turns the model
     // (none); in the scrolling app view and in the large view the page keeps its vertical swipe (pan-y), so a finger on the
@@ -310,7 +311,8 @@
   function renderSingle(body, value, onOpen, poster) {
     if (isMedia(value)) {
       const frame = el('div', { class: `nv-pv-frame is-${value.type}` });
-      frame.append(mediaNode(value, { poster }));
+      // the card shows a copy at most 640 pixels wide; the large view (button, double click) and the download use the original
+      frame.append(mediaNode(value, { poster, thumbWidth: 640 }));
       const tools = el('div', { class: 'nv-pv-tools' });
       const expand = el('button', { type: 'button', class: 'nv-pv-tool', title: T('nodes.preview.open'), 'aria-label': T('nodes.preview.open') }, icon('fullscreen', 13));
       expand.addEventListener('click', (event) => {
