@@ -115,6 +115,14 @@ async function run(iso) {
     assert.equal((await errorOf(elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ status: 404 })) }))).code, 'PREVIEW_UPSTREAM');
     assert.equal((await errorOf(elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ type: 'text/html' })) }))).code, 'PREVIEW_UPSTREAM', 'no audio');
     assert.equal((await errorOf(elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ chunks: [] })) }))).code, 'PREVIEW_UPSTREAM', 'empty');
+    // Google Cloud Storage serves many ElevenLabs samples as text/plain: the first bytes decide
+    const plainMp3 = await elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ type: 'text/plain' })) });
+    assert.equal(plainMp3.contentType, 'audio/mpeg', 'an MP3 sent as text/plain is played');
+    const plainFrame = await elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ type: 'text/plain', chunks: [Buffer.from([0xff, 0xfb, 0x90, 0x64, 0x00])] })) });
+    assert.equal(plainFrame.contentType, 'audio/mpeg', 'an MP3 without ID3 tag sent as text/plain');
+    assert.equal((await errorOf(elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ type: 'text/plain', chunks: [Buffer.from('Access denied')] })) }))).code, 'PREVIEW_UPSTREAM', 'text that is no audio');
+    assert.equal(elevenlabs.sniffAudioType(Buffer.from('OggS\0\0')), 'audio/ogg');
+    assert.equal(elevenlabs.sniffAudioType(Buffer.from('hello')), '');
     assert.equal((await errorOf(elevenlabs.fetchPreview('https://storage.example.com/a.mp3', { fetchImpl: fake(fakeResponse({ length: elevenlabs.PREVIEW_MAX_BYTES + 1 })) }))).code, 'PREVIEW_TOO_LARGE', 'declared size');
     let cancelled = false;
     const endless = fakeResponse({ chunks: Array.from({ length: 50 }, () => Buffer.alloc(100 * 1024)) });
