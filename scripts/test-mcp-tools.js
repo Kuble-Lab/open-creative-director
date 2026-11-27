@@ -478,6 +478,30 @@ async function run(iso, holder) {
   assert.equal(calls.hf, 0);
   assert.equal(calls.unknown, 0);
 
+  // With a USD rate per Higgsfield credit, agent access prices the credits in USD and starts the run within the limits
+  {
+    const settingsLib = iso.load('lib/settings');
+    const realAllowed = access.agentHiggsfieldAllowed;
+    const realPref = settingsLib.getPreference;
+    access.agentHiggsfieldAllowed = () => true;
+    settingsLib.getPreference = (name) => (name === 'higgsfieldUsdPerCredit' ? 0.05 : realPref.call(settingsLib, name));
+    try {
+      const hfPriced = await mk(STAFF1, 'Higgsfield mit Kurs', hfGraph);
+      const estimate = await ok(starter.secret, 'estimate_run', { workflow_id: hfPriced.id });
+      assert.equal(estimate.estimate_usd, 0.1, '2 credits at 0.05 USD');
+      assert.equal(estimate.agent.can_start, true);
+      await refused(starter.secret, 'run_workflow', { workflow_id: hfPriced.id, max_usd: 0.05 }, /more than the max_usd/);
+      const started = await ok(starter.secret, 'run_workflow', { workflow_id: hfPriced.id, max_usd: 0.1 });
+      assert.equal(started.estimate_usd, 0.1);
+      await ok(starter.secret, 'get_run', { run_id: started.run_id, wait_seconds: 5 });
+      assert.equal(calls.hf, 1);
+    } finally {
+      access.agentHiggsfieldAllowed = realAllowed;
+      settingsLib.getPreference = realPref;
+    }
+    calls.hf = 0;
+  }
+
   // two runs at a time, also when three are asked for at once
   const roomy = makeKey({ name: 'Geräumig', right: 'start', maxRunUsd: 5, maxMonthUsd: 100 });
   secrets.push(roomy.secret);
